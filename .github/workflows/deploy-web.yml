@@ -1,10 +1,11 @@
 name: Deploy Web
 
-# Builds the web editor (apps/web) and deploys it to the Cloudflare Worker "pego-web" (static
-# assets, apps/web/wrangler.jsonc). A push to main is the "production" deployment; dev and
-# same-repo PRs upload a preview version under a preview alias ("dev", "pr-<number>"). Each run is
-# recorded as a GitHub deployment (the repo's Deployments sidebar). Needs the repo secrets
-# CLOUDFLARE_API_TOKEN (Workers Scripts: Edit) and CLOUDFLARE_ACCOUNT_ID.
+# Builds the web editor (apps/web) and deploys it as a static-assets Worker (apps/web/wrangler.jsonc):
+# - push to main: Worker "pego-web" on app.pego.ink, the "production" deployment
+# - push to dev: Worker "pego-web-dev" (wrangler env "dev") on dev.pego.ink, a "preview" deployment
+# - same-repo PR: a preview version of "pego-web" under the alias "pr-<number>" (workers.dev)
+# Each run is recorded as a GitHub deployment (the repo's Deployments sidebar). Needs the repo
+# secrets CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID.
 on:
   push:
     branches: [main, dev]
@@ -41,7 +42,9 @@ jobs:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
       CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
       ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
-      PREVIEW_ALIAS: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.number) || github.ref_name }}
+      # main | dev | alias (PRs)
+      TARGET: ${{ github.event_name == 'push' && github.ref_name || 'alias' }}
+      PREVIEW_ALIAS: pr-${{ github.event.number }}
       SHA: ${{ github.event.pull_request.head.sha || github.sha }}
     steps:
       - uses: actions/checkout@v4
@@ -66,8 +69,9 @@ jobs:
         env:
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
         run: |
-          if [ "$ENVIRONMENT" = production ]; then
-            bunx wrangler@4.152.0 deploy --message "$SHA"
+          if [ "$TARGET" = main ] || [ "$TARGET" = dev ]; then
+            if [ "$TARGET" = dev ]; then env_args=(--env dev); else env_args=(); fi
+            bunx wrangler@4.152.0 deploy "${env_args[@]}" --message "$SHA"
             # Prefer the custom domain ("app.pego.ink (custom domain)") over workers.dev.
             url="$(jq -r 'select(.type == "deploy") | .targets
               | (map(select(endswith(" (custom domain)")) | "https://" + rtrimstr(" (custom domain)"))[0] // .[0])

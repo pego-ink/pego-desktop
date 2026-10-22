@@ -11,4 +11,10 @@
   "routes": [{ "pattern": "app.pego.ink", "custom_domain": true }],
   "workers_dev": true,
   "preview_urls": true,
+  "env": {
+    // The dev branch, deployed in full to its own Worker "pego-web-dev" on dev.pego.ink.
+    "dev": {
+      "routes": [{ "pattern": "dev.pego.ink", "custom_domain": true }],
+    },
+  },
 }
