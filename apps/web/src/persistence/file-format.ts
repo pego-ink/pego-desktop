@@ -1,6 +1,7 @@
 import {
-  createId,
   DOCUMENT_VERSION,
+  serializePegoFile,
+  starterDocument,
   documentSchema,
   MigrationError,
   migrateDocument,
@@ -14,8 +15,7 @@ export const FILE_EXTENSION = ".pego";
 export const FILE_MIME = "application/json";
 export const DEFAULT_FILE_NAME = `Untitled${FILE_EXTENSION}`;
 
-export const serializeDocument = (doc: PegoDocument): string =>
-  JSON.stringify({ format: FILE_FORMAT, version: FILE_VERSION, document: doc }, null, 2);
+export const serializeDocument = (doc: PegoDocument): string => serializePegoFile(doc);
 
 export class FileFormatError extends Error {}
 
@@ -67,31 +67,7 @@ export const parseDocumentFile = (text: string): PegoDocument => {
 };
 
 /** A new empty document: one page holding one 1440x1024 white frame named "Frame". */
-export const createEmptyDocument = (): PegoDocument =>
-  documentSchema.parse({
-    version: DOCUMENT_VERSION,
-    id: createId(),
-    name: "Untitled",
-    children: [
-      {
-        type: "page",
-        id: createId(),
-        name: "Page 1",
-        children: [
-          {
-            id: createId(),
-            type: "frame",
-            name: "Frame",
-            x: 0,
-            y: 0,
-            width: 1440,
-            height: 1024,
-            fill: "#FFFFFF",
-          },
-        ],
-      },
-    ],
-  });
+export const createEmptyDocument = (): PegoDocument => starterDocument();
 
 /** Dirty means the live doc object differs from the one at last save/open (`null` = never saved state). */
 export const isDirty = (doc: PegoDocument, savedDoc: PegoDocument | null): boolean =>

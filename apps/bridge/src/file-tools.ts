@@ -132,7 +132,7 @@ FILE_TOOLS.push(
     title: "Open project",
     description:
       "Open a project in the Pego editor and make it the active one, by id or by name (exact, case-insensitive, or an unambiguous prefix). " +
-      "Its files are listed in the result; then use switch_document / open_document to pick a file, and save_document with a path inside the project's folder for new files. All edit tools work on the active project's active tab.",
+      "The project's design (project.pego in its folder, screens as pages) becomes the active tab; all edit tools work on it. Call save_document after editing.",
     inputSchema: {
       type: "object",
       properties: {
@@ -302,12 +302,15 @@ const openProjectTool = async (
   const opened = await callTool(EDITOR_OPS.openProject, project, source);
   if (opened.isError) return opened;
   const files = await listDesignFiles(project.dir);
+  const others = files.filter((file) => file.path !== project.mainFile);
   return {
     content: [
-      `Opened project ${project.name} (id ${project.id}) at ${project.dir}.`,
-      files.length
-        ? `Files:\n${files.map((file) => `- ${file.path}`).join("\n")}`
-        : `No files yet: save_document with a path like ${project.dir}/main.pego creates one.`,
+      `Opened project ${project.name} (id ${project.id}). Its design ${project.mainFile} is the active tab: add screens as pages (create_page) and call save_document when done.`,
+      ...(others.length
+        ? [
+            `Other design files in the project:\n${others.map((file) => `- ${file.path}`).join("\n")}`,
+          ]
+        : []),
     ].join("\n"),
     isError: false,
   };
@@ -365,4 +368,4 @@ export const runFileTool = async (
 /** Appended to the MCP server instructions when the file tools are available. */
 export const FILE_TOOLS_INSTRUCTIONS = `## Design files
 
-Designs live in the user's repository in design/, grouped in projects (design/<project>/ with a project.json). When the user names a project by name or id, call open_project first (list_projects shows them; create_project makes one). list_documents shows the active project, its open tabs and its files. Edits always go to the active tab: use switch_document (or open_document) to work on a named file; to start a new one, build it in a new document and call save_document with a new path (for example <repo>/design/<name>.pego). Call save_document whenever a step is finished, so the file on disk matches the canvas.`;
+Designs live in the user's repository in design/, one folder per project with a project.json (id, name) and the project's design, project.pego (screens are its pages). When the user names a project by name or id, call open_project first (list_projects shows them; create_project makes one); it opens project.pego as the active tab. list_documents shows the active project, its open tabs and its files. Edits always go to the active tab: use switch_document (or open_document) to work on a named file; to start a new one, build it in a new document and call save_document with a new path (for example <repo>/design/<name>.pego). Call save_document whenever a step is finished, so the file on disk matches the canvas.`;

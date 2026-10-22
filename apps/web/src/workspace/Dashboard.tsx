@@ -19,12 +19,8 @@ import {
   refreshProjects,
   useDashboardStore,
 } from "./use-dashboard-store";
-import {
-  activateWorkspace,
-  openProjectWorkspace,
-  SCRATCH_ID,
-  useWorkspaceStore,
-} from "./use-workspace-store";
+import { openProject } from "@/project/use-project-store";
+import { activateWorkspace, SCRATCH_ID, useWorkspaceStore } from "./use-workspace-store";
 
 const ago = (ms: number): string => {
   if (!ms) return "no files yet";
@@ -96,9 +92,9 @@ const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean })
     role="button"
     tabIndex={0}
     className="group flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-    onClick={() => openProjectWorkspace(project)}
+    onClick={() => void openProject(project)}
     onKeyDown={(event) => {
-      if (event.key === "Enter") openProjectWorkspace(project);
+      if (event.key === "Enter") void openProject(project);
     }}
   >
     <ProjectThumbnail project={project} />

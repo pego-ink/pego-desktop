@@ -190,8 +190,10 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
 
 ## Projects, workspaces and tabs
 
-- **Projects** are folders in the repository's `design/` with a `project.json` (`{ id, name, createdAt }`),
-  e.g. `design/pego-website/`. The bridge finds `design/` (nearest `.git` above where it runs;
+- **Projects** are folders in the repository's `design/` with a `project.json` (`{ id, name, createdAt }`) and
+  the project's design, `project.pego` (one document; screens are its pages), e.g. `design/pego-website/`.
+  Opening a project opens `project.pego` (created when missing); its tab and the header show the project name
+  (the document name), other files their file name. The bridge finds `design/` (nearest `.git` above where it runs;
   `PEGO_DESIGN_DIR` overrides), lists projects (`apps/bridge/src/projects.ts`) and creates them.
 - **Workspaces** (`apps/web/src/workspace/use-workspace-store.ts`): the header shows Dashboard, Scratch
   (documents outside any project) and one tab per open project. Each workspace keeps its own document tabs;

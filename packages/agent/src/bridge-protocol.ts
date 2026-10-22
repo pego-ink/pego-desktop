@@ -9,12 +9,19 @@ import type { DecisionRequest, PlanStep, StepStatus } from "./types";
 export const BRIDGE_DEFAULT_PORT = 4519;
 export const BRIDGE_PROTOCOL_VERSION = 5;
 
-/** A project: a folder in the design folder with a project.json (id, name). */
+/**
+ * A project: a folder in the design folder with a project.json (id, name) and its design,
+ * project.pego (one document; screens are its pages).
+ */
 export type ProjectInfo = {
   id: string;
   name: string;
   /** Absolute folder path. */
   dir: string;
+  /** Absolute path of the project's design, `<dir>/project.pego`. */
+  mainFile: string;
+  /** False until project.pego exists (it is created when the project is opened). */
+  hasMainFile: boolean;
   /** Folder inside the design folder, e.g. "checkout". */
   relativeDir: string;
   fileCount: number;

@@ -20,3 +20,4 @@ export {
 export { sampleDoc } from "./sample-doc";
 export * from "./pen";
 export * from "./paint";
+export * from "./file";

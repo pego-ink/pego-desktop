@@ -71,7 +71,25 @@ export const restoreLive = (snapshot: TabSnapshot) => {
 /** What a tab shows: its state, live for the active tab. */
 export const tabState = (tab: Tab): TabSnapshot => tab.snapshot ?? captureLive();
 
-export const tabTitle = (tab: Tab): string => tabState(tab).file.fileName ?? "Untitled";
+/** File name of a project's design (one per project folder). */
+export const PROJECT_DESIGN_FILE = "project.pego";
+
+export const isProjectDesign = (bridgePath: string | null): boolean =>
+  bridgePath !== null && /[\\/]project\.pego$/i.test(bridgePath);
+
+/**
+ * What a document is called in tabs and the header: a project's design shows the project
+ * (its document name), other files their file name, new documents "Untitled".
+ */
+export const documentTitle = (
+  doc: PegoDocument,
+  file: Pick<TabFile, "fileName" | "bridgePath">,
+): string => (isProjectDesign(file.bridgePath) ? doc.name : (file.fileName ?? "Untitled"));
+
+export const tabTitle = (tab: Tab): string => {
+  const state = tabState(tab);
+  return documentTitle(state.doc, state.file);
+};
 
 export const tabIsDirty = (tab: Tab): boolean => {
   const state = tabState(tab);

@@ -13,7 +13,7 @@ import {
   tabTitle,
   useTabsStore,
 } from "@/tabs/use-tabs-store";
-import { liveProject, openProjectWorkspace, showEditor } from "@/workspace/use-workspace-store";
+import { liveProject, showEditor } from "@/workspace/use-workspace-store";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
 /**
@@ -203,8 +203,8 @@ export const switchTabForBridge = (input: unknown): OpOutcome => {
   return { content: `Showing ${input.path}.`, isError: false };
 };
 
-/** Editor side of open_project / create_project: open (or show) the project's workspace. */
-export const openProjectForBridge = (input: unknown): OpOutcome => {
+/** Editor side of open_project / create_project: show the project and its design (project.pego). */
+export const openProjectForBridge = async (input: unknown): Promise<OpOutcome> => {
   if (
     !isObject(input) ||
     typeof input.id !== "string" ||
@@ -213,7 +213,14 @@ export const openProjectForBridge = (input: unknown): OpOutcome => {
   ) {
     return { content: "Invalid project.", isError: true };
   }
-  if (!openProjectWorkspace({ id: input.id, name: input.name, dir: input.dir })) {
+  const { openProject } = await import("@/project/use-project-store");
+  const opened = await openProject({
+    id: input.id,
+    name: input.name,
+    dir: input.dir,
+    ...(typeof input.mainFile === "string" ? { mainFile: input.mainFile } : {}),
+  });
+  if (!opened) {
     return {
       content: "The editor is busy with an agent run; try again when it finishes.",
       isError: true,

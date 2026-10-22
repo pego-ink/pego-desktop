@@ -8,6 +8,8 @@ import { resetTabs } from "./test-reset";
 import {
   captureLive,
   closeTab,
+  documentTitle,
+  isProjectDesign,
   newTab,
   openTab,
   restoreTabs,
@@ -99,5 +101,22 @@ describe("tabs", () => {
     expect(tabs().map(tabTitle)).toEqual(["a.pego", "b.pego"]);
     expect(docs().doc.name).toBe("B");
     expect(useFileStore.getState().fileName).toBe("b.pego");
+  });
+});
+
+describe("titles", () => {
+  test("a project's design shows the project name; other files their file name", () => {
+    const doc = { ...sampleDoc, name: "Web Hotel" };
+    expect(
+      documentTitle(doc, {
+        fileName: "project.pego",
+        bridgePath: "/r/design/web-hotel/project.pego",
+      }),
+    ).toBe("Web Hotel");
+    expect(
+      documentTitle(doc, { fileName: "rooms.pego", bridgePath: "/r/design/web-hotel/rooms.pego" }),
+    ).toBe("rooms.pego");
+    expect(documentTitle(doc, { fileName: null, bridgePath: null })).toBe("Untitled");
+    expect(isProjectDesign("C:\\\\design\\\\shop\\\\project.pego")).toBe(true);
   });
 });
