@@ -58,6 +58,7 @@
         "@anthropic-ai/sdk": "^1.1.0",
         "@pego/agent": "workspace:*",
         "@pego/doc": "workspace:*",
+        "@pego/export": "workspace:*",
         "@pego/ui": "workspace:*",
         "@tanstack/react-query": "^5.104.5",
         "canvaskit-wasm": "0.42.0",
@@ -83,6 +84,7 @@
       "dependencies": {
         "@anthropic-ai/sdk": "1.1.0",
         "@pego/doc": "workspace:*",
+        "@pego/export": "workspace:*",
         "zod": "^4.6.7",
       },
       "devDependencies": {
@@ -94,6 +96,16 @@
       "version": "0.0.0",
       "dependencies": {
         "zod": "^4.6.7",
+      },
+    },
+    "packages/export": {
+      "name": "@pego/export",
+      "version": "0.0.0",
+      "dependencies": {
+        "@pego/doc": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.3",
       },
     },
     "packages/ui": {
@@ -405,6 +417,8 @@
     "@pego/desktop": ["@pego/desktop@workspace:apps/desktop"],
 
     "@pego/doc": ["@pego/doc@workspace:packages/doc"],
+
+    "@pego/export": ["@pego/export@workspace:packages/export"],
 
     "@pego/ui": ["@pego/ui@workspace:packages/ui"],
 
