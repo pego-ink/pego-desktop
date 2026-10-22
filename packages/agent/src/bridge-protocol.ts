@@ -21,6 +21,8 @@ export type EditorToBridge =
       /** Base64 PNGs (e.g. get_screenshot); the bridge maps them to MCP image content. */
       images?: { mediaType: "image/png"; data: string; width: number; height: number }[];
     }
+  /** This editor was focused or became visible; the bridge routes MCP tool calls to it. */
+  | { type: "focus" }
   /** Start a run with a local agent CLI (the user's own login/config for that CLI). */
   | { type: "run_start"; runId: string; prompt: string; agentId: LocalAgentId; model?: string }
   /** Re-detect installed agent CLIs; answered with `agents`. */

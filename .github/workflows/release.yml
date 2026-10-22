@@ -98,8 +98,12 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
+          # Versions with a pre-release suffix (e.g. 0.0.1-beta) are marked as pre-releases.
+          prerelease=()
+          case "${VERSION}" in *-*) prerelease=(--prerelease) ;; esac
           gh release create "${TAG}" \
             --draft \
+            "${prerelease[@]}" \
             --verify-tag \
             --title "${TAG}" \
             --generate-notes \

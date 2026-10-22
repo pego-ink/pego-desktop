@@ -20,14 +20,24 @@ type Pending = {
 export const NO_EDITOR_MESSAGE =
   "No Pego editor is connected. Open Pego in the browser (with the bridge running) and try again.";
 
+/** Most editor sockets (greeted or not) the bridge keeps at once. */
+export const MAX_EDITOR_SOCKETS = 8;
+
 /**
- * Tracks the single active editor tab and forwards tool calls to it. A tool call never throws:
- * a missing editor, a timeout or a disconnect all resolve to an `isError` outcome.
+ * Tracks every greeted editor tab and forwards tool calls to one of them. The "active" editor
+ * is the one most recently greeted or focused; MCP calls from a terminal go there, and when it
+ * disconnects the next most recently active one takes over. Run traffic goes only to the socket
+ * that started the run (its owner). A tool call never throws: a missing editor, a timeout or a
+ * disconnect all resolve to an `isError` outcome.
  */
 export const createEditorHub = (options: { toolTimeoutMs: number }) => {
-  let active: EditorSocket | null = null;
-  let documentName = "";
+  /** Greeted sockets, least recently active first; the last entry is the active editor. */
+  const editors: { socket: EditorSocket; documentName: string }[] = [];
+  const runOwners = new Map<string, EditorSocket>();
   const pending = new Map<string, Pending>();
+
+  const indexOf = (socket: EditorSocket) => editors.findIndex((entry) => entry.socket === socket);
+  const activeEntry = () => editors[editors.length - 1];
 
   const settleAllFor = (socket: EditorSocket, message: string) => {
     for (const [callId, entry] of pending) {
@@ -38,37 +48,67 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
     }
   };
 
-  /** Make `socket` the active editor; a previous one is closed with a reason. */
-  const attach = (socket: EditorSocket, name: string) => {
-    const previous = active;
-    active = socket;
-    documentName = name;
-    if (previous && previous !== socket) {
-      settleAllFor(previous, "The editor tab was replaced by a newer connection.");
-      previous.close(4000, "Replaced by a newer editor connection");
-    }
+  const touch = (socket: EditorSocket) => {
+    const index = indexOf(socket);
+    if (index < 0) return false;
+    const [entry] = editors.splice(index, 1);
+    if (entry) editors.push(entry);
+    return true;
   };
 
-  const detach = (socket: EditorSocket) => {
+  /** Register `socket` and make it the active editor. False when the socket cap is reached. */
+  const attach = (socket: EditorSocket, name: string): boolean => {
+    const index = indexOf(socket);
+    if (index < 0 && editors.length >= MAX_EDITOR_SOCKETS) return false;
+    if (index >= 0) editors.splice(index, 1);
+    editors.push({ socket, documentName: name });
+    return true;
+  };
+
+  /** Mark `socket` as the active editor (the user focused it). */
+  const focus = (socket: EditorSocket): boolean => touch(socket);
+
+  /** Forget `socket`; returns the ids of the runs it owned (their owner entries are dropped). */
+  const detach = (socket: EditorSocket): string[] => {
     settleAllFor(socket, "The editor disconnected before answering the tool call.");
-    if (active === socket) {
-      active = null;
-      documentName = "";
+    const index = indexOf(socket);
+    if (index >= 0) editors.splice(index, 1);
+    const owned: string[] = [];
+    for (const [runId, owner] of runOwners) {
+      if (owner !== socket) continue;
+      runOwners.delete(runId);
+      owned.push(runId);
     }
+    return owned;
   };
 
-  const send = (message: BridgeToEditor): boolean => {
-    if (!active) return false;
+  const setRunOwner = (runId: string, socket: EditorSocket): boolean => {
+    if (runOwners.has(runId) || indexOf(socket) < 0) return false;
+    runOwners.set(runId, socket);
+    return true;
+  };
+  const clearRunOwner = (runId: string) => void runOwners.delete(runId);
+
+  const trySend = (socket: EditorSocket, message: BridgeToEditor): boolean => {
     try {
-      active.send(JSON.stringify(message));
+      socket.send(JSON.stringify(message));
       return true;
     } catch {
       return false;
     }
   };
 
+  /** Send a run's `run_event` to the editor that started it; dropped when it is gone. */
+  const sendToRunOwner = (runId: string, message: BridgeToEditor): boolean => {
+    const owner = runOwners.get(runId);
+    return owner ? trySend(owner, message) : false;
+  };
+
+  const resolveTarget = (source: ToolSource): EditorSocket | undefined =>
+    source.kind === "run" ? runOwners.get(source.runId) : activeEntry()?.socket;
+
   const callTool: CallTool = (tool, input, source) => {
-    const socket = active;
+    const socket = resolveTarget(source);
     if (!socket) return Promise.resolve({ content: NO_EDITOR_MESSAGE, isError: true });
     const callId = randomUUID();
     return new Promise<ToolOutcome>((resolve) => {
@@ -80,7 +120,7 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
         });
       }, options.toolTimeoutMs);
       pending.set(callId, { resolve, timer, socket });
-      const sent = send({ type: "tool_call", callId, tool, input, source });
+      const sent = trySend(socket, { type: "tool_call", callId, tool, input, source });
       if (!sent) {
         clearTimeout(timer);
         pending.delete(callId);
@@ -101,13 +141,19 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
 
   return {
     attach,
+    focus,
     detach,
-    send,
+    setRunOwner,
+    clearRunOwner,
+    sendToRunOwner,
+    getRunOwner: (runId: string) => runOwners.get(runId),
     callTool,
     resolveCall,
-    isActive: (socket: EditorSocket) => active === socket,
-    hasEditor: () => active !== null,
-    getDocumentName: () => documentName,
+    isAttached: (socket: EditorSocket) => indexOf(socket) >= 0,
+    isActive: (socket: EditorSocket) => activeEntry()?.socket === socket,
+    hasEditor: () => editors.length > 0,
+    editorCount: () => editors.length,
+    getDocumentName: () => activeEntry()?.documentName ?? "",
     pendingCount: () => pending.size,
   };
 };

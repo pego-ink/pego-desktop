@@ -9,7 +9,7 @@ import {
 } from "@pego/agent";
 import type { BridgeConfig } from "./config";
 import type { AgentAdapter } from "./agents/types";
-import { NO_EDITOR_MESSAGE } from "./editor-hub";
+import { MAX_EDITOR_SOCKETS, NO_EDITOR_MESSAGE } from "./editor-hub";
 import type { RunRequest } from "./runs";
 import { startBridge, type Bridge } from "./server";
 
@@ -286,11 +286,11 @@ describe("protocol and tool forwarding", () => {
   test("callTool round trip with a fake editor", async () => {
     const bridge = start();
     const { editor } = await greet(bridge);
-    const pending = bridge.hub.callTool("test_echo", { text: "hi" }, { kind: "run", runId: "r1" });
+    const pending = bridge.hub.callTool("test_echo", { text: "hi" }, { kind: "mcp" });
     const call = (await editor.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
     expect(call.tool).toBe("test_echo");
     expect(call.input).toEqual({ text: "hi" });
-    expect(call.source).toEqual({ kind: "run", runId: "r1" });
+    expect(call.source).toEqual({ kind: "mcp" });
     editor.send({ type: "tool_result", callId: call.callId, content: "echo: hi", isError: false });
     expect(await pending).toEqual({ content: "echo: hi", isError: false });
     expect(bridge.hub.pendingCount()).toBe(0);
@@ -313,15 +313,94 @@ describe("protocol and tool forwarding", () => {
     editor.ws.close();
   });
 
-  test("a newer editor replaces the older one, which is closed with a reason", async () => {
+  test("several editors stay connected at once", async () => {
     const bridge = start();
     const first = await greet(bridge, "one");
     const second = await greet(bridge, "two");
-    const closed = await first.editor.closed;
-    expect(closed.code).toBe(4000);
-    expect(closed.reason).toContain("Replaced");
+    await Bun.sleep(30);
+    expect(first.editor.ws.readyState).toBe(WebSocket.OPEN);
+    expect(second.editor.ws.readyState).toBe(WebSocket.OPEN);
+    expect(bridge.hub.editorCount()).toBe(2);
     expect(bridge.hub.getDocumentName()).toBe("two");
+    first.editor.ws.close();
     second.editor.ws.close();
+  });
+
+  /** Fire an MCP-source call and report which editors received the tool_call. */
+  const mcpCallTarget = async (bridge: Bridge, editors: Record<string, FakeEditor>) => {
+    const pending = bridge.hub.callTool("test_echo", {}, { kind: "mcp" });
+    await Bun.sleep(30);
+    const hits = Object.entries(editors).filter(([, e]) =>
+      e.inbox.some((m) => m.type === "tool_call"),
+    );
+    expect(hits).toHaveLength(1);
+    const [name, editor] = hits[0] as [string, FakeEditor];
+    const call = (await editor.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
+    editor.send({ type: "tool_result", callId: call.callId, content: "ok", isError: false });
+    expect((await pending).isError).toBe(false);
+    return name;
+  };
+
+  test("MCP calls go to the most recent editor; focus switches the target; disconnect falls back", async () => {
+    const bridge = start();
+    const a = (await greet(bridge, "a")).editor;
+    const b = (await greet(bridge, "b")).editor;
+    const c = (await greet(bridge, "c")).editor;
+    const all = { a, b, c };
+    expect(await mcpCallTarget(bridge, all)).toBe("c");
+    a.send({ type: "focus" });
+    await Bun.sleep(30);
+    expect(await mcpCallTarget(bridge, all)).toBe("a");
+    b.send({ type: "focus" });
+    await Bun.sleep(30);
+    expect(await mcpCallTarget(bridge, all)).toBe("b");
+    b.ws.close();
+    await b.closed;
+    await Bun.sleep(30);
+    // a was active before b, so a takes over; then c once a is gone too.
+    expect(await mcpCallTarget(bridge, { a, c })).toBe("a");
+    a.ws.close();
+    await a.closed;
+    await Bun.sleep(30);
+    expect(await mcpCallTarget(bridge, { c })).toBe("c");
+    c.ws.close();
+  });
+
+  test("the pego://document resource is read from the active editor", async () => {
+    const bridge = start();
+    const a = (await greet(bridge, "a")).editor;
+    const b = (await greet(bridge, "b")).editor;
+    a.send({ type: "focus" });
+    await Bun.sleep(30);
+    const pending = bridge.hub.callTool("get_document", {}, { kind: "mcp" });
+    const call = (await a.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
+    expect(b.inbox.some((m) => m.type === "tool_call")).toBe(false);
+    a.send({ type: "tool_result", callId: call.callId, content: "x", isError: false });
+    await pending;
+    a.ws.close();
+    b.ws.close();
+  });
+
+  test("a socket that never sent hello cannot focus or do anything", async () => {
+    const bridge = start();
+    const editor = await connect(bridge);
+    editor.send({ type: "focus" });
+    expect((await editor.closed).code).toBe(1008);
+    expect(bridge.hub.editorCount()).toBe(0);
+  });
+
+  test("caps concurrent editor sockets", async () => {
+    const bridge = start();
+    const editors: FakeEditor[] = [];
+    for (let i = 0; i < MAX_EDITOR_SOCKETS; i++)
+      editors.push((await greet(bridge, `e${i}`)).editor);
+    expect(bridge.hub.editorCount()).toBe(MAX_EDITOR_SOCKETS);
+    const rejected = await fetch(`http://127.0.0.1:${bridge.port}/editor`, {
+      headers: { Origin: ORIGIN, Upgrade: "websocket", Connection: "Upgrade" },
+    });
+    expect(rejected.status).toBe(503);
+    expect(bridge.hub.editorCount()).toBe(MAX_EDITOR_SOCKETS);
+    editors.forEach((e) => e.ws.close());
   });
 
   test("pending calls fail when the editor disconnects", async () => {
@@ -580,7 +659,7 @@ describe("agent runs", () => {
         runManagerFactory: ({ emit }: { emit: (id: string, e: RunEvent) => void }) => ({
           start: ({ runId, prompt }: RunRequest) => {
             emit(runId, { kind: "text", text: `got ${prompt}` });
-            emit(runId, { kind: "done" });
+            emit(runId, { kind: "text", text: "more" });
           },
           resolveRunToken: () => undefined,
           cancel: (runId: string) => void cancelled.push(runId),
@@ -601,6 +680,81 @@ describe("agent runs", () => {
     editor.send({ type: "run_cancel", runId: "r1" });
     await Bun.sleep(30);
     expect(cancelled).toEqual(["r1"]);
+  });
+});
+
+describe("run ownership across editors", () => {
+  const setup = () => {
+    const cancelled: string[] = [];
+    const ctl: {
+      emit: (id: string, e: RunEvent) => void;
+      callTool: Bridge["hub"]["callTool"];
+    } = { emit: () => undefined, callTool: async () => ({ content: "", isError: true }) };
+    const bridge = start(
+      {},
+      {
+        runManagerFactory: (deps: typeof ctl) => {
+          ctl.emit = deps.emit;
+          ctl.callTool = deps.callTool;
+          return {
+            start: () => undefined,
+            resolveRunToken: () => undefined,
+            cancel: (runId: string) => void cancelled.push(runId),
+            cancelAll: () => undefined,
+            isRunning: () => false,
+          };
+        },
+      },
+    );
+    return { bridge, ctl, cancelled };
+  };
+
+  test("run tool calls and run_events go only to the owner, even when another editor is active", async () => {
+    const { bridge, ctl } = setup();
+    const owner = (await greet(bridge, "owner")).editor;
+    const other = (await greet(bridge, "other")).editor; // active now
+    owner.send({ type: "run_start", runId: "r1", prompt: "go", agentId: "codex" });
+    await Bun.sleep(30);
+
+    const pending = ctl.callTool("test_echo", {}, { kind: "run", runId: "r1" });
+    const call = (await owner.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
+    owner.send({ type: "tool_result", callId: call.callId, content: "ok", isError: false });
+    expect((await pending).isError).toBe(false);
+
+    ctl.emit("r1", { kind: "text", text: "hi" });
+    await owner.next("run_event");
+    await Bun.sleep(30);
+    expect(other.inbox.some((m) => m.type === "tool_call" || m.type === "run_event")).toBe(false);
+
+    // The run ended: the owner is forgotten, so late calls fail instead of going elsewhere.
+    ctl.emit("r1", { kind: "done" });
+    await owner.next("run_event");
+    expect((await ctl.callTool("test_echo", {}, { kind: "run", runId: "r1" })).content).toBe(
+      NO_EDITOR_MESSAGE,
+    );
+    expect(other.inbox.some((m) => m.type === "tool_call")).toBe(false);
+    owner.ws.close();
+    other.ws.close();
+  });
+
+  test("owner disconnect cancels only its run; another editor's run is untouched", async () => {
+    const { bridge, cancelled } = setup();
+    const a = (await greet(bridge, "a")).editor;
+    const b = (await greet(bridge, "b")).editor;
+    a.send({ type: "run_start", runId: "ra", prompt: "go", agentId: "codex" });
+    b.send({ type: "run_start", runId: "rb", prompt: "go", agentId: "codex" });
+    await Bun.sleep(30);
+    b.ws.close();
+    await b.closed;
+    await Bun.sleep(30);
+    expect(cancelled).toEqual(["rb"]);
+    // A non-owner cannot cancel someone else's run.
+    const c = (await greet(bridge, "c")).editor;
+    c.send({ type: "run_cancel", runId: "ra" });
+    await Bun.sleep(30);
+    expect(cancelled).toEqual(["rb"]);
+    a.ws.close();
+    c.ws.close();
   });
 });
 

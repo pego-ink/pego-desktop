@@ -65,6 +65,7 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
     agentId,
     model: modelId.optional(),
   }),
+  z.object({ type: z.literal("focus") }),
   z.object({ type: z.literal("agents_refresh") }),
   z.object({ type: z.literal("models_request"), agentId }),
   z.object({ type: z.literal("run_cancel"), runId: id }),

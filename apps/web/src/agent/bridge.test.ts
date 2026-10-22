@@ -121,6 +121,47 @@ describe("bridge client", () => {
     expect(client.send({ type: "run_cancel", runId: "r" })).toBe(false);
   });
 
+  test("sends focus on window focus and when the page becomes visible, only while connected", () => {
+    const listeners = new Map<string, () => void>();
+    const target = {
+      visibilityState: "hidden",
+      addEventListener: (type: string, fn: () => void) => void listeners.set(type, fn),
+      removeEventListener: (type: string) => void listeners.delete(type),
+    };
+    const sockets: FakeSocket[] = [];
+    const client = createBridgeClient({
+      url: "ws://test",
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      documentName: () => "doc.pego",
+      onMessage: () => {},
+      onClosed: () => {},
+      setTimer: () => 0,
+      clearTimer: () => {},
+      windowTarget: target,
+      documentTarget: target,
+    });
+    client.start();
+    const socket = sockets[0] as FakeSocket;
+    listeners.get("focus")?.();
+    expect(socket.sent).toHaveLength(0); // not open yet
+    socket.onopen?.();
+    listeners.get("focus")?.();
+    target.visibilityState = "hidden";
+    listeners.get("visibilitychange")?.();
+    target.visibilityState = "visible";
+    listeners.get("visibilitychange")?.();
+    expect(socket.sent.slice(1).map((s) => JSON.parse(s))).toEqual([
+      { type: "focus" },
+      { type: "focus" },
+    ]);
+    client.stop();
+    expect(listeners.size).toBe(0);
+  });
+
   test("parseBridgeMessage handles v3 welcome, agents and models", () => {
     const parse = (value: unknown) => parseBridgeMessage(JSON.stringify(value));
     expect(

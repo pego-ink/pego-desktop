@@ -1,6 +1,6 @@
 import { BRIDGE_PROTOCOL_VERSION, type BridgeToEditor, type RunEvent } from "@pego/agent";
 import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
-import { createEditorHub, type EditorSocket } from "./editor-hub";
+import { createEditorHub, MAX_EDITOR_SOCKETS, type EditorSocket } from "./editor-hub";
 import { createAgentDetector, type AgentDetector } from "./detection";
 import type { AgentAdapter } from "./agents/types";
 import { handleMcpRequest } from "./mcp";
@@ -35,8 +35,12 @@ const text = (status: number, body: string): Response =>
 
 export const startBridge = (options: BridgeOptions) => {
   const hub = createEditorHub({ toolTimeoutMs: options.toolTimeoutMs });
-  const sendRunEvent = (runId: string, event: RunEvent) =>
-    void hub.send({ type: "run_event", runId, event });
+  // Only the editor that started a run hears about it; the owner is forgotten once it ends.
+  const sendRunEvent = (runId: string, event: RunEvent) => {
+    hub.sendToRunOwner(runId, { type: "run_event", runId, event });
+    if (event.kind === "done" || event.kind === "error") hub.clearRunOwner(runId);
+  };
+  let openSockets = 0;
   // Resolved lazily: the port is only known once the server is listening (port 0 in tests).
   const mcpOrigin = () => `http://127.0.0.1:${server.port}`;
   const runs = (options.runManagerFactory ?? createRunManager)({
@@ -63,6 +67,9 @@ export const startBridge = (options: BridgeOptions) => {
       if (pathname === "/editor") {
         if (!isOriginAllowed(origin, options.allowedOrigins)) {
           return text(403, "Forbidden: origin not allowed");
+        }
+        if (openSockets >= MAX_EDITOR_SOCKETS) {
+          return text(503, "Too many editor connections");
         }
         if (srv.upgrade(request, { data: { greeted: false } })) return undefined;
         return text(426, "Upgrade Required");
@@ -105,8 +112,11 @@ export const startBridge = (options: BridgeOptions) => {
             );
             return;
           }
+          if (!hub.attach(socket, message.documentName)) {
+            ws.close(1013, `Too many editor connections (max ${MAX_EDITOR_SOCKETS})`);
+            return;
+          }
           ws.data.greeted = true;
-          hub.attach(socket, message.documentName);
           void detector.detectAll().then((agents) => {
             const welcome: BridgeToEditor = {
               type: "welcome",
@@ -120,7 +130,7 @@ export const startBridge = (options: BridgeOptions) => {
           return;
         }
 
-        if (!ws.data.greeted || !hub.isActive(socket)) {
+        if (!ws.data.greeted || !hub.isAttached(socket)) {
           ws.close(1008, "Send hello first");
           return;
         }
@@ -130,7 +140,17 @@ export const startBridge = (options: BridgeOptions) => {
             isError: message.isError,
             ...(message.images?.length ? { images: message.images } : {}),
           });
+        } else if (message.type === "focus") {
+          hub.focus(socket);
         } else if (message.type === "run_start") {
+          if (!hub.setRunOwner(message.runId, socket)) {
+            sendTo(ws, {
+              type: "run_event",
+              runId: message.runId,
+              event: { kind: "error", message: "A run with this id is already in progress." },
+            });
+            return;
+          }
           runs.start({
             runId: message.runId,
             prompt: message.prompt,
@@ -146,14 +166,18 @@ export const startBridge = (options: BridgeOptions) => {
             .then(({ models, error }) =>
               sendTo(ws, { type: "models", agentId, models, ...(error ? { error } : {}) }),
             );
-        } else {
+        } else if (hub.getRunOwner(message.runId) === socket) {
           runs.cancel(message.runId);
         }
       },
+      open() {
+        openSockets += 1;
+      },
       close(ws) {
+        openSockets = Math.max(0, openSockets - 1);
         const socket = ws as unknown as EditorSocket;
-        if (hub.isActive(socket)) runs.cancelAll();
-        hub.detach(socket);
+        // Cancel only the runs this editor started; other editors' runs carry on.
+        for (const runId of hub.detach(socket)) runs.cancel(runId);
       },
     },
   });

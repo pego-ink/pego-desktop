@@ -20,7 +20,17 @@ export type SocketLike = {
   onerror: (() => void) | null;
 };
 
+/** The slice of `window` / `document` used to detect focus (fakes implement it in tests). */
+export type EventTargetLike = {
+  addEventListener: (type: string, listener: () => void) => void;
+  removeEventListener: (type: string, listener: () => void) => void;
+};
+
 export type BridgeClientOptions = {
+  /** Where `focus` events come from (default: `window`, when it exists). */
+  windowTarget?: EventTargetLike | null;
+  /** Where `visibilitychange` events come from (default: `document`, when it exists). */
+  documentTarget?: (EventTargetLike & { visibilityState?: string }) | null;
   url?: string;
   createSocket?: (url: string) => SocketLike;
   documentName?: () => string;
@@ -125,6 +135,28 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
   let attempt = 0;
   let timer: unknown = null;
 
+  const windowTarget =
+    options.windowTarget !== undefined
+      ? options.windowTarget
+      : typeof window === "undefined"
+        ? null
+        : window;
+  const documentTarget =
+    options.documentTarget !== undefined
+      ? options.documentTarget
+      : typeof document === "undefined"
+        ? null
+        : document;
+
+  /** Tell the bridge this editor is now the one the user is looking at. */
+  const announceFocus = () => {
+    if (!socket || !open) return;
+    socket.send(JSON.stringify({ type: "focus" } satisfies EditorToBridge));
+  };
+  const onVisibility = () => {
+    if (documentTarget?.visibilityState === "visible") announceFocus();
+  };
+
   const scheduleReconnect = () => {
     if (stopped || timer !== null) return;
     timer = setTimer(() => {
@@ -180,10 +212,14 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
       if (!stopped) return;
       stopped = false;
       attempt = 0;
+      windowTarget?.addEventListener("focus", announceFocus);
+      documentTarget?.addEventListener("visibilitychange", onVisibility);
       connect();
     },
     stop: () => {
       stopped = true;
+      windowTarget?.removeEventListener("focus", announceFocus);
+      documentTarget?.removeEventListener("visibilitychange", onVisibility);
       if (timer !== null) clearTimer(timer);
       timer = null;
       const current = socket;
