@@ -39,6 +39,7 @@ import {
   type Handle,
 } from "@/interaction/transform";
 import { docToScreen } from "@/canvas/types";
+import { enterPathEdit } from "@/interaction/tools/pen";
 
 const DRAG_THRESHOLD = 3;
 const HANDLE_HIT_RADIUS = 6;
@@ -411,6 +412,8 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const d = toDoc(p.x, p.y);
       const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y);
       const leafId = path?.[path.length - 1];
+      // Pen tool: double-clicking a path enters its vector edit mode (see tools/pen.ts).
+      if (leafId && findNode(state.doc, leafId)?.type === "path" && enterPathEdit(leafId)) return;
       if (leafId && findNode(state.doc, leafId)?.type === "text") {
         state.select([leafId]);
         useTextEditStore.getState().start({ mode: "edit", id: leafId });
