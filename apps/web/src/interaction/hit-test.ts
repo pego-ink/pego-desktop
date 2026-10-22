@@ -1,11 +1,13 @@
 import {
-  resolveInstance,
-  resolveNumber,
   type Box,
   type Layout,
+  pageOrFirst,
   type PegoDocument,
   type PegoNode,
   type PegoNodeType,
+  resolveInstance,
+  resolveNumber,
+  resolveStrokeWidth,
 } from "@pego/doc";
 
 export const pointInBox = (box: Box, x: number, y: number): boolean =>
@@ -50,7 +52,7 @@ const inLocalBox = (box: Box, p: Point, slack = 0): boolean =>
  */
 const slackOf = (doc: PegoDocument, node: PegoNode, tolerance: number): number => {
   if (tolerance <= 0 || node.type !== "path") return 0;
-  const stroke = node.stroke ? resolveNumber(node.stroke.width, doc.variables, 1) : 0;
+  const stroke = node.stroke ? resolveStrokeWidth(node.stroke.width, doc.variables) : 0;
   return tolerance + Math.max(0, stroke) / 2;
 };
 
@@ -108,29 +110,50 @@ const hitNodes = (
   return null;
 };
 
+export type HitOptions = {
+  /** Document units that widen path hits so thin lines stay clickable at any zoom. */
+  tolerance?: number;
+  /** Ids invisible to the hit test, with their subtrees (e.g. the nodes being dragged). */
+  skip?: ReadonlySet<string>;
+  /** Page to hit-test (null = the first page); other pages are not on the canvas. */
+  pageId?: string | null;
+};
+
 /**
  * Ancestor chain `[topLevelId, ..., deepestId]` of the topmost rendered node under a document
  * point, or null. Mirrors the renderer: each node is translated to its box relative to its parent
  * and rotated by `-rotation` degrees around its top-left, so the point is mapped into every node's
- * local space. Frames with `clip` hide children outside their (rotated) box. `tolerance` (document
- * units) widens path hits so thin lines stay clickable at any zoom. Ids in `skip` (and their
- * subtrees) are invisible to the hit test, e.g. the nodes being dragged.
+ * local space. Frames with `clip` hide children outside their (rotated) box. Only the nodes of
+ * one page are on the canvas (see HitOptions).
  */
 export const hitPath = (
   doc: PegoDocument,
   layout: Layout,
   x: number,
   y: number,
-  tolerance = 0,
-  skip?: ReadonlySet<string>,
-): string[] | null => hitNodes(doc, doc.children, layout, { x, y }, ORIGIN, [], tolerance, skip);
+  options: HitOptions = {},
+): string[] | null =>
+  hitNodes(
+    doc,
+    pageOrFirst(doc, options.pageId).children,
+    layout,
+    { x, y },
+    ORIGIN,
+    [],
+    options.tolerance ?? 0,
+    options.skip,
+  );
 
 export type NodeIndexEntry = { parentId: string | null; type: PegoNodeType };
 export type NodeIndex = Map<string, NodeIndexEntry>;
 
 const indexCache = new WeakMap<PegoDocument, NodeIndex>();
 
-/** id -> parent/type for every real (non-expanded) node. Memoized per document snapshot. */
+/**
+ * id -> parent/type for every real (non-expanded) node on every page. Memoized per document
+ * snapshot. A page's top-level nodes have parent null, like a single-page canvas: pages
+ * themselves are not part of the index.
+ */
 export const getNodeIndex = (doc: PegoDocument): NodeIndex => {
   const cached = indexCache.get(doc);
   if (cached) return cached;
@@ -141,7 +164,7 @@ export const getNodeIndex = (doc: PegoDocument): NodeIndex => {
       if (node.type === "frame" || node.type === "group") walk(node.children, node.id);
     }
   };
-  walk(doc.children, null);
+  for (const page of doc.children) walk(page.children, null);
   indexCache.set(doc, index);
   return index;
 };

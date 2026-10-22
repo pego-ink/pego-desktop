@@ -1,18 +1,24 @@
 import { useMemo } from "react";
 import { findNode, type PegoNode, type TextNode } from "@pego/doc";
 import { PanelHeader } from "@pego/ui/components/panel-header";
+import { HideRightPanelButton } from "@/layout/PanelToggles";
 import { useDocumentStore } from "@/store/use-document-store";
 import { LayerIcon } from "@/panels/LayerIcon";
 import { DocumentSummary } from "@/panels/properties/DocumentSummary";
 import { FramePresetSection } from "@/panels/frame-presets/FramePresetSection";
 import { PositionSection } from "@/panels/properties/PositionSection";
-import { AppearanceSection, FillSection, StrokeSection } from "@/panels/properties/StyleSections";
+import {
+  AppearanceSection,
+  EffectsSection,
+  StrokeSection,
+} from "@/panels/properties/StyleSections";
+import { FillSection } from "@/panels/properties/FillSection";
+import { ExportSection } from "@/panels/properties/ExportSection";
 import { LayoutSection } from "@/panels/properties/LayoutSection";
 import { ImageSection } from "@/panels/properties/ImageSection";
 import { IconSection, RefSection, TextSection } from "@/panels/properties/ContentSections";
 import { PathSection } from "@/panels/properties/PathSection";
-import { ExportSection } from "@/panels/properties/ExportSection";
-import { hasFill, hasStroke } from "@/panels/properties/node-props";
+import { hasEffects, hasFill, hasStroke } from "@/panels/properties/node-props";
 
 const SingleNodeSections = ({ node }: { node: PegoNode }) => (
   <>
@@ -27,6 +33,7 @@ const SingleNodeSections = ({ node }: { node: PegoNode }) => (
     {hasFill(node) ? <FillSection node={node} /> : null}
     {hasStroke(node) ? <StrokeSection node={node} /> : null}
     {node.type === "path" ? <PathSection node={node} /> : null}
+    {hasEffects(node) ? <EffectsSection node={node} /> : null}
     <ExportSection node={node} />
   </>
 );
@@ -54,6 +61,7 @@ export const PropertiesPanel = () => {
         ) : (
           <span>{nodes.length} selected</span>
         )}
+        <HideRightPanelButton className="ml-auto" />
       </PanelHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {nodes.length === 0 || !first ? (

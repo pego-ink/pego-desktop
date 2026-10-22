@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
-/* Mono dark palette, derived from design/html/editor.html. Dark-only. */
+/* Mono dark palette, derived from design/html/editor.html (default). html.light switches to the
+   light palette below; apps/web/src/theme picks one (light, dark or the system setting). */
 :root {
   --background: #141418;
   --foreground: #e6e6eb;
@@ -25,6 +26,31 @@
   --violet: #b79cff;
   --radius: 0.5rem;
   color-scheme: dark;
+}
+
+html.light {
+  --background: #f4f4f6;
+  --foreground: #18181d;
+  --card: #ffffff;
+  --card-foreground: #18181d;
+  --popover: #ffffff;
+  --popover-foreground: #18181d;
+  --primary: #23232b;
+  --primary-foreground: #fafafb;
+  --secondary: #ececf0;
+  --secondary-foreground: #18181d;
+  --muted: #f0f0f3;
+  --muted-foreground: #62626e;
+  --accent: #e9e9ee;
+  --accent-foreground: #18181d;
+  --destructive: #d93036;
+  --border: #e1e1e7;
+  --input: #dcdce3;
+  --ring: #9a9aa6;
+  --success: #0e7c5a;
+  --success-surface: #e5f3ec;
+  --violet: #7a5af8;
+  color-scheme: light;
 }
 
 @theme inline {

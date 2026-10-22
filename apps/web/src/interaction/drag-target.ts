@@ -2,6 +2,7 @@ import {
   findLocation,
   findNode,
   isContainer,
+  pageOf,
   resolveNumber,
   type Layout,
   type Op,
@@ -84,7 +85,9 @@ export const resolveDropParent = (
   )
     return current.id;
 
-  const chain = hitPath(doc, layout, point.x, point.y, 0, new Set(dragged)) ?? [];
+  // The dragged nodes sit on the shown page: only its nodes are drop targets.
+  const pageId = dragged[0] === undefined ? null : (pageOf(doc, dragged[0])?.id ?? null);
+  const chain = hitPath(doc, layout, point.x, point.y, { skip: new Set(dragged), pageId }) ?? [];
   for (let i = chain.length - 1; i >= 0; i--) {
     const id = chain[i];
     if (id && getNodeIndex(doc).get(id)?.type === "frame") return id;
@@ -263,13 +266,16 @@ export const planDrag = (input: DragInput): DragPlan => {
   if (wouldNestComponent(doc, tops, target)) target = currentParent;
 
   const children = (() => {
-    const parent = currentParent ? findNode(doc, currentParent) : null;
-    return parent && isContainer(parent) ? parent.children : doc.children;
+    // null = the top level of the page the nodes are on.
+    const parent = currentParent ? findNode(doc, currentParent) : pageOf(doc, first);
+    return parent && isContainer(parent) ? parent.children : [];
   })();
   const ordered = [...tops].sort(
     (a, b) => children.findIndex((c) => c.id === a) - children.findIndex((c) => c.id === b),
   );
 
+  // Ops name the page for the top level (null in the node index), so they apply on any page.
+  const opParent = target ?? pageOf(doc, first)?.id ?? null;
   const targetNode = target ? findNode(doc, target) : null;
   if (isFlexFrame(targetNode) && target) {
     const slot = slotIndex(doc, layout, target, point, new Set(tops));
@@ -284,7 +290,7 @@ export const planDrag = (input: DragInput): DragPlan => {
         : [...ordered]
             .map((id) => ({ id, at: findLocation(startDoc, id)?.index }))
             .sort((a, b) => (a.at ?? 0) - (b.at ?? 0))
-            .map(({ id, at }): Op => ({ op: "move", id, parentId: target, index: at }));
+            .map(({ id, at }): Op => ({ op: "move", id, parentId: opParent, index: at }));
     return { ops: [...back, ...moveOps(startDoc, tops, dx, dy, snap)], flexParentId: null };
   }
 
@@ -301,6 +307,8 @@ export const planDrag = (input: DragInput): DragPlan => {
     return [{ op: "update", id, props: { x: roundPx(local.x, snap), y: roundPx(local.y, snap) } }];
   });
   const reparent: Op[] =
-    currentParent === target ? [] : ordered.map((id): Op => ({ op: "move", id, parentId: target }));
+    currentParent === target
+      ? []
+      : ordered.map((id): Op => ({ op: "move", id, parentId: opParent }));
   return { ops: [...reparent, ...place], flexParentId: null };
 };

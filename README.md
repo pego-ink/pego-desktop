@@ -12,7 +12,7 @@ the architecture.
 - A Chromium-based browser (Chrome, Edge, Arc) for the web app: CanvasKit needs WebGL2, and Save/Open uses the
   File System Access API (other browsers fall back to download/upload).
 - Optional: [Claude Code](https://claude.com/claude-code) CLI, installed and logged in, for the Claude Code backend.
-- Desktop app: macOS.
+- Desktop app: macOS (signed), Linux (AppImage, deb) and Windows (installer), x64; macOS also arm64.
 
 ## Install
 
@@ -30,7 +30,13 @@ Open http://localhost:5173. This starts the editor and the local bridge (`127.0.
 detected automatically. If a bridge is already running (for example the desktop app), the second one exits and the
 editor uses the running one.
 
-Documents autosave in the browser (IndexedDB). Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files on disk.
+Pego opens on the **Dashboard**: the projects of this repository (`design/<project>/` with a `project.json` and
+the design itself, `project.pego`, listed by the bridge with a preview). Open a project to get its own tab in the header with its files in the left panel; documents
+open as tabs above the canvas and autosave in the browser (IndexedDB). **Scratch** holds documents outside any
+project. Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files anywhere on disk.
+
+From Claude Code, name the project: "open project Pego Website and add a pricing section" (or use its id); the
+MCP tools `list_projects`, `open_project` and `create_project` do the rest.
 
 ## Use the agent
 
@@ -58,11 +64,13 @@ resources and the prompts `design_screen`, `polish_selection` and `extract_compo
 The bridge listens on `127.0.0.1:4519` only and accepts editor connections from localhost origins (and `app://pego`
 for the desktop app).
 
-## Desktop app (macOS)
+## Desktop app
 
 ```bash
 bun run desktop:dev     # Electron on top of the Vite dev server, bridge included
-bun run desktop:build   # signed arm64 .app/.dmg in apps/desktop/release (not notarized locally)
+bun run desktop:build   # build for this machine into apps/desktop/release (macOS: signed, not notarized locally)
+bun run desktop:build -- --linux --x64   # AppImage + deb
+bun run desktop:build -- --win --x64     # NSIS installer (build on Windows)
 ```
 
 The desktop app starts the bridge itself; Claude Code runs need the `claude` CLI on your PATH. Details:
@@ -102,11 +110,12 @@ Details and local testing (`PEGO_FAKE_UPDATE=1`): [apps/desktop/README.md](apps/
 apps/
   web/       React + Vite editor (canvas, panels, agent runtime)
   bridge/    local Bun server: MCP for Claude Code + Agent SDK runs
-  desktop/   Electron shell (macOS)
+  desktop/   Electron shell (macOS, Linux, Windows)
   api/       Hono on Workers (not used by the editor yet)
 packages/
   doc/       document schema, ops, undo history, flex layout
   agent/     agent tools, prompts, guides, style presets, bridge protocol
+  export/    HTML/CSS and SVG export of a node (pure, shared by the editor and the agent)
   ui/        shared UI components and tokens
 design/      design mocks (.pen, png, html)
 ```

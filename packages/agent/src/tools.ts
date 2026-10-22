@@ -25,6 +25,7 @@ import {
   idTree,
   NODE_HINT,
   ok,
+  okText,
   parseNode,
   ToolError,
 } from "./tool-kit";
@@ -55,14 +56,17 @@ const withWarnings = (data: Record<string, unknown>, ignored: string[]) =>
 const getDocument = defineTool({
   name: "get_document",
   description:
-    'Read the document as compact text: one line per node (`type#id "name" [component] prop=value ...`) with children indented, plus the variables and the list of reusable components. ' +
+    'Read the document as compact text: one line per node (`type#id "name" [component] prop=value ...`) with children indented, plus the variables, the reusable components and the pages. ' +
+    "Only the active page's tree is shown; pass a page id as rootId to read another page. Components on any page can be instanced on every page. " +
     "Defaults are omitted: x/y = 0, layout none. x/y are shown only for children of non-flex parents. " +
     "Call this before editing and again after a batch of edits to verify the result. " +
     "On a large document pass rootId to read one subtree and maxDepth to limit the levels shown (deeper containers show a child count).",
   inputSchema: {
     type: "object",
     properties: {
-      rootId: idJsonSchema("Read only this node and its subtree. Omit for the whole document."),
+      rootId: idJsonSchema(
+        "Read only this node (or page) and its subtree. Omit for the active page.",
+      ),
       maxDepth: {
         type: "integer",
         minimum: 0,
@@ -73,7 +77,8 @@ const getDocument = defineTool({
   },
   schema: z.strictObject({ rootId: id.optional(), maxDepth: index.optional() }),
   inputHint: "Both fields are optional: {rootId?: string, maxDepth?: integer >= 0}.",
-  run: (input, host) => ok({ document: serializeDocument(host.getDoc(), input) }),
+  run: (input, host) =>
+    okText(serializeDocument(host.getDoc(), { ...input, pageId: host.getActivePageId?.() })),
 });
 
 const getNode = defineTool({
@@ -119,7 +124,7 @@ const getNode = defineTool({
 const insertNodes = defineTool({
   name: "insert_nodes",
   description:
-    "Create nodes (with their whole subtrees) inside a frame or group, or at the document root with parentId null. " +
+    "Create nodes (with their whole subtrees) inside a frame or group, or at the top level of the active page with parentId null. " +
     "Omit `id` on any node, at any depth, and one is generated. The result lists the created ids as a tree (name to id), so you can reference them in later calls without reading the document again. " +
     "Build a whole section in one call by nesting children. Prefer a frame with layout horizontal or vertical over x/y positions.",
   inputSchema: {
@@ -204,7 +209,7 @@ const replaceNode = defineTool({
 const moveNode = defineTool({
   name: "move_node",
   description:
-    "Move a node (with its subtree) to another parent or to another position among its siblings. parentId null moves it to the document root. " +
+    "Move a node (with its subtree) to another parent or to another position among its siblings. parentId null moves it to the top level of the active page; a page id moves it to that page. " +
     "To reorder inside the same parent pass the same parentId and the new index.",
   inputSchema: {
     type: "object",

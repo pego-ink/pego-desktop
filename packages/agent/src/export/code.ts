@@ -1,4 +1,5 @@
 import { findNode } from "@pego/doc";
+import { PAGE_EXPORT_ERROR } from "./types";
 import { buildNode, createBuildCtx } from "./build";
 import { emitHtml } from "./emit-html";
 import { emitReact } from "./emit-react";
@@ -19,6 +20,7 @@ export const exportCode = (
 ): ExportFile[] => {
   const root = findNode(doc, nodeId);
   if (!root) throw new Error(`Unknown node: ${nodeId}`);
+  if (root.type === "page") throw new Error(PAGE_EXPORT_ERROR);
   const inlineRefs = options.format === "html-css";
   const rootName = pascalCase(root.name ?? "", "Design");
   const icons = options.icons ?? getIconProvider();

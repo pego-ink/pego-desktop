@@ -2,7 +2,8 @@ import { applyOps as applyDocOps, collectDocIds, type Op, type Transaction } fro
 import type { PlanStep, RunAttachment, StepStatus, ToolHost } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
 import { listIconNames, loadIconData } from "@/canvas/icons";
-import { useDocumentStore } from "@/store/use-document-store";
+import { activePage, useDocumentStore } from "@/store/use-document-store";
+import { showPage, showPageOf } from "@/pages/page-actions";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
@@ -100,6 +101,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
   };
 
   const focusViewport = (ids: string[]) => {
+    // Nodes on another page: show that page first.
+    if (ids[0] !== undefined) showPageOf(ids[0]);
     const layout = getLayout(useDocumentStore.getState().doc);
     const boxes = ids.flatMap((id) => layout.get(id) ?? []);
     const viewport = useViewportStore.getState();
@@ -113,7 +116,12 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
       import("@/canvas/load-canvaskit"),
       import("@/canvas/render-image"),
     ]);
-    const res = await loadCanvasKit();
+    const [res, { loadDocumentFonts }] = await Promise.all([
+      loadCanvasKit(),
+      import("@/fonts/use-document-fonts"),
+    ]);
+    // Wait for the document's fonts so the agent judges the real typography.
+    await loadDocumentFonts(useDocumentStore.getState().doc);
     const doc = useDocumentStore.getState().doc;
     return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
   };
@@ -121,6 +129,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
   return {
     getDoc: () => useDocumentStore.getState().doc,
     getLayout: () => getLayout(useDocumentStore.getState().doc),
+    getActivePageId: () => activePage(useDocumentStore.getState()).id,
+    setActivePage: showPage,
     getSelection: () => useDocumentStore.getState().selection,
     setSelection,
     focusViewport,

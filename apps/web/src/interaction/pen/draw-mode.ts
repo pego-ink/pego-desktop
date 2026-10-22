@@ -99,9 +99,14 @@ const nearFirst = (screen: Pt): boolean => {
 
 export const drawBegin = (p: ToolPointer): ToolSession | null => {
   if (state.anchors.length === 0) {
-    const { doc } = useDocumentStore.getState();
+    const { doc, pageId } = useDocumentStore.getState();
     const layout = getLayout(doc);
-    state.placement = resolvePlacement(doc, layout, hitPath(doc, layout, p.doc.x, p.doc.y));
+    state.placement = resolvePlacement(
+      doc,
+      layout,
+      hitPath(doc, layout, p.doc.x, p.doc.y, { pageId }),
+      pageId,
+    );
   }
   if (nearFirst(p.screen)) {
     finishAndLeave(true);

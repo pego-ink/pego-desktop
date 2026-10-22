@@ -63,6 +63,8 @@ export type BuildCtx = {
   /** Component source id to (descendant id to prop name). */
   propNames: Map<string, Map<string, string>>;
   h1Used: boolean;
+  /** Counter for unique SVG paint ids (gradients, patterns). */
+  paintCount: number;
   /** When icon data is available, icons it does not know are skipped. */
   hasIcon: ((name: string) => boolean) | undefined;
 };

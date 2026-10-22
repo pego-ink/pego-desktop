@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { collectDocIds, type Op, type PegoNode } from "@pego/doc";
+import { collectDocIds, pageOrFirst, type Op, type PegoNode } from "@pego/doc";
 import { ImageSrcError, validateImageSrc } from "./media/image-src";
 import { convertSvg, MAX_SVG_BYTES, MAX_SVG_NODES, SvgError } from "./media/svg";
 import {
+  activePageId,
   assignIds,
   commitOps,
   defineTool,
@@ -39,7 +40,8 @@ const defaultPosition = (
   if (x !== undefined || y !== undefined) return { x: x ?? 0, y: y ?? 0 };
   if (parent !== null || !host.getLayout) return { x: 0, y: 0 };
   const layout = host.getLayout();
-  const roots = host.getDoc().children;
+  // Top level of the active page (parentId null lands there, see commitOps).
+  const roots = pageOrFirst(host.getDoc(), activePageId(host)).children;
   const right = roots.reduce((max, node) => {
     const box = layout.get(node.id);
     return box ? Math.max(max, box.x + box.width) : max;

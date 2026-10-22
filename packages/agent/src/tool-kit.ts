@@ -6,6 +6,8 @@ import {
   isContainer,
   nodeSchema,
   OpError,
+  pageOrFirst,
+  placeOnPage,
   type Op,
   type PegoDocument,
   type PegoNode,
@@ -29,6 +31,9 @@ export const ok = (data: unknown): ToolResult => ({
   content: JSON.stringify(data),
   isError: false,
 });
+
+/** A plain-text result: documents and guides read better (and cost fewer tokens) unescaped. */
+export const okText = (content: string): ToolResult => ({ content, isError: false });
 
 export const fail = (code: string, message: string, hint?: string): ToolResult => ({
   content: JSON.stringify({ error: { code, message, ...(hint ? { hint } : {}) } }),
@@ -209,17 +214,25 @@ const focusAfter = (before: PegoDocument, after: PegoDocument, ops: Op[]): strin
       if (parentId) ids.add(parentId);
     }
   }
-  return [...ids].filter((id) => findLocation(after, id) !== null);
+  // Pages have no box on the canvas to highlight.
+  return [...ids].filter((id) => {
+    const node = findLocation(after, id)?.node;
+    return node !== undefined && node.type !== "page";
+  });
 };
 
 /**
  * Dry-run the ops against the current document to report which op failed and why, then hand the
  * whole batch to the host in one call (all or nothing) and focus the touched nodes.
  */
-export const commitOps = (host: ToolHost, ops: Op[]): void => {
+export const commitOps = (host: ToolHost, requested: Op[]): void => {
   const before = host.getDoc();
+  const pageId = activePageId(host);
   let current = before;
-  ops.forEach((op, index) => {
+  const ops: Op[] = [];
+  requested.forEach((raw, index) => {
+    const op = onActivePage(current, raw, pageId);
+    ops.push(op);
     try {
       if (op.op === "insert" || op.op === "replace") checkRefs(current, op.node);
       current = applyOp(current, op);
@@ -234,6 +247,13 @@ export const commitOps = (host: ToolHost, ops: Op[]): void => {
   host.applyOps(ops);
   host.setFocus(focusAfter(before, host.getDoc(), ops));
 };
+
+/** The page tools treat as "the document root" for content: the user's page, else the first. */
+export const activePageId = (host: ToolHost): string =>
+  pageOrFirst(host.getDoc(), host.getActivePageId?.()).id;
+
+/** See placeOnPage: tools treat a null parent as the top level of the active page. */
+export const onActivePage = placeOnPage;
 
 export type CreatedNode = { id: string; type: string; name?: string; children?: CreatedNode[] };
 

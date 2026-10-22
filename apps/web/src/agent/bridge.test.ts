@@ -1,6 +1,11 @@
 /// <reference types="bun" />
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { BridgeToEditor, EditorToBridge, LocalAgentInfo } from "@pego/agent";
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  type BridgeToEditor,
+  type EditorToBridge,
+  type LocalAgentInfo,
+} from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { setActiveRun } from "./active-run";
 import { createBridgeClient, parseBridgeMessage, type SocketLike } from "./bridge-client";
@@ -70,7 +75,13 @@ describe("bridge client", () => {
       setTimer: (fn, ms) => timers.push({ fn, ms }),
       clearTimer: () => {},
     });
-    return { client, sockets, timers, messages, closedCount: () => closed };
+    return {
+      client,
+      sockets,
+      timers,
+      messages,
+      closedCount: () => closed,
+    };
   };
 
   test("sends hello on open and forwards valid messages only", () => {
@@ -79,7 +90,7 @@ describe("bridge client", () => {
     sockets[0]!.onopen?.();
     expect(JSON.parse(sockets[0]!.sent[0]!)).toMatchObject({
       type: "hello",
-      protocol: 4,
+      protocol: BRIDGE_PROTOCOL_VERSION,
       documentName: "doc.pego",
     });
     expect(client.isOpen()).toBe(true);
@@ -219,12 +230,14 @@ describe("bridge handlers", () => {
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
       agents: [CODEX],
+      projectDir: "/repo/design",
     });
     expect(state().bridge).toEqual({
       connected: true,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
       agents: [CODEX],
+      projectDir: "/repo/design",
     });
     handlers.handleClosed();
     expect(state().bridge.connected).toBe(false);

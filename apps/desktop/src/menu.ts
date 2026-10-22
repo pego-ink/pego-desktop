@@ -17,7 +17,8 @@ const sendCommand = (window: BaseWindow | undefined, command: MenuCommand): void
 
 export const installMenu = (isDev: boolean): void => {
   const template: MenuItemConstructorOptions[] = [
-    { role: "appMenu" },
+    // The app menu (About, Quit) is macOS only; elsewhere Quit lives in a File menu.
+    process.platform === "darwin" ? { role: "appMenu" } : { role: "fileMenu" },
     {
       label: "Edit",
       submenu: [

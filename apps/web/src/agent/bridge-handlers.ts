@@ -1,4 +1,5 @@
 import {
+  EDITOR_OPS,
   toolByName,
   type BridgeToEditor,
   type EditorToBridge,
@@ -9,6 +10,14 @@ import {
   type ToolSpec,
 } from "@pego/agent";
 import { pickDefaultAgent } from "./agent-prefs";
+import {
+  listTabsForBridge,
+  loadDocumentFromBridge,
+  markSavedFromBridge,
+  openProjectForBridge,
+  snapshotDocumentForBridge,
+  switchTabForBridge,
+} from "@/persistence/bridge-documents";
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
 import { createToolHost } from "./tool-host";
@@ -81,6 +90,40 @@ export const createBridgeHandlers = ({
         isError,
         ...(images && images.length > 0 ? { images } : {}),
       });
+
+    // The bridge's file tools: not agent tools, handled by the persistence layer. Only MCP
+    // clients may swap or save the document; an agent run edits the one it started on.
+    const isEditorOp = (Object.values(EDITOR_OPS) as string[]).includes(message.tool);
+    if (isEditorOp && message.source.kind !== "mcp") {
+      return void reply(`${message.tool} is only available to MCP clients.`, true);
+    }
+    if (message.tool === EDITOR_OPS.loadDocument) {
+      const outcome = loadDocumentFromBridge(message.input);
+      if (!outcome.isError)
+        agent().appendLog({ kind: "info", text: outcome.content.split("\n")[0]! });
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.snapshotDocument) {
+      const outcome = snapshotDocumentForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.openProject) {
+      const outcome = await openProjectForBridge(message.input);
+      if (!outcome.isError) agent().appendLog({ kind: "info", text: outcome.content });
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.listTabs) {
+      const outcome = listTabsForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.switchTab) {
+      const outcome = switchTabForBridge(message.input);
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.markSaved) {
+      const outcome = markSavedFromBridge(message.input);
+      return void reply(outcome.content, outcome.isError);
+    }
 
     const spec = findTool(message.tool);
     if (!spec) return void reply(`Unknown tool: ${message.tool}`, true);
@@ -167,6 +210,7 @@ export const createBridgeHandlers = ({
             claudeCodeAvailable: message.claudeCodeAvailable,
             mcpUrl: message.mcpUrl,
             agents: message.agents,
+            projectDir: message.projectDir ?? null,
           },
           // A new bridge session may have different CLIs: drop cached model lists.
           modelsByAgent: {},

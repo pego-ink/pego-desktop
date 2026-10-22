@@ -35,7 +35,13 @@ const state = () => useAgentStore.getState();
 describe("session memory reaches every backend", () => {
   test("local: run_start prompt carries the history, the bubble only the typed text", async () => {
     state().set({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents: [] },
+      bridge: {
+        connected: true,
+        claudeCodeAvailable: true,
+        mcpUrl: "u",
+        agents: [],
+        projectDir: null,
+      },
     });
     const sent: EditorToBridge[] = [];
     await startLocalAgentRun("r1", PROMPT, (m) => (sent.push(m), true), null, { history: HISTORY });

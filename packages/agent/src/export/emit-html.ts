@@ -15,6 +15,8 @@ const VOID_TAGS = new Set([
   "polyline",
   "polygon",
   "ellipse",
+  "stop",
+  "image",
 ]);
 
 const escapeText = (value: string): string =>

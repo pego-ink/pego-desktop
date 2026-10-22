@@ -34,6 +34,8 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
   /** Greeted sockets, least recently active first; the last entry is the active editor. */
   const editors: { socket: EditorSocket; documentName: string }[] = [];
   const runOwners = new Map<string, EditorSocket>();
+  /** File path -> the editor that last saved it through the bridge (`save_file`). */
+  const fileWriters = new Map<string, EditorSocket>();
   const pending = new Map<string, Pending>();
 
   const indexOf = (socket: EditorSocket) => editors.findIndex((entry) => entry.socket === socket);
@@ -73,6 +75,7 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
     settleAllFor(socket, "The editor disconnected before answering the tool call.");
     const index = indexOf(socket);
     if (index >= 0) editors.splice(index, 1);
+    for (const [path, writer] of fileWriters) if (writer === socket) fileWriters.delete(path);
     const owned: string[] = [];
     for (const [runId, owner] of runOwners) {
       if (owner !== socket) continue;
@@ -80,6 +83,19 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
       owned.push(runId);
     }
     return owned;
+  };
+
+  /**
+   * Two editor windows with the same project file open must not overwrite each other's saves.
+   * Last focused wins: a save is allowed unless another connected editor saved this file and
+   * was focused more recently. The refused editor keeps its changes (its local autosave still
+   * runs) and takes the file over as soon as the user focuses it and it saves again.
+   */
+  const claimFile = (path: string, socket: EditorSocket): boolean => {
+    const writer = fileWriters.get(path);
+    if (writer && writer !== socket && indexOf(writer) > indexOf(socket)) return false;
+    fileWriters.set(path, socket);
+    return true;
   };
 
   const setRunOwner = (runId: string, socket: EditorSocket): boolean => {
@@ -146,6 +162,7 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
     setRunOwner,
     clearRunOwner,
     sendToRunOwner,
+    claimFile,
     getRunOwner: (runId: string) => runOwners.get(runId),
     callTool,
     resolveCall,

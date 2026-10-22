@@ -74,6 +74,9 @@ const SIMPLE: Record<string, Record<string, string>> = {
     "pre-wrap": "whitespace-pre-wrap",
     pre: "whitespace-pre",
   },
+  "background-position": { center: "bg-center" },
+  "background-repeat": { "no-repeat": "bg-no-repeat", repeat: "bg-repeat" },
+  "background-size": { cover: "bg-cover", contain: "bg-contain" },
   "object-fit": { cover: "object-cover", contain: "object-contain", none: "object-none" },
 };
 
@@ -107,6 +110,37 @@ const borderClasses = (value: string): string[] => {
           : `border-[${width}]`;
   return [widthClass, colorClass("border", color)];
 };
+
+const SIDE_PREFIX: Record<string, string> = {
+  "border-top": "border-t",
+  "border-right": "border-r",
+  "border-bottom": "border-b",
+  "border-left": "border-l",
+};
+
+/** `border-t-2 border-[#000]` for one side. */
+const sideBorderClasses = (prop: string, value: string): string[] => {
+  const match = /^(\S+) solid (.+)$/.exec(value);
+  const prefix = SIDE_PREFIX[prop];
+  if (!match || !prefix) return [];
+  const [, width = "1px", color = "currentColor"] = match;
+  const widthClass =
+    width === "1px"
+      ? prefix
+      : /^(2|4|8)px$/.test(width)
+        ? `${prefix}-${parseInt(width, 10)}`
+        : VAR.test(width)
+          ? `${prefix}-(length:--${VAR.exec(width)![1]})`
+          : `${prefix}-[${width}]`;
+  return [widthClass, colorClass("border", color)];
+};
+
+/** Color variables are `--color-<name>` in Tailwind's @theme. */
+const themeColors = (value: string): string =>
+  value.replace(/var\(--([\w-]+)\)/g, "var(--color-$1)");
+
+/** Arbitrary-value form of a CSS value: spaces become underscores. */
+const arbitrary = (value: string): string => value.replace(/, /g, ",").replace(/ /g, "_");
 
 const radiusClass = (value: string): string => {
   if (value === "50%" || value === "9999px") return "rounded-full";
@@ -157,6 +191,28 @@ const classesFor = ([prop, value]: Decl): string[] | undefined => {
       return [colorClass("text", value)];
     case "border":
       return borderClasses(value);
+    case "border-top":
+    case "border-right":
+    case "border-bottom":
+    case "border-left":
+      return sideBorderClasses(prop, value);
+    case "background-image":
+      // Gradients become classes; url() images stay inline (long data URIs).
+      return /^(linear|radial)-gradient\(/.test(value)
+        ? [`bg-[${arbitrary(themeColors(value))}]`]
+        : undefined;
+    case "background-size":
+      return [`bg-[length:${arbitrary(value)}]`];
+    case "box-shadow":
+      return [`shadow-[${arbitrary(themeColors(value))}]`];
+    case "filter": {
+      const blur = /^blur\(([^()]+)\)$/.exec(value);
+      return blur ? [`blur-[${blur[1]}]`] : undefined;
+    }
+    case "line-height":
+      return [`leading-[${value}]`];
+    case "letter-spacing":
+      return [`tracking-[${value}]`];
     case "border-radius":
       return [radiusClass(value)];
     case "opacity":
@@ -184,8 +240,11 @@ export const toTailwind = (...lists: readonly (readonly Decl[])[]): TailwindResu
   const style: Decl[] = [];
   for (const decl of sortDecls(...lists)) {
     const mapped = classesFor(decl);
-    if (mapped) classes.push(...mapped);
-    else style.push(decl);
+    if (mapped) classes.push(...mapped.filter((c) => !classes.includes(c)));
+    else
+      style.push(
+        decl[0] === "text-shadow" || decl[0] === "filter" ? [decl[0], themeColors(decl[1])] : decl,
+      );
   }
   return { classes, style };
 };

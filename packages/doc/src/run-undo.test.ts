@@ -6,13 +6,19 @@ import { findNode } from "./tree";
 
 const makeDoc = (): PegoDocument =>
   documentSchema.parse({
-    version: 0,
+    version: 3,
     id: "doc",
     name: "Test",
     variables: {},
     children: [
-      { type: "frame", id: "f1", children: [{ type: "rectangle", id: "r1", x: 1 }] },
-      { type: "frame", id: "f2", children: [] },
+      {
+        type: "page",
+        id: "page",
+        children: [
+          { type: "frame", id: "f1", children: [{ type: "rectangle", id: "r1", x: 1 }] },
+          { type: "frame", id: "f2", children: [] },
+        ],
+      },
     ],
   });
 

@@ -3,6 +3,7 @@ import type { PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import "@/export/register-icons";
 import { base64ToBytes } from "@/export/download";
+import { loadDocumentFonts } from "@/fonts/use-document-fonts";
 
 /** Longest PNG side we allow; `renderNodeImage` enforces the same ceiling. */
 const MAX_PNG_SIZE = 4096;
@@ -12,12 +13,13 @@ export const generateCode = async (
   nodeId: string,
   format: CodeFormat,
 ): Promise<ExportFile[]> => {
-  await loadIcons();
+  await Promise.all([loadIcons(), loadDocumentFonts(doc)]);
   return exportCode(doc, nodeId, { format, layout: getLayout(doc) });
 };
 
 export const generateSvg = async (doc: PegoDocument, nodeId: string): Promise<string> => {
-  await loadIcons();
+  // Font metrics decide wrapping and hug sizes in the layout.
+  await Promise.all([loadIcons(), loadDocumentFonts(doc)]);
   return exportSvg(doc, nodeId, { layout: getLayout(doc) });
 };
 
@@ -32,6 +34,7 @@ export const generatePng = async (
     import("@/canvas/render-image"),
   ]);
   const res = await loadCanvasKit();
+  await loadDocumentFonts(doc);
   const image = renderNodeImage(res, doc, getLayout(doc), nodeId, {
     scale,
     maxSize: MAX_PNG_SIZE,

@@ -9,3 +9,4 @@ export { inspectTools } from "./tools-inspect";
 export * from "./skills/index";
 export * from "./skills/select";
 export * from "./skills/format";
+export { toolAnnotations, type ToolAnnotations } from "./annotations";

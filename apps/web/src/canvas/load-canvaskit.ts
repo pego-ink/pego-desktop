@@ -14,6 +14,7 @@ const INTER_URL = "/fonts/Inter.ttf";
 
 export type CanvasKitResources = {
   ck: CanvasKit;
+  /** Bundled Inter only: editor chrome drawn on the canvas (labels, badges). */
   fontMgr: FontMgr;
   /**
    * Every face the editor can draw: the bundled Inter plus Google Fonts faces registered at
