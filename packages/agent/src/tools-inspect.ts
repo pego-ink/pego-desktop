@@ -223,7 +223,7 @@ const findEmptySpaceTool = defineTool({
     const layout = requireLayout(host);
     const doc = host.getDoc();
     if (input.nearNodeId) requireIds(doc, [input.nearNodeId]);
-    const placement = findEmptySpace(doc, layout, input);
+    const placement = findEmptySpace(doc, layout, input, host.getActivePageId?.());
     return ok({
       x: round(placement.x),
       y: round(placement.y),

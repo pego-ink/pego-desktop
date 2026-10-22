@@ -4,21 +4,30 @@ import { createFakeHost } from "./test-host";
 import { toolByName } from "./tools";
 
 const doc = documentSchema.parse({
-  version: 1,
+  version: 2,
   id: "d",
   name: "Code",
   children: [
     {
-      type: "frame",
-      id: "hero",
-      name: "Hero",
-      width: 400,
-      layout: "vertical",
-      padding: 32,
-      fill: { type: "image", src: "data:image/jpeg;base64,AAAA", fit: "cover" },
+      type: "page",
+      id: "page-1",
+      name: "Page 1",
+      x: 0,
+      y: 0,
       children: [
-        { type: "text", id: "h1", content: "Hello" },
-        { type: "icon", id: "ic", iconName: "check", width: 16, height: 16 },
+        {
+          type: "frame",
+          id: "hero",
+          name: "Hero",
+          width: 400,
+          layout: "vertical",
+          padding: 32,
+          fill: { type: "image", src: "data:image/jpeg;base64,AAAA", fit: "cover" },
+          children: [
+            { type: "text", id: "h1", content: "Hello" },
+            { type: "icon", id: "ic", iconName: "check", width: 16, height: 16 },
+          ],
+        },
       ],
     },
   ],

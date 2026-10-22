@@ -2,6 +2,7 @@ import {
   findLocation,
   isContainer,
   OpError,
+  pageOrFirst,
   type Effect,
   type Fill,
   type PegoDocument,
@@ -15,6 +16,8 @@ export type SerializeOptions = {
   rootId?: string;
   /** Levels shown below the starting level; deeper containers are summarized as child counts. */
   maxDepth?: number;
+  /** Page whose tree is shown without rootId (the user's page; default: the first). */
+  pageId?: string | null;
 };
 
 type Fields = Record<string, unknown>;
@@ -135,6 +138,9 @@ const serializeNodes = (
     serializeNodes(child, depth + 1, maxDepth, childShowsPosition, lines);
 };
 
+const countNodes = (nodes: PegoNode[]): number =>
+  nodes.reduce((sum, node) => sum + 1 + (isContainer(node) ? countNodes(node.children) : 0), 0);
+
 const variablesLine = (variables: Variables): string | null => {
   const names = Object.keys(variables).sort();
   if (names.length === 0) return null;
@@ -165,20 +171,28 @@ export const serializeDocument = (doc: PegoDocument, opts: SerializeOptions = {}
   if (variables) lines.push(variables);
   const components = collectComponents(doc.children);
   if (components.length > 0) lines.push(`components: ${components.join(", ")}`);
+  const active = pageOrFirst(doc, opts.pageId);
+  const pages = doc.children.map((page) => {
+    const count = countNodes(page.children);
+    return `${page.id} ${JSON.stringify(page.name)} (${page.id === active.id ? "active, " : ""}${count} node${count === 1 ? "" : "s"})`;
+  });
+  lines.push(`pages: ${pages.join(", ")}`);
 
   if (opts.rootId !== undefined) {
     const loc = findLocation(doc, opts.rootId);
     if (!loc) throw new OpError("node_not_found", `node "${opts.rootId}" not found`);
     lines.push(
-      `scope: ${loc.node.id} (parent ${loc.parentId ?? "document root"}, index ${loc.index})`,
+      loc.node.type === "page"
+        ? `scope: page ${loc.node.id}`
+        : `scope: ${loc.node.id} (parent ${loc.parentId}, index ${loc.index}, page ${doc.children[loc.path[0]!]!.id})`,
     );
     lines.push("tree:");
     const parent = loc.parentId === null ? null : findLocation(doc, loc.parentId)?.node;
     const showPosition = !(parent && parent.type === "frame" && parent.layout !== "none");
     serializeNodes(loc.node, 0, maxDepth, showPosition, lines);
   } else {
-    lines.push("tree:");
-    for (const node of doc.children) serializeNodes(node, 0, maxDepth, true, lines);
+    lines.push(`tree of page ${active.id}:`);
+    for (const node of active.children) serializeNodes(node, 0, maxDepth, true, lines);
   }
   return lines.join("\n");
 };

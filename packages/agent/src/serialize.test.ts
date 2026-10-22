@@ -3,41 +3,50 @@ import { documentSchema, sampleDoc, type PegoDocument } from "@pego/doc";
 import { serializeDocument } from "./serialize";
 
 const doc: PegoDocument = documentSchema.parse({
-  version: 1,
+  version: 2,
   id: "d",
   name: "App",
   variables: { gap: { type: "number", value: 8 }, accent: { type: "color", value: "#0E7C5A" } },
   children: [
     {
-      type: "frame",
-      id: "page",
-      name: "Page",
-      x: 10,
+      type: "page",
+      id: "page-1",
+      name: "Page 1",
+      x: 0,
       y: 0,
-      width: 400,
-      layout: "vertical",
-      gap: "$gap",
-      padding: [8, 16, 8, 16],
       children: [
         {
           type: "frame",
-          id: "btn",
-          name: "Button",
-          reusable: true,
-          width: "fit_content",
-          layout: "horizontal",
-          fill: "$accent",
-          x: 99,
+          id: "page",
+          name: "Page",
+          x: 10,
+          y: 0,
+          width: 400,
+          layout: "vertical",
+          gap: "$gap",
+          padding: [8, 16, 8, 16],
           children: [
-            { type: "text", id: "label", content: "Buy now", fontSize: 14 },
-            { type: "icon", id: "ic", iconSet: "lucide", iconName: "arrow-right" },
+            {
+              type: "frame",
+              id: "btn",
+              name: "Button",
+              reusable: true,
+              width: "fit_content",
+              layout: "horizontal",
+              fill: "$accent",
+              x: 99,
+              children: [
+                { type: "text", id: "label", content: "Buy now", fontSize: 14 },
+                { type: "icon", id: "ic", iconSet: "lucide", iconName: "arrow-right" },
+              ],
+            },
+            { type: "ref", id: "b2", ref: "btn", descendants: { label: { content: "Go" } } },
+            { type: "path", id: "p", geometry: "M0 0 L10 10 ".repeat(20) },
           ],
         },
-        { type: "ref", id: "b2", ref: "btn", descendants: { label: { content: "Go" } } },
-        { type: "path", id: "p", geometry: "M0 0 L10 10 ".repeat(20) },
+        { type: "group", id: "g", x: 5, children: [{ type: "ellipse", id: "e", x: 3, width: 4 }] },
       ],
     },
-    { type: "group", id: "g", x: 5, children: [{ type: "ellipse", id: "e", x: 3, width: 4 }] },
   ],
 });
 
@@ -84,7 +93,7 @@ describe("serializeDocument", () => {
 
   test("rootId scopes, maxDepth summarizes", () => {
     const sub = serializeDocument(doc, { rootId: "btn" });
-    expect(sub).toContain("scope: btn (parent page, index 0)");
+    expect(sub).toContain("scope: btn (parent page, index 0, page page-1)");
     expect(sub).not.toContain("group#g");
     expect(sub).not.toContain("x=99");
     const shallow = serializeDocument(doc, { maxDepth: 0 });
@@ -107,22 +116,31 @@ describe("serializeDocument", () => {
 
 describe("serializeDocument v1 props", () => {
   const v1: PegoDocument = documentSchema.parse({
-    version: 1,
+    version: 2,
     id: "d",
     name: "Effects",
     children: [
       {
-        type: "frame",
-        id: "card",
-        stroke: { color: "#E5E7EB", width: [0, 0, 1, 0] },
-        effects: [
-          { type: "shadow", color: "#0000001F", y: 8, blur: 24 },
-          { type: "shadow", inner: true, color: "#FFFFFF", blur: 2, spread: 1 },
-          { type: "blur", radius: 4 },
-        ],
+        type: "page",
+        id: "page-1",
+        name: "Page 1",
+        x: 0,
+        y: 0,
         children: [
-          { type: "text", id: "t", content: "Hi", lineHeight: 1.5, letterSpacing: -0.2 },
-          { type: "path", id: "p", geometry: "M0 0L24 24", viewBox: [0, 0, 24, 24] },
+          {
+            type: "frame",
+            id: "card",
+            stroke: { color: "#E5E7EB", width: [0, 0, 1, 0] },
+            effects: [
+              { type: "shadow", color: "#0000001F", y: 8, blur: 24 },
+              { type: "shadow", inner: true, color: "#FFFFFF", blur: 2, spread: 1 },
+              { type: "blur", radius: 4 },
+            ],
+            children: [
+              { type: "text", id: "t", content: "Hi", lineHeight: 1.5, letterSpacing: -0.2 },
+              { type: "path", id: "p", geometry: "M0 0L24 24", viewBox: [0, 0, 24, 24] },
+            ],
+          },
         ],
       },
     ],
@@ -146,26 +164,35 @@ describe("serializeDocument fills", () => {
   test("gradients inline, images by size", () => {
     const text = serializeDocument(
       documentSchema.parse({
-        version: 1,
+        version: 2,
         id: "d",
         name: "Fills",
         children: [
           {
-            type: "rectangle",
-            id: "g",
-            fill: {
-              type: "linear",
-              angle: 90,
-              stops: [
-                { color: "#000000", position: 0 },
-                { color: "$accent", position: 1 },
-              ],
-            },
-          },
-          {
-            type: "rectangle",
-            id: "i",
-            fill: { type: "image", src: `data:image/png;base64,${"A".repeat(4096)}` },
+            type: "page",
+            id: "page-1",
+            name: "Page 1",
+            x: 0,
+            y: 0,
+            children: [
+              {
+                type: "rectangle",
+                id: "g",
+                fill: {
+                  type: "linear",
+                  angle: 90,
+                  stops: [
+                    { color: "#000000", position: 0 },
+                    { color: "$accent", position: 1 },
+                  ],
+                },
+              },
+              {
+                type: "rectangle",
+                id: "i",
+                fill: { type: "image", src: `data:image/png;base64,${"A".repeat(4096)}` },
+              },
+            ],
           },
         ],
       }),
