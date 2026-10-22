@@ -55,7 +55,7 @@ describe("placement", () => {
   });
   test("top level when nothing is hit", () => {
     expect(resolvePlacement(fixtureDoc, fixtureLayout, null)).toEqual({
-      parentId: null,
+      parentId: "page-1",
       originX: 0,
       originY: 0,
       flex: false,
@@ -127,7 +127,7 @@ describe("createNodeOp", () => {
     ]);
   });
   test("new frame has white fill and an empty children list", () => {
-    const placement = { parentId: null, originX: 0, originY: 0, flex: false };
+    const placement = { parentId: "page-1", originX: 0, originY: 0, flex: false };
     const next = applyOp(
       fixtureDoc,
       createNodeOp(fixtureDoc, "frame", "fr", placement, clickBox("frame", { x: 900, y: 0 })),

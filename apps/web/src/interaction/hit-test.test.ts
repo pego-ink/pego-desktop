@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Layout, PegoDocument } from "@pego/doc";
+import type { Layout, PegoDocument, PegoNode } from "@pego/doc";
 import { hitPath } from "./hit-test";
 import { fixtureDoc, fixtureLayout } from "./test-doc";
 
@@ -21,12 +21,12 @@ describe("hitPath", () => {
     expect(hit(310, 20)).toEqual(["f1", "inst"]));
 });
 
-const makeDoc = (children: PegoDocument["children"]): PegoDocument => ({
-  version: 1,
+const makeDoc = (children: PegoNode[]): PegoDocument => ({
+  version: 2,
   id: "d",
   name: "d",
   variables: {},
-  children: children,
+  children: [{ type: "page", id: "page-1", name: "Page 1", x: 0, y: 0, children }],
 });
 
 describe("hitPath with rotation", () => {

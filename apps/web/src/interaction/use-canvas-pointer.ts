@@ -147,7 +147,8 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         const placement = resolvePlacement(
           state.doc,
           getLayout(state.doc),
-          hitPath(state.doc, getLayout(state.doc), start.x, start.y),
+          hitPath(state.doc, getLayout(state.doc), start.x, start.y, state.pageId),
+          state.pageId,
         );
         gesture = isDrawTool(tool)
           ? {
@@ -186,7 +187,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
 
       const d = toDoc(p.x, p.y);
       const layout = getLayout(state.doc);
-      const hit = pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e));
+      const hit = pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e), state.pageId);
 
       if (!hit) {
         if (!e.shiftKey) state.select([]);
@@ -230,7 +231,15 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const d = toDoc(p.x, p.y);
       const hit = handle
         ? null
-        : pickAt(state.doc, getLayout(state.doc), d.x, d.y, state.selection, isDeep(e));
+        : pickAt(
+            state.doc,
+            getLayout(state.doc),
+            d.x,
+            d.y,
+            state.selection,
+            isDeep(e),
+            state.pageId,
+          );
       if (state.hoveredId !== hit) state.setHovered(hit);
     };
 
@@ -280,7 +289,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         const d = toDoc(p.x, p.y);
         const rect = normalizeRect(gesture.startDocX, gesture.startDocY, d.x, d.y);
         ui.set({ marquee: rect });
-        const hits = marqueeSelect(store.doc, getLayout(store.doc), rect);
+        const hits = marqueeSelect(store.doc, getLayout(store.doc), rect, store.pageId);
         store.select([...new Set([...gesture.base, ...hits])]);
         return;
       }
@@ -372,14 +381,21 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const p = local(e);
       const state = useDocumentStore.getState();
       const d = toDoc(p.x, p.y);
-      const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y);
+      const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y, state.pageId);
       const leafId = path?.[path.length - 1];
       if (leafId && findNode(state.doc, leafId)?.type === "text") {
         state.select([leafId]);
         useTextEditStore.getState().start({ mode: "edit", id: leafId });
         return;
       }
-      const target = drillTarget(state.doc, getLayout(state.doc), d.x, d.y, state.selection);
+      const target = drillTarget(
+        state.doc,
+        getLayout(state.doc),
+        d.x,
+        d.y,
+        state.selection,
+        state.pageId,
+      );
       if (target) state.select([target]);
     };
 

@@ -29,9 +29,8 @@ export const droppedImageSize = (width: number, height: number) => {
 };
 
 const childrenOf = (parentId: string | null): PegoNode[] => {
-  const { doc } = useDocumentStore.getState();
-  if (parentId === null) return doc.children;
-  const parent = findNode(doc, parentId);
+  if (parentId === null) return [];
+  const parent = findNode(useDocumentStore.getState().doc, parentId);
   return parent && isContainer(parent) ? parent.children : [];
 };
 
@@ -40,10 +39,15 @@ const insertImage = async (file: File, sx: number, sy: number) => {
   const [src, bitmap] = await Promise.all([imageFileToDataUri(file), createImageBitmap(file)]);
   const size = droppedImageSize(bitmap.width, bitmap.height);
   bitmap.close();
-  const { doc, commit, select } = useDocumentStore.getState();
+  const { doc, commit, select, pageId } = useDocumentStore.getState();
   const point = screenToDoc(useViewportStore.getState().camera, sx, sy);
   const layout = getLayout(doc);
-  const placement = resolvePlacement(doc, layout, hitPath(doc, layout, point.x, point.y));
+  const placement = resolvePlacement(
+    doc,
+    layout,
+    hitPath(doc, layout, point.x, point.y, pageId),
+    pageId,
+  );
   const id = createId();
   const name = uniqueName(
     file.name.replace(/\.[^.]+$/, "") || "Image",

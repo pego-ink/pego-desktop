@@ -2,7 +2,8 @@ import { applyOps as applyDocOps, collectDocIds, type Op, type Transaction } fro
 import type { PlanStep, StepStatus, ToolHost } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
 import { getIconMarkup, listIconNames, loadIconData } from "@/canvas/icons";
-import { useDocumentStore } from "@/store/use-document-store";
+import { activePage, useDocumentStore } from "@/store/use-document-store";
+import { showPage, showPageOf } from "@/pages/page-actions";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { focusCamera } from "./focus-camera";
 import { requestDecision } from "./decisions";
@@ -96,6 +97,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
   };
 
   const focusViewport = (ids: string[]) => {
+    // Nodes on another page: show that page first.
+    if (ids[0] !== undefined) showPageOf(ids[0]);
     const layout = getLayout(useDocumentStore.getState().doc);
     const boxes = ids.flatMap((id) => layout.get(id) ?? []);
     const viewport = useViewportStore.getState();
@@ -122,6 +125,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
   return {
     getDoc: () => useDocumentStore.getState().doc,
     getLayout: () => getLayout(useDocumentStore.getState().doc),
+    getActivePageId: () => activePage(useDocumentStore.getState()).id,
+    setActivePage: showPage,
     getSelection: () => useDocumentStore.getState().selection,
     setSelection,
     focusViewport,

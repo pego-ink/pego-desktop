@@ -8,6 +8,7 @@ import type {
 } from "canvaskit-wasm";
 import {
   imageFitRect,
+  pageOrFirst,
   linearGradientPoints,
   MAX_INSTANCE_DEPTH,
   resolveColor,
@@ -519,6 +520,8 @@ export const renderDocument = (
     rootId?: string;
     /** Canvas background; null leaves it transparent (exports). Defaults to the editor's. */
     background?: string | null;
+    /** Page to draw (null/omitted = the first page). */
+    pageId?: string | null;
   } = {},
 ) => {
   const background = options.background === undefined ? BACKGROUND : options.background;
@@ -535,7 +538,7 @@ export const renderDocument = (
     hiddenIds: options.hiddenIds ?? NO_HIDDEN_IDS,
   };
   if (options.rootId === undefined) {
-    drawNodes(scene, doc.children, ORIGIN, 0);
+    drawNodes(scene, pageOrFirst(doc, options.pageId).children, ORIGIN, 0);
   } else {
     const root = findRenderedNode(doc, options.rootId);
     const box = root && layout.get(root.id);

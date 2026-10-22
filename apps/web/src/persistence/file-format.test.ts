@@ -13,7 +13,7 @@ import {
 describe("file format", () => {
   test("round trips the showcase doc", () => {
     const text = serializeDocument(showcaseDoc);
-    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 1 });
+    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 2 });
     expect(parseDocumentFile(text)).toEqual(documentSchema.parse(showcaseDoc));
   });
 
@@ -41,8 +41,14 @@ describe("file format", () => {
       },
     });
     const doc = parseDocumentFile(text);
-    expect(doc.version).toBe(1);
-    expect(doc.children[0]).toMatchObject({ id: "r", type: "rectangle", fill: "#fff" });
+    expect(doc.version).toBe(2);
+    expect(doc.children).toHaveLength(1);
+    expect(doc.children[0]).toMatchObject({ type: "page", name: "Page 1" });
+    expect(doc.children[0]!.children[0]).toMatchObject({
+      id: "r",
+      type: "rectangle",
+      fill: "#fff",
+    });
   });
 
   test("rejects schema errors with the first issues", () => {
@@ -57,7 +63,9 @@ describe("file format", () => {
   test("empty document has one 1440x1024 white frame", () => {
     const doc = createEmptyDocument();
     expect(doc.children).toHaveLength(1);
-    expect(doc.children[0]).toMatchObject({
+    expect(doc.children[0]).toMatchObject({ type: "page", name: "Page 1" });
+    expect(doc.children[0]!.children).toHaveLength(1);
+    expect(doc.children[0]!.children[0]).toMatchObject({
       type: "frame",
       name: "Frame",
       width: 1440,
