@@ -1,0 +1,10 @@
+# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json
+language: id-ID
+reviews:
+  request_changes_workflow: true
+  commit_status: true
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "^dev$"
