@@ -1,8 +1,8 @@
 import { randomUUID } from "node:crypto";
-import type { BridgeToEditor } from "@pego/agent";
+import type { BridgeToEditor, ToolImage } from "@pego/agent";
 
 export type ToolSource = Extract<BridgeToEditor, { type: "tool_call" }>["source"];
-export type ToolOutcome = { content: string; isError: boolean };
+export type ToolOutcome = { content: string; isError: boolean; images?: ToolImage[] };
 export type CallTool = (tool: string, input: unknown, source: ToolSource) => Promise<ToolOutcome>;
 
 /** The slice of a WebSocket the hub needs (satisfied by Bun's ServerWebSocket). */

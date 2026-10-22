@@ -1,7 +1,10 @@
 import { BRIDGE_DEFAULT_PORT } from "@pego/agent";
 
-/** Largest WebSocket frame accepted from the editor (tool results can carry document dumps). */
-export const MAX_WS_MESSAGE_BYTES = 4 * 1024 * 1024;
+/**
+ * Largest WebSocket frame accepted from the editor (tool results can carry document dumps and
+ * up to 8MB of screenshots, which are ~10.7MB as base64).
+ */
+export const MAX_WS_MESSAGE_BYTES = 12 * 1024 * 1024;
 /** Largest MCP HTTP request body. */
 export const MAX_MCP_BODY_BYTES = 1024 * 1024;
 /** How long the bridge waits for the editor to answer a forwarded tool call. */

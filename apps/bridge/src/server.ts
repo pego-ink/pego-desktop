@@ -77,7 +77,10 @@ export const startBridge = (options: BridgeOptions) => {
 
         if (message.type === "hello") {
           if (message.protocol !== BRIDGE_PROTOCOL_VERSION) {
-            ws.close(4001, `Protocol mismatch: bridge speaks v${BRIDGE_PROTOCOL_VERSION}`);
+            ws.close(
+              4001,
+              `Protocol mismatch: bridge speaks v${BRIDGE_PROTOCOL_VERSION}, editor sent v${message.protocol}. Reload Pego to update the editor.`,
+            );
             return;
           }
           ws.data.greeted = true;
@@ -100,6 +103,7 @@ export const startBridge = (options: BridgeOptions) => {
           hub.resolveCall(socket, message.callId, {
             content: message.content,
             isError: message.isError,
+            ...(message.images?.length ? { images: message.images } : {}),
           });
         } else if (message.type === "run_start") {
           runs.start(message.runId, message.prompt);

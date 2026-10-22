@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import {
   agentTools,
   BRIDGE_PROTOCOL_VERSION,
+  guides,
   type BridgeToEditor,
   type EditorToBridge,
   type RunEvent,
@@ -85,10 +86,20 @@ const mcpPost = (bridge: Bridge, body: unknown, headers: Record<string, string> 
     body: JSON.stringify(body),
   });
 
+const TEST_GUIDE = {
+  id: "test-guide",
+  title: "Test guide",
+  description: "A guide for tests",
+  content: "# Test guide\n\nBody.",
+};
+
 beforeAll(() => {
   agentTools.push(ECHO_TOOL);
+  guides.push(TEST_GUIDE);
 });
 afterAll(() => {
+  const guideIndex = guides.indexOf(TEST_GUIDE);
+  if (guideIndex >= 0) guides.splice(guideIndex, 1);
   const index = agentTools.indexOf(ECHO_TOOL);
   if (index >= 0) agentTools.splice(index, 1);
 });
@@ -156,6 +167,15 @@ describe("editor socket security", () => {
     expect((await editor.closed).code).toBe(4001);
   });
 
+  test("rejects protocol 1 editors and tells the user to reload Pego", async () => {
+    const bridge = start();
+    const editor = await connect(bridge);
+    editor.send({ type: "hello", protocol: 1, documentName: "d" });
+    const closed = await editor.closed;
+    expect(closed.code).toBe(4001);
+    expect(closed.reason).toContain("Reload Pego");
+  });
+
   test("requires hello before other messages", async () => {
     const bridge = start();
     const editor = await connect(bridge);
@@ -166,7 +186,7 @@ describe("editor socket security", () => {
   test("closes frames over the size cap", async () => {
     const bridge = start();
     const { editor } = await greet(bridge);
-    editor.ws.send("x".repeat(5 * 1024 * 1024));
+    editor.ws.send("x".repeat(13 * 1024 * 1024));
     expect([1006, 1009]).toContain((await editor.closed).code);
   });
 });
@@ -336,6 +356,139 @@ describe("MCP over HTTP", () => {
       }),
     );
     expect(unknown.result.isError).toBe(true);
+  });
+});
+
+const PNG = { mediaType: "image/png" as const, data: "iVBORw0KGgo=", width: 2, height: 3 };
+
+describe("MCP surface (images, resources, prompts)", () => {
+  const rpc = async (bridge: Bridge, method: string, params?: unknown, id = 1) => {
+    const raw = await (await mcpPost(bridge, { jsonrpc: "2.0", id, method, params })).text();
+    const line = raw.startsWith("{") ? raw : raw.split("\n").find((l) => l.startsWith("data:"));
+    return JSON.parse(String(line?.startsWith("data:") ? line.slice(5) : line));
+  };
+
+  test("tools/call returns image content before text through the real endpoint", async () => {
+    const bridge = start();
+    const { editor } = await greet(bridge);
+    const response = rpc(bridge, "tools/call", { name: "test_echo", arguments: { text: "s" } });
+    const call = (await editor.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
+    editor.send({
+      type: "tool_result",
+      callId: call.callId,
+      content: "shot",
+      isError: false,
+      images: [PNG],
+    });
+    expect((await response).result.content).toEqual([
+      { type: "image", data: PNG.data, mimeType: "image/png" },
+      { type: "text", text: "shot" },
+    ]);
+  });
+
+  test("an invalid image closes the editor socket", async () => {
+    const bridge = start();
+    const { editor } = await greet(bridge);
+    editor.ws.send(
+      JSON.stringify({
+        type: "tool_result",
+        callId: "c",
+        content: "x",
+        isError: false,
+        images: [{ ...PNG, data: "not base64!!" }],
+      }),
+    );
+    expect((await editor.closed).code).toBe(1008);
+  });
+
+  test("resources/list and resources/read serve guides", async () => {
+    const bridge = start();
+    const list = (await rpc(bridge, "resources/list")).result.resources;
+    expect(list).toContainEqual({
+      uri: "pego://guides/test-guide",
+      name: "test-guide",
+      title: "Test guide",
+      description: "A guide for tests",
+      mimeType: "text/markdown",
+    });
+    expect(list.some((r: { uri: string }) => r.uri === "pego://document")).toBe(true);
+    const read = await rpc(bridge, "resources/read", { uri: "pego://guides/test-guide" });
+    expect(read.result.contents).toEqual([
+      { uri: "pego://guides/test-guide", mimeType: "text/markdown", text: TEST_GUIDE.content },
+    ]);
+    const missing = await rpc(bridge, "resources/read", { uri: "pego://guides/nope" });
+    expect(missing.error).toBeDefined();
+  });
+
+  test("pego://document calls get_document on the editor; no editor gives error text", async () => {
+    const bridge = start();
+    const none = await rpc(bridge, "resources/read", { uri: "pego://document" });
+    expect(none.result.contents[0].text).toContain(NO_EDITOR_MESSAGE);
+
+    const { editor } = await greet(bridge);
+    const response = rpc(bridge, "resources/read", { uri: "pego://document" });
+    const call = (await editor.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
+    expect(call.tool).toBe("get_document");
+    editor.send({ type: "tool_result", callId: call.callId, content: "DOC", isError: false });
+    expect((await response).result.contents[0]).toEqual({
+      uri: "pego://document",
+      mimeType: "text/plain",
+      text: "DOC",
+    });
+  });
+
+  test("prompts/list and prompts/get", async () => {
+    const bridge = start();
+    const names = (await rpc(bridge, "prompts/list")).result.prompts.map(
+      (p: { name: string }) => p.name,
+    );
+    expect(names).toEqual(["design_screen", "polish_selection", "extract_components"]);
+
+    const design = await rpc(bridge, "prompts/get", {
+      name: "design_screen",
+      arguments: { kind: "dashboard", brief: "sales overview" },
+    });
+    const text = design.result.messages[0].content.text as string;
+    expect(design.result.messages[0].role).toBe("user");
+    expect(text).toContain("sales overview");
+    for (const tool of ["get_guidelines", "batch_design", "get_screenshot", "check_layout"]) {
+      expect(text).toContain(tool);
+    }
+    const polish = await rpc(bridge, "prompts/get", { name: "polish_selection" });
+    expect(polish.result.messages[0].content.text).toContain("get_selection");
+    const extract = await rpc(bridge, "prompts/get", { name: "extract_components" });
+    expect(extract.result.messages[0].content.text).toContain("create_instance");
+
+    expect(
+      (
+        await rpc(bridge, "prompts/get", {
+          name: "design_screen",
+          arguments: { kind: "x", brief: "b" },
+        })
+      ).error,
+    ).toBeDefined();
+    expect((await rpc(bridge, "prompts/get", { name: "nope" })).error).toBeDefined();
+  });
+});
+
+describe("Agent SDK in-process server", () => {
+  test("tool handler maps editor images to MCP image content", async () => {
+    const { Client } = await import("@modelcontextprotocol/sdk/client/index.js");
+    const { InMemoryTransport } = await import("@modelcontextprotocol/sdk/inMemory.js");
+    const { createPegoMcpServer } = await import("./mcp");
+    const server = createPegoMcpServer({
+      callTool: async () => ({ content: "shot", isError: false, images: [PNG] }),
+      source: () => ({ kind: "run", runId: "r" }),
+    });
+    const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+    const client = new Client({ name: "t", version: "0" });
+    await Promise.all([server.connect(serverSide), client.connect(clientSide)]);
+    const result = await client.callTool({ name: "test_echo", arguments: { text: "x" } });
+    expect(result.content).toEqual([
+      { type: "image", data: PNG.data, mimeType: "image/png" },
+      { type: "text", text: "shot" },
+    ]);
+    await client.close();
   });
 });
 

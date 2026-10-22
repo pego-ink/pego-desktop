@@ -2,19 +2,32 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import {
   CallToolRequestSchema,
+  ErrorCode,
+  GetPromptRequestSchema,
+  ListPromptsRequestSchema,
+  ListResourcesRequestSchema,
   ListToolsRequestSchema,
+  McpError,
+  ReadResourceRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { agentTools, CLAUDE_CODE_SYSTEM } from "@pego/agent";
-import type { CallTool, ToolSource } from "./editor-hub";
+import type { CallTool, ToolOutcome, ToolSource } from "./editor-hub";
+import { getPegoPrompt, pegoPrompts } from "./mcp-prompts";
+import { listPegoResources, readPegoResource } from "./mcp-resources";
 
 const MAX_TOOL_INPUT_BYTES = 1024 * 1024;
 
-export const toCallToolResult = (outcome: {
-  content: string;
-  isError: boolean;
-}): CallToolResult => ({
-  content: [{ type: "text", text: outcome.content }],
+/** Images (screenshots) come first so a client that truncates still sees them, then the text. */
+export const toCallToolResult = (outcome: ToolOutcome): CallToolResult => ({
+  content: [
+    ...(outcome.images ?? []).map((image) => ({
+      type: "image" as const,
+      data: image.data,
+      mimeType: image.mediaType,
+    })),
+    { type: "text" as const, text: outcome.content },
+  ],
   isError: outcome.isError,
 });
 
@@ -32,7 +45,8 @@ export const createPegoMcpServer = (options: {
     { name: "pego", version: "0.0.0" },
     { instructions: CLAUDE_CODE_SYSTEM || undefined },
   );
-  server.server.registerCapabilities({ tools: {} });
+  server.server.registerCapabilities({ tools: {}, resources: {}, prompts: {} });
+  const sourceOf = () => options.source({ clientName: options.clientName });
 
   server.server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: agentTools.map((tool) => ({
@@ -50,8 +64,36 @@ export const createPegoMcpServer = (options: {
     if (JSON.stringify(input ?? {}).length > MAX_TOOL_INPUT_BYTES) {
       return toCallToolResult({ content: "Tool input is too large.", isError: true });
     }
-    const source = options.source({ clientName: options.clientName });
-    return toCallToolResult(await options.callTool(name, input ?? {}, source));
+    return toCallToolResult(await options.callTool(name, input ?? {}, sourceOf()));
+  });
+
+  server.server.setRequestHandler(ListResourcesRequestSchema, () => ({
+    resources: listPegoResources(),
+  }));
+
+  server.server.setRequestHandler(ReadResourceRequestSchema, async (request) => {
+    const result = await readPegoResource(request.params.uri, options.callTool, sourceOf());
+    if (!result) {
+      throw new McpError(ErrorCode.InvalidParams, `Unknown resource "${request.params.uri}".`);
+    }
+    return result;
+  });
+
+  server.server.setRequestHandler(ListPromptsRequestSchema, () => ({ prompts: pegoPrompts }));
+
+  server.server.setRequestHandler(GetPromptRequestSchema, (request) => {
+    const { name, arguments: args } = request.params;
+    let result;
+    try {
+      result = getPegoPrompt(name, args);
+    } catch (error) {
+      throw new McpError(
+        ErrorCode.InvalidParams,
+        error instanceof Error ? error.message : "Invalid arguments",
+      );
+    }
+    if (!result) throw new McpError(ErrorCode.InvalidParams, `Unknown prompt "${name}".`);
+    return result;
   });
 
   return server;
