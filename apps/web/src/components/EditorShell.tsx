@@ -3,7 +3,7 @@ import { Redo2Icon, SparklesIcon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { PagesPanel } from "@/pages/PagesPanel";
-import { ProjectPanel } from "@/project/ProjectPanel";
+import { AssetsPanel } from "@/assets/AssetsPanel";
 import { Dashboard } from "@/workspace/Dashboard";
 import { HomeButton } from "@/workspace/HomeButton";
 import { ThemeToggle } from "@/theme/ThemeToggle";
@@ -51,7 +51,7 @@ const HistoryButtons = () => {
   );
 };
 
-type LeftTab = "layers" | "agent";
+type LeftTab = "layers" | "assets" | "agent";
 
 const TabButton = ({
   active,
@@ -76,7 +76,7 @@ const TabButton = ({
   </button>
 );
 
-/** Left column: layer tree, or the agent panel (wider, like the design's agent view). */
+/** Left column: pages and layers, the project's assets, or the agent panel (wider). */
 const LeftColumn = () => {
   const [tab, setTab] = useState<LeftTab>("layers");
   const working = useAgentStore((s) => isRunActive(s.status));
@@ -95,6 +95,9 @@ const LeftColumn = () => {
         <TabButton active={tab === "layers"} onClick={() => setTab("layers")}>
           Layers
         </TabButton>
+        <TabButton active={tab === "assets"} onClick={() => setTab("assets")}>
+          Assets
+        </TabButton>
         <TabButton active={tab === "agent"} onClick={() => setTab("agent")}>
           <SparklesIcon />
           Agent
@@ -105,10 +108,10 @@ const LeftColumn = () => {
         <HidePanelButton side="left" className="ml-1" />
       </div>
       <div className={cn("min-h-0 flex-1 flex-col", tab === "layers" ? "flex" : "hidden")}>
-        <ProjectPanel />
         <PagesPanel />
         <LayersPanel />
       </div>
+      {tab === "assets" ? <AssetsPanel /> : null}
       <div className={cn("min-h-0 flex-1 flex-col", tab === "agent" ? "flex" : "hidden")}>
         <AgentPanel />
       </div>

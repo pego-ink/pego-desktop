@@ -204,8 +204,9 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   `open_document`, the project panel), never with `useDocumentStore.load` directly; it asks the user about
   unsaved changes ("ask"), refuses for Claude Code ("refuse": save first) or drops them ("discard"). Switching
   projects is blocked while a panel agent run is active. Autosave stores every workspace.
-- The project panel lists the live project's files (or all of `design/` in Scratch), opens them in tabs and
-  creates new ones; reads are limited to `design/`.
+- Inside a project, like Figma: the left panel has Layers (pages + layer tree), Assets (the document's
+  components, `apps/web/src/assets/`; click to show, + to place an instance) and Agent. There is no file list;
+  other `.pego` files are opened with File > Open or by Claude Code. Bridge reads are limited to `design/`.
 - MCP: `list_projects`, `open_project` (by id, name or unambiguous prefix), `create_project`,
   `list_documents` (active project, open tabs, files) and `switch_document`; edit tools act on the active tab of
   the active project.
