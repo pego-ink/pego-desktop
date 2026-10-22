@@ -188,17 +188,25 @@ result as an unsaved `.pego`. Differences it handles: `.pen` frames without `lay
 padding. Instances that restyle their root or replace a descendant are detached. Anything else it cannot
 represent is dropped and reported as a warning, never silently. Test fixture: `design/pego.pen`.
 
-## Tabs and the project folder
+## Projects, workspaces and tabs
 
-- Open documents are tabs (`apps/web/src/tabs/use-tabs-store.ts`). The active tab lives in the normal stores
-  (document, file, viewport), so editor code never deals with tabs; inactive tabs keep a snapshot. Open files
-  through `openTab` (File > Open, drops, .pen import, `open_document` and the project panel all do), never by
-  calling `useDocumentStore.load` directly. Switching is blocked while a panel agent run is active. Autosave
-  stores every tab.
-- The bridge serves the repository's `design/` folder (`apps/bridge/src/project.ts`; `PEGO_DESIGN_DIR` overrides):
-  the Project panel lists `.pego`/`.pen` files there, opens them in tabs and creates new ones. Reads through the
-  panel are limited to that folder.
-- MCP: `list_documents` (open tabs + design files) and `switch_document`; edit tools act on the active tab.
+- **Projects** are folders in the repository's `design/` with a `project.json` (`{ id, name, createdAt }`),
+  e.g. `design/pego-website/`. The bridge finds `design/` (nearest `.git` above where it runs;
+  `PEGO_DESIGN_DIR` overrides), lists projects (`apps/bridge/src/projects.ts`) and creates them.
+- **Workspaces** (`apps/web/src/workspace/use-workspace-store.ts`): the header shows Dashboard, Scratch
+  (documents outside any project) and one tab per open project. Each workspace keeps its own document tabs;
+  only the live one is in the stores, like document tabs. The Dashboard is a view, not a workspace.
+- **Document tabs** (`apps/web/src/tabs/use-tabs-store.ts`): the active tab lives in the normal stores (document,
+  file, viewport), so editor code never deals with tabs. Open files through `openTab` (File > Open, drops, .pen
+  import, `open_document` and the project panel all do), never by calling `useDocumentStore.load` directly.
+  Switching tabs or projects is blocked while a panel agent run is active. Autosave stores every workspace.
+- The project panel lists the live project's files (or all of `design/` in Scratch), opens them in tabs and
+  creates new ones; reads are limited to `design/`.
+- MCP: `list_projects`, `open_project` (by id, name or unambiguous prefix), `create_project`,
+  `list_documents` (active project, open tabs, files) and `switch_document`; edit tools act on the active tab of
+  the active project.
+- Dev: `?bridge=4599` in the editor URL connects to a bridge on another port (`PEGO_BRIDGE_PORT=4599 bun run
+bridge`), handy for testing without touching your main editor tab.
 
 ## Export
 

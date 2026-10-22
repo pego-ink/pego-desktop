@@ -27,9 +27,13 @@ bun run dev
 Open http://localhost:5173. This also starts `apps/api` (Hono on Workers via wrangler), which the editor does not
 need; to run only the editor: `bun run --cwd apps/web dev`.
 
-Documents open as tabs and autosave in the browser (IndexedDB). Use **File → Save / Open** (`⌘S`, `⌘O`) for
-`.pego` files on disk. With the bridge running, the **Project** panel lists the repository's `design/` folder:
-click a file to open it in a tab, + to create one; saving writes back to the file.
+Pego opens on the **Dashboard**: the projects of this repository (`design/<project>/` with a `project.json`,
+listed by the bridge). Open a project to get its own tab in the header with its files in the left panel; documents
+open as tabs above the canvas and autosave in the browser (IndexedDB). **Scratch** holds documents outside any
+project. Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files anywhere on disk.
+
+From Claude Code, name the project: "open project Pego Website and add a pricing section" (or use its id); the
+MCP tools `list_projects`, `open_project` and `create_project` do the rest.
 
 ## Use the agent
 
