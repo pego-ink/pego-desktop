@@ -11,6 +11,7 @@ import {
 } from "@/components/rail-state";
 import { useSettingsModal } from "@/store/use-settings-store";
 import { PegoMark } from "@/components/PegoMark";
+import { useWindowControlsInset } from "@/desktop/window-controls";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const ALT = isMac ? "⌥" : "Alt+";
@@ -38,6 +39,7 @@ type Props = {
 /** Narrow vertical tab rail: Agent, Layers and Assets. The active tab toggles the side panel. */
 export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = false }: Props) => {
   const listRef = useRef<HTMLDivElement>(null);
+  const windowControls = useWindowControlsInset();
 
   useEffect(() => {
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
@@ -67,8 +69,21 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
   return (
     <nav
       aria-label="Editor sidebar"
-      className="flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5"
+      className={cn(
+        "flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5",
+        // The traffic lights straddle the rail's edge: start its divider below their row.
+        windowControls &&
+          "relative border-r-0 after:absolute after:top-11 after:right-0 after:bottom-0 after:w-px after:bg-border",
+      )}
     >
+      {windowControls ? (
+        // The traffic lights' row: drags the window, continues the top bar's bottom border, and
+        // pushes the Pego mark below it.
+        <div
+          aria-hidden
+          className="-mt-2.5 h-11 w-full shrink-0 border-b border-border [-webkit-app-region:drag]"
+        />
+      ) : null}
       {onHome ? (
         <Tooltip content="Projects">
           <button

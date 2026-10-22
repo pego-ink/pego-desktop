@@ -9,6 +9,12 @@ import { AutosaveStatus } from "./AutosaveStatus";
 import { toggleAutoSave } from "./autosave-actions";
 import { isFileAutosaveSupported } from "./file-autosave";
 import { useAutosaveStore } from "./use-autosave-store";
+import { cn } from "@pego/ui/lib/utils";
+import {
+  WINDOW_CONTROLS_GUTTER_CLASS,
+  WINDOW_DRAG_CLASS,
+  useWindowControlsInset,
+} from "@/desktop/window-controls";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
@@ -33,6 +39,7 @@ export const FileMenu = () => {
   );
   const autosaveEnabled = useAutosaveStore((s) => s.enabled);
   const supported = isFileAutosaveSupported();
+  const windowControls = useWindowControlsInset();
 
   useEffect(() => {
     if (open)
@@ -81,7 +88,15 @@ export const FileMenu = () => {
   return (
     <div
       ref={rootRef}
-      className="relative flex h-11 shrink-0 flex-col justify-center border-b border-border px-2"
+      className={cn(
+        "relative flex h-11 shrink-0 flex-col justify-center border-b border-border px-2",
+        // Next to the traffic lights: one line, centred on them, with the save status inline.
+        windowControls && [
+          "flex-row items-center gap-2",
+          WINDOW_CONTROLS_GUTTER_CLASS,
+          WINDOW_DRAG_CLASS,
+        ],
+      )}
     >
       <button
         ref={triggerRef}
@@ -96,13 +111,21 @@ export const FileMenu = () => {
           event.preventDefault();
           setOpen(true);
         }}
-        className="-mx-1 flex h-5 min-w-0 items-center gap-1 self-start rounded-sm px-1 text-[13px] font-medium text-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-accent"
+        className={cn(
+          "-mx-1 flex h-5 min-w-0 items-center gap-1 self-start rounded-sm px-1 text-[13px] font-medium text-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-accent",
+          windowControls && "self-center",
+        )}
       >
         <span className="max-w-full truncate">{fileName}</span>
         <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       </button>
-      <div className="flex h-4 items-center">
-        <AutosaveStatus />
+      <div
+        className={cn(
+          "flex h-4 items-center",
+          windowControls && "min-w-0 flex-1 overflow-hidden whitespace-nowrap",
+        )}
+      >
+        <AutosaveStatus compact={windowControls} />
       </div>
       {open ? (
         <div
