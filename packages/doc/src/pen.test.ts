@@ -9,7 +9,7 @@ import { findNode } from "./tree";
 const pen = (children: unknown[], extra: Record<string, unknown> = {}) =>
   importPen({ version: "2.21", children, ...extra });
 
-const only = (children: unknown[]) => pen(children).doc.children[0];
+const only = (children: unknown[]) => pen(children).doc.children[0]!.children[0];
 
 describe("importPen", () => {
   test("rejects input that is not a .pen document", () => {
@@ -139,7 +139,7 @@ describe("importPen", () => {
       },
     );
     expect(Object.keys(doc.variables)).toEqual(["accent", "ui"]);
-    expect(doc.children.map((n) => n.id)).toEqual(["r"]);
+    expect(doc.children[0]!.children.map((n) => n.id)).toEqual(["r"]);
     expect(warnings.map((w) => w.message)).toEqual([
       'Variable of type "boolean" is not supported and was dropped',
       'Property "sparkle" on rectangle is not supported and was dropped',
@@ -158,6 +158,7 @@ describe("importPen", () => {
       if ("children" in node) node.children.forEach(walk);
     };
     doc.children.forEach(walk);
+    expect(doc.children).toHaveLength(1);
     expect(all.length).toBeGreaterThan(800);
     const refs = all.filter((node) => node.type === "ref");
     expect(refs.length).toBeGreaterThan(30);

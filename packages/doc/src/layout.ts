@@ -259,14 +259,17 @@ export const computeLayout = (doc: PegoDocument, measureText: TextMeasurer): Lay
     layout.set(sized.node.id, { x, y, width: sized.width, height: sized.height });
     for (const child of sized.children) record(child.sized, x + child.x, y + child.y);
   };
-  for (const raw of doc.children) {
-    const node = expand(raw, 0);
-    if (!node) continue;
-    record(
-      sizeOf(node, 0),
-      resolveNumber(node.x, doc.variables, 0),
-      resolveNumber(node.y, doc.variables, 0),
-    );
+  // Pages have no box: their content keeps its own x/y in canvas coordinates, page by page.
+  for (const page of doc.children) {
+    for (const raw of page.children) {
+      const node = expand(raw, 0);
+      if (!node) continue;
+      record(
+        sizeOf(node, 0),
+        resolveNumber(node.x, doc.variables, 0),
+        resolveNumber(node.y, doc.variables, 0),
+      );
+    }
   }
   return layout;
 };

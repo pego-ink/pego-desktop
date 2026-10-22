@@ -6,6 +6,36 @@ type RawDocument = Record<string, unknown>;
 const MIGRATIONS: Record<number, (doc: RawDocument) => RawDocument> = {
   // v1 only adds optional props (effects, per-side stroke, text spacing, path viewBox).
   0: (doc) => ({ ...doc, version: 1 }),
+  // v2 adds pages: the old top-level nodes become the one and only page.
+  1: (doc) => ({
+    ...doc,
+    version: 2,
+    children: [
+      {
+        type: "page",
+        id: uniquePageId(doc),
+        name: "Page 1",
+        children: Array.isArray(doc.children) ? doc.children : [],
+      },
+    ],
+  }),
+};
+
+/** "page-1", or "page-1-2"... if a node already uses that id. */
+const uniquePageId = (doc: RawDocument): string => {
+  const taken = new Set<string>();
+  const walk = (value: unknown): void => {
+    if (Array.isArray(value)) value.forEach(walk);
+    else if (typeof value === "object" && value !== null) {
+      const node = value as Record<string, unknown>;
+      if (typeof node.id === "string") taken.add(node.id);
+      walk(node.children);
+    }
+  };
+  walk(doc.children);
+  let id = "page-1";
+  for (let n = 2; taken.has(id); n++) id = `page-1-${n}`;
+  return id;
 };
 
 export type MigrationErrorCode = "not_a_document" | "unknown_version" | "newer_version";

@@ -127,6 +127,11 @@ const frameShape = paintedNode.extend({
   alignItems: alignItemsSchema.optional(),
 });
 const groupShape = baseNode.extend({ type: z.literal("group") });
+/**
+ * A page: the top level of a document. Pages sit only at the document root and hold the
+ * canvas content (screens, components). Their x/y are unused.
+ */
+const pageShape = baseNode.extend({ type: z.literal("page"), name: z.string().default("Page") });
 const rectangleSchema = paintedNode.extend({
   type: z.literal("rectangle"),
   cornerRadius: numberValueSchema.optional(),
@@ -186,12 +191,22 @@ export type IconNode = z.infer<typeof iconSchema>;
 export type RefNode = z.infer<typeof refSchema>;
 export type FrameNode = z.infer<typeof frameShape> & { children: PegoNode[] };
 export type GroupNode = z.infer<typeof groupShape> & { children: PegoNode[] };
+export type PageNode = z.infer<typeof pageShape> & { children: PegoNode[] };
 export type PegoNode =
-  FrameNode | GroupNode | RectangleNode | EllipseNode | PathNode | TextNode | IconNode | RefNode;
+  | FrameNode
+  | GroupNode
+  | PageNode
+  | RectangleNode
+  | EllipseNode
+  | PathNode
+  | TextNode
+  | IconNode
+  | RefNode;
 export type PegoNodeType = PegoNode["type"];
 
 // Recursive: containers reference the node union lazily.
-export const nodeSchema: z.ZodType<PegoNode, unknown> = z.lazy(() =>
+/** Any node that can sit on a page or inside a frame/group (everything but a page). */
+export const contentNodeSchema: z.ZodType<PegoNode, unknown> = z.lazy(() =>
   z.discriminatedUnion("type", [
     frameSchema,
     groupSchema,
@@ -203,8 +218,26 @@ export const nodeSchema: z.ZodType<PegoNode, unknown> = z.lazy(() =>
     refSchema,
   ]),
 );
-const frameSchema = frameShape.extend({ children: z.array(z.lazy(() => nodeSchema)).default([]) });
-const groupSchema = groupShape.extend({ children: z.array(z.lazy(() => nodeSchema)).default([]) });
+const children = z.array(z.lazy(() => contentNodeSchema)).default([]);
+const frameSchema = frameShape.extend({ children });
+const groupSchema = groupShape.extend({ children });
+const pageObjectSchema = pageShape.extend({ children });
+export const pageSchema: z.ZodType<PageNode, unknown> = pageObjectSchema;
+/** Any node, pages included (ops validate where each may go). */
+export const nodeSchema: z.ZodType<PegoNode, unknown> = z.lazy(() =>
+  // One discriminated union (not a union of unions) keeps validation errors specific.
+  z.discriminatedUnion("type", [
+    frameSchema,
+    groupSchema,
+    pageObjectSchema,
+    rectangleSchema,
+    ellipseSchema,
+    pathSchema,
+    textSchema,
+    iconSchema,
+    refSchema,
+  ]),
+);
 
 // --- variables & document ---------------------------------------------------
 
@@ -217,14 +250,15 @@ export const variableSchema = z.discriminatedUnion("type", [
 export const variablesSchema = z.record(z.string(), variableSchema);
 
 /** Current document format version; older documents go through `migrateDocument` first. */
-export const DOCUMENT_VERSION = 1;
+export const DOCUMENT_VERSION = 2;
 
 export const documentSchema = z.object({
   version: z.literal(DOCUMENT_VERSION),
   id: z.string().min(1),
   name: z.string(),
   variables: variablesSchema.default({}),
-  children: z.array(nodeSchema),
+  /** Pages, in order. A document always has at least one. */
+  children: z.array(pageSchema).min(1),
 });
 
 export type Variable = z.infer<typeof variableSchema>;

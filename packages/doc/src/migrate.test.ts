@@ -39,3 +39,17 @@ describe("loadDocument", () => {
     expect(loadDocument({ ...v0, version: 99 })).toBeNull();
   });
 });
+
+describe("version 2 (pages)", () => {
+  test("old top-level nodes become one page", () => {
+    const doc = loadDocument(v0);
+    expect(doc?.children).toHaveLength(1);
+    expect(doc?.children[0]).toMatchObject({ type: "page", id: "page-1", name: "Page 1" });
+    expect(doc?.children[0]?.children[0]).toMatchObject({ type: "ellipse", id: "e" });
+  });
+
+  test("the page id never clashes with an existing node id", () => {
+    const clash = { ...v0, version: 1, children: [{ type: "ellipse", id: "page-1" }] };
+    expect(loadDocument(clash)?.children[0]?.id).toBe("page-1-2");
+  });
+});
