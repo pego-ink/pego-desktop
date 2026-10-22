@@ -5,6 +5,9 @@ import { resumeAutoSave, retryAutoSave } from "./autosave-actions";
 import { isFileAutosaveSupported } from "./file-autosave";
 import { useAutosaveStore } from "./use-autosave-store";
 import { useFileStore, useIsDirty } from "./use-file-store";
+import { untitledLabel } from "./save-hint";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 const FADE_MS = 200;
 
@@ -29,8 +32,11 @@ const SR_TEXT = {
   offline: "Bridge offline, changes kept in this browser",
 } as const;
 
-/** Save state, shown as the muted subtitle under the file name. */
-export const AutosaveStatus = () => {
+/**
+ * Save state, shown as the muted subtitle under the file name (`compact`: inline beside it, in the
+ * desktop title row).
+ */
+export const AutosaveStatus = ({ compact = false }: { compact?: boolean }) => {
   const status = useAutosaveStore((s) => s.status);
   const enabled = useAutosaveStore((s) => s.enabled);
   const handle = useFileStore((s) => s.handle);
@@ -107,7 +113,7 @@ export const AutosaveStatus = () => {
       ) : null}
       {untitled ? (
         <span aria-hidden className="truncate">
-          Not saved to a file — ⌘S to save
+          {untitledLabel(compact, isMac)}
         </span>
       ) : null}
     </span>
