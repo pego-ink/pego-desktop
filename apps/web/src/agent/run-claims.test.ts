@@ -30,6 +30,12 @@ describe("parentMap / claimTargets", () => {
     expect(claimTargets(move, sampleDoc)).toEqual(["rect-1"]);
   });
 
+  test("pages are never claimed", () => {
+    const rename: Op = { op: "update", id: "page-1", props: { name: "Home" } } as Op;
+    expect(claimTargets(rename, sampleDoc)).toEqual([]);
+    expect(claimTargets(rect("top", "page-1"), sampleDoc)).toEqual(["top"]);
+  });
+
   test("a delete claims the whole subtree", () => {
     expect(claimTargets({ op: "delete", id: "frame-1" }, sampleDoc).sort()).toEqual(
       ["frame-1", "rect-1", "text-1"].sort(),
