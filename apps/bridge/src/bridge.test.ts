@@ -109,11 +109,24 @@ const TEST_SKILL = {
   styles: [],
 };
 
+const TEST_STYLE = {
+  id: "test-style",
+  title: "Test style",
+  description: "A style for tests",
+  keywords: [],
+  content: "Style body.",
+  checklist: [],
+  styles: [],
+  category: "style" as const,
+};
+
 beforeAll(() => {
   agentTools.push(ECHO_TOOL);
-  skills.push(TEST_SKILL);
+  skills.push(TEST_SKILL, TEST_STYLE);
 });
 afterAll(() => {
+  const styleIndex = skills.indexOf(TEST_STYLE);
+  if (styleIndex >= 0) skills.splice(styleIndex, 1);
   const skillIndex = skills.indexOf(TEST_SKILL);
   if (skillIndex >= 0) skills.splice(skillIndex, 1);
   const index = agentTools.indexOf(ECHO_TOOL);
@@ -570,7 +583,14 @@ describe("MCP surface (images, resources, prompts)", () => {
       uri: "pego://skills/test-skill",
       name: "test-skill",
       title: "Test skill",
-      description: "A skill for tests",
+      description: "A skill for tests [design]",
+      mimeType: "text/markdown",
+    });
+    expect(list).toContainEqual({
+      uri: "pego://skills/test-style",
+      name: "test-style",
+      title: "Test style",
+      description: "A style for tests [style]",
       mimeType: "text/markdown",
     });
     expect(list.some((r: { uri: string }) => r.uri === "pego://document")).toBe(true);
@@ -620,6 +640,34 @@ describe("MCP surface (images, resources, prompts)", () => {
     for (const tool of ["get_skill", "batch_design", "get_screenshot", "check_layout"]) {
       expect(text).toContain(tool);
     }
+    expect(text).not.toContain("Style:");
+
+    const styled = await rpc(bridge, "prompts/get", {
+      name: "design_screen",
+      arguments: { kind: "landing-page", brief: "coffee shop", style: "test-style" },
+    });
+    const styledText = styled.result.messages[0].content.text as string;
+    expect(styledText).toContain("Style: test-style");
+    expect(styledText).toContain('get_skill for "test-style"');
+    for (const style of ["test-skill", "nope"]) {
+      expect(
+        (
+          await rpc(bridge, "prompts/get", {
+            name: "design_screen",
+            arguments: { kind: "landing-page", brief: "b", style },
+          })
+        ).error,
+      ).toBeDefined();
+    }
+    const listed = (await rpc(bridge, "prompts/list")).result.prompts.find(
+      (p: { name: string }) => p.name === "design_screen",
+    );
+    expect(listed.arguments.map((a: { name: string }) => a.name)).toEqual([
+      "kind",
+      "brief",
+      "style",
+    ]);
+
     const polish = await rpc(bridge, "prompts/get", { name: "polish_selection" });
     expect(polish.result.messages[0].content.text).toContain("get_selection");
     const extract = await rpc(bridge, "prompts/get", { name: "extract_components" });

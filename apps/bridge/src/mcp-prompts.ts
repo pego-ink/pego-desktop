@@ -1,3 +1,4 @@
+import { findSkill } from "@pego/agent";
 import type { GetPromptResult, Prompt } from "@modelcontextprotocol/sdk/types.js";
 
 const KINDS = ["web-app", "mobile-app", "landing-page", "dashboard"] as const;
@@ -24,6 +25,12 @@ export const pegoPrompts: Prompt[] = [
         description: "What the screen is for and what it must contain",
         required: true,
       },
+      {
+        name: "style",
+        description:
+          'Optional style skill id (e.g. "bauhaus"): drives typography, color and composition. See the pego://skills resources marked [style].',
+        required: false,
+      },
     ],
   },
   {
@@ -43,14 +50,14 @@ const user = (text: string): GetPromptResult["messages"][number] => ({
   content: { type: "text", text },
 });
 
-const designScreen = (kind: Kind, brief: string): string =>
+const designScreen = (kind: Kind, brief: string, style?: string): string =>
   `Design a ${kind} screen in Pego.
 
 Brief: ${brief}
-
+${style ? `Style: ${style}\n` : ""}
 Work in this order:
-1. Call get_skill for "core" (it applies to every design) and for "${kind}", and follow their rules. Note their checklists.
-2. Call list_styles, pick the style that fits the brief, then call get_style for its tokens. Apply them as variables, not hard-coded values.
+1. Call get_skill for "core" (it applies to every design) and for "${kind}", and follow their rules. Note their checklists.${style ? `\n   Also call get_skill for "${style}": it drives typography, color and composition while "${kind}" drives structure.` : ""}
+2. Call list_styles, pick the style preset that fits the brief${style ? ` and the "${style}" skill` : ""}, then call get_style for its tokens. Apply them as variables, not hard-coded values.
 3. Call find_empty_space to choose a spot on the canvas that overlaps nothing, then build the screen with batch_design: one frame per screen, auto-layout everywhere, real copy instead of lorem ipsum.
 4. When a part repeats (cards, list rows, nav items), call create_component once and create_instance for each use.
 5. Call get_screenshot of the finished frame, then check_layout. Fix every problem you find with batch_design and look again until it is clean, then go through the skills' checklists and fix what fails.
@@ -87,7 +94,17 @@ export const getPegoPrompt = (
     if (brief.length > MAX_PROMPT_BRIEF_CHARS) {
       throw new Error(`"brief" is too long (max ${MAX_PROMPT_BRIEF_CHARS} characters)`);
     }
-    return { description: `Design a ${kind} screen`, messages: [user(designScreen(kind, brief))] };
+    const styleId = args?.style?.trim();
+    if (styleId) {
+      const skill = findSkill(styleId);
+      if (skill?.category !== "style") {
+        throw new Error(`"style" must be the id of a style skill (see the [style] resources)`);
+      }
+    }
+    return {
+      description: `Design a ${kind} screen`,
+      messages: [user(designScreen(kind, brief, styleId ? findSkill(styleId)?.id : undefined))],
+    };
   }
   if (name === "polish_selection") {
     return { description: "Polish the selection", messages: [user(POLISH)] };

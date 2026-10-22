@@ -12,7 +12,13 @@ import { runApiAgent, type MessagesClient } from "./api-runtime";
 import { getActiveRun } from "./active-run";
 import { startLocalAgentRun } from "./local-agent-run";
 import { startRun } from "./run";
-import { resolveRunSkills, skillLogLines, skillPromptPrefix, skillsBlock } from "./run-skills";
+import {
+  resolveRunSkills,
+  setRunStyleId,
+  skillLogLines,
+  skillPromptPrefix,
+  skillsBlock,
+} from "./run-skills";
 import { resetStores } from "./test-utils";
 import { createToolHost } from "./tool-host";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
@@ -32,12 +38,15 @@ const FAKES = [
   fake("fake-core", "Fake core", { core: true }),
   fake("fake-landing", "Fake landing", { keywords: ["zzfoo"] }),
   fake("fake-dash", "Fake dash", { keywords: ["zzbar"] }),
+  fake("fakehaus", "Fakehaus", { category: "style" }),
+  fake("fakeswiss", "Fakeswiss", { category: "style" }),
 ];
 
 let added: Skill[] = [];
 beforeEach(() => {
   resetStores();
-  useAgentStore.getState().set({ selectedSkillId: undefined });
+  useAgentStore.getState().set({ selectedSkillId: undefined, selectedStyleId: undefined });
+  setRunStyleId(undefined);
   added = [...FAKES];
   skills.unshift(...added);
 });
@@ -65,6 +74,36 @@ describe("resolveRunSkills", () => {
     expect(resolveRunSkills("x", "nope").map((s) => s.id)).toEqual(["fake-core"]);
   });
 
+  test("auto picks design and style together", () => {
+    expect(resolveRunSkills("buat zzfoo page gaya fakehaus").map((s) => s.id)).toEqual([
+      "fake-core",
+      "fake-landing",
+      "fakehaus",
+    ]);
+    // a style name alone gives a style without a design skill
+    expect(resolveRunSkills("qqq fakeswiss").map((s) => s.id)).toEqual(["fake-core", "fakeswiss"]);
+  });
+
+  test("explicit style: string wins, null drops the auto style, wrong category ignored", () => {
+    const run = (design: string | null | undefined, style: string | null | undefined) =>
+      resolveRunSkills("zzfoo fakehaus", design, style).map((s) => s.id);
+    expect(run(undefined, "fakeswiss")).toEqual(["fake-core", "fake-landing", "fakeswiss"]);
+    expect(run(undefined, null)).toEqual(["fake-core", "fake-landing"]);
+    expect(run(null, null)).toEqual(["fake-core"]);
+    expect(run("fake-dash", undefined)).toEqual(["fake-core", "fake-dash", "fakehaus"]);
+    expect(run("fakehaus", undefined)).toEqual(["fake-core", "fakehaus"]);
+    expect(run(undefined, "fake-dash")).toEqual(["fake-core", "fake-landing"]);
+  });
+
+  test("the run's pending style applies when no argument is passed", () => {
+    setRunStyleId("fakeswiss");
+    expect(resolveRunSkills("zzfoo fakehaus").map((s) => s.id)).toEqual([
+      "fake-core",
+      "fake-landing",
+      "fakeswiss",
+    ]);
+  });
+
   test("the core skill is never listed twice", () => {
     expect(resolveRunSkills("x", "fake-core").map((s) => s.id)).toEqual(["fake-core"]);
   });
@@ -81,6 +120,12 @@ describe("skill text helpers", () => {
     );
     expect(skillLogLines(picked)).toEqual(["Using skill: Fake landing"]);
     expect(skillLogLines([FAKES[0] as Skill])).toEqual(["Using skill: Fake core"]);
+    const both = resolveRunSkills("zzfoo fakehaus");
+    expect(skillPromptPrefix(both)).toStartWith(
+      "Use Pego skills: fake-core, fake-landing, fakehaus (call get_skill).",
+    );
+    expect(skillLogLines(both)).toEqual(["Using skill: Fake landing", "Using style: Fakehaus"]);
+    expect(skillsBlock(both)).toContain("RULES-fakehaus");
     expect(skillsBlock([])).toBe("");
     expect(skillPromptPrefix([])).toBe("");
   });
@@ -222,5 +267,14 @@ describe("manual skill choice lasts one run", () => {
     await startRun("buat zzfoo page");
     expect(state().selectedSkillId).toBeUndefined();
     expect(getActiveRun()).toBeNull(); // bridge is down: the run failed before starting
+  });
+
+  test("startRun clears selectedStyleId and hands it to the run", async () => {
+    state().set({ backend: "local", bridge: emptyBridge() });
+    state().setSelectedStyle("fakeswiss");
+    useAgentStore.getState().set({ status: "idle" });
+    await startRun("buat zzfoo page");
+    expect(state().selectedStyleId).toBeUndefined();
+    expect(state().log.some((e) => e.text === "Using style: Fakeswiss")).toBe(true);
   });
 });

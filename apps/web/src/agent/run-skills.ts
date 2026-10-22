@@ -1,24 +1,58 @@
-import { coreSkill, findSkill, skillToMarkdown, suggestSkills, type Skill } from "@pego/agent";
+import {
+  coreSkill,
+  findSkill,
+  skillToMarkdown,
+  suggestSkills,
+  suggestStyle,
+  type Skill,
+} from "@pego/agent";
 
 /**
- * Which skills apply to a run. `selectedId`: undefined = auto-detect from the prompt, null =
- * none beyond core, string = that skill. The core skill (if any) always comes first.
+ * Explicit style choice of the run being started (undefined = auto, null = none). `startRun`
+ * sets it right after clearing the store, so runtimes that only receive `skillId` still honor it.
  */
-export const resolveRunSkills = (prompt: string, selectedId?: string | null): Skill[] => {
-  const core = coreSkill();
-  const chosen =
-    selectedId === undefined
-      ? suggestSkills(prompt, { limit: 1 })
-      : selectedId === null
-        ? []
-        : [findSkill(selectedId)].filter((skill): skill is Skill => skill !== undefined);
-  return [...(core ? [core] : []), ...chosen.filter((skill) => skill.id !== core?.id)];
+let runStyleId: string | null | undefined;
+export const setRunStyleId = (styleId: string | null | undefined): void => {
+  runStyleId = styleId;
 };
 
-/** Run-log line(s): one per chosen skill, or the core skill when it is the only one. */
+const pickById = (id: string, category: "design" | "style"): Skill | undefined => {
+  const skill = findSkill(id);
+  return skill && !skill.core && (skill.category ?? "design") === category ? skill : undefined;
+};
+
+/**
+ * Which skills apply to a run: [core, design?, style?]. `selectedId` (design) and
+ * `selectedStyleId`: undefined = auto-detect from the prompt, null = none, string = that skill.
+ * An id of the wrong category is ignored. The core skill always comes first.
+ */
+export const resolveRunSkills = (
+  prompt: string,
+  selectedId?: string | null,
+  selectedStyleId: string | null | undefined = runStyleId,
+): Skill[] => {
+  const core = coreSkill();
+  const design =
+    selectedId === undefined
+      ? suggestSkills(prompt, { limit: 1 })[0]
+      : selectedId === null
+        ? undefined
+        : pickById(selectedId, "design");
+  const style =
+    selectedStyleId === undefined
+      ? suggestStyle(prompt)
+      : selectedStyleId === null
+        ? undefined
+        : pickById(selectedStyleId, "style");
+  return [...(core ? [core] : []), ...(design ? [design] : []), ...(style ? [style] : [])];
+};
+
+/** Run-log line(s): one per chosen skill ("Using style:" for a style), or the core skill when it is the only one. */
 export const skillLogLines = (skills: Skill[]): string[] => {
   const chosen = skills.filter((skill) => !skill.core);
-  return (chosen.length > 0 ? chosen : skills).map((skill) => `Using skill: ${skill.title}`);
+  return (chosen.length > 0 ? chosen : skills).map(
+    (skill) => `Using ${skill.category === "style" ? "style" : "skill"}: ${skill.title}`,
+  );
 };
 
 /**

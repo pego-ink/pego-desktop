@@ -17,7 +17,7 @@ export const listPegoResources = (): Resource[] => [
     uri: `${SKILL_PREFIX}${skill.id}`,
     name: skill.id,
     title: skill.title,
-    description: skill.description,
+    description: `${skill.description} [${skill.core ? "core" : (skill.category ?? "design")}]`,
     mimeType: "text/markdown",
   })),
 ];

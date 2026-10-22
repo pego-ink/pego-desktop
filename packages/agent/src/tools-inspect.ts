@@ -354,6 +354,7 @@ const skillSummary = (skill: Skill) => ({
   id: skill.id,
   title: skill.title,
   description: skill.description,
+  category: skill.core ? "core" : (skill.category ?? "design"),
   styles: skill.styles,
   ...(skill.core ? { core: true } : {}),
 });
@@ -374,11 +375,29 @@ const unknownSkill = (what: string, name: string): ToolError =>
 const listSkills = defineTool({
   name: "list_skills",
   description:
-    "List the Pego design skills (id, title, description, suggested style ids). The core skill applies to every design; pick the skill that matches the kind of design, then call get_skill for it before building.",
-  inputSchema: { type: "object", properties: {}, additionalProperties: false },
-  schema: z.strictObject({}),
-  inputHint: "No input.",
-  run: () => ok({ skills: skills.map(skillSummary) }),
+    "List the Pego skills (id, title, category, description, suggested style ids). Categories: core (applies to every design), design (the kind of design: landing page, dashboard...) and style (a visual language such as Bauhaus or Swiss: typography, color, composition). Pass category to filter. Pick the design skill for the structure and, when the request names a style, the style skill; then call get_skill for them before building.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      category: {
+        type: "string",
+        enum: ["design", "style"],
+        description: "Only list skills of this category.",
+      },
+    },
+    additionalProperties: false,
+  },
+  schema: z.strictObject({ category: z.enum(["design", "style"]).optional() }),
+  inputHint: 'Optional {category: "design" | "style"}.',
+  run: (input) =>
+    ok({
+      skills: skills
+        .filter(
+          (skill) =>
+            !input.category || (!skill.core && (skill.category ?? "design") === input.category),
+        )
+        .map(skillSummary),
+    }),
 });
 
 const getSkill = defineTool({

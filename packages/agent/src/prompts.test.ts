@@ -48,6 +48,14 @@ describe("prompts teach the workflow", () => {
     }
   });
 
+  test("every prompt carries the one-style rule", () => {
+    for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
+      expect(prompt).toContain("also load that style skill");
+      expect(prompt).toContain("drive typography, color and composition");
+      expect(prompt).toContain("never mix several movements unless asked");
+    }
+  });
+
   test("every prompt carries the match-the-user's-language rule", () => {
     for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
       expect(prompt).toContain("Detect the language of the user's request");

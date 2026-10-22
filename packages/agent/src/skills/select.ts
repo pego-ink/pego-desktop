@@ -61,20 +61,46 @@ const scoreSkill = (promptWords: readonly string[], skill: Skill): number => {
   return score;
 };
 
-/**
- * Rank non-core skills for a prompt by keyword/phrase matching (English and Indonesian,
- * case- and diacritic-insensitive, whole words, simple stemming). Returns [] when nothing
- * matches. Ties keep registry order.
- */
-export const suggestSkills = (prompt: string, options: SuggestOptions = {}): Skill[] => {
-  const { limit = DEFAULT_LIMIT, skills = registry } = options;
-  const promptWords = stemmed(prompt);
-  if (promptWords.length === 0 || limit <= 0) return [];
-  return skills
-    .filter((skill) => !skill.core)
+/** True for design skills (category undefined or "design"); style skills are ranked apart. */
+export const isDesignSkill = (skill: Skill): boolean =>
+  !skill.core && (skill.category ?? "design") === "design";
+
+/** True for style skills (visual languages such as Bauhaus). */
+export const isStyleSkill = (skill: Skill): boolean => skill.category === "style";
+
+const rank = (promptWords: readonly string[], pool: readonly Skill[], limit: number): Skill[] =>
+  pool
     .map((skill, index) => ({ skill, index, score: scoreSkill(promptWords, skill) }))
     .filter((entry) => entry.score > 0)
     .sort((a, b) => b.score - a.score || a.index - b.index)
     .slice(0, limit)
     .map((entry) => entry.skill);
+
+/**
+ * Rank design skills (never core, never styles) for a prompt by keyword/phrase matching
+ * (English and Indonesian, case- and diacritic-insensitive, whole words, simple stemming).
+ * Returns [] when nothing matches. Ties keep registry order.
+ */
+export const suggestSkills = (prompt: string, options: SuggestOptions = {}): Skill[] => {
+  const { limit = DEFAULT_LIMIT, skills = registry } = options;
+  const promptWords = stemmed(prompt);
+  if (promptWords.length === 0 || limit <= 0) return [];
+  return rank(promptWords, skills.filter(isDesignSkill), limit);
+};
+
+/**
+ * Best style skill named in the prompt (movement name or one of the style's keywords, EN and
+ * ID, e.g. "gaya swiss", "ala bauhaus", "neubrutalism"), or undefined. A style is never picked
+ * unless one of its own keywords appears, so a prompt with no movement named gets none.
+ */
+export const suggestStyle = (
+  prompt: string,
+  options: Pick<SuggestOptions, "skills"> = {},
+): Skill | undefined => {
+  const { skills = registry } = options;
+  const promptWords = stemmed(prompt);
+  if (promptWords.length === 0) return undefined;
+  const pool = skills.filter(isStyleSkill);
+  const [best] = rank(promptWords, pool, 1);
+  return best;
 };

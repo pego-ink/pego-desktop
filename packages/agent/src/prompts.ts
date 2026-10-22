@@ -17,10 +17,13 @@ Variables hold colors, numbers and strings. Reference one as $name in a color, n
 
 Components: a node with reusable: true is a component. A ref node (ref: the component's id) is an instance of it. Instances follow later changes to the component, and the \`descendants\` prop overrides props of nodes inside it, keyed by their id in the component, for example {"label": {"content": "Buy"}}. Build UI that repeats (buttons, cards, list items, nav items) as one component plus instances.`;
 
+const STYLE_RULE =
+  "When the request names a visual style or design movement, also load that style skill (list_skills with category style shows them) and let it drive typography, color and composition while the design skill drives structure; when no style is named, choose a fitting style preset, and never mix several movements unless asked.";
+
 const WORKING_RULES = `## How to work
 
 1. Look first. If the user says "this", "here" or "these", call get_selection to see what they mean. Call get_document (rootId and maxDepth keep it small on big documents) and use the existing ids, names, variables and components. Match the style already in the document.
-2. Load the skills. The core skill applies to every design. Call get_skill for it and for the skill that matches the kind of design (list_skills shows them; the request context may name one), before building something new, and follow the skills' guidance and rules. If the request already includes a skill's text, do not fetch it again. Run each skill's checklist before you report done. With no brand or existing variables, call list_styles, pick one with get_style and pass its variables to set_variables. With existing variables, reuse them. Use $variables for every color, radius and spacing value.
+2. Load the skills. The core skill applies to every design. Call get_skill for it and for the skill that matches the kind of design (list_skills shows them; the request context may name one), before building something new, and follow the skills' guidance and rules. If the request already includes a skill's text, do not fetch it again. Run each skill's checklist before you report done. ${STYLE_RULE} With no brand or existing variables, call list_styles, pick one with get_style and pass its variables to set_variables. With existing variables, reuse them. Use $variables for every color, radius and spacing value.
 3. Build one section at a time with batch_design: nest frames with layout, gap, padding and fill_container or fit_content instead of computing x and y, and use aliases so later operations in the batch refer to nodes created earlier. Build repeated UI (buttons, cards, rows, nav items) once with create_component, then use create_instance and set_instance_overrides; detach_instance only when a copy must diverge, copy_nodes to duplicate a subtree. insert_nodes, update_node, replace_node, move_node, delete_nodes and apply_ops cover single edits.
 4. Place every new top-level frame with find_empty_space (nearNodeId and direction put a screen beside the previous one); never guess coordinates. Take icon names from search_icons.
 5. Verify each section right after you build it: get_screenshot of the section, then check_layout with its nodeId. Look at the picture for hierarchy, spacing, alignment and legibility, fix every error and warning with update_node (edit in place, do not delete and rebuild), and check again. Run check_layout on the whole document at the end.
@@ -55,7 +58,7 @@ Guidelines:
 - Reuse what the document already has. Plan reusable components for repeated UI.
 - Use the current document, provided with the request, to decide what exists and what must be created.
 - For a new design, make step one the foundation: read the skills the request context names (or the one that fits, via get_skill), then pick a style (list_styles, get_style) or reuse the document's variables, and set_variables. Then components, then one step per section or screen. Each section step ends with get_screenshot and check_layout, and a fix if they show problems. If the request refers to "this" or the selection, tell the executor to start with get_selection.
-- The request may include design skills (guidance and a checklist). Plan so the design follows them, and copy the rules a step depends on into its detail.
+- The request may include design skills (guidance and a checklist). Plan so the design follows them, and copy the rules a step depends on into its detail. ${STYLE_RULE}
 - Say in each step which part of the canvas it works on, so the executor can place new top-level frames with find_empty_space.`;
 
 /** Executor (in-browser API runtime): carries out one plan step with the document tools. */

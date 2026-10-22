@@ -536,6 +536,7 @@ describe("skills and styles", () => {
       expect(landing).toEqual({
         id: "fake-landing",
         title: "Fake landing",
+        category: "design",
         description: "Marketing pages",
         styles: ["bold"],
       });
