@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef, useState } from "react";
 import { AlertCircleIcon, ChevronRightIcon, InfoIcon, WrenchIcon } from "lucide-react";
+import { Markdown } from "@pego/ui/components/markdown";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore, type AgentLogEntry } from "@/agent/use-agent-store";
@@ -83,7 +84,9 @@ const Entry = ({ entry }: { entry: AgentLogEntry }) => {
       );
     case "assistant":
       return (
-        <li className="px-1 text-xs leading-4 whitespace-pre-wrap text-foreground">{entry.text}</li>
+        <li className="px-1 text-foreground">
+          <Markdown text={entry.text} />
+        </li>
       );
     case "error":
       return (
