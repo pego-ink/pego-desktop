@@ -266,7 +266,10 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
 // ---- app singleton -------------------------------------------------------------------------
 
 let client: BridgeClient | null = null;
-const handlers = createBridgeHandlers({ send: (message) => client?.send(message) ?? false });
+// Created on first use, not at import: the handlers' modules import this one back.
+let handlerSet: ReturnType<typeof createBridgeHandlers> | null = null;
+const handlers = () =>
+  (handlerSet ??= createBridgeHandlers({ send: (message) => client?.send(message) ?? false }));
 
 const REQUEST_TIMEOUT_MS = 15_000;
 const OFFLINE =
@@ -363,9 +366,9 @@ export const startBridgeConnection = (): (() => void) => {
   if (!client) {
     client = createBridgeClient({
       onMessage: (message) => {
-        if (!settleRequest(message)) void handlers.handleMessage(message);
+        if (!settleRequest(message)) void handlers().handleMessage(message);
       },
-      onClosed: handlers.handleClosed,
+      onClosed: () => handlers().handleClosed(),
       onRejected: (reason) =>
         useAgentStore.setState((state) => ({
           bridge: { ...state.bridge, rejectedReason: reason },

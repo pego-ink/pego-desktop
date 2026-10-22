@@ -9,22 +9,16 @@ import {
   type ToolImage,
   type ToolSpec,
 } from "@pego/agent";
-import {
-  listTabsForBridge,
-  loadDocumentFromBridge,
-  markSavedFromBridge,
-  openProjectForBridge,
-  snapshotDocumentForBridge,
-  switchTabForBridge,
-} from "@/persistence/bridge-documents";
 import { pickDefaultAgent } from "./agent-prefs";
-import {
-  createBackgroundToolHost,
-  ensureProjectLoaded,
-  markBackgroundSaved,
-  snapshotBackground,
-} from "./background-host";
 import type { AgentToolHost } from "./tool-host";
+
+// Loaded on first use: both reach back to bridge-client (requests, saving), which creates these
+// handlers, so static imports here would form an import cycle.
+const loadBridgeDocuments = () => import("@/persistence/bridge-documents");
+const loadBackgroundHost = () => import("./background-host");
+type BackgroundHostModule = Awaited<ReturnType<typeof loadBackgroundHost>>;
+
+const EDITOR_OP_NAMES: ReadonlySet<string> = new Set(Object.values(EDITOR_OPS));
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
 import { createToolHost } from "./tool-host";
@@ -91,7 +85,11 @@ export const createBridgeHandlers = ({
   const backgroundHosts = new Map<string, { host: AgentToolHost; lastCallAt: number }>();
 
   /** The background host of a project; a pause in its calls starts a new undo step. */
-  const backgroundHostFor = (projectId: string, projectName: string): AgentToolHost => {
+  const backgroundHostFor = (
+    projectId: string,
+    projectName: string,
+    { createBackgroundToolHost }: BackgroundHostModule,
+  ): AgentToolHost => {
     const at = now();
     let entry = backgroundHosts.get(projectId);
     if (!entry) {
@@ -119,12 +117,13 @@ export const createBridgeHandlers = ({
       });
 
     // A call naming a project works on that project, shown or not (it is loaded if needed).
-    let background: { id: string; name: string } | null = null;
+    let background: { id: string; name: string; module: BackgroundHostModule } | null = null;
     if (message.target && message.source.kind === "mcp") {
       const { project } = message.target;
       try {
-        if ((await ensureProjectLoaded(project)) === "background") {
-          background = { id: project.id, name: project.name };
+        const module = await loadBackgroundHost();
+        if ((await module.ensureProjectLoaded(project)) === "background") {
+          background = { id: project.id, name: project.name, module };
         }
       } catch (error) {
         return void reply(
@@ -135,33 +134,36 @@ export const createBridgeHandlers = ({
     }
 
     // The bridge's file tools: not agent tools, handled by the persistence layer.
-    if (message.tool === EDITOR_OPS.loadDocument) {
-      const outcome = loadDocumentFromBridge(message.input);
-      if (!outcome.isError)
-        agent().appendLog({ kind: "info", text: outcome.content.split("\n")[0]! });
-      return void reply(outcome.content, outcome.isError);
-    }
-    if (message.tool === EDITOR_OPS.snapshotDocument) {
-      const outcome = background ? snapshotBackground(background.id) : snapshotDocumentForBridge();
-      return void reply(outcome.content, outcome.isError);
-    }
-    if (message.tool === EDITOR_OPS.openProject) {
-      const outcome = await openProjectForBridge(message.input);
-      if (!outcome.isError) agent().appendLog({ kind: "info", text: outcome.content });
-      return void reply(outcome.content, outcome.isError);
-    }
-    if (message.tool === EDITOR_OPS.listTabs) {
-      const outcome = listTabsForBridge();
-      return void reply(outcome.content, outcome.isError);
-    }
-    if (message.tool === EDITOR_OPS.switchTab) {
-      const outcome = switchTabForBridge(message.input);
-      return void reply(outcome.content, outcome.isError);
-    }
-    if (message.tool === EDITOR_OPS.markSaved) {
+    if (EDITOR_OP_NAMES.has(message.tool)) {
+      const docs = await loadBridgeDocuments();
+      if (message.tool === EDITOR_OPS.loadDocument) {
+        const outcome = docs.loadDocumentFromBridge(message.input);
+        if (!outcome.isError)
+          agent().appendLog({ kind: "info", text: outcome.content.split("\n")[0]! });
+        return void reply(outcome.content, outcome.isError);
+      }
+      if (message.tool === EDITOR_OPS.snapshotDocument) {
+        const outcome = background
+          ? background.module.snapshotBackground(background.id)
+          : docs.snapshotDocumentForBridge();
+        return void reply(outcome.content, outcome.isError);
+      }
+      if (message.tool === EDITOR_OPS.openProject) {
+        const outcome = await docs.openProjectForBridge(message.input);
+        if (!outcome.isError) agent().appendLog({ kind: "info", text: outcome.content });
+        return void reply(outcome.content, outcome.isError);
+      }
+      if (message.tool === EDITOR_OPS.listTabs) {
+        const outcome = docs.listTabsForBridge();
+        return void reply(outcome.content, outcome.isError);
+      }
+      if (message.tool === EDITOR_OPS.switchTab) {
+        const outcome = docs.switchTabForBridge(message.input);
+        return void reply(outcome.content, outcome.isError);
+      }
       const outcome = background
-        ? markBackgroundSaved(background.id, message.input)
-        : markSavedFromBridge(message.input);
+        ? background.module.markBackgroundSaved(background.id, message.input)
+        : docs.markSavedFromBridge(message.input);
       return void reply(outcome.content, outcome.isError);
     }
 
@@ -177,7 +179,7 @@ export const createBridgeHandlers = ({
       }
       host = active.host;
     } else if (source.kind === "mcp" && background) {
-      host = backgroundHostFor(background.id, background.name);
+      host = backgroundHostFor(background.id, background.name, background.module);
     } else if (source.kind === "mcp") {
       const at = now();
       if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) mcpHost.newGroup();
