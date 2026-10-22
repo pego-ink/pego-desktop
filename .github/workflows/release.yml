@@ -1,7 +1,9 @@
 name: Release
 
 # Push a tag like v0.1.0 (must equal apps/desktop/package.json version). The job builds, signs,
-# notarizes and attaches the DMGs/zips to a DRAFT release. Publish it manually afterwards.
+# notarizes and attaches the DMGs, zips, blockmaps and latest-mac.yml to a DRAFT release in this
+# (public) repo. The in-app updater reads PUBLISHED releases only, so publishing the draft
+# (`gh release edit vX.Y.Z --draft=false`) is what ships the update. Uses the built-in GITHUB_TOKEN.
 on:
   push:
     tags: ["v*"]
@@ -94,11 +96,24 @@ jobs:
             echo "NOTARIZED OK: ${dmg} (Developer ID, stapled, Gatekeeper accepts)"
           done
 
+      - name: Check update feed files
+        working-directory: apps/desktop/release
+        run: |
+          for f in latest-mac.yml Pego-*-arm64.zip Pego-*-x64.zip; do
+            [ -s "${f}" ] || { echo "::error::missing ${f}"; exit 1; }
+          done
+          for arch in arm64 x64; do
+            grep -q "url: Pego-${VERSION}-${arch}.zip" latest-mac.yml || {
+              echo "::error::latest-mac.yml has no ${arch} zip entry"; exit 1; }
+          done
+          grep -q "^version: ${VERSION}$" latest-mac.yml || { echo "::error::latest-mac.yml version mismatch"; exit 1; }
+
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          # Versions with a pre-release suffix (e.g. 0.0.1-beta) are marked as pre-releases.
+          # Versions with a pre-release suffix (e.g. 0.0.1-beta) are marked as pre-releases. The
+          # updater accepts them when the installed app is itself a -beta build (see README).
           prerelease=()
           case "${VERSION}" in *-*) prerelease=(--prerelease) ;; esac
           gh release create "${TAG}" \
@@ -108,5 +123,8 @@ jobs:
             --title "${TAG}" \
             --generate-notes \
             apps/desktop/release/Pego-*.dmg \
-            apps/desktop/release/Pego-*.zip
-          echo "Draft release ${TAG} created. Review it, then publish: gh release edit ${TAG} --draft=false"
+            apps/desktop/release/Pego-*.dmg.blockmap \
+            apps/desktop/release/Pego-*.zip \
+            apps/desktop/release/Pego-*.zip.blockmap \
+            apps/desktop/release/latest-mac.yml
+          echo "Draft release ${TAG} created. Review it, then publish to ship the update: gh release edit ${TAG} --draft=false"
