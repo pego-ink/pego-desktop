@@ -22,7 +22,7 @@ const zoomToFit = () => {
 };
 const zoomToSelection = () => {
   const { doc, selection } = useDocumentStore.getState();
-  useViewportStore.getState().zoomToFit(selectionBounds(getLayout(doc), selection));
+  useViewportStore.getState().zoomToFit(selectionBounds(getLayout(doc), selection, doc));
 };
 
 type MenuAction = { label: string; shortcut?: string; run: () => void; needsSelection?: boolean };

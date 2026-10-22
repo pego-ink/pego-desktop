@@ -1,5 +1,6 @@
 import { describe, expect, test } from "bun:test";
-import type { Layout } from "@pego/doc";
+import type { Layout, PegoDocument } from "@pego/doc";
+import { getLayout } from "@/canvas/layout";
 import { formatZoomPercent, selectionBounds } from "./zoom-utils";
 
 const layout: Layout = new Map([
@@ -15,6 +16,31 @@ describe("selectionBounds", () => {
     expect(selectionBounds(layout, ["a", "zz"])).toEqual({ x: 0, y: 0, width: 10, height: 10 });
     expect(selectionBounds(layout, [])).toBeNull();
     expect(selectionBounds(layout, ["zz"])).toBeNull();
+  });
+  test("with the document, a rotated node counts with its rotated outline", () => {
+    const doc = {
+      version: 3,
+      id: "d",
+      name: "d",
+      variables: {},
+      children: [
+        {
+          type: "page",
+          id: "p",
+          name: "Page 1",
+          x: 0,
+          y: 0,
+          children: [
+            { type: "rectangle", id: "r", x: 0, y: 0, width: 100, height: 20, rotation: 90 },
+          ],
+        },
+      ],
+    } as unknown as PegoDocument;
+    const box = selectionBounds(getLayout(doc), ["r"], doc)!;
+    expect(box.width).toBeCloseTo(20);
+    expect(box.height).toBeCloseTo(100);
+    // Without the document only the unrotated layout box is known.
+    expect(selectionBounds(getLayout(doc), ["r"])).toEqual({ x: 0, y: 0, width: 100, height: 20 });
   });
 });
 

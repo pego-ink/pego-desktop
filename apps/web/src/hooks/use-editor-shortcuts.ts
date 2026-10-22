@@ -93,7 +93,7 @@ export const useEditorShortcuts = () => {
       }
       if (e.code === "Digit2" && e.shiftKey && !mod) {
         e.preventDefault();
-        viewport.zoomToFit(selectionBounds(getLayout(doc.doc), doc.selection));
+        viewport.zoomToFit(selectionBounds(getLayout(doc.doc), doc.selection, doc.doc));
         return;
       }
       if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {
