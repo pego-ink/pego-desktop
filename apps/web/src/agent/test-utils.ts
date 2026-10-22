@@ -2,6 +2,7 @@ import { sampleDoc, type Op } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { cancelPendingDecisions } from "./decisions";
 import { setActiveRun, setRunTail } from "./active-run";
+import { emptySession } from "./sessions/session-model";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
 
 /** Fresh document + agent state for each test. */
@@ -10,6 +11,7 @@ export const resetStores = () => {
   setActiveRun(null);
   setRunTail(null);
   useDocumentStore.getState().load(sampleDoc);
+  useAgentStore.getState().loadSession(emptySession());
   useAgentStore.getState().beginRun("run-test", "prompt");
   useAgentStore.getState().set({
     status: "running",

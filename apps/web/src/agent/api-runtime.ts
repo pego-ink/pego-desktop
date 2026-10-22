@@ -17,6 +17,7 @@ import { RunCancelledError } from "./decisions";
 import type { AgentToolHost } from "./tool-host";
 import { toUsageDelta } from "./usage";
 import { resolveRunSkills, skillLogLines, skillsBlock } from "./run-skills";
+import { promptWithHistory } from "./sessions/session-context";
 import { useAgentStore } from "./use-agent-store";
 
 type BetaMessage = Anthropic.Beta.BetaMessage;
@@ -165,6 +166,8 @@ type RuntimeContext = {
   skillId?: string | null;
   /** Images the user attached; sent as image blocks before the text in planner and step turns. */
   attachments?: readonly RunAttachment[];
+  /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
+  history?: string;
 };
 
 const agent = () => useAgentStore.getState();
@@ -557,13 +560,15 @@ export const runApiAgent = async (prompt: string, base: RuntimeContext): Promise
       kind: "info",
       text: ctx.provider ? `Planning with ${plannerModel(ctx)}` : "Planning with Claude Opus 5.5",
     });
-    const steps = await requestPlan(ctx, prompt);
+    // Skills above follow the user's own words; the model also gets the session memory.
+    const request = promptWithHistory(prompt, ctx.history);
+    const steps = await requestPlan(ctx, request);
     ctx.host.reportPlan(steps);
     agent().set({ status: "running" });
 
     for (const [index, step] of steps.entries()) {
       cancelIfAborted(ctx.signal);
-      const outcome = await executeStep(ctx, prompt, steps, step);
+      const outcome = await executeStep(ctx, request, steps, step);
       const current = agent().steps.find((s) => s.id === step.id);
       // The model usually reports its own step; fill in when it did not (or left it running).
       const reported = current?.status === "done" || current?.status === "failed";

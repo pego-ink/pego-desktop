@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { startSessionSync } from "@/agent/sessions/session-sync";
 import { useBridgeConnection } from "@/agent/use-bridge-connection";
 import { EditorShell } from "@/components/EditorShell";
 import { UpdateNotice } from "@/desktop/UpdateNotice";
@@ -12,6 +13,7 @@ export const App = () => {
   useBridgeConnection();
   useDocumentFonts();
   useEffect(startUpdateStatus, []);
+  useEffect(startSessionSync, []);
   return (
     <>
       <EditorShell />

@@ -13,6 +13,7 @@ import { attachmentNote, openAiImageParts } from "../attachments";
 import { AgentRunError, describeApiError, isAbortError } from "../api-errors";
 import { RunCancelledError } from "../decisions";
 import { resolveRunSkills, skillLogLines, skillsBlock } from "../run-skills";
+import { promptWithHistory } from "../sessions/session-context";
 import type { AgentToolHost } from "../tool-host";
 import { useAgentStore } from "../use-agent-store";
 import type { CustomProvider } from "./types";
@@ -26,6 +27,8 @@ export type OpenAiRunContext = {
   skillId?: string | null;
   /** Images the user attached; sent as `image_url` parts in the planner and first step turns. */
   attachments?: readonly RunAttachment[];
+  /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
+  history?: string;
 };
 
 /*
@@ -537,13 +540,15 @@ export const runOpenAiCompatibleAgent = async (
       kind: "info",
       text: `Planning with ${ctx.provider.plannerModel ?? ctx.provider.executorModel} (${ctx.provider.name})`,
     });
-    const steps = await requestPlan(state, prompt);
+    // Skills above follow the user's own words; the model also gets the session memory.
+    const request = promptWithHistory(prompt, ctx.history);
+    const steps = await requestPlan(state, request);
     ctx.host.reportPlan(steps);
     agent().set({ status: "running" });
 
     for (const [index, step] of steps.entries()) {
       cancelIfAborted(ctx.signal);
-      const outcome = await executeStep(state, prompt, steps, step);
+      const outcome = await executeStep(state, request, steps, step);
       const current = agent().steps.find((s) => s.id === step.id);
       // The model usually reports its own step; fill in when it did not (or left it running).
       const reported = current?.status === "done" || current?.status === "failed";

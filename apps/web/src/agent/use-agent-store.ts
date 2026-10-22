@@ -10,6 +10,13 @@ import {
 } from "@pego/agent";
 import { nextAttachmentId } from "@/agent/attachments";
 import {
+  emptySession,
+  settleStatus,
+  type AttachmentMeta,
+  type SessionState,
+  type SessionTurn,
+} from "@/agent/sessions/session-model";
+import {
   loadAgentPrefs,
   saveAgentPrefs,
   type AgentBackend,
@@ -33,6 +40,8 @@ export type AgentLogEntry = {
   tool?: { name: string; isError: boolean };
   /** Images the user attached (user entries only). */
   attachments?: RunAttachment[];
+  /** Name and size of images attached in a restored session (the image data is not stored). */
+  attachmentsMeta?: AttachmentMeta[];
 };
 
 export type BridgeStatus = {
@@ -82,6 +91,13 @@ type AgentState = {
   selectedStyleId: string | null | undefined;
   /** Images attached in the composer for the next run; moved into the run on send. Never persisted. */
   pendingAttachments: RunAttachment[];
+  /** Chat session shown in the panel (see agent/sessions). Runs append turns to it. */
+  sessionId: string;
+  sessionCreatedAt: number;
+  /** User-typed session title; null = derived from the first prompt. */
+  sessionTitle: string | null;
+  /** Finished turns of the session, oldest first. The run fields below are the latest turn. */
+  turns: SessionTurn[];
   /** Who runs the current/last run, e.g. "Codex · gpt-5" (shown in the run header). */
   runLabel: string | null;
   status: RunStatus;
@@ -116,7 +132,13 @@ type AgentActions = {
   setModel: (agentId: LocalAgentId, model: string | undefined) => void;
   /** Re-read persisted preferences (done once at store creation). */
   restorePrefs: () => void;
-  /** Reset run fields for a new run (keeps backend and bridge status). */
+  /** Show another session (restored, new or empty); resets the latest-run fields. */
+  loadSession: (session: SessionState) => void;
+  setSessionTitle: (title: string | null) => void;
+  /**
+   * Start a new run in the current session: the previous run becomes a turn of the session and
+   * the run fields reset (keeps backend and bridge status).
+   */
   beginRun: (runId: string, prompt: string) => void;
   setPlan: (steps: PlanStep[]) => void;
   setStepStatus: (stepId: string, status: StepStatus, summary?: string) => void;
@@ -137,6 +159,40 @@ const idleRun = {
   runLabel: null,
 };
 
+/** The latest run as a turn, or null when nothing has run since the session was opened. */
+export const currentTurn = (
+  state: Pick<AgentState, "runId" | "status" | "runLabel" | "log" | "usage">,
+): SessionTurn | null =>
+  state.runId === null || state.log.length === 0
+    ? null
+    : {
+        runId: state.runId,
+        status: settleStatus(state.status),
+        runLabel: state.runLabel,
+        log: state.log,
+        usage: state.usage,
+      };
+
+type TurnSource = Parameters<typeof currentTurn>[0] & Pick<AgentState, "turns">;
+
+/** All turns of the live session, oldest first, including the latest run. */
+export const sessionTurns = (state: TurnSource): SessionTurn[] => {
+  const latest = currentTurn(state);
+  return latest ? [...state.turns, latest] : state.turns;
+};
+
+/** The live session as plain data (for titles, storage and the prompt history). */
+export const sessionOf = (
+  state: TurnSource & Pick<AgentState, "sessionId" | "sessionCreatedAt" | "sessionTitle">,
+): SessionState => ({
+  id: state.sessionId,
+  createdAt: state.sessionCreatedAt,
+  customTitle: state.sessionTitle,
+  turns: sessionTurns(state),
+});
+
+const initialSession = emptySession();
+
 const prefsOf = (state: AgentPrefs): AgentPrefs => ({
   backend: state.backend,
   localAgentId: state.localAgentId,
@@ -147,11 +203,17 @@ const prefsOf = (state: AgentPrefs): AgentPrefs => ({
 
 let logSeq = 0;
 
+export type AgentStoreState = AgentState & AgentActions;
+
 const createAgentStore = () =>
   create<AgentState & AgentActions>((set, get) => {
     const persist = () => saveAgentPrefs(prefsOf(get()));
     return {
       ...idleRun,
+      sessionId: initialSession.id,
+      sessionCreatedAt: initialSession.createdAt,
+      sessionTitle: null,
+      turns: [],
       ...loadAgentPrefs(),
       modelsByAgent: {},
       agentsRefreshing: false,
@@ -201,7 +263,26 @@ const createAgentStore = () =>
         persist();
       },
       restorePrefs: () => set(loadAgentPrefs()),
-      beginRun: (runId, prompt) => set({ ...idleRun, runId, prompt, status: "planning" }),
+      loadSession: (session) =>
+        set({
+          ...idleRun,
+          sessionId: session.id,
+          sessionCreatedAt: session.createdAt,
+          sessionTitle: session.customTitle,
+          turns: session.turns,
+        }),
+      setSessionTitle: (sessionTitle) => set({ sessionTitle }),
+      beginRun: (runId, prompt) =>
+        set((state) => {
+          const previous = currentTurn(state);
+          return {
+            ...idleRun,
+            turns: previous ? [...state.turns, previous] : state.turns,
+            runId,
+            prompt,
+            status: "planning",
+          };
+        }),
       setPlan: (steps) => set({ steps: steps.map((step) => ({ ...step, status: "pending" })) }),
       setStepStatus: (stepId, status, summary) =>
         set((state) => ({

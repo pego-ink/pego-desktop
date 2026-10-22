@@ -2,6 +2,7 @@ import type { EditorToBridge, RunAttachment } from "@pego/agent";
 import { attachmentNote } from "./attachments";
 import { sendToBridge, startBridgeConnection } from "./bridge-client";
 import { setActiveRun, setRunTail } from "./active-run";
+import { promptWithHistory } from "./sessions/session-context";
 import { findAgentInfo, LOCAL_AGENT_NAMES } from "./local-agents";
 import { resolveRunSkills, skillLogLines, skillPromptPrefix } from "./run-skills";
 import { createToolHost } from "./tool-host";
@@ -42,7 +43,12 @@ export const startLocalAgentRun = async (
   send: (message: EditorToBridge) => boolean = sendToBridge,
   /** Explicit skill for this run: undefined = auto-detect from the prompt, null = core only. */
   skillId?: string | null,
-  options: { bridgeWaitMs?: number; attachments?: readonly RunAttachment[] } = {},
+  options: {
+    bridgeWaitMs?: number;
+    attachments?: readonly RunAttachment[];
+    /** Session memory block (see sessions/session-context); the log keeps only the user's text. */
+    history?: string;
+  } = {},
 ): Promise<void> => {
   const attachments = options.attachments ?? [];
   const waitMs = options.bridgeWaitMs ?? localRunConfig.bridgeWaitMs;
@@ -68,7 +74,8 @@ export const startLocalAgentRun = async (
   const prefix = [skillPromptPrefix(skills), attachmentNote(attachments)]
     .filter(Boolean)
     .join("\n\n");
-  const agentPrompt = prefix ? `${prefix}\n\n${prompt}` : prompt;
+  const request = promptWithHistory(prompt, options.history);
+  const agentPrompt = prefix ? `${prefix}\n\n${request}` : request;
 
   const fail = (text: string) => {
     agent.appendLog({ kind: "error", text });

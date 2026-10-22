@@ -9,8 +9,9 @@ import { isLocalBaseUrl } from "./provider-url";
 import { listCustomProviders, loadProviderKey } from "./providers/store";
 import { runOpenAiCompatibleAgent } from "./providers/openai-runtime";
 import { setRunStyleId } from "./run-skills";
+import { buildHistoryBlock } from "./sessions/session-context";
 import { createToolHost } from "./tool-host";
-import { useAgentStore } from "./use-agent-store";
+import { sessionTurns, useAgentStore } from "./use-agent-store";
 
 /**
  * Agent run entry points used by the agent panel. Dispatches on `useAgentStore().backend`:
@@ -52,6 +53,7 @@ export const startCustomRun = async (
   skillId: string | null | undefined,
   deps: CustomRunDeps = defaultCustomDeps,
   attachments: readonly RunAttachment[] = [],
+  history = "",
 ): Promise<void> => {
   const agent = useAgentStore.getState();
   agent.beginRun(runId, text);
@@ -91,6 +93,7 @@ export const startCustomRun = async (
         signal: controller.signal,
         skillId,
         attachments,
+        history,
       });
     } else {
       await deps.runAnthropic(text, {
@@ -107,6 +110,7 @@ export const startCustomRun = async (
         signal: controller.signal,
         skillId,
         attachments,
+        history,
       });
     }
   } finally {
@@ -119,6 +123,8 @@ export const startRun = async (prompt: string): Promise<void> => {
 
   const agent = useAgentStore.getState();
   const runId = crypto.randomUUID();
+  // Memory of this session, read before `beginRun` moves the previous run into the transcript.
+  const history = buildHistoryBlock(sessionTurns(agent));
   // A manual skill choice applies to this run only; the next one goes back to auto.
   const skillId = agent.selectedSkillId;
   if (skillId !== undefined) agent.setSelectedSkill(undefined);
@@ -130,12 +136,12 @@ export const startRun = async (prompt: string): Promise<void> => {
   if (attachments.length > 0) agent.clearAttachments();
 
   if (agent.backend === "local") {
-    await startLocalAgentRun(runId, text, undefined, skillId, { attachments });
+    await startLocalAgentRun(runId, text, undefined, skillId, { attachments, history });
     return;
   }
 
   if (agent.backend === "custom") {
-    await startCustomRun(runId, text, skillId, undefined, attachments);
+    await startCustomRun(runId, text, skillId, undefined, attachments, history);
     return;
   }
 
@@ -164,6 +170,7 @@ export const startRun = async (prompt: string): Promise<void> => {
       signal: controller.signal,
       skillId,
       attachments,
+      history,
     });
   } finally {
     if (getActiveRun()?.id === runId) setActiveRun(null);
