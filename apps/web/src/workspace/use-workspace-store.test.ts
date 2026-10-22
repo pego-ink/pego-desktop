@@ -1,10 +1,10 @@
 /// <reference types="bun" />
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
-import { resetTabs } from "@/tabs/test-reset";
+import { resetTabs, restoreConfirm, stubConfirm } from "@/tabs/test-reset";
 import { openTab, tabTitle, useTabsStore } from "@/tabs/use-tabs-store";
 import {
   activateWorkspace,
@@ -29,9 +29,9 @@ beforeEach(() => {
     liveId: SCRATCH_ID,
     view: "dashboard",
   });
-  (globalThis as { window?: unknown }).window ??= {};
-  (globalThis.window as { confirm: () => boolean }).confirm = () => true;
+  stubConfirm(() => true);
 });
+afterEach(restoreConfirm);
 
 describe("workspaces", () => {
   test("opening a project gives it its own document tabs; switching back restores scratch", () => {
@@ -82,10 +82,10 @@ describe("workspaces", () => {
     openTab({ ...sampleDoc, name: "Pay" }, { fileName: "pay.pego" }, { saved: false });
     const workspace = useWorkspaceStore.getState().workspaces[1]!;
     expect(workspaceIsDirty(workspace)).toBe(true);
-    (globalThis.window as { confirm: () => boolean }).confirm = () => false;
+    stubConfirm(() => false);
     closeWorkspace("chk00001");
     expect(useWorkspaceStore.getState().workspaces).toHaveLength(2);
-    (globalThis.window as { confirm: () => boolean }).confirm = () => true;
+    stubConfirm(() => true);
     closeWorkspace("chk00001");
     expect(useWorkspaceStore.getState()).toMatchObject({ liveId: SCRATCH_ID, view: "dashboard" });
     expect(useWorkspaceStore.getState().workspaces.map((w) => w.id)).toEqual([SCRATCH_ID]);

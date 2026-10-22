@@ -35,9 +35,11 @@ beforeEach(() => {
   storage = memoryStorage();
   Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
   resetStores();
+  // Other suites pick a custom provider; start every test without one.
   useAgentStore.setState({
     backend: "api",
     localAgentId: "claude-code",
+    customProviderId: null,
     modelByAgent: {},
     modelsByAgent: {},
   });
