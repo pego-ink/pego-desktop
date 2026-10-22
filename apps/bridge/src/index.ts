@@ -2,7 +2,22 @@ import { configFromEnv } from "./config";
 import { startBridge } from "./server";
 
 const config = configFromEnv(process.env);
-const bridge = startBridge(config);
+
+const isAddressInUse = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  (error as { code?: unknown }).code === "EADDRINUSE";
+
+let bridge: ReturnType<typeof startBridge>;
+try {
+  bridge = startBridge(config);
+} catch (error) {
+  if (!isAddressInUse(error)) throw error;
+  // Another bridge (the desktop app or a second `bun run dev`) already serves this port; the
+  // editor connects to whichever one is listening, so there is nothing to do here.
+  config.log(`A Pego bridge is already running on 127.0.0.1:${config.port}; using that one.`);
+  process.exit(0);
+}
 
 config.log(`Pego bridge listening on http://127.0.0.1:${bridge.port}`);
 config.log("");

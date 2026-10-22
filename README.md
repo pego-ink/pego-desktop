@@ -24,8 +24,9 @@ bun install
 bun run dev
 ```
 
-Open http://localhost:5173. This also starts `apps/api` (Hono on Workers via wrangler), which the editor does not
-need; to run only the editor: `bun run --cwd apps/web dev`.
+Open http://localhost:5173. This starts the editor and the local bridge (`127.0.0.1:4519`), so local agents are
+detected automatically. If a bridge is already running (for example the desktop app), the second one exits and the
+editor uses the running one.
 
 Documents autosave in the browser (IndexedDB). Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files on disk.
 
@@ -35,18 +36,15 @@ Open the **Agent** tab (top left), then pick a backend:
 
 - **API key**: click _Add key_ and paste an Anthropic API key. It stays in this browser and is sent only to
   `api.anthropic.com`. Opus 5.5 plans, Sonnet 5.5 executes each step.
-- **Claude Code (local)**: start the bridge in a second terminal, then send a prompt. Runs use your Claude Code login,
-  no API key.
-
-  ```bash
-  bun run bridge
-  ```
+- **Local agents** (default): Claude Code, Codex, opencode, Qwen Code, Gemini CLI and Cursor Agent, detected
+  automatically through the bridge that `bun run dev` starts. Each runs with your own login for that CLI, no API key.
+  Pick the agent and model in the panel; ⚙ opens the Agents overview.
 
 Every agent step is one undo step; _Undo all_ reverts a whole run.
 
 ## Drive Pego from Claude Code in a terminal (MCP)
 
-With the editor open and `bun run bridge` running, register Pego's MCP server once:
+With the editor open (`bun run dev` or the desktop app), register Pego's MCP server once:
 
 ```bash
 claude mcp add --transport http pego http://127.0.0.1:4519/mcp

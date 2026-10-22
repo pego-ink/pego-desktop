@@ -120,52 +120,65 @@ const prefsOf = (state: AgentPrefs): AgentPrefs => ({
 
 let logSeq = 0;
 
-export const useAgentStore = create<AgentState & AgentActions>((set, get) => {
-  const persist = () => saveAgentPrefs(prefsOf(get()));
-  return {
-    ...idleRun,
-    ...loadAgentPrefs(),
-    modelsByAgent: {},
-    agentsRefreshing: false,
-    bridge: emptyBridge(),
+const createAgentStore = () =>
+  create<AgentState & AgentActions>((set, get) => {
+    const persist = () => saveAgentPrefs(prefsOf(get()));
+    return {
+      ...idleRun,
+      ...loadAgentPrefs(),
+      modelsByAgent: {},
+      agentsRefreshing: false,
+      bridge: emptyBridge(),
 
-    set: (patch) => set(patch),
-    setBackend: (backend) => {
-      set({ backend, explicit: true });
-      persist();
-    },
-    setLocalAgent: (localAgentId) => {
-      set({ localAgentId, explicit: true });
-      persist();
-    },
-    setModel: (agentId, model) => {
-      const next = { ...get().modelByAgent };
-      const value = model?.trim();
-      if (value) next[agentId] = value;
-      else delete next[agentId];
-      set({ modelByAgent: next });
-      persist();
-    },
-    restorePrefs: () => set(loadAgentPrefs()),
-    beginRun: (runId, prompt) => set({ ...idleRun, runId, prompt, status: "planning" }),
-    setPlan: (steps) => set({ steps: steps.map((step) => ({ ...step, status: "pending" })) }),
-    setStepStatus: (stepId, status, summary) =>
-      set((state) => ({
-        steps: state.steps.map((step) =>
-          step.id === stepId ? { ...step, status, summary: summary ?? step.summary } : step,
-        ),
-      })),
-    appendLog: (entry) =>
-      set((state) => ({
-        log: [...state.log, { ...entry, id: `log-${++logSeq}`, at: Date.now() }],
-      })),
-    addUsage: (usage) =>
-      set((state) => ({
-        usage: {
-          inputTokens: state.usage.inputTokens + usage.inputTokens,
-          outputTokens: state.usage.outputTokens + usage.outputTokens,
-          costUsd: state.usage.costUsd + (usage.costUsd ?? 0),
-        },
-      })),
-  };
-});
+      set: (patch) => set(patch),
+      setBackend: (backend) => {
+        set({ backend, explicit: true });
+        persist();
+      },
+      setLocalAgent: (localAgentId) => {
+        set({ localAgentId, explicit: true });
+        persist();
+      },
+      setModel: (agentId, model) => {
+        const next = { ...get().modelByAgent };
+        const value = model?.trim();
+        if (value) next[agentId] = value;
+        else delete next[agentId];
+        set({ modelByAgent: next });
+        persist();
+      },
+      restorePrefs: () => set(loadAgentPrefs()),
+      beginRun: (runId, prompt) => set({ ...idleRun, runId, prompt, status: "planning" }),
+      setPlan: (steps) => set({ steps: steps.map((step) => ({ ...step, status: "pending" })) }),
+      setStepStatus: (stepId, status, summary) =>
+        set((state) => ({
+          steps: state.steps.map((step) =>
+            step.id === stepId ? { ...step, status, summary: summary ?? step.summary } : step,
+          ),
+        })),
+      appendLog: (entry) =>
+        set((state) => ({
+          log: [...state.log, { ...entry, id: `log-${++logSeq}`, at: Date.now() }],
+        })),
+      addUsage: (usage) =>
+        set((state) => ({
+          usage: {
+            inputTokens: state.usage.inputTokens + usage.inputTokens,
+            outputTokens: state.usage.outputTokens + usage.outputTokens,
+            costUsd: state.usage.costUsd + (usage.costUsd ?? 0),
+          },
+        })),
+    };
+  });
+
+/**
+ * Dev hot reload re-runs this module; keep the same store instance so the live bridge
+ * connection (which writes into it) and the panel never drift apart.
+ */
+export const useAgentStore: ReturnType<typeof createAgentStore> =
+  (import.meta.hot?.data.agentStore as ReturnType<typeof createAgentStore> | undefined) ??
+  createAgentStore();
+
+if (import.meta.hot) {
+  import.meta.hot.data.agentStore = useAgentStore;
+}

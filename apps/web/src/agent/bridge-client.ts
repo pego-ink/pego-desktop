@@ -215,6 +215,13 @@ export const sendToBridge = (message: EditorToBridge): boolean => client?.send(m
  * the app shell, normally through `useBridgeConnection()`. Idempotent; returns a stop function
  * that disconnects and stops reconnecting.
  */
+// Dev hot reload re-runs this module with a fresh `client`; close the old socket first so
+// only one connection per page talks to the bridge.
+import.meta.hot?.dispose(() => {
+  client?.stop();
+  client = null;
+});
+
 export const startBridgeConnection = (): (() => void) => {
   if (!client) {
     client = createBridgeClient({

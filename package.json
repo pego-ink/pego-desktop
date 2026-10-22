@@ -7,7 +7,7 @@
     "packages/*"
   ],
   "scripts": {
-    "dev": "bun run --parallel --filter '@pego/web' --filter '@pego/api' dev",
+    "dev": "bun run --parallel --filter '@pego/web' --filter '@pego/bridge' dev",
     "build": "bun run --filter '*' build",
     "bridge": "bun run --cwd apps/bridge start",
     "typecheck": "bun run --filter '*' typecheck",
