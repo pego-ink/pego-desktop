@@ -1,3 +1,5 @@
+<img src="design/logo/pego-mark.svg" alt="Pego" width="64" height="64">
+
 # Pego
 
 AI-native design editor. Skia (CanvasKit) canvas, local-first `.pego` files, and an agent that edits the

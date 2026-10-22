@@ -75,3 +75,17 @@ their blockmaps and `latest-mac.yml` using the built-in `GITHUB_TOKEN` (`content
 - Test the UI without a release: `PEGO_FAKE_UPDATE=1 bun run desktop:dev` replays checking, available, downloading and
   ready over a few seconds (3s after launch, and again on "check for updates"). `installUpdate` is a no-op there.
 - Test the real path: build version X, install it, publish a release of X+1 and wait for the notice (or relaunch).
+
+## App icon
+
+`build/icon.svg` is the source (Pego mark on the macOS 1024px icon grid). Regenerate `build/icon.icns` after
+changing it:
+
+```bash
+mkdir -p /tmp/pego.iconset
+for s in 16 32 128 256 512; do
+  rsvg-convert -w $s -h $s build/icon.svg -o /tmp/pego.iconset/icon_${s}x${s}.png
+  rsvg-convert -w $((s*2)) -h $((s*2)) build/icon.svg -o /tmp/pego.iconset/icon_${s}x${s}@2x.png
+done
+iconutil -c icns /tmp/pego.iconset -o build/icon.icns
+```
