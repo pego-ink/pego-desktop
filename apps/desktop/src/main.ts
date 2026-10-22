@@ -1,4 +1,4 @@
-import { app, BrowserWindow, session, shell } from "electron";
+import { app, BrowserWindow, nativeTheme, session, shell } from "electron";
 import { join } from "node:path";
 import { APP_ORIGIN, APP_URL } from "@/constants";
 import { startBridge, stopBridge } from "@/bridge";
@@ -6,6 +6,8 @@ import { installMenu } from "@/menu";
 import { registerAppProtocol, registerAppScheme } from "@/protocol";
 import { registerUpdateIpc } from "@/update-ipc";
 import { VERSION_ARG } from "@/update-status";
+import { windowChromeOptions } from "@/window-chrome";
+import { forwardFullScreen, registerWindowIpc } from "@/window-ipc";
 
 // Dev: `desktop:dev` points this at the Vite server. Anything else loads the built web app.
 const devUrl = process.env.PEGO_DEV_URL;
@@ -41,6 +43,7 @@ const createWindow = (): void => {
     show: false,
     backgroundColor: "#141418",
     title: "Pego",
+    ...windowChromeOptions(process.platform),
     webPreferences: {
       preload: join(app.getAppPath(), "dist", "preload.cjs"),
       contextIsolation: true,
@@ -53,6 +56,7 @@ const createWindow = (): void => {
     },
   });
   mainWindow = win;
+  forwardFullScreen(win);
   win.once("ready-to-show", () => win.show());
   win.on("closed", () => {
     if (mainWindow === win) mainWindow = null;
@@ -106,11 +110,14 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     app.setName("Pego");
+    // The editor is dark only; keep native dialogs, menus and the traffic lights dark to match.
+    nativeTheme.themeSource = "dark";
     hardenSession();
     installMenu(isDev);
     if (!isDev) registerAppProtocol(webRoot());
     await startBridge();
     await registerUpdateIpc(appOrigin, () => mainWindow);
+    registerWindowIpc(appOrigin);
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

@@ -6,6 +6,7 @@ import {
   type UpdateStatus,
 } from "@/update-status";
 import { isMenuCommand, MENU_COMMAND_CHANNEL, type MenuCommand } from "@/menu-channels";
+import { WINDOW_CHANNELS } from "@/window-chrome";
 
 /**
  * Sandboxed preload. Exposes the `PegoDesktopApi` contract (apps/web/src/desktop/desktop-api.ts)
@@ -44,6 +45,26 @@ const onMenuCommand = (listener: (command: MenuCommand) => void): (() => void) =
   };
 };
 
+const onFullScreenChange = (listener: (fullScreen: boolean) => void): (() => void) => {
+  if (typeof listener !== "function") return () => {};
+  let active = true;
+  const handler = (_event: unknown, payload: unknown): void => {
+    if (active && typeof payload === "boolean") listener(payload);
+  };
+  ipcRenderer.on(WINDOW_CHANNELS.fullScreen, handler);
+  // Replay the current state: the window may already be in full screen.
+  void ipcRenderer.invoke(WINDOW_CHANNELS.getFullScreen).then(
+    (payload: unknown) => {
+      if (active && typeof payload === "boolean") listener(payload);
+    },
+    () => {},
+  );
+  return () => {
+    active = false;
+    ipcRenderer.removeListener(WINDOW_CHANNELS.fullScreen, handler);
+  };
+};
+
 contextBridge.exposeInMainWorld("pegoDesktop", {
   platform: process.platform,
   version,
@@ -51,4 +72,5 @@ contextBridge.exposeInMainWorld("pegoDesktop", {
   installUpdate: (): void => ipcRenderer.send(UPDATE_CHANNELS.install),
   onUpdateStatus,
   onMenuCommand,
+  onFullScreenChange,
 });

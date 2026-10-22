@@ -23,6 +23,11 @@ export type PegoDesktopApi = {
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
   /** Native menu commands the page handles itself (absent in older shells). */
   onMenuCommand?: (listener: (command: DesktopMenuCommand) => void) => () => void;
+  /**
+   * Subscribe to full screen changes (replays the current state); returns an unsubscribe
+   * function. Missing in desktop builds that still draw the native title bar.
+   */
+  onFullScreenChange?: (listener: (fullScreen: boolean) => void) => () => void;
 };
 
 export type DesktopMenuCommand = "select-all";

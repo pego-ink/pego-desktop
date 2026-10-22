@@ -16,6 +16,11 @@ import { ResizeHandle } from "@pego/ui/components/resize-handle";
 import { usePanelWidth } from "@/hooks/use-panel-width";
 import { cn } from "@pego/ui/lib/utils";
 import { FileMenu } from "@/persistence/FileMenu";
+import {
+  WINDOW_CONTROLS_GUTTER_CLASS,
+  WINDOW_DRAG_CLASS,
+  useWindowControlsInset,
+} from "@/desktop/window-controls";
 import { IconRail, railPanelId, railTabId } from "@/components/IconRail";
 import { RAIL_TABS, type RailTab } from "@/components/rail-state";
 import { ShowRightPanelButton, usePanelShortcut } from "@/layout/PanelToggles";
@@ -170,6 +175,7 @@ export const EditorShell = () => {
     }
     pressRailTab(tab);
   };
+  const windowControls = useWindowControlsInset();
 
   return (
     <div className="flex h-full bg-background text-foreground">
@@ -182,7 +188,16 @@ export const EditorShell = () => {
       />
       {dashboard ? null : <LeftColumn />}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
+        <header
+          className={cn(
+            "flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3",
+            // Without the side panel this row sits right of the rail, under the traffic lights.
+            windowControls && [
+              WINDOW_DRAG_CLASS,
+              (dashboard || !rail.open) && WINDOW_CONTROLS_GUTTER_CLASS,
+            ],
+          )}
+        >
           <div className="flex min-w-0 items-center gap-2">
             {dashboard ? null : <HistoryButtons />}
             {projects ? (
