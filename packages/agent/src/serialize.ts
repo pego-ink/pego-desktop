@@ -2,8 +2,11 @@ import {
   findLocation,
   isContainer,
   OpError,
+  type Effect,
+  type Fill,
   type PegoDocument,
   type PegoNode,
+  type Stroke,
   type Variables,
 } from "@pego/doc";
 
@@ -24,8 +27,26 @@ const fmt = (value: unknown): string => {
 
 const GEOMETRY_PREVIEW = 48;
 
-const fmtStroke = (stroke: { color: string; width: number | string }): string =>
-  `${fmt(stroke.color)}:${stroke.width}`;
+const fmtStroke = (stroke: Stroke): string =>
+  `${fmt(stroke.color)}:${Array.isArray(stroke.width) ? JSON.stringify(stroke.width) : stroke.width}`;
+
+/** Colors as tokens; gradients as `linear(180,#000 0,#fff 1)`; images by size only (data URIs are huge). */
+const fmtFill = (fill: Fill): string => {
+  if (typeof fill === "string") return fmt(fill);
+  if (fill.type === "image")
+    return `image(${fill.fit},${Math.round((fill.src.length * 3) / 4 / 1024)}KB)`;
+  const stops = fill.stops.map((stop) => `${stop.color} ${stop.position}`).join(",");
+  if (fill.type === "linear") return `linear(${fill.angle},${stops})`;
+  return `radial(${fill.center.join(" ")},${fill.radius.join(" ")},${stops})`;
+};
+
+/** `shadow(x,y,blur[,spread],color)`, `inner-shadow(...)` or `blur(radius)`, comma-free between effects. */
+const fmtEffect = (effect: Effect): string => {
+  if (effect.type === "blur") return `blur(${effect.radius})`;
+  const parts = [effect.x, effect.y, effect.blur];
+  if (effect.spread !== undefined) parts.push(effect.spread);
+  return `${effect.inner ? "inner-shadow" : "shadow"}(${[...parts, effect.color].join(",")})`;
+};
 
 /** Props in a fixed order. Defaults (x/y = 0, layout none, iconSet lucide) are omitted. */
 const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
@@ -43,8 +64,10 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
   push("height", n.height);
   push("rotation", n.rotation);
   push("opacity", n.opacity);
-  push("fill", n.fill);
-  if (n.stroke) tokens.push(`stroke=${fmtStroke(n.stroke as { color: string; width: number })}`);
+  if (n.fill !== undefined) tokens.push(`fill=${fmtFill(n.fill as Fill)}`);
+  if (n.stroke) tokens.push(`stroke=${fmtStroke(n.stroke as Stroke)}`);
+  const effects = n.effects as Effect[] | undefined;
+  if (effects && effects.length > 0) tokens.push(`effects=${effects.map(fmtEffect).join("+")}`);
   push("cornerRadius", n.cornerRadius);
   if (n.clip) push("clip", true);
   if (n.type === "frame") {
@@ -59,12 +82,15 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
     const cut = geometry.length > GEOMETRY_PREVIEW;
     const shown = cut ? `${geometry.slice(0, GEOMETRY_PREVIEW)}...` : geometry;
     tokens.push(`geometry=${JSON.stringify(shown)}${cut ? `(${geometry.length} chars)` : ""}`);
+    push("viewBox", n.viewBox);
   }
   if (n.type === "text") {
     tokens.push(`content=${JSON.stringify(n.content)}`);
     push("fontFamily", n.fontFamily);
     push("fontSize", n.fontSize);
     push("fontWeight", n.fontWeight);
+    push("lineHeight", n.lineHeight);
+    push("letterSpacing", n.letterSpacing);
     push("textAlign", n.textAlign);
   }
   if (n.type === "icon") {

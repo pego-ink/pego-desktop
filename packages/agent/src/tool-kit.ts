@@ -30,6 +30,9 @@ export const ok = (data: unknown): ToolResult => ({
   isError: false,
 });
 
+/** A plain-text result: documents and guides read better (and cost fewer tokens) unescaped. */
+export const okText = (content: string): ToolResult => ({ content, isError: false });
+
 export const fail = (code: string, message: string, hint?: string): ToolResult => ({
   content: JSON.stringify({ error: { code, message, ...(hint ? { hint } : {}) } }),
   isError: true,

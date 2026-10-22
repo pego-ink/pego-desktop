@@ -1,3 +1,4 @@
+import { toolAnnotations } from "./annotations";
 import { describe, expect, test } from "bun:test";
 import { findNode, type PegoDocument } from "@pego/doc";
 import { agentTools, coreTools, toolByName } from "./tools";
@@ -11,7 +12,13 @@ const call = async (name: string, input: unknown, host = createFakeHost()) => {
   const tool = toolByName(name);
   if (!tool) throw new Error(`no tool ${name}`);
   const result = await tool.run(input, host);
-  return { host, isError: result.isError, data: JSON.parse(result.content) as Json };
+  let data: Json;
+  try {
+    data = JSON.parse(result.content) as Json;
+  } catch {
+    data = {};
+  }
+  return { host, isError: result.isError, data, text: result.content };
 };
 
 describe("tool registry", () => {
@@ -45,15 +52,16 @@ describe("tool registry", () => {
 
 describe("get_document / get_node", () => {
   test("get_document returns serialized text", async () => {
-    const { data, isError } = await call("get_document", {});
+    const { text, isError } = await call("get_document", {});
     expect(isError).toBe(false);
-    expect(data.document).toContain("rectangle#rect-1");
+    expect(text).toStartWith("document ");
+    expect(text).toContain("rectangle#rect-1");
   });
 
   test("get_document supports rootId and maxDepth", async () => {
-    const { data } = await call("get_document", { rootId: "frame-1", maxDepth: 0 });
-    expect(data.document).toContain("(2 children not shown)");
-    expect(data.document).not.toContain("rect-1");
+    const { text } = await call("get_document", { rootId: "frame-1", maxDepth: 0 });
+    expect(text).toContain("(2 children not shown)");
+    expect(text).not.toContain("rect-1");
   });
 
   test("get_document unknown rootId errors with hint", async () => {
@@ -438,5 +446,24 @@ describe("report_plan / report_step / ask_user", () => {
     expect(one.data.error.code).toBe("invalid_input");
     const five = await call("ask_user", { question: "q", options: ["a", "b", "c", "d", "e"] });
     expect(five.data.error.code).toBe("invalid_input");
+  });
+});
+
+describe("tool annotations", () => {
+  test("every tool has a title and an explicit read-only/destructive classification", () => {
+    for (const tool of agentTools) {
+      const annotations = toolAnnotations(tool.name);
+      expect(annotations.title).not.toBe(tool.name);
+      expect(annotations.openWorldHint).toBe(false);
+    }
+    expect(toolAnnotations("get_document")).toMatchObject({ readOnlyHint: true });
+    expect(toolAnnotations("insert_nodes")).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+    });
+    expect(toolAnnotations("delete_nodes")).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+    });
   });
 });

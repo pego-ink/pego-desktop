@@ -1,20 +1,23 @@
 import type { JsonSchema } from "./types";
 
-const VARIABLE_PATTERN = "^\\$[A-Za-z_][\\w-]*$";
-const COLOR_PATTERN = "^(#([0-9a-fA-F]{3,4}|[0-9a-fA-F]{6}|[0-9a-fA-F]{8})|\\$[A-Za-z_][\\w-]*)$";
+// Compact on purpose: these schemas are repeated in several tools and sent with every request.
+// Exact formats live in NODE_FORMAT_DESCRIPTION; zod validates every input and its errors explain
+// what was wrong, so the JSON Schema only needs to steer the shape.
 
-const colorValue: JsonSchema = {
-  type: "string",
-  pattern: COLOR_PATTERN,
-  description: "Hex color (#rgb, #rrggbb, #rrggbbaa) or a $variable reference.",
-};
-const numberValue: JsonSchema = {
-  anyOf: [{ type: "number" }, { type: "string", pattern: VARIABLE_PATTERN }],
-  description: "Number or a $variable reference.",
+const colorValue: JsonSchema = { type: "string", description: "Hex color or $variable." };
+const numberValue: JsonSchema = { type: ["number", "string"] };
+const sides = (description: string): JsonSchema => ({
+  anyOf: [numberValue, { type: "array", items: numberValue, minItems: 4, maxItems: 4 }],
+  description,
+});
+const fillValue: JsonSchema = {
+  anyOf: [{ type: "string" }, { type: "object" }],
+  description:
+    "Hex color or $variable; shapes also take a gradient or image object (see node format).",
 };
 const sizing: JsonSchema = {
-  anyOf: [{ type: "number" }, { type: "string", enum: ["fill_container", "fit_content"] }],
-  description: "Pixels, or fill_container / fit_content.",
+  type: ["number", "string"],
+  description: "Pixels, fill_container or fit_content.",
 };
 
 /** Settable node props (everything except id, type and children). */
@@ -30,37 +33,40 @@ const nodePropSchemas: Record<string, JsonSchema> = {
     type: "boolean",
     description: "Marks this node as a component that ref nodes instantiate.",
   },
-  fill: colorValue,
+  fill: fillValue,
   stroke: {
     type: "object",
-    properties: { color: colorValue, width: numberValue },
+    properties: {
+      color: colorValue,
+      width: sides("One width or [top, right, bottom, left]; 0 hides a side."),
+    },
     required: ["color"],
-    additionalProperties: false,
+  },
+  effects: {
+    type: "array",
+    items: { type: "object" },
+    description: "Not on group or ref. Shadows and layer blur (see node format).",
   },
   cornerRadius: numberValue,
   clip: { type: "boolean" },
-  layout: { type: "string", enum: ["none", "horizontal", "vertical"], description: "Frame only." },
+  layout: { enum: ["none", "horizontal", "vertical"] },
   gap: numberValue,
-  padding: {
-    anyOf: [numberValue, { type: "array", items: numberValue, minItems: 4, maxItems: 4 }],
-    description: "Frame only. One value, or [top, right, bottom, left].",
-  },
-  justifyContent: {
-    type: "string",
-    enum: ["start", "center", "end", "space_between", "space_around"],
-    description: "Frame only. Main-axis distribution.",
-  },
-  alignItems: {
-    type: "string",
-    enum: ["start", "center", "end"],
-    description: "Frame only. Cross-axis alignment.",
-  },
+  padding: sides("Frame only. One value, or [top, right, bottom, left]."),
+  justifyContent: { enum: ["start", "center", "end", "space_between", "space_around"] },
+  alignItems: { enum: ["start", "center", "end"] },
   geometry: { type: "string", description: "Path only. SVG path data." },
+  viewBox: {
+    type: "array",
+    items: { type: "number" },
+    description: "Path only. [minX, minY, width, height]; scales the path to the node size.",
+  },
   content: { type: "string", description: "Text only. The text, or a $variable reference." },
   fontFamily: { type: "string", description: "Text only." },
   fontSize: numberValue,
   fontWeight: numberValue,
-  textAlign: { type: "string", enum: ["left", "center", "right"], description: "Text only." },
+  lineHeight: { ...numberValue, description: "Text only. Multiple of font size." },
+  letterSpacing: { ...numberValue, description: "Text only. px." },
+  textAlign: { enum: ["left", "center", "right"] },
   iconSet: { type: "string", description: "Icon only. Defaults to lucide." },
   iconName: { type: "string", description: "Icon only. Icon name in the set, e.g. arrow-right." },
   ref: { type: "string", description: "Ref only. Id of the reusable node to instantiate." },
@@ -75,10 +81,14 @@ const nodePropSchemas: Record<string, JsonSchema> = {
 export const NODE_FORMAT_DESCRIPTION =
   "A node object. `type` is required: frame | group | rectangle | ellipse | path | text | icon | ref. " +
   "`id` is optional (assigned when omitted). Only frame and group take `children` (same node format, nested). " +
-  "Other fields apply per type: frame (layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke), " +
-  "rectangle (cornerRadius, fill, stroke), ellipse (fill, stroke), path (geometry, fill, stroke), " +
-  "text (content, fontFamily, fontSize, fontWeight, textAlign, fill), icon (iconName, iconSet, fill), " +
-  "ref (ref, descendants). Colors are hex or $variable; sizes are pixels, fill_container or fit_content.";
+  "Other fields apply per type: frame (layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke, effects), " +
+  "rectangle (cornerRadius, fill, stroke, effects), ellipse (fill, stroke, effects), path (geometry, viewBox, fill, stroke, effects), " +
+  "text (content, fontFamily, fontSize, fontWeight, lineHeight, letterSpacing, textAlign, fill, effects), icon (iconName, iconSet, fill, effects), " +
+  "ref (ref, descendants). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
+  'Shape fill may be {"type":"linear","angle":180,"stops":[{"color","position":0..1}, ...]} (angle like CSS: 0 up, 90 right), ' +
+  '{"type":"radial","center":[0.5,0.5],"radius":[0.5,0.5],"stops":[...]} or {"type":"image","src":"data:image/...;base64,...","fit":"cover"|"contain"|"stretch"}. ' +
+  'stroke: {"color","width"} with width one number or [top,right,bottom,left]. ' +
+  'effects: [{"type":"shadow","color","x","y","blur","spread"?,"inner"?:true}, {"type":"blur","radius"}].';
 
 export const nodeJsonSchema: JsonSchema = {
   type: "object",

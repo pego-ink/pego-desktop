@@ -3,7 +3,7 @@ import { documentSchema, sampleDoc, type PegoDocument } from "@pego/doc";
 import { serializeDocument } from "./serialize";
 
 const doc: PegoDocument = documentSchema.parse({
-  version: 0,
+  version: 1,
   id: "d",
   name: "App",
   variables: { gap: { type: "number", value: 8 }, accent: { type: "color", value: "#0E7C5A" } },
@@ -102,5 +102,75 @@ describe("serializeDocument", () => {
     expect(compact).toBe(serializeDocument(sampleDoc));
     expect(compact.length).toBeLessThan(JSON.stringify(sampleDoc).length * 0.7);
     expect(compact).toContain('text#text-1 "Title" x=80 y=56 width=640');
+  });
+});
+
+describe("serializeDocument v1 props", () => {
+  const v1: PegoDocument = documentSchema.parse({
+    version: 1,
+    id: "d",
+    name: "Effects",
+    children: [
+      {
+        type: "frame",
+        id: "card",
+        stroke: { color: "#E5E7EB", width: [0, 0, 1, 0] },
+        effects: [
+          { type: "shadow", color: "#0000001F", y: 8, blur: 24 },
+          { type: "shadow", inner: true, color: "#FFFFFF", blur: 2, spread: 1 },
+          { type: "blur", radius: 4 },
+        ],
+        children: [
+          { type: "text", id: "t", content: "Hi", lineHeight: 1.5, letterSpacing: -0.2 },
+          { type: "path", id: "p", geometry: "M0 0L24 24", viewBox: [0, 0, 24, 24] },
+        ],
+      },
+    ],
+  });
+  const text = serializeDocument(v1);
+
+  test("shows per-side strokes and effects compactly", () => {
+    expect(text).toContain("stroke=#E5E7EB:[0,0,1,0]");
+    expect(text).toContain(
+      "effects=shadow(0,8,24,#0000001F)+inner-shadow(0,0,2,1,#FFFFFF)+blur(4)",
+    );
+  });
+
+  test("shows text spacing and path viewBox", () => {
+    expect(text).toContain("lineHeight=1.5 letterSpacing=-0.2");
+    expect(text).toContain("viewBox=[0,0,24,24]");
+  });
+});
+
+describe("serializeDocument fills", () => {
+  test("gradients inline, images by size", () => {
+    const text = serializeDocument(
+      documentSchema.parse({
+        version: 1,
+        id: "d",
+        name: "Fills",
+        children: [
+          {
+            type: "rectangle",
+            id: "g",
+            fill: {
+              type: "linear",
+              angle: 90,
+              stops: [
+                { color: "#000000", position: 0 },
+                { color: "$accent", position: 1 },
+              ],
+            },
+          },
+          {
+            type: "rectangle",
+            id: "i",
+            fill: { type: "image", src: `data:image/png;base64,${"A".repeat(4096)}` },
+          },
+        ],
+      }),
+    );
+    expect(text).toContain("fill=linear(90,#000000 0,$accent 1)");
+    expect(text).toContain("fill=image(cover,3KB)");
   });
 });

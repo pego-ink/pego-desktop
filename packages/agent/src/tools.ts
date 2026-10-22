@@ -25,6 +25,7 @@ import {
   idTree,
   NODE_HINT,
   ok,
+  okText,
   parseNode,
   ToolError,
 } from "./tool-kit";
@@ -71,7 +72,7 @@ const getDocument = defineTool({
   },
   schema: z.strictObject({ rootId: id.optional(), maxDepth: index.optional() }),
   inputHint: "Both fields are optional: {rootId?: string, maxDepth?: integer >= 0}.",
-  run: (input, host) => ok({ document: serializeDocument(host.getDoc(), input) }),
+  run: (input, host) => okText(serializeDocument(host.getDoc(), input)),
 });
 
 const getNode = defineTool({
