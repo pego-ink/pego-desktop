@@ -32,6 +32,8 @@ type DocumentState = {
   undo: () => void;
   redo: () => void;
   select: (ids: string[]) => void;
+  /** Replace the whole document (open file, restore autosave). Clears history and selection. */
+  load: (doc: PegoDocument) => void;
   setHovered: (id: string | null) => void;
 };
 
@@ -105,5 +107,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   select: (ids) => set({ selection: ids }),
+  load: (doc) => set({ doc, history: emptyHistory(), selection: [], hoveredId: null }),
   setHovered: (id) => set({ hoveredId: id }),
 }));

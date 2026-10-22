@@ -11,10 +11,9 @@ Agentic design tool (Figma alternative). Decisions made 2026-10-22.
 | Canvas | **Skia via CanvasKit WASM** (`canvaskit-wasm` 0.42.0, Ganesh on WebGL2), custom scene graph | Same engine as pen.dev (which ships its own Emscripten Skia build). Text via `skparagraph` (HarfBuzz + ICU), image decode and PNG/PDF export via Skia. Own document model; Skia only renders. Hit-testing, selection, transforms and flex layout are ours. Custom slim Skia build later if the ~7–10 MB WASM becomes a problem. |
 | Document / undo | **Single user, no CRDT (for now)** | Immutable document in Zustand + operation log (insert/update/replace/move/delete). Undo = inverse ops. Keep ops serializable so Yjs can replace the store later without touching the renderer or the agent. |
 | API + Agent | **Hono on Cloudflare Workers**, Anthropic Messages API tool loop | Plan with `claude-opus-5-5`, execute steps with `claude-sonnet-5-5`. Agent tools = the same document ops the UI uses. Stream plan/steps/ops to the client via SSE. |
-| Auth | Custom JWT | Access token in memory, refresh in httpOnly cookie |
-| DB | Supabase Postgres (Drizzle) | files, versions (op-log snapshots), agent runs |
-| Storage | Cloudflare R2 | images, exports |
-| Deploy | Cloudflare Workers (api) + Cloudflare Pages (web) | |
+| Persistence | **Local-first files** (decided 2026-10-22) | Documents are `.pego` files (JSON: `{ format: "pego", version, document }`, validated with the Zod schema) opened/saved via the File System Access API, download/upload fallback where unsupported. Autosave of the open document to IndexedDB so a refresh never loses work. No server, database or login for documents. |
+| Auth / DB / Storage | **Deferred** | Supabase Postgres (Drizzle), Cloudflare R2 and custom JWT only come back if cloud sync/sharing is added later. |
+| Deploy | Cloudflare Pages (web); Cloudflare Workers (api, agent only) | |
 | Desktop (later) | **Electron** wrapping `apps/web` as `apps/desktop` | Bundled Chromium = identical CanvasKit/WebGL2 rendering on every OS (Tauri's system webviews differ, WebKitGTK is weak). Same choice as Figma desktop and pen.dev. Web first; desktop not scaffolded yet. |
 | Lint/format | ESLint + Prettier | |
 | Tests | `bun test` | |
