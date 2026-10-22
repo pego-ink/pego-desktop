@@ -1,9 +1,24 @@
 import { useEffect, type RefObject } from "react";
-import { type Box, type PegoDocument } from "@pego/doc";
+import { createId, findNode, type Box, type Op, type PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { screenToDoc } from "@/canvas/types";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
+import { isDrawTool, useToolStore, type Tool } from "@/store/use-tool-store";
+import {
+  clickBox,
+  createLabel,
+  createNodeOp,
+  drawBox,
+  drawUpdateOps,
+  resolvePlacement,
+  toParentSpace,
+  type DrawTool,
+  type Placement,
+} from "@/interaction/create-node";
+import { applyAll, duplicateOps } from "@/interaction/duplicate";
+import { hitPath } from "@/interaction/hit-test";
 import { useInteractionState } from "@/interaction/interaction-state";
 import {
   drillTarget,
@@ -48,7 +63,20 @@ type Gesture =
       startBox: Box;
       started: boolean;
     }
-  | { kind: "marquee"; startDocX: number; startDocY: number; base: string[] };
+  | { kind: "marquee"; startDocX: number; startDocY: number; base: string[] }
+  | {
+      kind: "draw";
+      tool: DrawTool;
+      id: string;
+      startX: number;
+      startY: number;
+      start: { x: number; y: number };
+      placement: Placement;
+      started: boolean;
+    }
+  | { kind: "text"; placement: Placement; point: { x: number; y: number } };
+
+const setTool = (tool: Tool) => useToolStore.getState().setTool(tool);
 
 /** The single selected node's screen box, for handle hit-testing. */
 const selectedScreenBox = (): { id: string; box: Box } | null => {
@@ -98,8 +126,10 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
     const onPointerDown = (e: PointerEvent) => {
       const p = local(e);
       const state = useDocumentStore.getState();
+      const tool = useToolStore.getState().tool;
       const panRequested =
-        e.button === 1 || (e.button === 0 && useInteractionState.getState().spaceDown);
+        e.button === 1 ||
+        (e.button === 0 && (useInteractionState.getState().spaceDown || tool === "hand"));
       if (panRequested) {
         e.preventDefault();
         gesture = { kind: "pan", lastX: e.clientX, lastY: e.clientY };
@@ -108,7 +138,31 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         return;
       }
       if (e.button !== 0) return;
+      // While the text editor is open the overlay owns confirm-on-blur; no new gesture starts.
+      if (isTextEditing()) return;
       element.setPointerCapture(e.pointerId);
+
+      if (isDrawTool(tool) || tool === "text") {
+        const start = toDoc(p.x, p.y);
+        const placement = resolvePlacement(
+          state.doc,
+          getLayout(state.doc),
+          hitPath(state.doc, getLayout(state.doc), start.x, start.y),
+        );
+        gesture = isDrawTool(tool)
+          ? {
+              kind: "draw",
+              tool,
+              id: createId(),
+              startX: p.x,
+              startY: p.y,
+              start,
+              placement,
+              started: false,
+            }
+          : { kind: "text", placement, point: start };
+        return;
+      }
 
       const sel = selectedScreenBox();
       const handle = sel ? hitHandle(sel.box, p.x, p.y, HANDLE_HIT_RADIUS) : null;
@@ -163,6 +217,10 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
     };
 
     const updateHover = (e: PointerEvent) => {
+      if (useToolStore.getState().tool !== "select") {
+        if (useDocumentStore.getState().hoveredId) useDocumentStore.getState().setHovered(null);
+        return;
+      }
       const p = local(e);
       const state = useDocumentStore.getState();
       const sel = selectedScreenBox();
@@ -192,6 +250,32 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         return;
       }
 
+      if (gesture.kind === "text") return;
+
+      if (gesture.kind === "draw") {
+        if (
+          !gesture.started &&
+          Math.hypot(p.x - gesture.startX, p.y - gesture.startY) < DRAG_THRESHOLD
+        )
+          return;
+        const box = drawBox(gesture.start, toDoc(p.x, p.y), { shift: e.shiftKey, alt: e.altKey });
+        if (!gesture.started) {
+          gesture.started = true;
+          const ok = store.commit(
+            [createNodeOp(store.doc, gesture.tool, gesture.id, gesture.placement, box)],
+            { label: createLabel(gesture.tool) },
+          );
+          if (!ok) {
+            endGesture();
+            return;
+          }
+          store.select([gesture.id]);
+          return;
+        }
+        if (!store.extendLast(drawUpdateOps(gesture.id, gesture.placement, box))) endGesture();
+        return;
+      }
+
       if (gesture.kind === "marquee") {
         const d = toDoc(p.x, p.y);
         const rect = normalizeRect(gesture.startDocX, gesture.startDocY, d.x, d.y);
@@ -208,17 +292,32 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       gesture.started = true;
       if (store.hoveredId) store.setHovered(null);
 
-      const apply = (ops: ReturnType<typeof moveOps>, label: string) => {
+      const apply = (ops: Op[], label: string) => {
         if (ops.length === 0) return true;
         return first ? store.commit(ops, { label }) : store.extendLast(ops);
       };
 
       let ok: boolean;
       if (gesture.kind === "move") {
+        // Alt+drag: the first change inserts copies in place and drags those instead.
+        let copyOps: Op[] = [];
+        if (first && e.altKey) {
+          const plan = duplicateOps(gesture.startDoc, gesture.ids, 0);
+          if (plan.ops.length > 0) {
+            copyOps = plan.ops;
+            gesture.startDoc = applyAll(gesture.startDoc, plan.ops);
+            gesture.ids = plan.ids;
+            gesture.collapseTo = null;
+          }
+        }
         const delta = e.shiftKey
           ? constrainAxis(screenDx / zoom, screenDy / zoom)
           : { dx: screenDx / zoom, dy: screenDy / zoom };
-        ok = apply(moveOps(gesture.startDoc, gesture.ids, delta.dx, delta.dy), "Move");
+        ok = apply(
+          [...copyOps, ...moveOps(gesture.startDoc, gesture.ids, delta.dx, delta.dy)],
+          copyOps.length > 0 ? "Duplicate" : "Move",
+        );
+        if (ok && copyOps.length > 0) store.select(gesture.ids);
       } else {
         const next = resizeBox(gesture.startBox, gesture.handle, screenDx / zoom, screenDy / zoom, {
           shift: e.shiftKey,
@@ -238,8 +337,29 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       }
     };
 
+    /** Click-to-create and tool reset happen on pointer up (not on cancel). */
+    const finishCreate = () => {
+      const g = gesture;
+      if (g?.kind === "draw") {
+        const store = useDocumentStore.getState();
+        if (!g.started) {
+          const ok = store.commit(
+            [createNodeOp(store.doc, g.tool, g.id, g.placement, clickBox(g.tool, g.start))],
+            { label: createLabel(g.tool) },
+          );
+          if (ok) useDocumentStore.getState().select([g.id]);
+        }
+        setTool("select");
+      } else if (g?.kind === "text") {
+        const { x, y } = toParentSpace(g.placement, g.point.x, g.point.y);
+        useTextEditStore.getState().start({ mode: "create", parentId: g.placement.parentId, x, y });
+        setTool("select");
+      }
+    };
+
     const onPointerUp = (e: PointerEvent) => {
       if (element.hasPointerCapture(e.pointerId)) element.releasePointerCapture(e.pointerId);
+      if (e.type === "pointerup") finishCreate();
       endGesture();
     };
 
@@ -248,9 +368,17 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
     };
 
     const onDoubleClick = (e: MouseEvent) => {
+      if (useToolStore.getState().tool !== "select" || isTextEditing()) return;
       const p = local(e);
       const state = useDocumentStore.getState();
       const d = toDoc(p.x, p.y);
+      const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y);
+      const leafId = path?.[path.length - 1];
+      if (leafId && findNode(state.doc, leafId)?.type === "text") {
+        state.select([leafId]);
+        useTextEditStore.getState().start({ mode: "edit", id: leafId });
+        return;
+      }
       const target = drillTarget(state.doc, getLayout(state.doc), d.x, d.y, state.selection);
       if (target) state.select([target]);
     };

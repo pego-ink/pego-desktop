@@ -1,5 +1,6 @@
 import { create } from "zustand";
 import type { Box } from "@pego/doc";
+import type { Tool } from "@/store/use-tool-store";
 
 /** Transient pointer/keyboard state that only affects drawing and the cursor. */
 type InteractionState = {
@@ -20,6 +21,20 @@ export const useInteractionState = create<InteractionState>((set) => ({
   set: (patch) => set(patch),
 }));
 
+const TOOL_CURSORS: Partial<Record<Tool, string>> = {
+  hand: "grab",
+  frame: "crosshair",
+  rectangle: "crosshair",
+  ellipse: "crosshair",
+  text: "text",
+};
+
 export const deriveCursor = (
   s: Pick<InteractionState, "spaceDown" | "panning" | "handleCursor">,
-) => (s.panning ? "grabbing" : s.spaceDown ? "grab" : (s.handleCursor ?? "default"));
+  tool: Tool = "select",
+) =>
+  s.panning
+    ? "grabbing"
+    : s.spaceDown
+      ? "grab"
+      : (TOOL_CURSORS[tool] ?? s.handleCursor ?? "default");

@@ -10,8 +10,10 @@ import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
+import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useTextEditStore } from "@/store/use-text-edit-store";
+import { useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
 export const Canvas = () => {
@@ -25,10 +27,17 @@ export const Canvas = () => {
   useEffect(() => {
     const apply = () => {
       const element = canvasRef.current;
-      if (element) element.style.cursor = deriveCursor(useInteractionState.getState());
+      if (element)
+        element.style.cursor = deriveCursor(
+          useInteractionState.getState(),
+          useToolStore.getState().tool,
+        );
     };
     apply();
-    return useInteractionState.subscribe(apply);
+    const unsubscribers = [useInteractionState.subscribe(apply), useToolStore.subscribe(apply)];
+    return () => {
+      for (const unsubscribe of unsubscribers) unsubscribe();
+    };
   }, []);
 
   useEffect(() => {
@@ -126,6 +135,7 @@ export const Canvas = () => {
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
       <TextEditorOverlay />
+      <Toolbar />
     </div>
   );
 };

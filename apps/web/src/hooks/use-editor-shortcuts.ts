@@ -1,11 +1,14 @@
 import { useEffect } from "react";
-import type { Op } from "@pego/doc";
+import { findNode, type Op } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { contentBounds } from "@/interaction/camera";
 import { useInteractionState } from "@/interaction/interaction-state";
+import { duplicateOps } from "@/interaction/duplicate";
 import { escapeSelection } from "@/interaction/selection";
 import { nudgeOps, topmostSelected } from "@/interaction/transform";
 import { useDocumentStore } from "@/store/use-document-store";
+import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
+import { TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
 const isEditable = (target: EventTarget | null): boolean => {
@@ -21,12 +24,13 @@ const ARROW_DELTAS: Record<string, [number, number]> = {
 };
 
 const ZOOM_STEP = 1.25;
+const DUPLICATE_OFFSET = 10;
 
 /** Global editor keyboard shortcuts: history, delete, nudge, selection, zoom, space-to-pan. */
 export const useEditorShortcuts = () => {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      if (isEditable(e.target)) return;
+      if (isEditable(e.target) || isTextEditing()) return;
       const mod = e.metaKey || e.ctrlKey;
       const doc = useDocumentStore.getState();
       const viewport = useViewportStore.getState();
@@ -71,7 +75,31 @@ export const useEditorShortcuts = () => {
         doc.select(doc.doc.children.map((n) => n.id));
         return;
       }
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        const plan = duplicateOps(doc.doc, doc.selection, DUPLICATE_OFFSET);
+        if (plan.ops.length === 0) return;
+        if (doc.commit(plan.ops, { label: "Duplicate" }))
+          useDocumentStore.getState().select(plan.ids);
+        return;
+      }
       if (mod) return;
+
+      const tool = TOOL_KEYS[e.key.toLowerCase()];
+      if (tool && !e.altKey && !e.shiftKey) {
+        e.preventDefault();
+        useToolStore.getState().setTool(tool);
+        return;
+      }
+      if (e.key === "Enter" && doc.selection.length === 1) {
+        const [id] = doc.selection;
+        const node = id ? findNode(doc.doc, id) : null;
+        if (node?.type === "text") {
+          e.preventDefault();
+          useTextEditStore.getState().start({ mode: "edit", id: node.id });
+        }
+        return;
+      }
 
       if (e.key === "Delete" || e.key === "Backspace") {
         const ids = topmostSelected(doc.doc, doc.selection);
@@ -82,6 +110,10 @@ export const useEditorShortcuts = () => {
         return;
       }
       if (e.key === "Escape") {
+        if (useToolStore.getState().tool !== "select") {
+          useToolStore.getState().setTool("select");
+          return;
+        }
         doc.select(escapeSelection(doc.doc, doc.selection));
         return;
       }
