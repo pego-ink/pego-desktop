@@ -10,6 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^1.1.0",
     "@pego/agent": "workspace:*",
     "@pego/doc": "workspace:*",
     "@pego/ui": "workspace:*",
