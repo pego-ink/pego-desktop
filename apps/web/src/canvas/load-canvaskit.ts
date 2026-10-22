@@ -1,4 +1,7 @@
 import CanvasKitInit, { type CanvasKit, type FontMgr } from "canvaskit-wasm";
+import { setTextMeasurer } from "@/canvas/layout";
+import { loadIconData } from "@/canvas/icons";
+import { createTextMeasurer } from "@/canvas/measure-text";
 import wasmUrl from "canvaskit-wasm/bin/canvaskit.wasm?url";
 
 // Inter (OFL 1.1), variable TTF from https://github.com/google/fonts/tree/main/ofl/inter
@@ -20,7 +23,10 @@ const load = async (): Promise<CanvasKitResources> => {
   ]);
   const fontMgr = ck.FontMgr.FromData(fontData);
   if (!fontMgr) throw new Error("failed to load font data");
-  return { ck, fontMgr, fontFamily: FONT_FAMILY };
+  const res = { ck, fontMgr, fontFamily: FONT_FAMILY };
+  await loadIconData();
+  setTextMeasurer(createTextMeasurer(res));
+  return res;
 };
 
 let cached: Promise<CanvasKitResources> | null = null;

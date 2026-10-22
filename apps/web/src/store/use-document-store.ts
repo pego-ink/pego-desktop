@@ -7,13 +7,13 @@ import {
   extendLast as extendLastOps,
   OpError,
   redo as redoOps,
-  sampleDoc,
   undo as undoOps,
   type History,
   type Op,
   type PegoDocument,
   type TransactionSource,
 } from "@pego/doc";
+import { showcaseDoc } from "@/dev/showcase-doc";
 
 type DocumentState = {
   doc: PegoDocument;
@@ -52,7 +52,7 @@ const reportOpError = (error: unknown): false => {
 };
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
-  doc: sampleDoc,
+  doc: showcaseDoc,
   history: emptyHistory(),
   selection: [],
   hoveredId: null,

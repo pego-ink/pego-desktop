@@ -1,116 +1,169 @@
-import type { Canvas as SkCanvas, CanvasKit, Paint } from "canvaskit-wasm";
-import type { Layout, PegoDocument, PegoNode } from "@pego/doc";
+import type { Canvas as SkCanvas, CanvasKit, Paint, Path } from "canvaskit-wasm";
+import {
+  MAX_INSTANCE_DEPTH,
+  resolveColor,
+  resolveInstance,
+  resolveNumber,
+  type Box,
+  type Layout,
+  type PegoDocument,
+  type PegoNode,
+} from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
-import { resolveColor, resolveNumber, resolveString } from "@pego/doc";
+import { getIconPath } from "@/canvas/icons";
+import { getParagraph } from "@/canvas/measure-text";
+import { createLruCache } from "@/canvas/render-cache";
 import type { Camera } from "@/canvas/types";
 
-type Size = { width: number; height: number };
+type Paints = { fill: Paint; stroke: Paint; layer: Paint; iconStroke: Paint };
 
 type Scene = {
   res: CanvasKitResources;
   canvas: SkCanvas;
   doc: PegoDocument;
+  layout: Layout;
+  paints: Paints;
 };
 
 const BACKGROUND = "#141418";
-const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
+const ICON_VIEWBOX = 24;
+const ICON_STROKE_WIDTH = 2;
+const DEFAULT_ICON_COLOR = "#FFFFFF";
 
-const nodeSize = (node: PegoNode): Size => ({
-  width: "width" in node && typeof node.width === "number" ? node.width : 0,
-  height: "height" in node && typeof node.height === "number" ? node.height : 0,
-});
+const paintsByKit = new WeakMap<CanvasKit, Paints>();
+const svgPaths = createLruCache<Path>(256);
 
-const withPaint = (ck: CanvasKit, color: string, draw: (paint: Paint) => void) => {
-  const paint = new ck.Paint();
-  paint.setAntiAlias(true);
-  paint.setColor(ck.parseColorString(color));
-  try {
-    draw(paint);
-  } finally {
-    paint.delete();
-  }
+const getPaints = (ck: CanvasKit): Paints => {
+  const cached = paintsByKit.get(ck);
+  if (cached) return cached;
+  const make = (style: "fill" | "stroke") => {
+    const paint = new ck.Paint();
+    paint.setAntiAlias(true);
+    paint.setStyle(style === "fill" ? ck.PaintStyle.Fill : ck.PaintStyle.Stroke);
+    return paint;
+  };
+  const iconStroke = make("stroke");
+  iconStroke.setStrokeCap(ck.StrokeCap.Round);
+  iconStroke.setStrokeJoin(ck.StrokeJoin.Round);
+  iconStroke.setStrokeWidth(ICON_STROKE_WIDTH);
+  const paints = { fill: make("fill"), stroke: make("stroke"), layer: new ck.Paint(), iconStroke };
+  paintsByKit.set(ck, paints);
+  return paints;
 };
 
-const drawText = (scene: Scene, node: Extract<PegoNode, { type: "text" }>) => {
-  const { res, canvas, doc } = scene;
-  const { ck, fontMgr, fontFamily } = res;
-  const weight = resolveNumber(node.fontWeight, doc.variables, 400);
-  const nearest = FONT_WEIGHTS.reduce((best, w) =>
-    Math.abs(w - weight) < Math.abs(best - weight) ? w : best,
-  );
-  const paraStyle = new ck.ParagraphStyle({
-    textStyle: {
-      color: ck.parseColorString(resolveColor(node.fill, doc.variables) ?? "#000000"),
-      fontFamilies: [node.fontFamily ?? fontFamily],
-      fontSize: resolveNumber(node.fontSize, doc.variables, 14),
-      fontStyle: { weight: { value: nearest } },
-    },
-    textAlign:
-      ck.TextAlign[
-        node.textAlign === "center" ? "Center" : node.textAlign === "right" ? "Right" : "Left"
-      ],
-  });
-  const builder = ck.ParagraphBuilder.Make(paraStyle, fontMgr);
-  try {
-    builder.addText(resolveString(node.content, doc.variables));
-    const paragraph = builder.build();
-    try {
-      paragraph.layout(nodeSize(node).width || 10_000);
-      canvas.drawParagraph(paragraph, 0, 0);
-    } finally {
-      paragraph.delete();
-    }
-  } finally {
-    builder.delete();
-  }
+const getSvgPath = (ck: CanvasKit, geometry: string): Path | null => {
+  const cached = svgPaths.get(geometry);
+  if (cached) return cached;
+  const path = ck.Path.MakeFromSVGString(geometry);
+  if (path) svgPaths.set(geometry, path);
+  return path;
 };
 
-const drawNode = (scene: Scene, node: PegoNode) => {
-  const { res, canvas, doc } = scene;
+const fillWith = (scene: Scene, color: string | undefined, draw: (paint: Paint) => void) => {
+  if (!color) return;
+  const { fill } = scene.paints;
+  fill.setColor(scene.res.ck.parseColorString(color));
+  draw(fill);
+};
+
+const strokeWith = (scene: Scene, node: PegoNode, draw: (paint: Paint) => void) => {
+  if (!("stroke" in node) || !node.stroke) return;
+  const { variables } = scene.doc;
+  const color = resolveColor(node.stroke.color, variables);
+  const width = resolveNumber(node.stroke.width, variables, 1);
+  if (!color || width <= 0) return;
+  const { stroke } = scene.paints;
+  stroke.setColor(scene.res.ck.parseColorString(color));
+  stroke.setStrokeWidth(width);
+  draw(stroke);
+};
+
+/** Draw the node's own content in its local space (origin = box top-left). */
+const drawContent = (scene: Scene, node: PegoNode, box: Box) => {
+  const { res, canvas, doc, paints } = scene;
   const { ck } = res;
-  const { width, height } = nodeSize(node);
+  const { width, height } = box;
   const fill = "fill" in node ? resolveColor(node.fill, doc.variables) : undefined;
-  const radius = "cornerRadius" in node ? resolveNumber(node.cornerRadius, doc.variables, 0) : 0;
-
-  canvas.save();
-  canvas.translate(
-    resolveNumber(node.x, doc.variables, 0),
-    resolveNumber(node.y, doc.variables, 0),
-  );
 
   switch (node.type) {
     case "frame":
     case "rectangle": {
-      if (fill) {
-        withPaint(ck, fill, (paint) => {
-          canvas.drawRRect(ck.RRectXY(ck.XYWHRect(0, 0, width, height), radius, radius), paint);
-        });
-      }
-      if (node.type === "frame") node.children.forEach((child) => drawNode(scene, child));
-      break;
+      const radius = resolveNumber(node.cornerRadius, doc.variables, 0);
+      const rrect = ck.RRectXY(ck.XYWHRect(0, 0, width, height), radius, radius);
+      fillWith(scene, fill, (paint) => canvas.drawRRect(rrect, paint));
+      strokeWith(scene, node, (paint) => canvas.drawRRect(rrect, paint));
+      return;
     }
     case "ellipse": {
-      if (fill) {
-        withPaint(ck, fill, (paint) => {
-          canvas.drawOval(ck.XYWHRect(0, 0, width, height), paint);
-        });
-      }
-      break;
+      const oval = ck.XYWHRect(0, 0, width, height);
+      fillWith(scene, fill, (paint) => canvas.drawOval(oval, paint));
+      strokeWith(scene, node, (paint) => canvas.drawOval(oval, paint));
+      return;
     }
-    case "group": {
-      node.children.forEach((child) => drawNode(scene, child));
-      break;
+    case "path": {
+      const path = getSvgPath(ck, node.geometry);
+      if (!path) return;
+      fillWith(scene, fill, (paint) => canvas.drawPath(path, paint));
+      strokeWith(scene, node, (paint) => canvas.drawPath(path, paint));
+      return;
     }
     case "text": {
-      drawText(scene, node);
-      break;
+      // Same rule as computeLayout: wrap when the width is fixed or given by the parent.
+      const wraps = typeof node.width === "number" || node.width === "fill_container";
+      const wrapWidth = wraps ? width : undefined;
+      canvas.drawParagraph(getParagraph(res, node, doc.variables, wrapWidth), 0, 0);
+      return;
     }
-    // path, icon and ref are not rendered yet.
+    case "icon": {
+      const path = getIconPath(ck, node.iconName);
+      if (!path || width <= 0 || height <= 0) return;
+      paints.iconStroke.setColor(ck.parseColorString(fill ?? DEFAULT_ICON_COLOR));
+      canvas.save();
+      canvas.scale(width / ICON_VIEWBOX, height / ICON_VIEWBOX);
+      canvas.drawPath(path, paints.iconStroke);
+      canvas.restore();
+      return;
+    }
     default:
-      break;
+      return;
   }
+};
 
-  canvas.restore();
+const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth: number) => {
+  const { canvas, doc, layout, paints, res } = scene;
+  for (const raw of nodes) {
+    const node = raw.type === "ref" && depth < MAX_INSTANCE_DEPTH ? resolveInstance(doc, raw) : raw;
+    if (!node) continue;
+    const box = layout.get(node.id);
+    if (!box) continue;
+
+    const opacity = Math.min(1, Math.max(0, resolveNumber(node.opacity, doc.variables, 1)));
+    const rotation = resolveNumber(node.rotation, doc.variables, 0);
+
+    canvas.save();
+    canvas.translate(box.x - parent.x, box.y - parent.y);
+    if (rotation !== 0) canvas.rotate(-rotation, 0, 0);
+    if (opacity < 1) {
+      paints.layer.setAlphaf(opacity);
+      canvas.saveLayer(paints.layer);
+    }
+
+    drawContent(scene, node, box);
+
+    if (node.type === "frame" || node.type === "group") {
+      canvas.save();
+      if (node.type === "frame" && node.clip) {
+        const radius = resolveNumber(node.cornerRadius, doc.variables, 0);
+        const rrect = res.ck.RRectXY(res.ck.XYWHRect(0, 0, box.width, box.height), radius, radius);
+        canvas.clipRRect(rrect, res.ck.ClipOp.Intersect, true);
+      }
+      drawNodes(scene, node.children, box, depth + 1);
+      canvas.restore();
+    }
+
+    if (opacity < 1) canvas.restore();
+    canvas.restore();
+  }
 };
 
 /**
@@ -125,10 +178,11 @@ export const renderDocument = (
   camera: Camera,
 ) => {
   canvas.clear(res.ck.parseColorString(BACKGROUND));
-  void layout; // TODO(renderer): draw from layout boxes instead of raw x/y.
   canvas.save();
   canvas.translate(camera.panX, camera.panY);
   canvas.scale(camera.zoom, camera.zoom);
-  doc.children.forEach((node) => drawNode({ res, canvas, doc }, node));
+  drawNodes({ res, canvas, doc, layout, paints: getPaints(res.ck) }, doc.children, ORIGIN, 0);
   canvas.restore();
 };
+
+const ORIGIN: Box = { x: 0, y: 0, width: 0, height: 0 };
