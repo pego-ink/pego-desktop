@@ -6,6 +6,7 @@ import { handleMcpRequest } from "./mcp";
 import { parseEditorMessage } from "./messages";
 import { createRunManager, type RunManager } from "./runs";
 import { isHostAllowed, isOriginAllowed } from "./security";
+import { writeDocumentFile } from "./files";
 
 type SocketData = { greeted: boolean };
 
@@ -107,8 +108,22 @@ export const startBridge = (options: BridgeOptions) => {
           });
         } else if (message.type === "run_start") {
           runs.start(message.runId, message.prompt);
-        } else {
+        } else if (message.type === "run_cancel") {
           runs.cancel(message.runId);
+        } else {
+          const { requestId, path, text: content } = message;
+          void writeDocumentFile(path, content).then(
+            () => ws.send(JSON.stringify({ type: "save_file_result", requestId, ok: true })),
+            (error: unknown) =>
+              ws.send(
+                JSON.stringify({
+                  type: "save_file_result",
+                  requestId,
+                  ok: false,
+                  error: error instanceof Error ? error.message : String(error),
+                } satisfies BridgeToEditor),
+              ),
+          );
         }
       },
       close(ws) {

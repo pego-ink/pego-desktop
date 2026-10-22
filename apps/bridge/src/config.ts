@@ -5,6 +5,8 @@ import { BRIDGE_DEFAULT_PORT } from "@pego/agent";
  * up to 8MB of screenshots, which are ~10.7MB as base64).
  */
 export const MAX_WS_MESSAGE_BYTES = 12 * 1024 * 1024;
+/** Largest .pego/.pen file the bridge reads or writes. */
+export const MAX_DOCUMENT_FILE_BYTES = 10 * 1024 * 1024;
 /** Largest MCP HTTP request body. */
 export const MAX_MCP_BODY_BYTES = 1024 * 1024;
 /** How long the bridge waits for the editor to answer a forwarded tool call. */

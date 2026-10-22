@@ -1,5 +1,6 @@
 import { z } from "zod";
 import type { EditorToBridge } from "@pego/agent";
+import { MAX_DOCUMENT_FILE_BYTES } from "./config";
 
 const id = z.string().min(1).max(128);
 
@@ -51,6 +52,12 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
   }),
   z.object({ type: z.literal("run_start"), runId: id, prompt: z.string().min(1).max(100_000) }),
   z.object({ type: z.literal("run_cancel"), runId: id }),
+  z.object({
+    type: z.literal("save_file"),
+    requestId: id,
+    path: z.string().min(1).max(4096),
+    text: z.string().max(MAX_DOCUMENT_FILE_BYTES),
+  }),
 ]) satisfies z.ZodType<EditorToBridge>;
 
 export type ParseResult = { ok: true; message: EditorToBridge } | { ok: false; error: string };

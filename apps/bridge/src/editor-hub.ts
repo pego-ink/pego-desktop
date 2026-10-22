@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BridgeToEditor, ToolImage } from "@pego/agent";
+import { BRIDGE_REPLACED_CLOSE_CODE, type BridgeToEditor, type ToolImage } from "@pego/agent";
 
 export type ToolSource = Extract<BridgeToEditor, { type: "tool_call" }>["source"];
 export type ToolOutcome = { content: string; isError: boolean; images?: ToolImage[] };
@@ -45,7 +45,7 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
     documentName = name;
     if (previous && previous !== socket) {
       settleAllFor(previous, "The editor tab was replaced by a newer connection.");
-      previous.close(4000, "Replaced by a newer editor connection");
+      previous.close(BRIDGE_REPLACED_CLOSE_CODE, "Replaced by a newer editor connection");
     }
   };
 
