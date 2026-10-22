@@ -10,10 +10,10 @@ Agentic design tool (Figma alternative). Decisions made 2026-10-22.
 | Web app | React + Vite + TypeScript | SPA, Tailwind v4, shadcn/ui, Zustand, TanStack Query, Zod, react-hook-form |
 | Canvas | **Skia via CanvasKit WASM** (`canvaskit-wasm` 0.42.0, Ganesh on WebGL2), custom scene graph | Same engine as pen.dev (which ships its own Emscripten Skia build). Text via `skparagraph` (HarfBuzz + ICU), image decode and PNG/PDF export via Skia. Own document model; Skia only renders. Hit-testing, selection, transforms and flex layout are ours. Custom slim Skia build later if the ~7–10 MB WASM becomes a problem. |
 | Document / undo | **Single user, no CRDT (for now)** | Immutable document in Zustand + operation log (insert/update/replace/move/delete). Undo = inverse ops. Keep ops serializable so Yjs can replace the store later without touching the renderer or the agent. |
-| API + Agent | **Hono on Cloudflare Workers**, Anthropic Messages API tool loop | Plan with `claude-opus-5-5`, execute steps with `claude-sonnet-5-5`. Agent tools = the same document ops the UI uses. Stream plan/steps/ops to the client via SSE. |
+| Agent | **Runs client-side, two backends** (decided 2026-10-22) | (1) **BYOK in the browser**: user's own Anthropic API key (IndexedDB, sent only to api.anthropic.com), `@anthropic-ai/sdk` with `dangerouslyAllowBrowser`; planner `claude-opus-5-5` (structured plan), executor `claude-sonnet-5-5` (streaming tool loop), server-side refusal fallbacks on. (2) **Local Claude Code** via `apps/bridge` (Bun, 127.0.0.1:4519): MCP Streamable HTTP for Claude Code in a terminal (`claude mcp add --transport http pego http://127.0.0.1:4519/mcp`) and Claude Agent SDK runs started from the panel with the user's Claude Code login. All backends call the same provider-neutral tools in `packages/agent`, executed by the editor tab; one agent step = one undo transaction. |
 | Persistence | **Local-first files** (decided 2026-10-22) | Documents are `.pego` files (JSON: `{ format: "pego", version, document }`, validated with the Zod schema) opened/saved via the File System Access API, download/upload fallback where unsupported. Autosave of the open document to IndexedDB so a refresh never loses work. No server, database or login for documents. |
 | Auth / DB / Storage | **Deferred** | Supabase Postgres (Drizzle), Cloudflare R2 and custom JWT only come back if cloud sync/sharing is added later. |
-| Deploy | Cloudflare Pages (web); Cloudflare Workers (api, agent only) | |
+| Deploy | Cloudflare Pages (web) | `apps/api` (Hono on Workers) is not needed by the client-side agent; frozen until a server feature needs it. |
 | Desktop (later) | **Electron** wrapping `apps/web` as `apps/desktop` | Bundled Chromium = identical CanvasKit/WebGL2 rendering on every OS (Tauri's system webviews differ, WebKitGTK is weak). Same choice as Figma desktop and pen.dev. Web first; desktop not scaffolded yet. |
 | Lint/format | ESLint + Prettier | |
 | Tests | `bun test` | |
@@ -24,10 +24,11 @@ Agentic design tool (Figma alternative). Decisions made 2026-10-22.
 pego/
   apps/
     web/            React + Vite + CanvasKit editor
-    api/            Hono on Workers: agent runs (SSE) only
+    api/            Hono on Workers (frozen; not used by the client-side agent)
+    bridge/         Local Bun bridge: MCP server + Claude Agent SDK runs, talks to the editor over WebSocket
   packages/
     doc/            Document schema (Zod), ops, apply/invert, layout engine (flex), validation
-    agent/          Tool definitions + prompts shared by api; pure, no I/O
+    agent/          Provider-neutral tools, document serialization, prompts, bridge protocol; pure, no I/O
     ui/             shadcn components + tokens (mono dark palette)
   design/           Exported designs (png/html) + pego.pen source
 ```
