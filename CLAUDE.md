@@ -59,7 +59,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **1**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **2**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -67,19 +67,19 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 1, "document": { ... } }
+{ "format": "pego", "version": 2, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
 versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosave), then validated with
-`documentSchema`. Version 0 files open unchanged; version 1 added `effects`, per-side stroke widths, text
-`lineHeight`/`letterSpacing` and path `viewBox`.
+`documentSchema`. Version 1 added `effects`, per-side stroke widths, text `lineHeight`/`letterSpacing`, path
+`viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1").
 
 ### Document
 
 ```json
 {
-  "version": 1,
+  "version": 2,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -87,9 +87,25 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
     "radius": { "type": "number", "value": 12 },
     "brand": { "type": "string", "value": "Pego" }
   },
-  "children": [/* top-level nodes, usually screen frames */]
+  "children": [
+    { "type": "page", "id": "p1", "name": "Main flow", "children": [/* screen frames */] },
+    { "type": "page", "id": "p2", "name": "Components", "children": [/* reusable nodes */] }
+  ]
 }
 ```
+
+### Pages
+
+- `document.children` holds only pages (at least one); a page holds the canvas content and is never nested.
+  Ops enforce it (`invalid_parent`, `last_page`); a page is renamed with `update` and removed with `delete`.
+- Ids are unique across all pages, refs resolve across pages (a "Components" page works) and undo spans pages.
+- Layout gives pages no box: their content keeps its own x/y. The canvas, hit-testing, layers panel, marquee and
+  zoom-to-fit take a `pageId` (null = the first page).
+- `parentId: null` in UI code and in agent tools means "the top level of the shown/active page":
+  `placeOnPage` (`packages/doc/src/ops.ts`) rewrites such ops in the document store and in the tools.
+- The web app keeps the shown page in `useDocumentStore().pageId`; read it with `activePage(state)` and switch
+  with `showPage` (`apps/web/src/pages/page-actions.ts`, which also remembers a camera per page). Agent tools:
+  `create_page`, `go_to_page`; `get_document` lists all pages but prints only the active page's tree.
 
 ### Nodes
 

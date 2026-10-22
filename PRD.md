@@ -71,6 +71,8 @@ Non-goals (for now):
 - `.pen` import through File → Open (M1-1, P0 part), with a warning list for anything not converted.
 - Linear/radial gradient and embedded image fills; export of a node to PNG (1x-3x), SVG and HTML/CSS (M1-2,
   M1-3, M1-4, M1-5); agent tool `get_code` for design-to-code.
+- Multiple pages per document (M1-6), web fonts from Fontsource (M1-7), Linux and Windows desktop builds
+  (M1-8), drag & drop of files and images.
 
 ## 7. Requirements by milestone
 
