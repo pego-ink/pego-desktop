@@ -35,6 +35,8 @@ export type ToolHost = {
   focusViewport?: (ids: string[]) => void;
   /** Icon names available to `icon` nodes (lucide, kebab-case). */
   listIcons?: () => string[];
+  /** Inner SVG markup of a lucide icon on its 24x24 grid, for code export. */
+  iconMarkup?: (iconName: string) => string | null;
   /** Render a node (and its subtree only) to PNG, as drawn on canvas. */
   renderImage?: (
     nodeId: string,

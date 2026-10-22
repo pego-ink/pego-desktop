@@ -1,12 +1,13 @@
 import { z } from "zod";
-import { findLocation, type Layout, type PegoDocument } from "@pego/doc";
+import { findLocation, findRenderedNode, type Layout, type PegoDocument } from "@pego/doc";
+import { exportHtml } from "@pego/export";
 import { checkLayout } from "./inspect/check-layout";
 import { findEmptySpace } from "./inspect/empty-space";
 import { findNodes, searchIcons } from "./inspect/search";
 import { findGuide, guides } from "./guides/index";
 import { serializeDocument } from "./serialize";
 import { findStyle, stylePresets } from "./styles/index";
-import { defineTool, ok, ToolError } from "./tool-kit";
+import { defineTool, ok, okText, ToolError } from "./tool-kit";
 import type { ToolHost, ToolResult, ToolSpec } from "./types";
 
 const id = z.string().min(1);
@@ -108,11 +109,64 @@ const getScreenshot = defineTool({
   },
 });
 
+const MIME_EXTENSIONS: Record<string, string> = {
+  "image/png": "png",
+  "image/jpeg": "jpg",
+  "image/webp": "webp",
+  "image/gif": "gif",
+};
+
+const getCode = defineTool({
+  name: "get_code",
+  description:
+    "Get a node (usually a screen or section frame) as a standalone HTML page with CSS: flex frames become flexbox, variables become CSS custom properties, gradients/shadows/blur become CSS, icons inline SVG, instances are expanded. " +
+    "Use it to implement a Pego design in code: translate the result into the project's framework and conventions (components, Tailwind, design tokens) instead of pasting it verbatim. " +
+    "Image fills are referenced by file name (images/image-N.ext) and listed in the result; the user can export them from Pego.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      nodeId: { type: "string", minLength: 1, description: "Node to export with its subtree." },
+    },
+    required: ["nodeId"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({ nodeId: id }),
+  inputHint: "Pass {nodeId: string}.",
+  run: (input, host) => {
+    const doc = host.getDoc();
+    if (!findRenderedNode(doc, input.nodeId)) {
+      throw new ToolError(
+        "node_not_found",
+        `node "${input.nodeId}" not found`,
+        "Call get_document or find_nodes to see the current ids.",
+      );
+    }
+    const images = new Map<string, string>();
+    const html = exportHtml(doc, requireLayout(host), input.nodeId, {
+      icon: (name) => host.iconMarkup?.(name) ?? null,
+      imageUrl: (src) => {
+        const known = images.get(src);
+        if (known) return known;
+        const mime = src.slice(5, src.indexOf(";"));
+        const name = `images/image-${images.size + 1}.${MIME_EXTENSIONS[mime] ?? "png"}`;
+        images.set(src, name);
+        return name;
+      },
+    });
+    const notes = [...images].map(
+      ([src, name], i) =>
+        `${name}: image fill #${i + 1} (${Math.round((src.length * 3) / 4 / 1024)} KB)`,
+    );
+    const content = notes.length > 0 ? `${html}<!-- images:\n${notes.join("\n")}\n-->\n` : html;
+    return { content, isError: false };
+  },
+});
+
 const checkLayoutTool = defineTool({
   name: "check_layout",
   description:
     "Analyze the document layout for problems and return a compact list of issues {severity, nodeId, name, issue, hint}, errors first, at most 50, plus a one-line summary. " +
-    "Detects: children overflowing their parent (and whether it clips), text that needs more height than its fixed height, zero-size nodes, partially overlapping siblings in layout none frames, x/y set on flex children (ignored), text contrast below WCAG AA against the nearest ancestor fill, fill_container inside a parent that hugs on the same axis, and empty frames. " +
+    "Detects: children overflowing their parent (and whether it clips), text that needs more height than its fixed height, zero-size nodes, partially overlapping siblings in layout none frames, x/y set on flex children (ignored), text contrast below WCAG AA against what is painted below it (ancestor fills and shapes it sits on), fill_container inside a parent that hugs on the same axis, and empty frames. " +
     "Run it after building each section (pass the section's nodeId) and once on the whole document at the end. Fix issues with update_node and run it again.",
   inputSchema: {
     type: "object",
@@ -381,7 +435,7 @@ const getGuidelines = defineTool({
         `Available: ${guides.map((g) => g.id).join(", ")}.`,
       );
     }
-    return ok({ id: guide.id, title: guide.title, content: guide.content });
+    return okText(guide.content);
   },
 });
 
@@ -439,6 +493,7 @@ const getStyle = defineTool({
 /** Eyes and context: screenshots, layout checks, search, selection, viewport, icons, guides, styles. */
 export const inspectTools: ToolSpec[] = [
   getScreenshot,
+  getCode,
   checkLayoutTool,
   findEmptySpaceTool,
   findNodesTool,

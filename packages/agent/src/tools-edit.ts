@@ -100,7 +100,12 @@ const batchOperationsJsonSchema: JsonSchema = {
       operationJsonSchema(
         "replace",
         "Replace a node and its subtree. The new root keeps the target id unless it has its own.",
-        { target: refJsonSchema("Node to replace."), node: nodeJsonSchema, as: aliasJsonSchema },
+        {
+          target: refJsonSchema("Node to replace."),
+          // Same format as insert's node; not repeated to keep the tool definition small.
+          node: { type: "object", description: "Node in the same format as for insert." },
+          as: aliasJsonSchema,
+        },
         ["target", "node"],
       ),
       operationJsonSchema(
