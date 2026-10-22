@@ -1,6 +1,7 @@
 export * from "./schema";
 export * from "./ops";
 export * from "./history";
+export * from "./run-undo";
 export * from "./resolve";
 export * from "./instance";
 export * from "./layout";

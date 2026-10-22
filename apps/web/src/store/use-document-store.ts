@@ -6,6 +6,7 @@ import {
   emptyHistory,
   extendLast as extendLastOps,
   OpError,
+  planRunUndo,
   redo as redoOps,
   undo as undoOps,
   type History,
@@ -32,6 +33,10 @@ type DocumentState = {
    * Start the gesture with `commit`, then call this on every further change.
    */
   extendLast: (ops: Op[]) => boolean;
+  /** Revert only one agent run as ONE new undo step. Fails with a reason on conflict. */
+  undoRun: (runId: string) => { ok: boolean; message?: string };
+  /** Cheap check for UI: can the run be reverted right now? */
+  canUndoRun: (runId: string) => { ok: boolean; message?: string };
   undo: () => void;
   redo: () => void;
   select: (ids: string[]) => void;
@@ -55,6 +60,9 @@ const reportOpError = (error: unknown): false => {
   toast.error(error.message);
   return false;
 };
+
+type RunUndoCheck = { ok: boolean; message?: string };
+const checkCache = new WeakMap<History, { doc: PegoDocument; byRun: Map<string, RunUndoCheck> }>();
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   doc: showcaseDoc,
@@ -94,6 +102,27 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     } catch (error) {
       return reportOpError(error);
     }
+  },
+
+  undoRun: (runId) => {
+    const { doc, history } = get();
+    const plan = planRunUndo(doc, history, runId);
+    if (!plan.ok) return { ok: false, message: plan.message };
+    const ok = get().commit(plan.ops, { source: "user", label: plan.label });
+    return ok ? { ok } : { ok, message: "Could not apply the undo" };
+  },
+
+  canUndoRun: (runId) => {
+    const { doc, history } = get();
+    const cached = checkCache.get(history);
+    const entry = cached?.doc === doc ? cached : { doc, byRun: new Map<string, RunUndoCheck>() };
+    checkCache.set(history, entry);
+    const hit = entry.byRun.get(runId);
+    if (hit) return hit;
+    const plan = planRunUndo(doc, history, runId);
+    const result: RunUndoCheck = plan.ok ? { ok: true } : { ok: false, message: plan.message };
+    entry.byRun.set(runId, result);
+    return result;
   },
 
   undo: () => {
