@@ -22,11 +22,11 @@ describe("hitPath", () => {
 });
 
 const makeDoc = (children: PegoDocument["children"]): PegoDocument => ({
-  version: 0,
+  version: 1,
   id: "d",
   name: "d",
   variables: {},
-  children,
+  children: children,
 });
 
 describe("hitPath with rotation", () => {

@@ -7,7 +7,7 @@ const node = (input: Record<string, unknown>): PegoNode => nodeSchema.parse(inpu
 
 const makeDoc = (): PegoDocument =>
   documentSchema.parse({
-    version: 0,
+    version: 1,
     id: "doc",
     name: "Test",
     variables: { accent: { type: "color", value: "#0E7C5A" } },
