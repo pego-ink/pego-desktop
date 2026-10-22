@@ -188,6 +188,18 @@ result as an unsaved `.pego`. Differences it handles: `.pen` frames without `lay
 padding. Instances that restyle their root or replace a descendant are detached. Anything else it cannot
 represent is dropped and reported as a warning, never silently. Test fixture: `design/pego.pen`.
 
+## Tabs and the project folder
+
+- Open documents are tabs (`apps/web/src/tabs/use-tabs-store.ts`). The active tab lives in the normal stores
+  (document, file, viewport), so editor code never deals with tabs; inactive tabs keep a snapshot. Open files
+  through `openTab` (File > Open, drops, .pen import, `open_document` and the project panel all do), never by
+  calling `useDocumentStore.load` directly. Switching is blocked while a panel agent run is active. Autosave
+  stores every tab.
+- The bridge serves the repository's `design/` folder (`apps/bridge/src/project.ts`; `PEGO_DESIGN_DIR` overrides):
+  the Project panel lists `.pego`/`.pen` files there, opens them in tabs and creates new ones. Reads through the
+  panel are limited to that folder.
+- MCP: `list_documents` (open tabs + design files) and `switch_document`; edit tools act on the active tab.
+
 ## Export
 
 `packages/export`: `exportHtml(doc, layout, nodeId)` and `exportSvg(doc, layout, nodeId)`. Both take the layout the
