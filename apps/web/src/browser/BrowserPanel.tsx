@@ -36,7 +36,7 @@ const reportError = (error: unknown) => toast.error(messageOf(error));
 
 const navigateTo = async (url: string) => {
   try {
-    await browserApi()?.navigate(url);
+    await browserApi()?.navigate(url, { allowFile: true });
   } catch (error) {
     reportError(error);
   }

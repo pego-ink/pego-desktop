@@ -221,8 +221,9 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   asks the user about unsaved changes ("ask"), refuses for Claude Code ("refuse": save first) or drops them
   ("discard"). Switching is blocked while a panel agent run is active. The Dashboard is a view (the Pego logo in
   the icon rail opens it), not a workspace.
-- Editor chrome: icon rail with Agent, Layers (pages + layer tree) and Assets (the document's components,
-  `apps/web/src/assets/`), resizable side panel, properties column (pin, hide); `Ctrl/⌘ + \` hides both sides.
+- Editor chrome: icon rail with Agent, Layers (pages + layer tree), Assets (the document's components,
+  `apps/web/src/assets/`) and, in the desktop app only, Browser; resizable side panel, properties column (pin,
+  hide); `Ctrl/⌘ + \` hides both sides.
   Layout state is one store, `apps/web/src/store/use-layout-store.ts`.
 - MCP: `list_projects`, `open_project` (by id, name or unambiguous prefix), `create_project`,
   `list_documents` (the open documents, one per workspace) and `switch_document`; they act on the focused editor.
@@ -252,6 +253,13 @@ When you add a node prop, update the canvas renderer and the exporter together, 
   that path through the bridge. These go to the focused editor; agent runs never get them.
 - `export_code` returns a node as React + Tailwind or HTML/CSS so Claude Code can implement a design; embedded
   image data is cut to keep the result small.
+- In-app browser (desktop only, like pen.dev): a `WebContentsView` in its own session (`persist:pego-browser`)
+  drawn over the Browser panel (`apps/desktop/src/browser-*.ts`, `apps/web/src/browser/`). The editor drives it
+  over IPC + CDP; page scripts run in an isolated world and return a `DomSnapshot` that `media/dom.ts` turns
+  into nodes. Tool `browser` (`tools-browser.ts`, host `ToolHost.browser`): load-page (http(s) only),
+  import-to-canvas, screenshot-to-canvas, return-element, return-screenshot, cdp. CDP is an allowlist of
+  methods, kept identical in `apps/desktop/src/browser-cdp.ts` (enforced in main) and
+  `packages/agent/src/browser-cdp.ts`; page text reaches the model wrapped as untrusted `<page_content>`.
 - Add a test next to every new tool (`*.test.ts`, use `test-host.ts`).
 
 ## Code conventions

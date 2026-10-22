@@ -1,5 +1,6 @@
 export * from "./types";
 export * from "./browser-types";
+export * from "./browser-cdp";
 export * from "./bridge-protocol";
 export * from "./tools";
 export * from "./prompts";

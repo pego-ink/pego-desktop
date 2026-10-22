@@ -40,10 +40,14 @@ export const registerBrowserIpc = (appOrigin: string): void => {
   on(BROWSER_CHANNELS.reload, (view) => view.reload());
   on(BROWSER_CHANNELS.stop, (view) => view.stop());
 
-  ipcMain.handle(BROWSER_CHANNELS.navigate, (event, url: unknown) => {
+  ipcMain.handle(BROWSER_CHANNELS.navigate, (event, url: unknown, options: unknown) => {
     const view = viewFor(event);
     if (typeof url !== "string") throw new Error("Enter a URL");
-    return view.navigate(url);
+    const allowFile =
+      typeof options === "object" &&
+      options !== null &&
+      (options as { allowFile?: unknown }).allowFile === true;
+    return view.navigate(url, { allowFile });
   });
   ipcMain.handle(BROWSER_CHANNELS.cdp, (event, method: unknown, params: unknown) => {
     const view = viewFor(event);

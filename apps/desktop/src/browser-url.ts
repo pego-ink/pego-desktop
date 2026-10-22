@@ -1,6 +1,6 @@
 export type BrowserUrlResult = { ok: true; url: string } | { ok: false; error: string };
 
-const ALLOWED_PROTOCOLS = new Set(["http:", "https:", "file:"]);
+const WEB_PROTOCOLS = new Set(["http:", "https:"]);
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]"]);
 const MAX_URL_LENGTH = 8192;
 // "scheme:" that is not "host:port" (a port is digits followed by / or the end).
@@ -16,10 +16,13 @@ const hostOf = (input: string): string => {
 };
 
 /**
- * Turns what the user typed into a loadable URL. Allows http, https, file and about:blank; a bare
+ * Turns what the user typed into a loadable URL. Allows http, https and about:blank (file only with `allowFile`); a bare
  * host or host/path gets https (http for localhost, 127.0.0.1 and [::1]).
  */
-export const normalizeBrowserUrl = (input: unknown): BrowserUrlResult => {
+export const normalizeBrowserUrl = (
+  input: unknown,
+  options: { allowFile?: boolean } = {},
+): BrowserUrlResult => {
   if (typeof input !== "string") return { ok: false, error: "Enter a URL" };
   const text = input.trim();
   if (!text) return { ok: false, error: "Enter a URL" };
@@ -32,7 +35,10 @@ export const normalizeBrowserUrl = (input: unknown): BrowserUrlResult => {
     : `${text.startsWith("//") ? "" : LOCAL_HOSTS.has(hostOf(text)) ? "http://" : "https://"}${text}`;
   try {
     const parsed = new URL(candidate.startsWith("//") ? `https:${candidate}` : candidate);
-    if (!ALLOWED_PROTOCOLS.has(parsed.protocol)) {
+    if (
+      !WEB_PROTOCOLS.has(parsed.protocol) &&
+      !(options.allowFile && parsed.protocol === "file:")
+    ) {
       return { ok: false, error: `${parsed.protocol} URLs are not allowed` };
     }
     return { ok: true, url: parsed.href };

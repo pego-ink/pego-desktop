@@ -1,6 +1,11 @@
 import { BrowserWindow, session, WebContentsView, type WebContents } from "electron";
 import { BROWSER_CHANNELS, PAGE_MESSAGE_PREFIX } from "@/browser-channels";
-import { isAllowedCdpMethod, parsePageMessage, type BrowserBounds } from "@/browser-cdp";
+import {
+  createRateLimiter,
+  isAllowedCdpMethod,
+  parsePageMessage,
+  type BrowserBounds,
+} from "@/browser-cdp";
 import { normalizeBrowserUrl } from "@/browser-url";
 
 /** Mirrors `DesktopBrowserState` in apps/web/src/desktop/desktop-api.ts. */
@@ -17,7 +22,10 @@ export type BrowserState = {
 export type BrowserView = {
   show: (bounds: BrowserBounds) => void;
   hide: () => void;
-  navigate: (url: string) => Promise<{ url: string; title: string }>;
+  navigate: (
+    url: string,
+    options?: { allowFile?: boolean },
+  ) => Promise<{ url: string; title: string }>;
   back: () => void;
   forward: () => void;
   reload: () => void;
@@ -28,6 +36,8 @@ export type BrowserView = {
 
 const PARTITION = "persist:pego-browser";
 const ERR_ABORTED = -3;
+const REDIRECT_SETTLE_MS = 15_000;
+const MAX_PAGE_MESSAGES_PER_SECOND = 20;
 const CDP_VERSION = "1.3";
 
 let sessionHardened = false;
@@ -51,6 +61,7 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
   let nonEmpty = false;
   let error: string | undefined;
   let navToken = 0;
+  const allowPageMessage = createRateLimiter(MAX_PAGE_MESSAGES_PER_SECOND);
 
   const editorSend = (channel: string, payload: unknown): void => {
     if (!win.isDestroyed() && !win.webContents.isDestroyed())
@@ -101,10 +112,19 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
       if (isHttp(url)) void wc.loadURL(url).catch(() => {});
       return { action: "deny" };
     });
+    // Page-initiated navigations (links, location, redirects) may only reach http(s);
+    // editor-initiated loadURL does not fire these events.
+    const blockNonHttp = (event: { preventDefault: () => void }, url: string): void => {
+      if (!isHttp(url)) event.preventDefault();
+    };
+    wc.on("will-navigate", blockNonHttp);
+    wc.on("will-redirect", blockNonHttp);
     wc.debugger.on("detach", () => {
       debuggerAttached = false;
     });
     wc.on("console-message", (details) => {
+      if (details.frame !== wc.mainFrame) return;
+      if (!allowPageMessage()) return;
       const message = parsePageMessage(details.message, PAGE_MESSAGE_PREFIX);
       if (message !== undefined) editorSend(BROWSER_CHANNELS.pageMessage, message);
     });
@@ -148,18 +168,37 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
     applyVisibility();
   };
 
-  const navigate = async (input: string): Promise<{ url: string; title: string }> => {
-    const target = normalizeBrowserUrl(input);
+  /** Resolves when the view stops loading, or after a timeout. */
+  const waitForStop = (wc: WebContents): Promise<void> =>
+    new Promise((resolve) => {
+      if (wc.isDestroyed() || !wc.isLoading()) return resolve();
+      const done = (): void => {
+        clearTimeout(timer);
+        wc.off("did-stop-loading", done);
+        resolve();
+      };
+      const timer = setTimeout(done, REDIRECT_SETTLE_MS);
+      wc.on("did-stop-loading", done);
+    });
+
+  const navigate = async (
+    input: string,
+    options: { allowFile?: boolean } = {},
+  ): Promise<{ url: string; title: string }> => {
+    const target = normalizeBrowserUrl(input, { allowFile: options.allowFile === true });
     if (!target.ok) throw new Error(target.error);
     const wc = ensureView().webContents;
     const token = ++navToken;
     try {
       await wc.loadURL(target.url);
     } catch (cause) {
-      // Superseded by a newer navigation: not a failure of this one.
       const code = (cause as { errno?: number }).errno;
-      if (code === ERR_ABORTED && token !== navToken)
+      if (code === ERR_ABORTED) {
+        // Superseded by a newer navigation: not a failure of this one. Otherwise the page most
+        // likely redirected itself (location.replace, meta refresh): wait for it to settle.
+        if (token === navToken) await waitForStop(wc);
         return { url: wc.getURL(), title: wc.getTitle() };
+      }
       const raw = cause instanceof Error ? cause.message : String(cause);
       const reason = /ERR_[A-Z_]+/.exec(raw)?.[0] ?? raw;
       throw new Error(`Could not load ${target.url} (${reason})`, { cause });

@@ -65,6 +65,31 @@ describe("parseColor", () => {
     expect(parseColor("color(srgb 1 0 0 / 0.5)")?.hex).toBe("#ff000080");
     expect(parseColor("color(srgb 0.2 0.4 0.6)")?.hex).toBe("#336699");
   });
+  test("oklab and oklch", () => {
+    expect(parseColor("oklab(1 0 0)")?.hex).toBe("#ffffff");
+    expect(parseColor("oklch(0 0 0)")?.hex).toBe("#000000");
+    expect(parseColor("oklch(0.62796 0.25768 29.234)")?.hex).toBe("#ff0000");
+    expect(parseColor("oklch(62.8% 0.2577 29.23 / 50%)")?.hex).toBe("#ff000080");
+    expect(parseColor("oklab(0.5 0.1 -0.1 / 0.5)")?.hex).toBe("#81459a80");
+    expect(parseColor("oklch(0.7 0.15 none)")?.hex).toBe(parseColor("oklch(0.7 0.15 0)")?.hex);
+    expect(parseColor("oklch(0.7 0.15 0.5turn)")?.hex).toBe(parseColor("oklch(0.7 0.15 180)")?.hex);
+  });
+  test("lab and lch", () => {
+    expect(parseColor("lab(100 0 0)")?.hex).toBe("#ffffff");
+    expect(parseColor("lab(0 0 0)")?.hex).toBe("#000000");
+    expect(parseColor("lab(54.29 80.8 69.89)")?.hex).toBe("#ff0000");
+    expect(parseColor("lch(54.29 106.84 40.85)")?.hex).toBe("#ff0000");
+  });
+  test("display-p3 and srgb-linear are converted and clamped", () => {
+    expect(parseColor("color(display-p3 1 0 0)")?.hex).toBe("#ff0000");
+    expect(parseColor("color(display-p3 1 1 1)")?.hex).toBe("#ffffff");
+    expect(parseColor("color(display-p3 0 1 0 / 0.5)")?.hex).toBe("#00ff0080");
+    expect(parseColor("color(srgb-linear 0.5 0.5 0.5)")?.hex).toBe("#bcbcbc");
+    expect(parseColor("color(srgb-linear 1 0 0)")?.hex).toBe("#ff0000");
+    expect(parseColor("color(rec2020 1 0 0)")).toBeNull();
+    expect(parseColor("oklch(abc 0 0)")).toBeNull();
+    expect(parseColor("lab(1 2)")).toBeNull();
+  });
   test("hex, names and transparent", () => {
     expect(parseColor("#abc")?.hex).toBe("#aabbcc");
     expect(parseColor("#ABCD")?.hex).toBe("#aabbccdd");
@@ -81,7 +106,7 @@ describe("parseColor", () => {
       "nope",
       "rgb(1,2)",
       "#12",
-      "color(display-p3 1 0 0)",
+      "color(rec2020 1 0 0)",
       "rgb(a,b,c)",
     ]) {
       expect(parseColor(bad)).toBeNull();
@@ -102,6 +127,26 @@ describe("parseLinearGradient", () => {
         { color: "#0000ff", position: 1 },
       ],
     });
+  });
+  test("an interpolation clause is ignored", () => {
+    const stops = [
+      { color: "#ff0000", position: 0 },
+      { color: "#0000ff", position: 1 },
+    ];
+    expect(parseLinearGradient("linear-gradient(in oklab, red, blue)", 100)).toEqual({
+      angle: 180,
+      stops,
+    });
+    expect(
+      parseLinearGradient("linear-gradient(to right in oklch shorter hue, red, blue)", 100),
+    ).toEqual({ angle: 90, stops });
+    expect(parseLinearGradient("linear-gradient(45deg in srgb, red, blue)", 100)).toEqual({
+      angle: 45,
+      stops,
+    });
+    expect(parseLinearGradient("linear-gradient(in oklch longer hue, red, blue)", 100)?.angle).toBe(
+      180,
+    );
   });
   test("default direction, side keywords and distributed stops", () => {
     expect(
@@ -411,6 +456,26 @@ describe("flattening", () => {
     expect(kids[1]?.type).toBe("frame");
     expect(kids[2]?.children).toHaveLength(2);
   });
+  test("a wrapper with opacity below 1 is kept", () => {
+    const r = convertDomSnapshot(
+      snap(
+        el("div", box(0, 0, 100, 100), {}, [
+          el("div", box(0, 0, 100, 100), { opacity: 0.5 }, [
+            el("div", box(0, 0, 100, 100), { backgroundColor: "#ff0000" }),
+          ]),
+        ]),
+      ),
+    );
+    const kid = (r.node.children as Json[])[0];
+    expect(kid).toMatchObject({ type: "frame", opacity: 0.5 });
+    expect(kid?.children).toHaveLength(1);
+  });
+  test("collapsing deep same-box wrappers respects the depth limit", () => {
+    let node: DomSnapshotNode = el("div", box(0, 0, 10, 10), { backgroundColor: "#ff0000" });
+    for (let i = 0; i < 300; i++) node = el("div", box(0, 0, 10, 10), {}, [node]);
+    const r = convertDomSnapshot(snap(node));
+    expect(r.warnings.some((w) => w.includes("nesting deeper"))).toBe(true);
+  });
   test("overflow hidden wrappers are kept", () => {
     const r = convertDomSnapshot(
       snap(
@@ -578,5 +643,24 @@ describe("caps and odd input", () => {
     const t = (r.node.children as Json[])[0];
     expect(t?.type).toBe("text");
     expect(t?.fontWeight).toBeUndefined();
+  });
+});
+
+describe("text width", () => {
+  const textStyle: DomStyle = { fontSize: 16, lineHeight: 24, color: "rgb(0, 0, 0)" };
+  const convertOne = (t: DomSnapshotNode) => {
+    const { node } = convertDomSnapshot(snap(el("div", box(0, 0, 400, 200), {}, [t])));
+    return (node as Json).children[0] as Json;
+  };
+
+  test("a single line measures itself (no fixed width)", () => {
+    const node = convertOne(text("Class Warfare", box(10, 10, 120, 24), textStyle));
+    expect(node.type).toBe("text");
+    expect(node.width).toBeUndefined();
+  });
+
+  test("several lines keep the box width so wrapping matches", () => {
+    const node = convertOne(text("A long paragraph that wraps", box(10, 10, 120, 72), textStyle));
+    expect(node.width).toBe(120);
   });
 });

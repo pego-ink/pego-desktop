@@ -74,9 +74,132 @@ const channel = (token: string, scale: number): number | null => {
   return Number.isFinite(value) ? value : null;
 };
 
+const clamp01 = (v: number): number => Math.min(1, Math.max(0, v));
+
+/** sRGB transfer function (also P3's): linear light -> encoded 0..255. */
+const encode = (linear: number): number => {
+  const v = clamp01(linear);
+  return 255 * (v <= 0.0031308 ? 12.92 * v : 1.055 * v ** (1 / 2.4) - 0.055);
+};
+
+const decode = (encoded: number): number => {
+  const v = Math.abs(encoded);
+  const lin = v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+  return encoded < 0 ? -lin : lin;
+};
+
+const fromLinear = (r: number, g: number, b: number, alpha: number): ParsedColor =>
+  toHex(encode(r), encode(g), encode(b), alpha);
+
+const oklabToColor = (l: number, a: number, b: number, alpha: number): ParsedColor => {
+  const l_ = (l + 0.3963377774 * a + 0.2158037573 * b) ** 3;
+  const m_ = (l - 0.1055613458 * a - 0.0638541728 * b) ** 3;
+  const s_ = (l - 0.0894841775 * a - 1.291485548 * b) ** 3;
+  return fromLinear(
+    4.0767416621 * l_ - 3.3077115913 * m_ + 0.2309699292 * s_,
+    -1.2684380046 * l_ + 2.6097574011 * m_ - 0.3413193965 * s_,
+    -0.0041960863 * l_ - 0.7034186147 * m_ + 1.707614701 * s_,
+    alpha,
+  );
+};
+
+/** CIE Lab (D50, as CSS defines it) to sRGB. */
+const labToColor = (l: number, a: number, b: number, alpha: number): ParsedColor => {
+  const kappa = 24389 / 27;
+  const eps = 216 / 24389;
+  const fy = (l + 16) / 116;
+  const fx = fy + a / 500;
+  const fz = fy - b / 200;
+  const x = (fx ** 3 > eps ? fx ** 3 : (116 * fx - 16) / kappa) * 0.96422;
+  const y = l > kappa * eps ? fy ** 3 : l / kappa;
+  const z = (fz ** 3 > eps ? fz ** 3 : (116 * fz - 16) / kappa) * 0.82521;
+  return fromLinear(
+    3.1338561 * x - 1.6168667 * y - 0.4906146 * z,
+    -0.9787684 * x + 1.9161415 * y + 0.033454 * z,
+    0.0719453 * x - 0.2289914 * y + 1.4052427 * z,
+    alpha,
+  );
+};
+
+const hueDegrees = (token: string): number | null => {
+  if (token === "none") return 0;
+  const m = /^(-?\d*\.?\d+(?:e-?\d+)?)(deg|grad|rad|turn)?$/.exec(token);
+  if (!m) return null;
+  const n = parseFloat(m[1] ?? "");
+  switch (m[2]) {
+    case "grad":
+      return (n * 360) / 400;
+    case "rad":
+      return (n * 180) / Math.PI;
+    case "turn":
+      return n * 360;
+    default:
+      return n;
+  }
+};
+
+/** A number or percentage token (`none` = 0); a percentage maps 100% to `full`. */
+const colorValue = (token: string | undefined, full: number): number | null => {
+  if (token === undefined) return null;
+  if (token === "none") return 0;
+  const value = token.endsWith("%") ? (parseFloat(token) / 100) * full : parseFloat(token);
+  return Number.isFinite(value) ? value : null;
+};
+
+/** `lab()`, `lch()`, `oklab()`, `oklch()` from their already split arguments. */
+const parseLabFamily = (name: string, parts: string[]): ParsedColor | null => {
+  if (parts.length < 3 || parts.length > 4) return null;
+  const alpha = parts[3] === undefined ? 1 : colorValue(parts[3], 1);
+  if (alpha === null) return null;
+  const ok = name.startsWith("ok");
+  const l = colorValue(parts[0], ok ? 1 : 100);
+  if (l === null) return null;
+  if (name.endsWith("lab")) {
+    const a = colorValue(parts[1], ok ? 0.4 : 125);
+    const b = colorValue(parts[2], ok ? 0.4 : 125);
+    if (a === null || b === null) return null;
+    return ok ? oklabToColor(l, a, b, alpha) : labToColor(l, a, b, alpha);
+  }
+  const c = colorValue(parts[1], ok ? 0.4 : 150);
+  const h = hueDegrees(parts[2] ?? "");
+  if (c === null || h === null) return null;
+  const rad = (h * Math.PI) / 180;
+  const a = c * Math.cos(rad);
+  const b = c * Math.sin(rad);
+  return ok ? oklabToColor(l, a, b, alpha) : labToColor(l, a, b, alpha);
+};
+
+/** `color(<space> r g b / a)` for srgb, srgb-linear and display-p3. */
+const parseColorFn = (parts: string[]): ParsedColor | null => {
+  const space = parts.shift();
+  if (parts.length < 3 || parts.length > 4) return null;
+  const rgb = parts.slice(0, 3).map((p) => colorValue(p, 1));
+  const alpha = parts[3] === undefined ? 1 : colorValue(parts[3], 1);
+  if (rgb.some((v) => v === null) || alpha === null) return null;
+  const [r, g, b] = rgb as [number, number, number];
+  switch (space) {
+    case "srgb":
+      return toHex(r * 255, g * 255, b * 255, alpha);
+    case "srgb-linear":
+      return fromLinear(r, g, b, alpha);
+    case "display-p3": {
+      const [lr, lg, lb] = [decode(r), decode(g), decode(b)] as [number, number, number];
+      return fromLinear(
+        1.2249401 * lr - 0.2249404 * lg,
+        -0.0420569 * lr + 1.0420571 * lg,
+        -0.0196376 * lr - 0.0786361 * lg + 1.0982735 * lb,
+        alpha,
+      );
+    }
+    default:
+      return null;
+  }
+};
+
 /**
- * Parse a CSS color (hex, rgb/rgba, `color(srgb ...)`, transparent, a few names).
- * Returns null when it cannot be read. Fully transparent colors parse (alpha 0).
+ * Parse a CSS color (hex, rgb/rgba, `color(srgb | srgb-linear | display-p3 ...)`, `lab()`,
+ * `lch()`, `oklab()`, `oklch()`, transparent, a few names). Wide-gamut colors are clamped to
+ * sRGB. Returns null when it cannot be read. Fully transparent colors parse (alpha 0).
  */
 export const parseColor = (input: string | undefined): ParsedColor | null => {
   if (!input) return null;
@@ -101,22 +224,16 @@ export const parseColor = (input: string | undefined): ParsedColor | null => {
     }
     return null;
   }
-  const fn = /^(rgba?|color)\((.*)\)$/.exec(value);
+  const fn = /^(rgba?|color|lab|lch|oklab|oklch)\((.*)\)$/.exec(value);
   if (!fn) return null;
-  const isColorFn = fn[1] === "color";
+  const name = fn[1] ?? "";
   const parts = (fn[2] ?? "").split(/[\s,/]+/).filter(Boolean);
-  if (isColorFn) {
-    if (parts.shift() !== "srgb") return null;
-  }
+  if (name === "color") return parseColorFn(parts);
+  if (name !== "rgb" && name !== "rgba") return parseLabFamily(name, parts);
   if (parts.length < 3 || parts.length > 4) return null;
-  const scale = isColorFn ? 1 : 255;
-  const rgb = parts.slice(0, 3).map((p) => channel(p, scale));
+  const rgb = parts.slice(0, 3).map((p) => channel(p, 255));
   if (rgb.some((v) => v === null)) return null;
-  const [r, g, b] = (rgb as number[]).map((v) => (isColorFn ? v * 255 : v)) as [
-    number,
-    number,
-    number,
-  ];
+  const [r, g, b] = rgb as [number, number, number];
   const alpha = parts[3] === undefined ? 1 : channel(parts[3], 1);
   if (alpha === null) return null;
   return toHex(r, g, b, alpha);
@@ -193,6 +310,14 @@ export const parseLinearGradient = (
   if (!m || m[1]) return null;
   const args = splitTop(m[2] ?? "", ",");
   let angle = 180;
+  // Drop an interpolation clause ("in oklab", "to right in oklch shorter hue").
+  if (args[0] !== undefined) {
+    const direction = args[0].replace(/(^|\s)in\s+[a-z-]+(\s+\S+)*\s*$/i, "").trim();
+    if (direction !== args[0].trim()) {
+      if (direction) args[0] = direction;
+      else args.shift();
+    }
+  }
   const first = args[0]?.toLowerCase() ?? "";
   if (first.startsWith("to ")) {
     const side = SIDE_ANGLES[first.slice(3).trim().replace(/\s+/g, " ")];
@@ -536,6 +661,10 @@ const convertText = (
       ? round(style.lineHeight / size)
       : undefined;
   const pos = place(node.box, origin);
+  // One line in the page: let the text measure itself, so a wider fallback font overflows
+  // a little instead of wrapping onto a second line. Several lines keep the box width.
+  const lineBox = (lineHeight ?? 1.25) * (size ?? 16);
+  const singleLine = node.box.height < lineBox * 1.5;
   const family = pickFontFamily(style.fontFamily);
   const fill = paintColor(style.color);
   const align = style.textAlign ? TEXT_ALIGN[style.textAlign] : undefined;
@@ -545,7 +674,7 @@ const convertText = (
     x: pos.x,
     y: pos.y,
     // Fixed width = the measured box so wrapping matches; the height follows the text.
-    width: Math.ceil(pos.width),
+    ...(singleLine ? {} : { width: Math.ceil(pos.width) }),
     content,
     ...(family ? { fontFamily: family } : {}),
     ...(size ? { fontSize: size } : {}),
@@ -666,7 +795,9 @@ const convertElement = (
     const only = kids.length === 1 ? kids[0] : undefined;
     // A pointless wrapper: no visuals, one child with the same box.
     if (
+      depth < MAX_DEPTH &&
       !visual &&
+      props.opacity === undefined &&
       !style.overflowHidden &&
       only &&
       only.box &&

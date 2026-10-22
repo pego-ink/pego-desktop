@@ -1,8 +1,15 @@
 import { describe, expect, test } from "bun:test";
-import { isAllowedCdpMethod, parseBounds, parseCdpRequest, parsePageMessage } from "@/browser-cdp";
+import {
+  ALLOWED_CDP_METHODS,
+  createRateLimiter,
+  isAllowedCdpMethod,
+  parseBounds,
+  parseCdpRequest,
+  parsePageMessage,
+} from "@/browser-cdp";
 
 describe("isAllowedCdpMethod", () => {
-  test("allows the six domains", () => {
+  test("allows listed methods", () => {
     for (const m of [
       "DOM.getDocument",
       "Input.dispatchMouseEvent",
@@ -17,6 +24,12 @@ describe("isAllowedCdpMethod", () => {
   });
   test("rejects everything else", () => {
     for (const m of [
+      "Page.navigate",
+      "DOM.setFileInputFiles",
+      "Page.setDownloadBehavior",
+      "Page.setBypassCSP",
+      "Runtime.addBinding",
+      "Runtime.enable",
       "Network.enable",
       "Browser.close",
       "Target.createTarget",
@@ -31,6 +44,10 @@ describe("isAllowedCdpMethod", () => {
       expect(isAllowedCdpMethod(m)).toBe(false);
     }
   });
+});
+
+test("allowlist size", () => {
+  expect(ALLOWED_CDP_METHODS.size).toBe(39);
 });
 
 describe("parseCdpRequest", () => {
@@ -64,10 +81,40 @@ describe("parseBounds", () => {
 });
 
 describe("parsePageMessage", () => {
-  test("parses prefixed JSON and ignores the rest", () => {
-    expect(parsePageMessage('__pego__:{"type":"picked"}', "__pego__:")).toEqual({ type: "picked" });
-    expect(parsePageMessage("__pego__:{bad", "__pego__:")).toBeUndefined();
-    expect(parsePageMessage("hello", "__pego__:")).toBeUndefined();
-    expect(parsePageMessage(5, "__pego__:")).toBeUndefined();
+  const P = "__pego__:";
+  test("accepts picked and pick-cancelled", () => {
+    expect(parsePageMessage('__pego__:{"type":"picked","tag":"div","text":"hi"}', P)).toEqual({
+      type: "picked",
+      tag: "div",
+      text: "hi",
+    });
+    expect(parsePageMessage('__pego__:{"type":"pick-cancelled"}', P)).toEqual({
+      type: "pick-cancelled",
+    });
+  });
+  test("drops everything else", () => {
+    expect(parsePageMessage("__pego__:{bad", P)).toBeUndefined();
+    expect(parsePageMessage("hello", P)).toBeUndefined();
+    expect(parsePageMessage(5, P)).toBeUndefined();
+    expect(parsePageMessage('__pego__:{"type":"other"}', P)).toBeUndefined();
+    expect(parsePageMessage('__pego__:["picked"]', P)).toBeUndefined();
+    expect(parsePageMessage('__pego__:{"type":"picked","n":1}', P)).toBeUndefined();
+    expect(parsePageMessage('__pego__:{"type":"picked","x":{"a":1}}', P)).toBeUndefined();
+    const long = "a".repeat(201);
+    expect(parsePageMessage(`__pego__:{"type":"picked","text":"${long}"}`, P)).toBeUndefined();
+    const huge = `__pego__:{"type":"picked","text":"${"a".repeat(3000)}"}`;
+    expect(parsePageMessage(huge, P)).toBeUndefined();
+    const many = { type: "picked", a: "1", b: "1", c: "1", d: "1", e: "1", f: "1" };
+    expect(parsePageMessage(`__pego__:${JSON.stringify(many)}`, P)).toBeUndefined();
+  });
+});
+
+describe("createRateLimiter", () => {
+  test("allows max per second then resets", () => {
+    let t = 1000;
+    const allow = createRateLimiter(3, () => t);
+    expect([allow(), allow(), allow(), allow()]).toEqual([true, true, true, false]);
+    t += 1000;
+    expect(allow()).toBe(true);
   });
 });

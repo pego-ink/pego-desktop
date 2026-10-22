@@ -7,10 +7,15 @@ const url = (input: string): string | null => {
 };
 
 describe("normalizeBrowserUrl", () => {
-  test("keeps http, https and file", () => {
+  test("file only with allowFile", () => {
+    expect(normalizeBrowserUrl("file:///tmp/a.html").ok).toBe(false);
+    const r = normalizeBrowserUrl("file:///tmp/a.html", { allowFile: true });
+    expect(r.ok && r.url).toBe("file:///tmp/a.html");
+    expect(normalizeBrowserUrl("javascript:alert(1)", { allowFile: true }).ok).toBe(false);
+  });
+  test("keeps http and https", () => {
     expect(url("https://example.com/a?b=1")).toBe("https://example.com/a?b=1");
     expect(url("http://example.com")).toBe("http://example.com/");
-    expect(url("file:///tmp/a.html")).toBe("file:///tmp/a.html");
   });
   test("bare hosts get https", () => {
     expect(url("example.com")).toBe("https://example.com/");

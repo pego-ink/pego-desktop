@@ -51,6 +51,33 @@ function pageBox(el,full){
 }
 `;
 
+/**
+ * Color normalization helpers (page side): modern Chrome reports computed colors in their own
+ * space (oklch, lab, color(display-p3 ...)); everything we emit must be rgb()/rgba().
+ */
+export const COLOR_HELPERS = String.raw`
+var __cc=null;
+function normColor(c){
+  if(typeof c!=="string"||!c||/^rgba?\(/.test(c))return c;
+  try{
+    if(!__cc){var cv=document.createElement("canvas");cv.width=1;cv.height=1;__cc=cv.getContext("2d",{willReadFrequently:true})}
+    __cc.clearRect(0,0,1,1);
+    __cc.fillStyle="#010203";
+    __cc.fillStyle=c;
+    if(__cc.fillStyle==="#010203"&&c.replace(/\s/g,"").toLowerCase()!=="#010203")return c;
+    __cc.fillRect(0,0,1,1);
+    var d=__cc.getImageData(0,0,1,1).data;
+    return d[3]===255?"rgb("+d[0]+", "+d[1]+", "+d[2]+")":"rgba("+d[0]+", "+d[1]+", "+d[2]+", "+Math.round(d[3]/255*1000)/1000+")";
+  }catch(e){return c}
+}
+var COLOR_FN=/(?<![\w-])(?:oklch|oklab|lab|lch|color|hwb|hsla?)\((?:[^()]|\([^()]*\))*\)/g;
+var GRADIENT_SPACE=/\s*\bin\s+(?:oklab|oklch|srgb-linear|srgb|display-p3|a98-rgb|prophoto-rgb|rec2020|xyz-d50|xyz-d65|xyz|lab|lch|hsl|hwb)(?:\s+(?:shorter|longer|increasing|decreasing)\s+hue)?/g;
+function normColors(s){
+  if(typeof s!=="string"||!s)return s;
+  return s.replace(GRADIENT_SPACE,"").replace(/gradient\(\s*,\s*/g,"gradient(").replace(COLOR_FN,normColor);
+}
+`;
+
 const targetJson = (target: BrowserTarget): string =>
   JSON.stringify(
     target.kind === "query" ? { kind: "query", selector: target.selector } : { kind: target.kind },
@@ -66,13 +93,17 @@ export const boxScript = (target: BrowserTarget): string =>
   );
 
 const SNAPSHOT_BODY = String.raw`
-var MAX_NODES=4000,MAX_INLINE=1400000,count=0;
+var MAX_NODES=4000,MAX_INLINE=1400000,MAX_TOTAL_INLINE=8000000,inlined=0,count=0;
+function takeBudget(url){
+  if(!url||inlined+url.length>MAX_TOTAL_INLINE)return null;
+  inlined+=url.length;return url;
+}
 var SKIP={SCRIPT:1,STYLE:1,NOSCRIPT:1,TEMPLATE:1,HEAD:1,LINK:1,META:1,TITLE:1,BASE:1};
 function px(v){var n=parseFloat(v);return isFinite(n)?n:0}
 function rectBox(r){return {x:round(r.left+window.scrollX),y:round(r.top+window.scrollY),width:round(r.width),height:round(r.height)}}
 function isOwn(el){return el.hasAttribute&&el.hasAttribute("data-pego-overlay")}
 function textStyle(cs){
-  var s={color:cs.color,fontFamily:cs.fontFamily,fontSize:px(cs.fontSize)};
+  var s={color:normColor(cs.color),fontFamily:cs.fontFamily,fontSize:px(cs.fontSize)};
   var w=parseInt(cs.fontWeight,10);s.fontWeight=isFinite(w)?w:(cs.fontWeight==="bold"?700:400);
   s.fontStyle=cs.fontStyle==="italic"||cs.fontStyle==="oblique"?"italic":"normal";
   var lh=parseFloat(cs.lineHeight);if(isFinite(lh)&&lh>0)s.lineHeight=lh;
@@ -98,20 +129,20 @@ function elementStyle(cs,rect){
   }
   var pad=[px(cs.paddingTop),px(cs.paddingRight),px(cs.paddingBottom),px(cs.paddingLeft)];
   if(pad.some(function(v){return v>0}))s.padding=pad;
-  if(cs.backgroundColor&&cs.backgroundColor!=="rgba(0, 0, 0, 0)"&&cs.backgroundColor!=="transparent")s.backgroundColor=cs.backgroundColor;
-  if(cs.backgroundImage&&cs.backgroundImage!=="none")s.backgroundImage=cs.backgroundImage;
+  if(cs.backgroundColor&&cs.backgroundColor!=="rgba(0, 0, 0, 0)"&&cs.backgroundColor!=="transparent")s.backgroundColor=normColor(cs.backgroundColor);
+  if(cs.backgroundImage&&cs.backgroundImage!=="none")s.backgroundImage=normColors(cs.backgroundImage);
   var sides=["Top","Right","Bottom","Left"],bw=[],bc;
   for(var i=0;i<4;i++){
     var w=cs["border"+sides[i]+"Style"]==="none"||cs["border"+sides[i]+"Style"]==="hidden"?0:px(cs["border"+sides[i]+"Width"]);
     bw.push(w);
-    if(w>0&&bc===undefined)bc=cs["border"+sides[i]+"Color"];
+    if(w>0&&bc===undefined)bc=normColor(cs["border"+sides[i]+"Color"]);
   }
   if(bc!==undefined){s.borderWidth=bw;s.borderColor=bc}
   var rad=cs.borderTopLeftRadius,rv=px(rad);
   if(rad.indexOf("%")>0)rv=rv/100*Math.min(rect.width,rect.height);
   if(rv>0)s.borderRadius=round(rv);
   var op=parseFloat(cs.opacity);if(isFinite(op)&&op<1)s.opacity=op;
-  if(cs.boxShadow&&cs.boxShadow!=="none")s.boxShadow=cs.boxShadow;
+  if(cs.boxShadow&&cs.boxShadow!=="none")s.boxShadow=normColors(cs.boxShadow);
   if(cs.overflowX!=="visible"||cs.overflowY!=="visible")s.overflowHidden=true;
   return s;
 }
@@ -135,13 +166,13 @@ function componentOf(el){
 }
 function inlineImage(img){
   try{
-    if(!img.complete||!img.naturalWidth)return null;
+    if(inlined>=MAX_TOTAL_INLINE||!img.complete||!img.naturalWidth)return null;
     var w=img.naturalWidth,h=img.naturalHeight,s=Math.min(1,2048/Math.max(w,h));
     var c=document.createElement("canvas");
     c.width=Math.max(1,Math.round(w*s));c.height=Math.max(1,Math.round(h*s));
     c.getContext("2d").drawImage(img,0,0,c.width,c.height);
     var url=c.toDataURL("image/webp",0.9);
-    return url.length<=MAX_INLINE?url:null;
+    return url.length<=MAX_INLINE?takeBudget(url):null;
   }catch(e){return null}
 }
 function imageSource(el){
@@ -149,12 +180,14 @@ function imageSource(el){
   if(tag==="IMG"){
     var src=el.currentSrc||el.src;
     if(!src)return null;
-    if(src.indexOf("data:")===0)return src;
+    if(src.indexOf("data:")===0)return takeBudget(src);
     return inlineImage(el)||(src.indexOf("https:")===0?src:null);
   }
   if(tag==="VIDEO"){
     var poster=el.poster;
-    return poster&&(poster.indexOf("https:")===0||poster.indexOf("data:")===0)?poster:null;
+    if(!poster)return null;
+    if(poster.indexOf("https:")===0)return poster;
+    return poster.indexOf("data:")===0?takeBudget(poster):null;
   }
   return null;
 }
@@ -164,9 +197,9 @@ function svgMarkup(svg){
   var b=[clone].concat(Array.prototype.slice.call(clone.querySelectorAll("*")));
   for(var i=0;i<a.length&&i<b.length;i++){
     var cs=getComputedStyle(a[i]);
-    if(cs.fill)b[i].setAttribute("fill",cs.fill);
+    if(cs.fill)b[i].setAttribute("fill",normColor(cs.fill));
     if(cs.stroke&&cs.stroke!=="none"){
-      b[i].setAttribute("stroke",cs.stroke);
+      b[i].setAttribute("stroke",normColor(cs.stroke));
       b[i].setAttribute("stroke-width",cs.strokeWidth);
     }
   }
@@ -255,8 +288,8 @@ function walk(el,out,pcomp,isRoot){
   }
   if(tag==="canvas"){
     var data=null;
-    try{data=el.toDataURL("image/png")}catch(e){}
-    if(data&&data.length<=MAX_INLINE){
+    if(inlined<MAX_TOTAL_INLINE){try{data=el.toDataURL("image/png")}catch(e){}}
+    if(data&&data.length<=MAX_INLINE&&takeBudget(data)){
       count++;
       out.push({kind:"image",tag:tag,src:data,box:box,style:style});
       return;
@@ -288,31 +321,29 @@ if(r.full){
   root.box=pageBox(r.el,true);
   if(root.kind==="element"&&!root.style.backgroundColor){
     var rootBg=getComputedStyle(document.documentElement).backgroundColor;
-    if(rootBg&&rootBg!=="rgba(0, 0, 0, 0)")root.style.backgroundColor=rootBg;
+    if(rootBg&&rootBg!=="rgba(0, 0, 0, 0)")root.style.backgroundColor=normColor(rootBg);
   }
 }else if(root.kind==="element"&&!root.style.backgroundColor){
   // A picked element usually shows its ancestors' background: carry the nearest opaque one.
   for(var anc=r.el.parentElement;anc;anc=anc.parentElement){
     var ancBg=getComputedStyle(anc).backgroundColor;
-    if(ancBg&&ancBg!=="rgba(0, 0, 0, 0)"&&ancBg!=="transparent"){root.style.backgroundColor=ancBg;break;}
+    if(ancBg&&ancBg!=="rgba(0, 0, 0, 0)"&&ancBg!=="transparent"){root.style.backgroundColor=normColor(ancBg);break;}
   }
+  // No declared background anywhere up the tree: the page shows the browser's white canvas.
+  if(!root.style.backgroundColor)root.style.backgroundColor="rgb(255, 255, 255)";
 }
 return JSON.stringify({ok:{url:location.href,title:document.title,root:root}});
 `;
 
 /** Walks the target into a `DomSnapshot` (url, title, root), at most ~4000 nodes. */
 export const snapshotScript = (target: BrowserTarget): string =>
-  wrap(COMMON + "var TARGET=" + targetJson(target) + ";" + SNAPSHOT_BODY);
+  wrap(COMMON + COLOR_HELPERS + "var TARGET=" + targetJson(target) + ";" + SNAPSHOT_BODY);
 
 const DESCRIBE_BODY = String.raw`
 var MAX_HTML=20000,MAX_DESCENDANTS=50;
 var SKIP_PROPS=/^(width|height|block-size|inline-size|perspective-origin|transform-origin)$/;
 var INHERITED=/^(color|font|line-height|letter-spacing|word-spacing|text-align|text-indent|text-transform|text-shadow|white-space|cursor|visibility|direction|list-style|quotes|tab-size|caret-color|word-break|overflow-wrap|-webkit-text-fill|-webkit-text-stroke|-webkit-font|-webkit-locale)/;
-var frame=document.createElement("iframe");
-frame.setAttribute("data-pego-overlay","");
-frame.style.cssText="position:absolute;visibility:hidden;width:0;height:0;border:0;pointer-events:none";
-document.documentElement.appendChild(frame);
-var defaults={};
+var frame=null,defaults={};
 function defaultStyle(el){
   var key=el.namespaceURI+" "+el.tagName;
   if(defaults[key])return defaults[key];
@@ -344,6 +375,13 @@ var r=resolveTarget(TARGET),el=r.el;
 var html=el.outerHTML.replace(/ data-pego-picked=""/g,"");
 if(html.length>MAX_HTML)html=html.slice(0,MAX_HTML)+"\n... (truncated, "+html.length+" characters in all)";
 var b=pageBox(el,r.full);
+// Only after the target resolved: a bad selector must not leave an iframe behind.
+frame=document.createElement("iframe");
+frame.setAttribute("data-pego-overlay","");
+frame.style.cssText="position:absolute;visibility:hidden;width:0;height:0;border:0;pointer-events:none";
+document.documentElement.appendChild(frame);
+try{
+
 var out=["URL: "+location.href,"Box: x="+b.x+" y="+b.y+" width="+b.width+" height="+b.height,"","HTML:",html,"","Computed styles that differ from a default element of the same tag (inherited values equal to the parent's are left out):"];
 var list=[el].concat(Array.prototype.slice.call(el.querySelectorAll("*"),0,MAX_DESCENDANTS));
 for(var i=0;i<list.length;i++){
@@ -351,7 +389,7 @@ for(var i=0;i<list.length;i++){
   out.push("",label(list[i])+(lines.length?"":" (defaults)"));
   for(var j=0;j<lines.length;j++)out.push(lines[j]);
 }
-frame.remove();
+}finally{frame.remove()}
 return JSON.stringify({ok:out.join("\n")});
 `;
 

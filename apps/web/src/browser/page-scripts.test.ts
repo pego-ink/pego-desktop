@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { BrowserTarget } from "@pego/agent";
 import {
+  COLOR_HELPERS,
   boxScript,
   describeScript,
   pickerStartScript,
@@ -38,6 +39,54 @@ describe("page scripts", () => {
       error?: string;
     };
     expect(typeof out.error).toBe("string");
+  });
+});
+
+describe("color helpers", () => {
+  // A fake 1x1 canvas that "resolves" any color to a fixed pixel.
+  const load = (pixel: number[]) => {
+    const ctx = {
+      fillStyle: "#000000",
+      clearRect: () => {},
+      fillRect: () => {},
+      getImageData: () => ({ data: pixel }),
+    };
+    let current = "#000000";
+    Object.defineProperty(ctx, "fillStyle", {
+      get: () => current,
+      set: (v: string) => {
+        if (!/\(/.test(v))
+          current = v; // functional colors parse, junk is ignored
+        else current = "#ffffff";
+      },
+    });
+    const document = { createElement: () => ({ getContext: () => ctx }) };
+    return new Function(
+      "document",
+      COLOR_HELPERS + "return {normColor:normColor,normColors:normColors}",
+    )(document) as { normColor: (c: string) => string; normColors: (s: string) => string };
+  };
+
+  test("modern colors become rgb/rgba, keeping alpha", () => {
+    expect(load([10, 20, 30, 255]).normColor("oklch(0.5 0.1 200)")).toBe("rgb(10, 20, 30)");
+    expect(load([10, 20, 30, 128]).normColor("color(display-p3 1 0 0 / 0.5)")).toBe(
+      "rgba(10, 20, 30, 0.502)",
+    );
+  });
+
+  test("rgb colors pass through untouched", () => {
+    expect(load([0, 0, 0, 255]).normColor("rgb(1, 2, 3)")).toBe("rgb(1, 2, 3)");
+  });
+
+  test("gradient and shadow strings are rewritten token by token", () => {
+    const { normColors } = load([1, 2, 3, 255]);
+    expect(normColors("linear-gradient(in oklab, oklch(0.5 0.1 20), rgb(0, 0, 0))")).toBe(
+      "linear-gradient(rgb(1, 2, 3), rgb(0, 0, 0))",
+    );
+    expect(normColors("linear-gradient(to right in oklab, lab(50 1 1 / 0.5) 0%, red)")).toBe(
+      "linear-gradient(to right, rgb(1, 2, 3) 0%, red)",
+    );
+    expect(normColors("oklab(0.5 0 0 / 0.3) 0px 4px 8px 0px")).toBe("rgb(1, 2, 3) 0px 4px 8px 0px");
   });
 });
 

@@ -66,8 +66,11 @@ export type ToolHost = {
   browser?: BrowserHost;
 };
 
-/** Base64 PNG attached to a tool result (screenshots). */
-export type ToolImage = { mediaType: "image/png"; data: string; width: number; height: number };
+/** Image media types a tool result may carry. */
+export type ToolImageType = "image/png" | "image/jpeg" | "image/webp";
+
+/** Base64 image attached to a tool result (screenshots). */
+export type ToolImage = { mediaType: ToolImageType; data: string; width: number; height: number };
 
 /** Tool output in a provider-neutral shape (maps to tool_result / MCP CallToolResult). */
 export type ToolResult = { content: string; isError: boolean; images?: ToolImage[] };

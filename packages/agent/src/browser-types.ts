@@ -126,8 +126,9 @@ export type BrowserHost = {
   /** The target's outerHTML plus its non-default computed styles, as readable text. */
   describeElement: (target: BrowserTarget) => Promise<string>;
   /**
-   * Send one Chrome DevTools Protocol command to the page. Only the DOM, Input, Page, Runtime,
-   * Emulation, CSS and Accessibility domains are allowed; others reject.
+   * Send one Chrome DevTools Protocol command to the page. Only an allowlist of methods is
+   * accepted (`CDP_ALLOWED_METHODS` in `browser-cdp.ts`, mirrored by the desktop app); others
+   * reject. Navigation goes through `loadPage`.
    */
   cdp: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
 };

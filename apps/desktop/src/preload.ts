@@ -95,7 +95,8 @@ const subscribe = (
 const browser = {
   show: (bounds: unknown): void => ipcRenderer.send(BROWSER_CHANNELS.show, bounds),
   hide: (): void => ipcRenderer.send(BROWSER_CHANNELS.hide),
-  navigate: (url: unknown): Promise<unknown> => ipcRenderer.invoke(BROWSER_CHANNELS.navigate, url),
+  navigate: (url: unknown, options?: unknown): Promise<unknown> =>
+    ipcRenderer.invoke(BROWSER_CHANNELS.navigate, url, options),
   back: (): void => ipcRenderer.send(BROWSER_CHANNELS.back),
   forward: (): void => ipcRenderer.send(BROWSER_CHANNELS.forward),
   reload: (): void => ipcRenderer.send(BROWSER_CHANNELS.reload),

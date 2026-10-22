@@ -14,11 +14,63 @@ const requireApi = (): DesktopBrowserApi => {
   return api;
 };
 
-/** Runs one of the page scripts and resolves with its value (rejects with the page's message). */
-export const evaluateInPage = async (api: DesktopBrowserApi, expression: string) =>
+const WORLD_NAME = "pego";
+const CONTEXT_GONE = /cannot find context|context was destroyed|execution context/i;
+
+type World = { url: string; contextId: Promise<number> };
+let world: World | undefined;
+
+const createWorld = async (api: DesktopBrowserApi): Promise<number> => {
+  const tree = (await api.cdp("Page.getFrameTree")) as { frameTree?: { frame?: { id?: string } } };
+  const frameId = tree.frameTree?.frame?.id;
+  if (!frameId) throw new Error("The page has no main frame");
+  const created = (await api.cdp("Page.createIsolatedWorld", {
+    frameId,
+    worldName: WORLD_NAME,
+    grantUniveralAccess: false,
+  })) as { executionContextId?: number };
+  if (typeof created.executionContextId !== "number") {
+    throw new Error("The page's script context could not be created");
+  }
+  return created.executionContextId;
+};
+
+/** The isolated world's context id for the current page, created once per page URL. */
+const worldContext = (api: DesktopBrowserApi, fresh: boolean): Promise<number> => {
+  const url = useBrowserStore.getState().state.url;
+  if (fresh || !world || world.url !== url) {
+    const next: World = { url, contextId: createWorld(api) };
+    world = next;
+    next.contextId.catch(() => {
+      if (world === next) world = undefined;
+    });
+  }
+  return world.contextId;
+};
+
+const evaluateOnce = async (api: DesktopBrowserApi, expression: string, fresh: boolean) =>
   unwrapEvaluation(
-    await api.cdp("Runtime.evaluate", { expression, returnByValue: true, awaitPromise: true }),
+    await api.cdp("Runtime.evaluate", {
+      expression,
+      contextId: await worldContext(api, fresh),
+      returnByValue: true,
+      awaitPromise: true,
+    }),
   );
+
+/**
+ * Runs one of the page scripts in an isolated world (the page cannot tamper with JSON,
+ * getComputedStyle, ...) and resolves with its value (rejects with the page's message). A lost
+ * context (navigation, reload) is recreated once.
+ */
+export const evaluateInPage = async (api: DesktopBrowserApi, expression: string) => {
+  try {
+    return await evaluateOnce(api, expression, false);
+  } catch (error) {
+    if (!CONTEXT_GONE.test(error instanceof Error ? error.message : String(error))) throw error;
+    return evaluateOnce(api, expression, true);
+  }
+};
 
 const handlePageMessage = (message: unknown) => {
   if (typeof message !== "object" || message === null) return;
