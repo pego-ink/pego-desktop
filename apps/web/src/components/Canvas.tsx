@@ -11,6 +11,7 @@ import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
+import { AgentCursor } from "@/components/AgentCursor";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -151,6 +152,7 @@ export const Canvas = () => {
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
       <TextEditorOverlay />
+      <AgentCursor />
       <Toolbar />
     </div>
   );
