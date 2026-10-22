@@ -3,7 +3,7 @@ import type { PegoDocument } from "@pego/doc";
 import { layerLabel } from "./layer-rows";
 
 const doc: PegoDocument = {
-  version: 0,
+  version: 1,
   id: "d",
   name: "d",
   variables: {},

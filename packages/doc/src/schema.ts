@@ -28,10 +28,72 @@ export const justifyContentSchema = z.enum([
 ]);
 export const alignItemsSchema = z.enum(["start", "center", "end"]);
 
+/** A gradient color stop; `position` runs from 0 (start) to 1 (end). */
+export const gradientStopSchema = z.object({
+  color: colorValueSchema,
+  position: z.number().min(0).max(1),
+});
+const stops = z.array(gradientStopSchema).min(2);
+/** Fraction of the node's size, e.g. [0.5, 0.5] = the center. */
+const fraction2 = z.tuple([z.number(), z.number()]);
+
+/** Like CSS `linear-gradient(<angle>deg, ...)`: 0 points up, 90 right, 180 (default) down. */
+export const linearGradientSchema = z.object({
+  type: z.literal("linear"),
+  angle: numberValueSchema.default(180),
+  stops,
+});
+/** Ellipse at `center` with radii `radius`, both as fractions of the node's width and height. */
+export const radialGradientSchema = z.object({
+  type: z.literal("radial"),
+  center: fraction2.default([0.5, 0.5]),
+  radius: fraction2.default([0.5, 0.5]),
+  stops,
+});
+/** Raster image embedded as a base64 data URI, scaled like CSS `background-size`. */
+export const imageFillSchema = z.object({
+  type: z.literal("image"),
+  src: z
+    .string()
+    .regex(
+      /^data:image\/(png|jpeg|webp|gif);base64,[A-Za-z0-9+/=]+$/,
+      "expected a base64 image data URI",
+    ),
+  fit: z.enum(["cover", "contain", "stretch"]).default("cover"),
+});
+/** What shapes are filled with: a color, a gradient or an image. */
+export const fillSchema = z.union([
+  colorValueSchema,
+  z.discriminatedUnion("type", [linearGradientSchema, radialGradientSchema, imageFillSchema]),
+]);
+
+/** One value for every side, or `[top, right, bottom, left]` (CSS order). */
+export const sidesSchema = z.union([numberValueSchema, z.array(numberValueSchema).length(4)]);
+
 export const strokeSchema = z.object({
   color: colorValueSchema,
-  width: numberValueSchema.default(1),
+  /** One width, or per side `[top, right, bottom, left]`; 0 hides a side. */
+  width: sidesSchema.default(1),
 });
+
+/** Drop shadow (outside the shape) or inner shadow, like CSS box-shadow. */
+export const shadowEffectSchema = z.object({
+  type: z.literal("shadow"),
+  inner: z.boolean().optional(),
+  color: colorValueSchema,
+  x: numberValueSchema.default(0),
+  y: numberValueSchema.default(0),
+  blur: numberValueSchema.default(0),
+  spread: numberValueSchema.optional(),
+});
+/** Gaussian blur of the whole layer, like CSS `filter: blur()`. */
+export const blurEffectSchema = z.object({
+  type: z.literal("blur"),
+  radius: numberValueSchema,
+});
+export const effectSchema = z.discriminatedUnion("type", [shadowEffectSchema, blurEffectSchema]);
+/** Drawn in order: shadows below the node, inner shadows above its fill, blur on the whole layer. */
+const effects = z.array(effectSchema).optional();
 
 // --- nodes ------------------------------------------------------------------
 
@@ -49,8 +111,9 @@ const baseNode = z.object({
 });
 
 const paintedNode = baseNode.extend({
-  fill: colorValueSchema.optional(),
+  fill: fillSchema.optional(),
   stroke: strokeSchema.optional(),
+  effects,
 });
 
 const frameShape = paintedNode.extend({
@@ -59,7 +122,7 @@ const frameShape = paintedNode.extend({
   clip: z.boolean().optional(),
   layout: layoutSchema.default("none"),
   gap: numberValueSchema.optional(),
-  padding: z.union([numberValueSchema, z.array(numberValueSchema).length(4)]).optional(),
+  padding: sidesSchema.optional(),
   justifyContent: justifyContentSchema.optional(),
   alignItems: alignItemsSchema.optional(),
 });
@@ -73,21 +136,30 @@ const pathSchema = paintedNode.extend({
   type: z.literal("path"),
   /** SVG path data. */
   geometry: z.string().min(1),
+  /** `[minX, minY, width, height]` of the geometry; when set, it is scaled to the node's size. */
+  viewBox: z.tuple([z.number(), z.number(), z.number(), z.number()]).optional(),
 });
 const textSchema = baseNode.extend({
   type: z.literal("text"),
   content: z.union([z.string(), variableRef]),
+  /** Family name or a $variable (string). */
   fontFamily: z.string().optional(),
   fontSize: numberValueSchema.optional(),
   fontWeight: numberValueSchema.optional(),
+  /** Multiple of the font size, e.g. 1.5. Omitted = the font's natural line height. */
+  lineHeight: numberValueSchema.optional(),
+  /** Extra space between characters, in pixels. */
+  letterSpacing: numberValueSchema.optional(),
   textAlign: z.enum(["left", "center", "right"]).optional(),
   fill: colorValueSchema.optional(),
+  effects,
 });
 const iconSchema = baseNode.extend({
   type: z.literal("icon"),
   iconSet: z.string().default("lucide"),
   iconName: z.string().min(1),
   fill: colorValueSchema.optional(),
+  effects,
 });
 const refSchema = baseNode.extend({
   type: z.literal("ref"),
@@ -97,6 +169,15 @@ const refSchema = baseNode.extend({
   descendants: z.record(z.string(), z.record(z.string(), z.unknown())).optional(),
 });
 
+export type Stroke = z.infer<typeof strokeSchema>;
+export type GradientStop = z.infer<typeof gradientStopSchema>;
+export type LinearGradient = z.infer<typeof linearGradientSchema>;
+export type RadialGradient = z.infer<typeof radialGradientSchema>;
+export type ImageFill = z.infer<typeof imageFillSchema>;
+export type Fill = z.infer<typeof fillSchema>;
+export type ShadowEffect = z.infer<typeof shadowEffectSchema>;
+export type BlurEffect = z.infer<typeof blurEffectSchema>;
+export type Effect = z.infer<typeof effectSchema>;
 export type RectangleNode = z.infer<typeof rectangleSchema>;
 export type EllipseNode = z.infer<typeof ellipseSchema>;
 export type PathNode = z.infer<typeof pathSchema>;
@@ -135,8 +216,11 @@ export const variableSchema = z.discriminatedUnion("type", [
 /** Keyed by variable name without the leading `$`. */
 export const variablesSchema = z.record(z.string(), variableSchema);
 
+/** Current document format version; older documents go through `migrateDocument` first. */
+export const DOCUMENT_VERSION = 1;
+
 export const documentSchema = z.object({
-  version: z.literal(0),
+  version: z.literal(DOCUMENT_VERSION),
   id: z.string().min(1),
   name: z.string(),
   variables: variablesSchema.default({}),
