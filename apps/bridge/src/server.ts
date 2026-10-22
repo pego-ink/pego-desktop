@@ -12,7 +12,9 @@ import { parseEditorMessage } from "./messages";
 import { createRunManager, type RunManager } from "./runs";
 import { isHostAllowed, isOriginAllowed } from "./security";
 import { writeDocumentFile } from "./files";
+import { resolve, sep } from "node:path";
 import { listDesignFiles, readProjectFile } from "./project";
+import { createProject, listProjects } from "./projects";
 
 type SocketData = { greeted: boolean };
 
@@ -38,8 +40,19 @@ export const answerProjectRequest = async (
   const base = { type: "project_response" as const, requestId: request.requestId };
   if (!root) return { ...base, ok: false, error: "No design folder in this project.", root };
   try {
-    if (request.action === "list")
-      return { ...base, ok: true, root, files: await listDesignFiles(root) };
+    if (request.action === "projects") {
+      return { ...base, ok: true, root, projects: await listProjects(root) };
+    }
+    if (request.action === "create_project") {
+      return { ...base, ok: true, root, project: await createProject(root, request.name ?? "") };
+    }
+    if (request.action === "list") {
+      const dir = request.path ? resolve(request.path) : root;
+      if (dir !== root && !dir.startsWith(root + sep)) {
+        return { ...base, ok: false, root, error: "Not in the project's design folder." };
+      }
+      return { ...base, ok: true, root, files: await listDesignFiles(dir) };
+    }
     if (!request.path) return { ...base, ok: false, root, error: "Missing path." };
     return { ...base, ok: true, root, text: await readProjectFile(root, request.path) };
   } catch (error) {

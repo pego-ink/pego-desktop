@@ -135,7 +135,8 @@ describe("list_documents and switch_document", () => {
     const outcome = await runFileTool("list_documents", {}, callTool, source, dir);
     expect(outcome.content).toContain(`- a.pego (${join(dir, "a.pego")}) [active]`);
     expect(outcome.content).toContain("- Untitled (not saved to disk) [unsaved]");
-    expect(outcome.content).toContain(`Project design folder ${dir}:`);
+    expect(outcome.content).toContain("Active project: none");
+    expect(outcome.content).toContain(`Files in ${dir}:`);
     expect(outcome.content).toContain(join(dir, "atomic.pego"));
   });
 
