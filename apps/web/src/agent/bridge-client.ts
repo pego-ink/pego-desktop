@@ -70,6 +70,10 @@ export const parseBridgeMessage = (data: unknown): BridgeToEditor | null => {
       return typeof value.runId === "string" && isRecord(value.event)
         ? (value as unknown as BridgeToEditor)
         : null;
+    case "project_response":
+      return typeof value.requestId === "string" && typeof value.ok === "boolean"
+        ? (value as unknown as BridgeToEditor)
+        : null;
     case "save_file_result":
       return typeof value.requestId === "string" && typeof value.ok === "boolean"
         ? (value as unknown as BridgeToEditor)
@@ -233,6 +237,36 @@ export const saveFileViaBridge = (path: string, text: string): Promise<void> =>
     }
   });
 
+type ProjectResponse = Extract<BridgeToEditor, { type: "project_response" }>;
+const pendingProject = new Map<string, (response: ProjectResponse) => void>();
+
+/** Ask the bridge for the design folder listing, or one file's text. Rejects when offline. */
+export const requestProject = (action: "list" | "read", path?: string): Promise<ProjectResponse> =>
+  new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      pendingProject.delete(requestId);
+      reject(new Error("the Pego bridge did not answer"));
+    }, SAVE_TIMEOUT_MS);
+    pendingProject.set(requestId, (response) => {
+      clearTimeout(timer);
+      pendingProject.delete(requestId);
+      if (response.ok) resolve(response);
+      else reject(new Error(response.error ?? "request failed"));
+    });
+    const sent = client?.send({
+      type: "project_request",
+      requestId,
+      action,
+      ...(path === undefined ? {} : { path }),
+    });
+    if (!sent) {
+      clearTimeout(timer);
+      pendingProject.delete(requestId);
+      reject(new Error("the Pego bridge is not running (start it with bun run bridge)"));
+    }
+  });
+
 /** Send to the bridge if connected. Used by the Claude Code run (`run_start`/`run_cancel`). */
 export const sendToBridge = (message: EditorToBridge): boolean => client?.send(message) ?? false;
 
@@ -245,6 +279,10 @@ export const startBridgeConnection = (): (() => void) => {
   if (!client) {
     client = createBridgeClient({
       onMessage: (message) => {
+        if (message.type === "project_response") {
+          pendingProject.get(message.requestId)?.(message);
+          return;
+        }
         if (message.type === "save_file_result") {
           pendingSaves.get(message.requestId)?.(
             message.ok ? null : (message.error ?? "save failed"),

@@ -164,12 +164,14 @@ describe("bridge handlers", () => {
       protocol: 1,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
+      projectDir: "/repo/design",
     });
     expect(state().bridge).toEqual({
       connected: true,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
       replaced: false,
+      projectDir: "/repo/design",
     });
     handlers.handleClosed();
     expect(state().bridge.connected).toBe(false);

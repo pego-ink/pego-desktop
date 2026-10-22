@@ -7,6 +7,8 @@ import { useViewportStore } from "@/store/use-viewport-store";
 
 /** Where the user left each page, so switching back returns to the same view. */
 const cameras = new Map<string, Camera>();
+/** Keyed per document too: two open documents may both have a "page-1". */
+const cameraKey = (docId: string, pageId: string) => `${docId}/${pageId}`;
 
 /** "Page N" with the first N not used by another page. */
 export const nextPageName = (pages: readonly Pick<PageNode, "name">[]): string => {
@@ -23,9 +25,9 @@ export const showPage = (pageId: string): void => {
   if (current.id === pageId) return;
   if (!state.doc.children.some((page) => page.id === pageId)) return;
   const viewport = useViewportStore.getState();
-  cameras.set(current.id, viewport.camera);
+  cameras.set(cameraKey(state.doc.id, current.id), viewport.camera);
   state.setPage(pageId);
-  const saved = cameras.get(pageId);
+  const saved = cameras.get(cameraKey(state.doc.id, pageId));
   if (saved) viewport.setCamera(saved);
   else viewport.zoomToFit(contentBounds(state.doc, getLayout(state.doc), pageId));
 };
@@ -72,5 +74,5 @@ export const deletePage = (pageId: string): void => {
   }
   if (activePage(state).id === pageId) showPage((pages[index + 1] ?? pages[index - 1])!.id);
   useDocumentStore.getState().commit([{ op: "delete", id: pageId }], { label: "Delete page" });
-  cameras.delete(pageId);
+  cameras.delete(cameraKey(state.doc.id, pageId));
 };

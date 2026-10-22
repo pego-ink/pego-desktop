@@ -1,8 +1,16 @@
 import { useEffect } from "react";
-import { loadDocument } from "@pego/doc";
+import { emptyHistory, loadDocument } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
+import { useViewportStore } from "@/store/use-viewport-store";
+import {
+  restoreTabs,
+  tabIsDirty,
+  tabState,
+  useTabsStore,
+  type TabSnapshot,
+} from "@/tabs/use-tabs-store";
 import { isTextEditing } from "@/store/use-text-edit-store";
-import { readAutosave, writeAutosave } from "./autosave-db";
+import { readAutosave, writeAutosave, type AutosavedTab } from "./autosave-db";
 import { openFile, saveFile, saveFileAs } from "./file-actions";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
@@ -12,35 +20,70 @@ const AUTOSAVE_DELAY_MS = 800;
 let autosavePending = false;
 
 const writeCurrent = async () => {
-  const { doc } = useDocumentStore.getState();
-  const { fileName, handle, bridgePath } = useFileStore.getState();
+  const { tabs, activeId } = useTabsStore.getState();
+  const saved = tabs.map((tab): AutosavedTab => {
+    const state = tabState(tab);
+    return {
+      doc: state.doc,
+      fileName: state.file.fileName,
+      handle: state.file.handle,
+      bridgePath: state.file.bridgePath,
+      dirty: tabIsDirty(tab),
+    };
+  });
+  const activeIndex = Math.max(
+    0,
+    tabs.findIndex((tab) => tab.id === activeId),
+  );
+  const active = saved[activeIndex]!;
+  // Handles may not be cloneable: autosave-db retries without the active one; drop the rest.
   await writeAutosave({
-    doc,
-    fileName,
-    handle,
-    bridgePath,
-    dirty: getIsDirty(),
+    ...active,
+    tabs: saved.map((tab, i) => (i === activeIndex ? tab : { ...tab, handle: null })),
+    activeIndex,
     savedAt: Date.now(),
   });
+};
+
+const toSnapshot = (tab: AutosavedTab): TabSnapshot | null => {
+  // Autosaves written by an older Pego hold an older document version.
+  const doc = loadDocument(tab.doc);
+  if (!doc) return null;
+  return {
+    doc,
+    history: emptyHistory(),
+    selection: [],
+    pageId: null,
+    camera: useViewportStore.getState().camera,
+    file: {
+      fileName: tab.fileName,
+      handle: tab.handle,
+      bridgePath: tab.bridgePath ?? null,
+      savedDoc: tab.dirty ? null : doc,
+    },
+  };
 };
 
 const restoreAutosave = async () => {
   const record = await readAutosave();
   if (!record) return;
-  // Autosaves written by an older Pego hold an older document version.
-  const doc = loadDocument(record.doc);
-  if (!doc) {
-    console.warn("autosave ignored: the stored document is invalid or from a newer Pego");
-    return;
+  const stored: AutosavedTab[] = record.tabs ?? [
+    {
+      doc: record.doc,
+      fileName: record.fileName,
+      handle: record.handle,
+      bridgePath: record.bridgePath ?? null,
+      dirty: record.dirty,
+    },
+  ];
+  const snapshots = stored.map(toSnapshot);
+  const valid = snapshots.filter((snapshot): snapshot is TabSnapshot => snapshot !== null);
+  if (valid.length < snapshots.length) {
+    console.warn("autosave: some tabs were ignored (invalid or from a newer Pego)");
   }
-  useDocumentStore.getState().load(doc);
-  const loaded = useDocumentStore.getState().doc;
-  useFileStore.getState().setSession({
-    fileName: record.fileName,
-    handle: record.handle,
-    bridgePath: record.bridgePath ?? null,
-    savedDoc: record.dirty ? null : loaded,
-  });
+  if (valid.length === 0) return;
+  const activeIndex = snapshots.slice(0, record.activeIndex ?? 0).filter(Boolean).length;
+  restoreTabs(valid, activeIndex);
 };
 
 const handleShortcut = (event: KeyboardEvent) => {
@@ -60,7 +103,7 @@ const handleShortcut = (event: KeyboardEvent) => {
 };
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-  if (!(autosavePending && getIsDirty())) return;
+  if (!(autosavePending && (getIsDirty() || useTabsStore.getState().tabs.some(tabIsDirty)))) return;
   event.preventDefault();
 };
 
@@ -88,9 +131,11 @@ export const usePersistence = () => {
         if (s.doc !== prev.doc) schedule();
       });
       const unsubFile = useFileStore.subscribe(schedule);
+      const unsubTabs = useTabsStore.subscribe(schedule);
       unsubscribe = () => {
         unsubDoc();
         unsubFile();
+        unsubTabs();
       };
     });
 
