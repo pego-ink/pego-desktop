@@ -26,6 +26,8 @@ export type BridgeStatus = {
   mcpUrl: string | null;
   /** Another Pego tab or window is the one connected; this one waits until the user takes over. */
   replaced: boolean;
+  /** The project's design folder the bridge serves, or null. */
+  projectDir?: string | null;
 };
 
 type AgentState = {

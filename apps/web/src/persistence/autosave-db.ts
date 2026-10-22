@@ -5,7 +5,19 @@ const DB_NAME = "pego";
 const STORE = "autosave";
 const KEY = "current";
 
+/** One open tab in the autosave. */
+export type AutosavedTab = {
+  doc: PegoDocument;
+  fileName: string | null;
+  handle: PegoFileHandle | null;
+  bridgePath: string | null;
+  dirty: boolean;
+};
+
 export type AutosaveRecord = {
+  /** Every open tab (newer autosaves). The top-level fields below describe the active one. */
+  tabs?: AutosavedTab[];
+  activeIndex?: number;
   doc: PegoDocument;
   fileName: string | null;
   /** True when the doc had unsaved changes relative to its file at write time. */

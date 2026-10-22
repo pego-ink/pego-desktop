@@ -3,6 +3,8 @@ import { Redo2Icon, SparklesIcon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { PagesPanel } from "@/pages/PagesPanel";
+import { ProjectPanel } from "@/project/ProjectPanel";
+import { TabBar } from "@/tabs/TabBar";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { useAgentStore } from "@/agent/use-agent-store";
@@ -96,6 +98,7 @@ const LeftColumn = () => {
         </TabButton>
       </div>
       <div className={cn("min-h-0 flex-1 flex-col", tab === "layers" ? "flex" : "hidden")}>
+        <ProjectPanel />
         <PagesPanel />
         <LayersPanel />
       </div>
@@ -122,8 +125,11 @@ export const EditorShell = () => (
     </header>
     <div className="flex min-h-0 flex-1">
       <LeftColumn />
-      <main className="min-w-0 flex-1">
-        <Canvas />
+      <main className="flex min-w-0 flex-1 flex-col">
+        <TabBar />
+        <div className="min-h-0 flex-1">
+          <Canvas />
+        </div>
       </main>
       <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
         <PropertiesPanel />

@@ -8,9 +8,11 @@ import {
   type ToolSpec,
 } from "@pego/agent";
 import {
+  listTabsForBridge,
   loadDocumentFromBridge,
   markSavedFromBridge,
   snapshotDocumentForBridge,
+  switchTabForBridge,
 } from "@/persistence/bridge-documents";
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
@@ -78,6 +80,14 @@ export const createBridgeHandlers = ({
     }
     if (message.tool === EDITOR_OPS.snapshotDocument) {
       const outcome = snapshotDocumentForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.listTabs) {
+      const outcome = listTabsForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.switchTab) {
+      const outcome = switchTabForBridge(message.input);
       return void reply(outcome.content, outcome.isError);
     }
     if (message.tool === EDITOR_OPS.markSaved) {
@@ -169,6 +179,7 @@ export const createBridgeHandlers = ({
             claudeCodeAvailable: message.claudeCodeAvailable,
             mcpUrl: message.mcpUrl,
             replaced: false,
+            projectDir: message.projectDir ?? null,
           },
         });
         return;

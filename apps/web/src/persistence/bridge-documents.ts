@@ -4,6 +4,15 @@ import { contentBounds } from "@/interaction/camera";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { FILE_EXTENSION, parseDocumentFile, serializeDocument } from "./file-format";
+import {
+  findTabByPath,
+  openTab,
+  switchTab,
+  tabIsDirty,
+  tabState,
+  tabTitle,
+  useTabsStore,
+} from "@/tabs/use-tabs-store";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
 /**
@@ -32,34 +41,43 @@ const describe = (doc: PegoDocument) => {
   return pages.join("; ");
 };
 
-export const loadDocumentFromBridge = (input: unknown): OpOutcome => {
-  if (!isObject(input) || typeof input.text !== "string" || typeof input.path !== "string") {
-    return { content: "Invalid load request.", isError: true };
-  }
-  const { text, path } = input;
-  const discardUnsaved = input.discardUnsaved === true;
-  const files = useFileStore.getState();
-  if (getIsDirty() && !discardUnsaved) {
-    return {
-      content: `The open document "${files.fileName ?? "Untitled"}" has unsaved changes. Save it with save_document first, or pass discardUnsaved: true to replace it.`,
-      isError: true,
-    };
-  }
+/**
+ * Open a design file's text (read from disk by the bridge) in a tab. A file that is already open
+ * is shown again; its tab is reloaded from disk unless it has unsaved changes (or `reload` is
+ * false). `.pen` files import as an unsaved document that saves next to them as `.pego`.
+ */
+export const openDocumentText = (
+  text: string,
+  path: string,
+  options: { reload?: boolean; discardUnsaved?: boolean } = {},
+): OpOutcome => {
   const name = fileNameOf(path);
   try {
     if (path.toLowerCase().endsWith(".pen")) {
       const base = name.replace(/\.pen$/i, "");
-      const { doc, warnings } = importPen(JSON.parse(text), base);
-      useDocumentStore.getState().load(doc);
       // The .pen file is never written; saving goes to a .pego next to it.
       const target = path.replace(/\.pen$/i, FILE_EXTENSION);
-      files.setSession({
-        fileName: `${base}${FILE_EXTENSION}`,
-        handle: null,
-        savedDoc: null,
-        bridgePath: target,
-      });
-      zoomToDocument(doc);
+      const existing = findTabByPath(target);
+      if (existing) {
+        switchTab(existing.id);
+        return {
+          content: `${fileNameOf(target)} is already open (from ${name}); showing it.`,
+          isError: false,
+        };
+      }
+      const { doc, warnings } = importPen(JSON.parse(text), base);
+      if (
+        !openTab(
+          doc,
+          { fileName: `${base}${FILE_EXTENSION}`, bridgePath: target },
+          { saved: false },
+        )
+      ) {
+        return {
+          content: "The editor is busy with an agent run; try again when it finishes.",
+          isError: true,
+        };
+      }
       const notes = warnings.map((w) => `- ${w.message}${w.count > 1 ? ` (${w.count}x)` : ""}`);
       return {
         content: [
@@ -70,16 +88,49 @@ export const loadDocumentFromBridge = (input: unknown): OpOutcome => {
       };
     }
     const doc = parseDocumentFile(text);
-    useDocumentStore.getState().load(doc);
-    files.markSaved(useDocumentStore.getState().doc, name, null, path);
-    zoomToDocument(doc);
-    return { content: `Opened ${path} (${describe(doc)}).`, isError: false };
+    const existing = findTabByPath(path);
+    if (existing) {
+      if (!switchTab(existing.id)) {
+        return {
+          content: "The editor is busy with an agent run; try again when it finishes.",
+          isError: true,
+        };
+      }
+      if (getIsDirty() && !options.discardUnsaved) {
+        return {
+          content: `${path} is already open with unsaved changes; showing that tab (pass discardUnsaved: true to reload it from disk).`,
+          isError: false,
+        };
+      }
+      if (options.reload === false) return { content: `Showing ${path}.`, isError: false };
+      useDocumentStore.getState().load(doc);
+      useFileStore.getState().markSaved(useDocumentStore.getState().doc, name, null, path);
+      zoomToDocument(doc);
+      return { content: `Reloaded ${path} from disk (${describe(doc)}).`, isError: false };
+    }
+    if (!openTab(doc, { fileName: name, bridgePath: path })) {
+      return {
+        content: "The editor is busy with an agent run; try again when it finishes.",
+        isError: true,
+      };
+    }
+    return { content: `Opened ${path} in a tab (${describe(doc)}).`, isError: false };
   } catch (error) {
     return {
       content: `Could not open ${name}: ${error instanceof Error ? error.message : String(error)}`,
       isError: true,
     };
   }
+};
+
+/** Editor side of the MCP open_document tool. */
+export const loadDocumentFromBridge = (input: unknown): OpOutcome => {
+  if (!isObject(input) || typeof input.text !== "string" || typeof input.path !== "string") {
+    return { content: "Invalid load request.", isError: true };
+  }
+  return openDocumentText(input.text, input.path, {
+    discardUnsaved: input.discardUnsaved === true,
+  });
 };
 
 /** The last snapshot handed to the bridge, so mark_saved records exactly what was written. */
@@ -113,4 +164,36 @@ export const markSavedFromBridge = (input: unknown): OpOutcome => {
   pendingSnapshot = null;
   useFileStore.getState().markSaved(doc, fileNameOf(input.path), null, input.path);
   return { content: "ok", isError: false };
+};
+
+/** Editor side of list_documents: the open tabs. */
+export const listTabsForBridge = (): OpOutcome => {
+  const { tabs, activeId } = useTabsStore.getState();
+  return {
+    content: JSON.stringify({
+      tabs: tabs.map((tab) => ({
+        title: tabTitle(tab),
+        path: tabState(tab).file.bridgePath,
+        dirty: tabIsDirty(tab),
+        active: tab.id === activeId,
+      })),
+    }),
+    isError: false,
+  };
+};
+
+/** Editor side of switch_document: show the tab of an open file. */
+export const switchTabForBridge = (input: unknown): OpOutcome => {
+  if (!isObject(input) || typeof input.path !== "string") {
+    return { content: "Invalid switch request.", isError: true };
+  }
+  const tab = findTabByPath(input.path);
+  if (!tab) return { content: `not_open: ${input.path} is not open in a tab.`, isError: true };
+  if (!switchTab(tab.id)) {
+    return {
+      content: "The editor is busy with an agent run; try again when it finishes.",
+      isError: true,
+    };
+  }
+  return { content: `Showing ${input.path}.`, isError: false };
 };

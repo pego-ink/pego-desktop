@@ -1,9 +1,9 @@
 import { toast } from "sonner";
 import { importPen, type PegoDocument } from "@pego/doc";
 import { saveFileViaBridge } from "@/agent/bridge-client";
+import { newTab, openTab } from "@/tabs/use-tabs-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import {
-  createEmptyDocument,
   DEFAULT_FILE_NAME,
   FILE_EXTENSION,
   FILE_MIME,
@@ -16,7 +16,7 @@ import {
   getSaveFilePicker,
   type PegoFileHandle,
 } from "./fs-access";
-import { getIsDirty, useFileStore } from "./use-file-store";
+import { useFileStore } from "./use-file-store";
 
 const PEN_EXTENSION = ".pen";
 const PICKER_TYPES = [{ description: "Pego file", accept: { [FILE_MIME]: [FILE_EXTENSION] } }];
@@ -27,17 +27,12 @@ const MAX_LISTED_WARNINGS = 4;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-const confirmDiscard = (action: string) =>
-  !getIsDirty() || window.confirm(`You have unsaved changes. ${action} anyway?`);
-
-const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => {
-  useDocumentStore.getState().load(doc);
-  useFileStore.getState().markSaved(useDocumentStore.getState().doc, fileName, handle);
-};
+/** Opened files go to a tab of their own (or the untouched untitled tab). */
+const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) =>
+  openTab(doc, { fileName, handle });
 
 export const newDocument = () => {
-  if (!confirmDiscard("Create a new document")) return;
-  adopt(createEmptyDocument(), null, null);
+  newTab();
 };
 
 const readTextViaInput = () =>
@@ -51,7 +46,6 @@ const readTextViaInput = () =>
   });
 
 export const openFile = async () => {
-  if (!confirmDiscard("Open another file")) return;
   try {
     let file: File | null;
     let handle: PegoFileHandle | null = null;
@@ -81,12 +75,7 @@ const importPenFile = async (file: File) => {
     throw new Error("Not a valid .pen file: the content is not valid JSON.");
   }
   const { doc, warnings } = importPen(raw, base);
-  useDocumentStore.getState().load(doc);
-  useFileStore.getState().setSession({
-    fileName: `${base}${FILE_EXTENSION}`,
-    handle: null,
-    savedDoc: null,
-  });
+  if (!openTab(doc, { fileName: `${base}${FILE_EXTENSION}` }, { saved: false })) return;
   if (warnings.length === 0) {
     toast.success(`Imported ${file.name}`);
     return;
@@ -103,7 +92,6 @@ const importPenFile = async (file: File) => {
 
 /** Open a `.pego` or `.pen` file dropped on the canvas (no handle: Save asks where to save). */
 export const openDroppedFile = async (file: File) => {
-  if (!confirmDiscard("Open the dropped file")) return;
   try {
     if (file.name.toLowerCase().endsWith(PEN_EXTENSION)) return await importPenFile(file);
     adopt(parseDocumentFile(await file.text()), file.name, null);
