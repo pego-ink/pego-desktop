@@ -53,15 +53,12 @@ Mirrors the `.pen` schema used for the design mock, simplified:
 
 ## Agent run model
 
-```
-POST /agent/runs            -> { runId }   (prompt, fileId, attachments)
-GET  /agent/runs/:id/events -> SSE: plan | step.start | op | step.done | decision | done | error
-POST /agent/runs/:id/decide -> { stepId, choice }
-```
+All runs execute tools in the editor tab through `ToolHost` (`packages/agent/src/types.ts`).
 
-- Planner (opus) returns a step list.
-- Executor (sonnet) runs each step with document tools; every tool call becomes an `op` event.
-- `decision` events pause a step and wait for `/decide`; other independent steps continue.
+- **BYOK (in browser):** planner (Opus 5.5, structured output) returns steps; executor (Sonnet 5.5) runs each step with the shared tools in a streaming tool loop. `ask_user` pauses the run on a decision card.
+- **Claude Code run (panel → bridge):** editor sends `run_start` over WebSocket; the bridge runs the Claude Agent SDK restricted to Pego's tools; every tool call comes back as `tool_call` and is executed by the editor; progress streams as `run_event`.
+- **Claude Code in a terminal (MCP):** each MCP tool call is forwarded the same way; activity shows in the panel log.
+- Plan and step progress are reported through the `report_plan` / `report_step` tools, so every backend drives the same panel UI.
 
 ## UI screens (see design/)
 
