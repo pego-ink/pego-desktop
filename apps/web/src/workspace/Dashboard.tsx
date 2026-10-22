@@ -1,10 +1,19 @@
 import { useEffect, useMemo, useState } from "react";
-import { CopyIcon, FolderIcon, PlusIcon, SearchIcon, TerminalIcon } from "lucide-react";
+import {
+  CopyIcon,
+  FolderIcon,
+  ImageOffIcon,
+  PlusIcon,
+  SearchIcon,
+  TerminalIcon,
+} from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectInfo } from "@pego/agent";
 import { Button } from "@pego/ui/components/button";
 import { Input } from "@pego/ui/components/input";
 import { useAgentStore } from "@/agent/use-agent-store";
+import { useThemeStore } from "@/theme/theme";
+import { getProjectPreview, type ProjectPreview } from "./project-preview";
 import {
   createProjectFromDashboard,
   refreshProjects,
@@ -27,19 +36,75 @@ const ago = (ms: number): string => {
   return new Date(ms).toLocaleDateString();
 };
 
+/** The project's latest design, rendered by the canvas engine; a placeholder while it loads. */
+const ProjectThumbnail = ({ project }: { project: ProjectInfo }) => {
+  const theme = useThemeStore((s) => s.resolved);
+  const key = `${project.id}:${project.modifiedAt}:${theme}`;
+  const [loaded, setLoaded] = useState<{ key: string; preview: ProjectPreview | "error" } | null>(
+    null,
+  );
+  // A result for another key (older change, other theme) means the new one is still loading.
+  const preview = loaded?.key === key ? loaded.preview : "loading";
+
+  useEffect(() => {
+    let cancelled = false;
+    getProjectPreview(project, theme).then(
+      (result) => !cancelled && setLoaded({ key, preview: result }),
+      () => !cancelled && setLoaded({ key, preview: "error" }),
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [project, theme, key]);
+
+  return (
+    <div className="relative aspect-video overflow-hidden rounded-md border border-border bg-muted">
+      {preview !== "loading" && preview !== "error" && preview.image ? (
+        <img
+          src={preview.image}
+          alt={`Preview of ${preview.file ?? project.name}`}
+          className="size-full object-cover"
+          draggable={false}
+        />
+      ) : (
+        <div className="flex size-full flex-col items-center justify-center gap-1.5 text-[11px] text-muted-foreground [&_svg]:size-5">
+          {preview === "loading" ? (
+            <span className="h-full w-full animate-pulse bg-accent/50" />
+          ) : (
+            <>
+              <ImageOffIcon />
+              {preview === "error"
+                ? "Preview unavailable"
+                : project.fileCount
+                  ? "Empty page"
+                  : "No designs yet"}
+            </>
+          )}
+        </div>
+      )}
+      {preview !== "loading" && preview !== "error" && preview.file ? (
+        <span className="absolute right-1.5 bottom-1.5 max-w-[70%] truncate rounded-sm bg-background/85 px-1.5 py-0.5 text-[10px] text-muted-foreground backdrop-blur">
+          {preview.file}
+        </span>
+      ) : null}
+    </div>
+  );
+};
+
 const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean }) => (
   <div
     role="button"
     tabIndex={0}
-    className="group flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-4 text-left transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+    className="group flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
     onClick={() => openProjectWorkspace(project)}
     onKeyDown={(event) => {
       if (event.key === "Enter") openProjectWorkspace(project);
     }}
   >
-    <div className="flex items-start justify-between gap-2">
+    <ProjectThumbnail project={project} />
+    <div className="flex items-start justify-between gap-2 px-1">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-accent text-foreground [&_svg]:size-4">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-foreground [&_svg]:size-3.5">
           <FolderIcon />
         </span>
         <div className="min-w-0">
@@ -55,7 +120,7 @@ const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean })
         </span>
       ) : null}
     </div>
-    <div className="flex items-center justify-between text-[11px] text-muted-foreground">
+    <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
       <span>
         {project.fileCount} file{project.fileCount === 1 ? "" : "s"} · {ago(project.modifiedAt)}
       </span>
