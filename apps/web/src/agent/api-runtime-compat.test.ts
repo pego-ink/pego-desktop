@@ -10,9 +10,8 @@ import {
   type CompatSdk,
   type MessagesClient,
 } from "./api-runtime";
-import { resetStores } from "./test-utils";
+import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
-import { useAgentStore } from "./use-agent-store";
 
 type Body = Parameters<MessagesClient["beta"]["messages"]["stream"]>[0];
 type Message = Awaited<
@@ -71,7 +70,7 @@ const run = (client: MessagesClient, provider?: ApiProviderConfig) =>
   runApiAgent("make a card", {
     client,
     provider,
-    host: createToolHost({ onTransaction: () => {} }),
+    host: createToolHost(),
     signal: new AbortController().signal,
   });
 
@@ -117,14 +116,14 @@ describe("compat request shape", () => {
 
   test("a fenced or chatty JSON plan is still read", async () => {
     await compatRun(textReply(`Here is the plan:\n\`\`\`json\n${plan}\n\`\`\``));
-    expect(useAgentStore.getState().status).toBe("done");
-    expect(useAgentStore.getState().steps.map((s) => s.id)).toEqual(["s1"]);
+    expect(visible().status).toBe("done");
+    expect(visible().steps.map((s) => s.id)).toEqual(["s1"]);
   });
 
   test("an unreadable plan fails the run", async () => {
     const { client } = fakeClient([textReply("no json here")]);
     await run(client, compatProvider);
-    expect(useAgentStore.getState().status).toBe("failed");
+    expect(visible().status).toBe("failed");
   });
 
   test("the official path keeps fallbacks, effort, structured output and eager streaming", async () => {
@@ -159,7 +158,7 @@ describe("compat request shape", () => {
       },
     };
     await run(client, compatProvider);
-    const text = useAgentStore.getState().log.find((l) => l.kind === "error")?.text ?? "";
+    const text = visible().log.find((l) => l.kind === "error")?.text ?? "";
     expect(text).toContain("Gateway");
     expect(text).not.toContain("Anthropic");
   });

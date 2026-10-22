@@ -5,9 +5,9 @@ import { runApiAgent, type MessagesClient } from "@/agent/api-runtime";
 import { startCustomRun, type CustomRunDeps } from "@/agent/run";
 import { startLocalAgentRun } from "@/agent/local-agent-run";
 import { runOpenAiCompatibleAgent } from "@/agent/providers/openai-runtime";
-import { resetStores } from "@/agent/test-utils";
+import { resetStores, visible } from "@/agent/test-utils";
 import { createToolHost } from "@/agent/tool-host";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { runScope, useAgentStore } from "@/agent/use-agent-store";
 import { buildHistoryBlock } from "./session-context";
 import type { SessionTurn } from "./session-model";
 
@@ -27,7 +27,7 @@ const PROMPT = "make it dark";
 
 beforeEach(() => {
   resetStores();
-  useAgentStore.getState().set({ status: "planning" });
+  runScope(null).set({ status: "planning" });
 });
 
 const state = () => useAgentStore.getState();
@@ -43,7 +43,7 @@ describe("session memory reaches every backend", () => {
     if (start?.type !== "run_start") throw new Error("expected run_start");
     expect(start.prompt).toContain(HISTORY);
     expect(start.prompt).toEndWith(`Current request:\n${PROMPT}`);
-    expect(state().log[0]).toMatchObject({ kind: "user", text: PROMPT });
+    expect(visible().log[0]).toMatchObject({ kind: "user", text: PROMPT });
   });
 
   test("custom: both dialects receive the history; the prompt stays the user's", async () => {
@@ -69,7 +69,7 @@ describe("session memory reaches every backend", () => {
         runAnthropic: record,
       } as unknown as CustomRunDeps;
       state().setCustomProvider("p1");
-      await startCustomRun("r", PROMPT, null, deps, [], HISTORY);
+      await startCustomRun("r", PROMPT, null, deps, { history: HISTORY });
     }
     expect(seen).toEqual([
       { prompt: PROMPT, history: HISTORY },
@@ -166,13 +166,13 @@ describe("session memory reaches every backend", () => {
 
 describe("transcript store", () => {
   test("beginRun moves the previous run into the session instead of discarding it", () => {
-    state().appendLog({ kind: "user", text: "first" });
-    state().appendLog({ kind: "assistant", text: "one" });
-    state().set({ status: "done" });
-    state().beginRun("run-2", "second");
-    expect(state().log).toEqual([]);
-    expect(state().turns).toHaveLength(1);
-    expect(state().turns[0]?.log.map((e) => e.text)).toEqual(["first", "one"]);
-    expect(state().turns[0]?.runId).toBe("run-test");
+    runScope(null).appendLog({ kind: "user", text: "first" });
+    runScope(null).appendLog({ kind: "assistant", text: "one" });
+    runScope(null).set({ status: "done" });
+    state().beginRun(state().visibleSessionId, "run-2", "second");
+    expect(visible().log).toEqual([]);
+    expect(visible().turns).toHaveLength(1);
+    expect(visible().turns[0]?.log.map((e) => e.text)).toEqual(["first", "one"]);
+    expect(visible().turns[0]?.runId).toBe("run-test");
   });
 });

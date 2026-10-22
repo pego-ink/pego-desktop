@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@pego/ui/components/pop
 import { cn } from "@pego/ui/lib/utils";
 import { PLANNER_MODEL } from "@/agent/api-runtime";
 import { findAgentInfo, LOCAL_AGENT_NAMES, requestModels } from "@/agent/local-agents";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
 import {
   isValidModelId,
   KIND_LABEL,
@@ -335,7 +335,7 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
   const customProvider =
     backend === "custom" ? providers.find((p) => p.id === customId) : undefined;
   const customReady = useProviderReady(customProvider);
-  const locked = useAgentStore((s) => isRunActive(s.status));
+  const locked = useVisibleRun((s) => isRunActive(s.status));
   const [hasKey] = useHasApiKey();
   const [open, setOpen] = useState(false);
   const [modelsFor, setModelsFor] = useState<ModelsTarget | null>(null);

@@ -1,5 +1,6 @@
 import type { Canvas as SkCanvas, Paint, Paragraph, Path } from "canvaskit-wasm";
 import type { Box, Layout, PegoDocument } from "@pego/doc";
+import type { AgentFocusGroup } from "@/agent/focus-groups";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { buildNodeOutline } from "@/canvas/node-outline";
 import { createLruCache } from "@/canvas/render-cache";
@@ -36,15 +37,14 @@ export type OverlayState = {
   marquee: Box | null;
   /** Insertion line in document coordinates while a node is dragged inside an auto-layout frame. */
   dropLine?: Segment | null;
-  /** Nodes the agent is working on right now (empty when no run is active). */
-  agentFocusIds?: readonly string[];
+  /** Nodes each running agent is working on right now, one tinted group per run. */
+  agentFocus?: readonly AgentFocusGroup[];
   /** Hide the selection box, handles and size label (e.g. while a path is in pen edit mode). */
   suppressSelection?: boolean;
   /** `performance.now()` for the agent focus animation; omit for a static box (reduced motion). */
   time?: number;
 };
 
-const AGENT_FOCUS_FILL = "#B79CFF";
 const DASH: number[] = [5, 4];
 const DASH_PERIOD = DASH[0]! + DASH[1]!;
 /** Dash travel speed (ms per px) and fill pulse period (ms) of the agent focus box. */
@@ -244,13 +244,14 @@ const drawPill = (
   fontSize: number,
   pad: { x: number; y: number },
   place: (width: number, height: number) => { x: number; y: number },
+  color: string = ACCENT,
 ) => {
   const paragraph = getLabel(res, text, fontSize);
   const w = paragraph.getLongestLine() + pad.x * 2;
   const h = paragraph.getHeight() + pad.y * 2;
   const { x, y } = place(w, h);
   const { fill } = getKit(res);
-  fill.setColor(colorOf(res, ACCENT));
+  fill.setColor(colorOf(res, color));
   canvas.drawRRect(res.ck.RRectXY(res.ck.XYWHRect(x, y, w, h), 4, 4), fill);
   canvas.drawParagraph(paragraph, x + pad.x, y + pad.y);
 };
@@ -271,16 +272,23 @@ const drawSizeLabel = (
     (w) => ({ x: anchor.x - w / 2, y: anchor.y + HANDLE_SIZE + 4 }),
   );
 
-/** Small "Agent" pill sitting above a focused box's topmost corner. */
+/** Small pill (the run's session title) sitting above a focused box's topmost corner. */
 const drawAgentTag = (
   res: CanvasKitResources,
   canvas: SkCanvas,
   corner: { x: number; y: number },
+  label: string,
+  color: string,
 ) =>
-  drawPill(res, canvas, "Agent", 10, { x: 6, y: 2 }, (_w, h) => ({
-    x: corner.x,
-    y: corner.y - h - 3,
-  }));
+  drawPill(
+    res,
+    canvas,
+    label,
+    10,
+    { x: 6, y: 2 },
+    (_w, h) => ({ x: corner.x, y: corner.y - h - 3 }),
+    color,
+  );
 
 const drawAgentFocus = (
   res: CanvasKitResources,
@@ -288,7 +296,7 @@ const drawAgentFocus = (
   doc: PegoDocument,
   layout: Layout,
   camera: Camera,
-  ids: readonly string[],
+  { ids, color, label }: AgentFocusGroup,
   time: number | undefined,
 ) => {
   const { ck } = res;
@@ -308,11 +316,11 @@ const drawAgentFocus = (
       const screen = toScreenMatrix(camera, frame.matrix);
       const rect = ck.XYWHRect(0, 0, frame.box.width, frame.box.height);
       withMatrix(canvas, screen, () => {
-        fill.setColor(colorOf(res, AGENT_FOCUS_FILL));
+        fill.setColor(colorOf(res, color));
         fill.setAlphaf(FOCUS_FILL_ALPHA + (pulse - 0.5) * FOCUS_FILL_PULSE);
         canvas.drawRect(rect, fill);
         stroke.setStrokeWidth(1.5 / zoom);
-        stroke.setColor(colorOf(res, ACCENT));
+        stroke.setColor(colorOf(res, color));
         stroke.setPathEffect(dash);
         canvas.drawRect(rect, stroke);
         stroke.setPathEffect(null);
@@ -321,6 +329,8 @@ const drawAgentFocus = (
         res,
         canvas,
         topmostCorner(frameCorners(screen, frame.box.width, frame.box.height)),
+        label,
+        color,
       );
     }
   } finally {
@@ -351,13 +361,14 @@ export const renderOverlay = (
     hoveredId,
     marquee,
     dropLine,
-    agentFocusIds,
+    agentFocus,
     suppressSelection,
     time,
   }: OverlayState,
 ) => {
-  if (agentFocusIds && agentFocusIds.length > 0)
-    drawAgentFocus(res, canvas, doc, layout, camera, agentFocusIds, time);
+  for (const group of agentFocus ?? []) {
+    if (group.ids.length > 0) drawAgentFocus(res, canvas, doc, layout, camera, group, time);
+  }
 
   if (!suppressSelection) {
     if (hoveredId && !selection.includes(hoveredId))

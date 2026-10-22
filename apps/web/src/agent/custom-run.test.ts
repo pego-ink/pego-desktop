@@ -1,8 +1,8 @@
 /// <reference types="bun" />
 import { beforeEach, describe, expect, test } from "bun:test";
-import { getActiveRun } from "./active-run";
+import { allRuns } from "./run-registry";
 import { startCustomRun, type CustomRunDeps } from "./run";
-import { resetStores } from "./test-utils";
+import { resetStores, visible } from "./test-utils";
 import type { CustomProvider } from "./providers/types";
 import { useAgentStore } from "./use-agent-store";
 
@@ -27,10 +27,10 @@ const fakeDeps = (p: CustomProvider | undefined, key: string | null) => {
     listProviders: async () => (p ? [p] : []),
     loadKey: async () => key,
     runOpenAi: async (prompt, ctx) => {
-      calls.openai.push({ prompt, ctx, active: getActiveRun()?.backend });
+      calls.openai.push({ prompt, ctx, active: allRuns()[0]?.backend });
     },
     runAnthropic: async (prompt, ctx) => {
-      calls.anthropic.push({ prompt, ctx, active: getActiveRun()?.backend });
+      calls.anthropic.push({ prompt, ctx, active: allRuns()[0]?.backend });
     },
   };
   return { deps, calls };
@@ -40,7 +40,7 @@ const run = (deps: CustomRunDeps) => startCustomRun("run-1", "make a card", "ski
 
 const state = () => useAgentStore.getState();
 const lastError = () =>
-  state()
+  visible()
     .log.filter((l) => l.kind === "error")
     .at(-1)?.text;
 
@@ -63,8 +63,8 @@ describe("custom provider dispatch", () => {
       skillId: "skill-x",
     });
     expect(call?.active).toBe("custom");
-    expect(getActiveRun()).toBeNull(); // cleared after the run
-    expect(state().runLabel).toBe("Gateway · m1");
+    expect(allRuns()).toEqual([]); // cleared after the run
+    expect(visible().runLabel).toBe("Gateway · m1");
   });
 
   test("anthropic-compatible runs the Anthropic loop in compat mode with planner/executor ids", async () => {
@@ -97,7 +97,7 @@ describe("custom provider dispatch", () => {
   test("a deleted provider ends the run with a clear error", async () => {
     const { deps, calls } = fakeDeps(undefined, "k");
     await run(deps);
-    expect(state().status).toBe("failed");
+    expect(visible().status).toBe("failed");
     expect(lastError()).toContain("no longer exists");
     expect(calls.openai.length + calls.anthropic.length).toBe(0);
   });
@@ -105,7 +105,7 @@ describe("custom provider dispatch", () => {
   test("a missing key fails for a remote provider, never calling a runtime", async () => {
     const { deps, calls } = fakeDeps(provider(), null);
     await run(deps);
-    expect(state().status).toBe("failed");
+    expect(visible().status).toBe("failed");
     expect(lastError()).toContain("No API key set for Gateway");
     expect(calls.openai.length).toBe(0);
   });

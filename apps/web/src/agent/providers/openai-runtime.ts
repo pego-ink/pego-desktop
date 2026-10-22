@@ -15,7 +15,7 @@ import { RunCancelledError } from "../decisions";
 import { resolveRunSkills, skillLogLines, skillsBlock } from "../run-skills";
 import { promptWithHistory } from "../sessions/session-context";
 import type { AgentToolHost } from "../tool-host";
-import { useAgentStore } from "../use-agent-store";
+import type { RunScope } from "../use-agent-store";
 import type { CustomProvider } from "./types";
 
 export type OpenAiRunContext = {
@@ -25,6 +25,8 @@ export type OpenAiRunContext = {
   signal: AbortSignal;
   /** Explicit skill for this run: undefined = auto-detect, null = core only. */
   skillId?: string | null;
+  /** Explicit style for this run: undefined = auto-detect, null = none. */
+  styleId?: string | null;
   /** Images the user attached; sent as `image_url` parts in the planner and first step turns. */
   attachments?: readonly RunAttachment[];
   /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
@@ -83,8 +85,6 @@ type RunState = {
   images: boolean;
   skillsText: string;
 };
-
-const agent = () => useAgentStore.getState();
 
 /** User message: plain text, or text + the attached images as `image_url` parts. */
 export const userContent = (
@@ -170,11 +170,11 @@ const describeError = (error: unknown, provider: CustomProvider): string => {
   return `${provider.name} rejected the request (HTTP ${status})${suffix}`;
 };
 
-const recordUsage = (response: ChatResponse) => {
+const recordUsage = (state: RunState, response: ChatResponse) => {
   const { usage } = response;
   if (!usage) return;
   // Provider pricing is unknown, so cost stays 0 (tokens only).
-  agent().addUsage({
+  state.ctx.host.run.addUsage({
     inputTokens: usage.prompt_tokens ?? 0,
     outputTokens: usage.completion_tokens ?? 0,
     costUsd: 0,
@@ -220,7 +220,7 @@ const chatWithImageFallback = async (
       IMAGE_REJECTION.test(error.detail);
     if (!rejected) throw error;
     state.images = false;
-    agent().appendLog({
+    state.ctx.host.run.appendLog({
       kind: "info",
       text: "This model does not accept images; continuing without them.",
     });
@@ -349,7 +349,7 @@ const requestPlan = async (state: RunState, prompt: string): Promise<PlanStep[]>
     }
     response = await chatWithImageFallback(state, body, messages);
   }
-  recordUsage(response);
+  recordUsage(state, response);
   const choice = firstChoice(response, provider);
   if (choice.finish_reason === "length")
     throw new AgentRunError("The plan was cut off (max tokens).");
@@ -414,9 +414,15 @@ const planText = (steps: PlanStep[]) =>
     )
     .join("\n");
 
-const stepPrompt = (prompt: string, steps: PlanStep[], step: PlanStep, skillsText: string) => {
-  const done = agent()
-    .steps.filter((s) => s.status === "done" && s.summary)
+const stepPrompt = (
+  run: RunScope,
+  prompt: string,
+  steps: PlanStep[],
+  step: PlanStep,
+  skillsText: string,
+) => {
+  const done = (run.get()?.steps ?? [])
+    .filter((s) => s.status === "done" && s.summary)
     .map((s) => `- [${s.id}] ${s.summary}`)
     .join("\n");
   return [
@@ -447,7 +453,7 @@ const executeStep = async (
     {
       role: "user",
       content: userContent(
-        stepPrompt(prompt, steps, step, state.skillsText),
+        stepPrompt(state.ctx.host.run, prompt, steps, step, state.skillsText),
         state.ctx.attachments,
       ),
     },
@@ -461,13 +467,13 @@ const executeStep = async (
       { model: provider.executorModel, tools: executorTools, tool_choice: "auto" },
       messages,
     );
-    recordUsage(response);
+    recordUsage(state, response);
     const choice = firstChoice(response, provider);
     const message = choice.message ?? {};
     const text = contentText(message.content);
     if (text) {
       lastText = text;
-      agent().appendLog({ kind: "assistant", text });
+      state.ctx.host.run.appendLog({ kind: "assistant", text });
     }
 
     // Truncated or filtered output is never executed: a cut-off tool call has partial arguments.
@@ -495,7 +501,7 @@ const executeStep = async (
           image_url: { url: `data:${image.mediaType};base64,${image.data}` },
         });
       }
-      agent().appendLog({
+      host.run.appendLog({
         kind: "tool",
         text: "",
         tool: { name: call.function.name, isError: result.isError },
@@ -514,14 +520,13 @@ const executeStep = async (
 
 // ---- run -----------------------------------------------------------------------------------
 
-const finishCancelled = () => {
-  const store = agent();
-  for (const step of store.steps) {
+const finishCancelled = (run: RunScope) => {
+  for (const step of run.get()?.steps ?? []) {
     if (step.status === "pending" || step.status === "running") {
-      store.setStepStatus(step.id, "skipped");
+      run.setStepStatus(step.id, "skipped");
     }
   }
-  store.set({ status: "cancelled", decision: null, focusIds: [] });
+  run.set({ status: "cancelled", decision: null, focusIds: [] });
 };
 
 /**
@@ -532,11 +537,12 @@ export const runOpenAiCompatibleAgent = async (
   prompt: string,
   ctx: OpenAiRunContext,
 ): Promise<void> => {
+  const run = ctx.host.run;
   try {
-    const skills = resolveRunSkills(prompt, ctx.skillId);
+    const skills = resolveRunSkills(prompt, ctx.skillId, ctx.styleId);
     const state: RunState = { ctx, images: true, skillsText: skillsBlock(skills) };
-    for (const text of skillLogLines(skills)) agent().appendLog({ kind: "info", text });
-    agent().appendLog({
+    for (const text of skillLogLines(skills)) run.appendLog({ kind: "info", text });
+    run.appendLog({
       kind: "info",
       text: `Planning with ${ctx.provider.plannerModel ?? ctx.provider.executorModel} (${ctx.provider.name})`,
     });
@@ -544,37 +550,36 @@ export const runOpenAiCompatibleAgent = async (
     const request = promptWithHistory(prompt, ctx.history);
     const steps = await requestPlan(state, request);
     ctx.host.reportPlan(steps);
-    agent().set({ status: "running" });
+    run.set({ status: "running" });
 
     for (const [index, step] of steps.entries()) {
       cancelIfAborted(ctx.signal);
       const outcome = await executeStep(state, request, steps, step);
-      const current = agent().steps.find((s) => s.id === step.id);
+      const current = run.get()?.steps.find((s) => s.id === step.id);
       // The model usually reports its own step; fill in when it did not (or left it running).
       const reported = current?.status === "done" || current?.status === "failed";
       const status = reported ? current.status : outcome.status;
       if (!reported) ctx.host.reportStep(step.id, status, outcome.summary);
       if (status === "failed") {
         const reason = current?.summary ?? outcome.summary ?? `Step failed: ${step.title}`;
-        agent().appendLog({ kind: "error", text: reason });
-        for (const rest of steps.slice(index + 1)) agent().setStepStatus(rest.id, "skipped");
-        agent().set({ status: "failed", focusIds: [] });
+        run.appendLog({ kind: "error", text: reason });
+        for (const rest of steps.slice(index + 1)) run.setStepStatus(rest.id, "skipped");
+        run.set({ status: "failed", focusIds: [] });
         return;
       }
     }
-    agent().set({ status: "done", focusIds: [] });
+    run.set({ status: "done", focusIds: [] });
   } catch (error) {
     if (ctx.signal.aborted || isAbortError(error) || error instanceof RunCancelledError) {
-      finishCancelled();
+      finishCancelled(run);
       return;
     }
     const message = describeError(error, ctx.provider);
-    const current = agent();
-    for (const step of current.steps) {
-      if (step.status === "running") current.setStepStatus(step.id, "failed", message);
-      else if (step.status === "pending") current.setStepStatus(step.id, "skipped");
+    for (const step of run.get()?.steps ?? []) {
+      if (step.status === "running") run.setStepStatus(step.id, "failed", message);
+      else if (step.status === "pending") run.setStepStatus(step.id, "skipped");
     }
-    current.appendLog({ kind: "error", text: message });
-    current.set({ status: "failed", decision: null, focusIds: [] });
+    run.appendLog({ kind: "error", text: message });
+    run.set({ status: "failed", decision: null, focusIds: [] });
   }
 };

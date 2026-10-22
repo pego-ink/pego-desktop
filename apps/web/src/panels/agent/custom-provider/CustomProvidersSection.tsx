@@ -2,14 +2,13 @@ import { useState } from "react";
 import { PencilIcon, PlusIcon, ServerIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import type { CustomProvider } from "@/agent/providers/types";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { ProviderForm } from "@/panels/agent/custom-provider/ProviderForm";
 import { KIND_LABEL, providerSummary } from "@/panels/agent/custom-provider/provider-form";
 import {
   removeProvider,
   useCustomProviders,
 } from "@/panels/agent/custom-provider/use-custom-providers";
-import { isRunActive } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 import { Section } from "@/panels/settings/agent/Section";
 
@@ -21,7 +20,7 @@ const ProviderRow = ({
   onEdit: (provider: CustomProvider) => void;
 }) => {
   const active = useAgentStore((s) => s.backend === "custom" && s.customProviderId === provider.id);
-  const locked = useAgentStore((s) => isRunActive(s.status));
+  const locked = useAgentStore((s) => selectRunsActive(s) > 0);
   const setCustomProvider = useAgentStore((s) => s.setCustomProvider);
   const [confirming, setConfirming] = useState(false);
   const titleId = `cp-${provider.id}`;

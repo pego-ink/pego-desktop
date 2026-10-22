@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useState } from "react";
 import { PanelRightIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
+import { ZoomControl } from "@/components/ZoomControl";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
-import { isRunActive } from "@/panels/agent/agent-format";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { PropertiesPanel } from "@/panels/PropertiesPanel";
 import { FramePresetsPanel } from "@/panels/frame-presets/FramePresetsPanel";
 import { useToolStore } from "@/store/use-tool-store";
@@ -135,7 +135,7 @@ const RightColumn = () => {
 
 export const EditorShell = () => {
   const [rail, setRail] = useState(readRailState);
-  const working = useAgentStore((s) => isRunActive(s.status));
+  const working = useAgentStore((s) => selectRunsActive(s) > 0);
   const press = useCallback((tab: RailTab) => setRail((prev) => pressTab(prev, tab)), []);
   useEffect(() => writeRailState(rail), [rail]);
   return (
@@ -153,8 +153,9 @@ export const EditorShell = () => {
           </div>
         </header>
         <div className="flex min-h-0 flex-1">
-          <main className="min-w-0 flex-1">
+          <main className="relative min-w-0 flex-1">
             <Canvas />
+            <ZoomControl />
           </main>
           <RightColumn />
         </div>

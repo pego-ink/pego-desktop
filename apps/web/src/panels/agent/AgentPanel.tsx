@@ -3,7 +3,7 @@ import { ArrowDownIcon } from "lucide-react";
 import { Reveal } from "@pego/ui/components/reveal";
 import { cn } from "@pego/ui/lib/utils";
 import type { TurnUsage } from "@/agent/sessions/session-model";
-import { useAgentStore, type AgentLogEntry } from "@/agent/use-agent-store";
+import { useVisibleRun, type AgentLogEntry } from "@/agent/use-agent-store";
 import { ActivityLog } from "@/panels/agent/ActivityLog";
 import { AgentComposer } from "@/panels/agent/AgentComposer";
 import { AgentEmptyState } from "@/panels/agent/AgentEmptyState";
@@ -26,7 +26,7 @@ const TurnView = ({
   /** The newest run: the one that can be working right now. */
   latest: boolean;
 }) => {
-  const active = useAgentStore((s) => latest && isRunActive(s.status));
+  const active = useVisibleRun((s) => latest && isRunActive(s.status));
   const showUsage = usage.inputTokens + usage.outputTokens > 0 || usage.costUsd > 0;
   return (
     <div className="flex flex-col gap-3">
@@ -41,10 +41,10 @@ const TurnView = ({
 
 /** The whole session in order: earlier turns, then the latest run (which is live in the store). */
 const RunView = () => {
-  const turns = useAgentStore((s) => s.turns);
-  const runId = useAgentStore((s) => s.runId);
-  const log = useAgentStore((s) => s.log);
-  const usage = useAgentStore((s) => s.usage);
+  const turns = useVisibleRun((s) => s.turns);
+  const runId = useVisibleRun((s) => s.runId);
+  const log = useVisibleRun((s) => s.log);
+  const usage = useVisibleRun((s) => s.usage);
   const showLatest = runId !== null && log.length > 0;
 
   return (
@@ -58,16 +58,16 @@ const RunView = () => {
 };
 
 export const AgentPanel = () => {
-  const hasRun = useAgentStore(
+  const hasRun = useVisibleRun(
     (s) => s.status !== "idle" || s.log.length > 0 || s.steps.length > 0 || s.turns.length > 0,
   );
-  const decision = useAgentStore((s) => s.decision);
-  const status = useAgentStore((s) => s.status);
-  const hasPlan = useAgentStore((s) => s.steps.length > 0);
-  const hasChanges = useAgentStore((s) => s.transactionCount > 0 || s.focusIds.length > 0);
-  const logCount = useAgentStore((s) => s.log.length);
-  const lastKind = useAgentStore((s) => s.log[s.log.length - 1]?.kind);
-  const runId = useAgentStore((s) => s.runId);
+  const decision = useVisibleRun((s) => s.decision);
+  const status = useVisibleRun((s) => s.status);
+  const hasPlan = useVisibleRun((s) => s.steps.length > 0);
+  const hasChanges = useVisibleRun((s) => s.transactionCount > 0 || s.focusIds.length > 0);
+  const logCount = useVisibleRun((s) => s.log.length);
+  const lastKind = useVisibleRun((s) => s.log[s.log.length - 1]?.kind);
+  const runId = useVisibleRun((s) => s.runId);
   const [seed, setSeed] = useState({ text: "", key: 0 });
   const { containerRef, contentRef, pinned, follow, jumpToLatest, scrollProps } = usePinnedScroll();
 

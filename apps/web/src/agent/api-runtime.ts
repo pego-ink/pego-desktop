@@ -18,7 +18,7 @@ import type { AgentToolHost } from "./tool-host";
 import { toUsageDelta } from "./usage";
 import { resolveRunSkills, skillLogLines, skillsBlock } from "./run-skills";
 import { promptWithHistory } from "./sessions/session-context";
-import { useAgentStore } from "./use-agent-store";
+import type { RunScope } from "./use-agent-store";
 
 type BetaMessage = Anthropic.Beta.BetaMessage;
 type BetaMessageParam = Anthropic.Beta.BetaMessageParam;
@@ -164,13 +164,13 @@ type RuntimeContext = {
   skillsText?: string;
   /** Explicit skill for this run: undefined = auto-detect, null = core only. */
   skillId?: string | null;
+  /** Explicit style for this run: undefined = auto-detect, null = none. */
+  styleId?: string | null;
   /** Images the user attached; sent as image blocks before the text in planner and step turns. */
   attachments?: readonly RunAttachment[];
   /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
   history?: string;
 };
-
-const agent = () => useAgentStore.getState();
 
 const cancelIfAborted = (signal: AbortSignal) => {
   if (signal.aborted) throw new RunCancelledError();
@@ -222,8 +222,8 @@ export const describeCompatError = (error: unknown, provider: ApiProviderConfig)
   return describeApiError(error);
 };
 
-const recordUsage = (message: BetaMessage, requestedModel: string) =>
-  agent().addUsage(toUsageDelta(message.usage, message.model, requestedModel));
+const recordUsage = (ctx: RuntimeContext, message: BetaMessage, requestedModel: string) =>
+  ctx.host.run.addUsage(toUsageDelta(message.usage, message.model, requestedModel));
 
 const textOf = (message: BetaMessage): string =>
   message.content
@@ -306,7 +306,7 @@ const requestPlan = async (ctx: RuntimeContext, prompt: string): Promise<PlanSte
   const message = await ctx.client.beta.messages
     .stream(plannerRequest(ctx, prompt), { signal: ctx.signal })
     .finalMessage();
-  recordUsage(message, model);
+  recordUsage(ctx, message, model);
   assertCompleted(message, "plan");
   try {
     const text = textOf(message);
@@ -434,9 +434,15 @@ const planText = (steps: PlanStep[]) =>
     )
     .join("\n");
 
-const stepPrompt = (prompt: string, steps: PlanStep[], step: PlanStep, skillsText = ""): string => {
-  const done = agent()
-    .steps.filter((s) => s.status === "done" && s.summary)
+const stepPrompt = (
+  run: RunScope,
+  prompt: string,
+  steps: PlanStep[],
+  step: PlanStep,
+  skillsText = "",
+): string => {
+  const done = (run.get()?.steps ?? [])
+    .filter((s) => s.status === "done" && s.summary)
     .map((s) => `- [${s.id}] ${s.summary}`)
     .join("\n");
   return [
@@ -466,7 +472,7 @@ const executeStep = async (
     {
       role: "user",
       content: anthropicUserContent(
-        stepPrompt(prompt, steps, step, ctx.skillsText),
+        stepPrompt(ctx.host.run, prompt, steps, step, ctx.skillsText),
         ctx.attachments ?? [],
       ),
     },
@@ -478,12 +484,12 @@ const executeStep = async (
     const message = await ctx.client.beta.messages
       .stream(executorRequest(ctx, messages), { signal: ctx.signal })
       .finalMessage();
-    recordUsage(message, executorModel(ctx));
+    recordUsage(ctx, message, executorModel(ctx));
 
     const text = textOf(message);
     if (text) {
       lastText = text;
-      agent().appendLog({ kind: "assistant", text });
+      ctx.host.run.appendLog({ kind: "assistant", text });
     }
 
     // Stop reasons are checked before any tool runs: a refusal or max_tokens can cut a tool_use
@@ -524,7 +530,7 @@ const executeStep = async (
       cancelIfAborted(ctx.signal);
       const result = await runToolUse(block, ctx.host);
       results.push(result);
-      agent().appendLog({
+      ctx.host.run.appendLog({
         kind: "tool",
         text: "",
         tool: { name: block.name, isError: result.is_error === true },
@@ -538,25 +544,24 @@ const executeStep = async (
 
 // ---- run -----------------------------------------------------------------------------------
 
-const finishCancelled = () => {
-  const state = agent();
-  for (const step of state.steps) {
+const finishCancelled = (run: RunScope) => {
+  for (const step of run.get()?.steps ?? []) {
     if (step.status === "pending" || step.status === "running") {
-      state.setStepStatus(step.id, "skipped");
+      run.setStepStatus(step.id, "skipped");
     }
   }
-  state.set({ status: "cancelled", decision: null, focusIds: [] });
+  run.set({ status: "cancelled", decision: null, focusIds: [] });
 };
 
 /** Plan with Opus, then execute each step with Sonnet. Never throws: ends in the store. */
 export const runApiAgent = async (prompt: string, base: RuntimeContext): Promise<void> => {
   const ctx: RuntimeContext = { ...base }; // private copy: skill text is filled in below
-  const state = agent();
+  const run = ctx.host.run;
   try {
-    const skills = resolveRunSkills(prompt, ctx.skillId);
+    const skills = resolveRunSkills(prompt, ctx.skillId, ctx.styleId);
     ctx.skillsText = skillsBlock(skills);
-    for (const text of skillLogLines(skills)) state.appendLog({ kind: "info", text });
-    state.appendLog({
+    for (const text of skillLogLines(skills)) run.appendLog({ kind: "info", text });
+    run.appendLog({
       kind: "info",
       text: ctx.provider ? `Planning with ${plannerModel(ctx)}` : "Planning with Claude Opus 5.5",
     });
@@ -564,39 +569,38 @@ export const runApiAgent = async (prompt: string, base: RuntimeContext): Promise
     const request = promptWithHistory(prompt, ctx.history);
     const steps = await requestPlan(ctx, request);
     ctx.host.reportPlan(steps);
-    agent().set({ status: "running" });
+    run.set({ status: "running" });
 
     for (const [index, step] of steps.entries()) {
       cancelIfAborted(ctx.signal);
       const outcome = await executeStep(ctx, request, steps, step);
-      const current = agent().steps.find((s) => s.id === step.id);
+      const current = run.get()?.steps.find((s) => s.id === step.id);
       // The model usually reports its own step; fill in when it did not (or left it running).
       const reported = current?.status === "done" || current?.status === "failed";
       const status = reported ? current.status : outcome.status;
       if (!reported) ctx.host.reportStep(step.id, status, outcome.summary);
       if (status === "failed") {
         const reason = current?.summary ?? outcome.summary ?? `Step failed: ${step.title}`;
-        agent().appendLog({ kind: "error", text: reason });
-        for (const rest of steps.slice(index + 1)) agent().setStepStatus(rest.id, "skipped");
-        agent().set({ status: "failed", focusIds: [] });
+        run.appendLog({ kind: "error", text: reason });
+        for (const rest of steps.slice(index + 1)) run.setStepStatus(rest.id, "skipped");
+        run.set({ status: "failed", focusIds: [] });
         return;
       }
     }
-    agent().set({ status: "done", focusIds: [] });
+    run.set({ status: "done", focusIds: [] });
   } catch (error) {
     if (ctx.signal.aborted || isAbortError(error) || error instanceof RunCancelledError) {
-      finishCancelled();
+      finishCancelled(run);
       return;
     }
     const message = ctx.provider
       ? describeCompatError(error, ctx.provider)
       : describeApiError(error);
-    const current = agent();
-    for (const step of current.steps) {
-      if (step.status === "running") current.setStepStatus(step.id, "failed", message);
-      else if (step.status === "pending") current.setStepStatus(step.id, "skipped");
+    for (const step of run.get()?.steps ?? []) {
+      if (step.status === "running") run.setStepStatus(step.id, "failed", message);
+      else if (step.status === "pending") run.setStepStatus(step.id, "skipped");
     }
-    current.appendLog({ kind: "error", text: message });
-    current.set({ status: "failed", decision: null, focusIds: [] });
+    run.appendLog({ kind: "error", text: message });
+    run.set({ status: "failed", decision: null, focusIds: [] });
   }
 };

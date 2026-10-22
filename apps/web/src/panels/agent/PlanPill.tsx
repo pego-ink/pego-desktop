@@ -2,7 +2,7 @@ import { useId, useRef, useState, type KeyboardEvent } from "react";
 import { CheckIcon, ChevronDownIcon, CircleAlertIcon, CircleXIcon } from "lucide-react";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { useVisibleRun } from "@/agent/use-agent-store";
 import { PlanList } from "@/panels/agent/PlanList";
 import {
   planPillText,
@@ -39,9 +39,9 @@ const ToneIcon = ({ tone }: { tone: PlanPillTone }) => {
  * current step. Expanded: the step list in a card below. Collapses again when a new run starts.
  */
 export const PlanPill = () => {
-  const steps = useAgentStore((s) => s.steps);
-  const status = useAgentStore((s) => s.status);
-  const runId = useAgentStore((s) => s.runId);
+  const steps = useVisibleRun((s) => s.steps);
+  const status = useVisibleRun((s) => s.status);
+  const runId = useVisibleRun((s) => s.runId);
   const [open, setOpen] = useState(false);
   const [seenRun, setSeenRun] = useState(runId);
   const rootRef = useRef<HTMLDivElement>(null);

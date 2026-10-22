@@ -2,7 +2,7 @@ import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react
 import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import { cancelRun, startRun } from "@/agent/run";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { AgentSelector } from "@/panels/agent/AgentSelector";
 import { SkillChip } from "@/panels/agent/SkillChip";
@@ -22,7 +22,8 @@ type AgentComposerProps = {
 };
 
 export const AgentComposer = ({ seed }: AgentComposerProps) => {
-  const active = useAgentStore((s) => isRunActive(s.status));
+  const active = useVisibleRun((s) => isRunActive(s.status));
+  const runId = useVisibleRun((s) => s.runId);
   const selectionCount = useDocumentStore((s) => s.selection.length);
   const hint = selectionHint(selectionCount);
 
@@ -127,9 +128,8 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
             {hint}
           </span>
         ) : (
-          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
-            Enter to send
-          </span>
+          // Spacer keeps the send button at the end of the row.
+          <span aria-hidden className="min-w-0 flex-1" />
         )}
         <div className="relative size-7 shrink-0">
           <button
@@ -137,7 +137,9 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
             aria-label="Cancel run"
             title="Cancel run"
             inert={!active}
-            onClick={() => void safely(cancelRun)}
+            onClick={() => {
+              if (runId) void safely(() => cancelRun(runId));
+            }}
             className={cn(
               ACTION_BUTTON,
               "absolute inset-0 hover:bg-foreground/90",

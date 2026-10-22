@@ -9,14 +9,14 @@ import { useLayerEvents } from "@/canvas/layer-events";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
 import { timeFrame } from "@/canvas/frame-perf";
+import { createFocusGroupsSelector, type AgentFocusGroup } from "@/agent/focus-groups";
 import { useAgentStore } from "@/agent/use-agent-store";
-import { isRunActive } from "@/panels/agent/agent-format";
 import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { useImageDrop } from "@/interaction/use-image-drop";
-import { AgentCursor } from "@/components/AgentCursor";
+import { AgentCursors } from "@/components/AgentCursor";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -93,6 +93,8 @@ export const Canvas = () => {
     let grContext: GrDirectContext | null = null;
     let frame = 0;
     let cleanup = () => {};
+    const selectFocusGroups = createFocusGroupsSelector();
+    let shownFocus: AgentFocusGroup[] = [];
 
     void loadCanvasKit()
       .then((res) => {
@@ -183,10 +185,8 @@ export const Canvas = () => {
 
           canvas.save();
           canvas.scale(dpr, dpr);
-          const agent = useAgentStore.getState();
-          const agentFocusIds = isRunActive(agent.status) ? agent.focusIds : undefined;
-          const focusAnimated =
-            agentFocusIds !== undefined && agentFocusIds.length > 0 && !prefersReducedMotion();
+          const agentFocus = selectFocusGroups(useAgentStore.getState());
+          const focusAnimated = agentFocus.length > 0 && !prefersReducedMotion();
           const toolHandler = getToolHandler(useToolStore.getState().tool);
           renderOverlay(res, canvas, {
             doc,
@@ -196,7 +196,7 @@ export const Canvas = () => {
             hoveredId,
             marquee,
             dropLine,
-            agentFocusIds,
+            agentFocus,
             suppressSelection: toolHandler?.hidesSelection?.() ?? false,
             time: focusAnimated ? performance.now() : undefined,
           });
@@ -273,8 +273,12 @@ export const Canvas = () => {
           useLayerEvents.subscribe(schedule),
           useToolPreview.subscribe(schedule),
           useToolStore.subscribe(schedule),
-          useAgentStore.subscribe((state, prev) => {
-            if (state.focusIds !== prev.focusIds || state.status !== prev.status) schedule();
+          useAgentStore.subscribe((state) => {
+            // Only a change of some run's focus box (ids, tint, title) needs a frame.
+            const groups = selectFocusGroups(state);
+            if (groups === shownFocus) return;
+            shownFocus = groups;
+            schedule();
           }),
         ];
 
@@ -304,7 +308,7 @@ export const Canvas = () => {
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
       <TextEditorOverlay />
-      <AgentCursor />
+      <AgentCursors />
       <Toolbar />
     </div>
   );

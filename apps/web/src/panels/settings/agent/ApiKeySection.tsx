@@ -2,9 +2,9 @@ import { useState, type FormEvent } from "react";
 import { Button } from "@pego/ui/components/button";
 import { Input } from "@pego/ui/components/input";
 import { saveApiKey } from "@/agent/api-key";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { StatusDot } from "@/panels/agent/StatusDot";
-import { API_BACKEND_LABEL, isRunActive } from "@/panels/agent/agent-format";
+import { API_BACKEND_LABEL } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 import { useHasApiKey } from "@/panels/agent/use-has-api-key";
 import { AgentCard, UseButton } from "@/panels/settings/agent/AgentCard";
@@ -65,7 +65,7 @@ const KeyForm = ({ hasKey, onDone }: KeyFormProps) => {
 export const ApiKeySection = ({ flashing }: { flashing: boolean }) => {
   const [hasKey, setHasKey] = useHasApiKey();
   const active = useAgentStore((s) => s.backend === "api");
-  const locked = useAgentStore((s) => isRunActive(s.status));
+  const locked = useAgentStore((s) => selectRunsActive(s) > 0);
   const setBackend = useAgentStore((s) => s.setBackend);
   const [editing, setEditing] = useState(false);
 

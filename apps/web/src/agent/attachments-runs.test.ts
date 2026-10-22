@@ -5,9 +5,9 @@ import { createCompatClient, runApiAgent, type MessagesClient } from "./api-runt
 import { startLocalAgentRun } from "./local-agent-run";
 import { runOpenAiCompatibleAgent } from "./providers/openai-runtime";
 import type { CustomProvider } from "./providers/types";
-import { resetStores } from "./test-utils";
+import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
-import { useAgentStore } from "./use-agent-store";
+import { runScope, useAgentStore } from "./use-agent-store";
 
 const state = () => useAgentStore.getState();
 
@@ -18,7 +18,7 @@ const attachments: RunAttachment[] = [
 
 beforeEach(() => {
   resetStores();
-  state().set({ status: "planning" });
+  runScope(null).set({ status: "planning" });
 });
 
 // ---- Anthropic ------------------------------------------------------------------------------
@@ -116,7 +116,7 @@ describe("Anthropic runs", () => {
       expect(content[2]?.text).toContain('att-2 ("logo.webp")');
       expect(content[2]?.text).toContain("use my photo");
     }
-    expect(state().status).toBe("done");
+    expect(visible().status).toBe("done");
   });
 
   test("the compat path sends the same plain image blocks without beta fields", async () => {
@@ -238,7 +238,7 @@ describe("OpenAI-compatible runs", () => {
       expect(JSON.stringify(parts[1])).toContain("data:image/png;base64,AAAA");
       expect(JSON.stringify(parts[2])).toContain("data:image/webp;base64,BBBB");
     }
-    expect(state().status).toBe("done");
+    expect(visible().status).toBe("done");
   });
 
   test("a provider that rejects images is retried without them and the run goes on", async () => {
@@ -251,8 +251,8 @@ describe("OpenAI-compatible runs", () => {
     expect(JSON.stringify(bodies[0])).toContain("image_url");
     expect(JSON.stringify(bodies[1])).not.toContain("image_url");
     expect(JSON.stringify(bodies[2])).not.toContain("image_url");
-    expect(state().log.some((e) => e.text.includes("does not accept images"))).toBe(true);
-    expect(state().status).toBe("done");
+    expect(visible().log.some((e) => e.text.includes("does not accept images"))).toBe(true);
+    expect(visible().status).toBe("done");
   });
 });
 
@@ -273,7 +273,7 @@ describe("local agent runs", () => {
     expect(start.prompt).toContain('att-1 ("photo.png")');
     expect(start.prompt).toEndWith("use my photo");
     // The bubble keeps the user's own text plus the images.
-    expect(state().log[0]).toMatchObject({ kind: "user", text: "use my photo", attachments });
+    expect(visible().log[0]).toMatchObject({ kind: "user", text: "use my photo", attachments });
   });
 
   test("no attachments key without attachments", async () => {

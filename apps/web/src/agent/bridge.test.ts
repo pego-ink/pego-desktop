@@ -2,10 +2,11 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { BridgeToEditor, EditorToBridge, LocalAgentInfo } from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
-import { setActiveRun } from "./active-run";
 import { createBridgeClient, parseBridgeMessage, type SocketLike } from "./bridge-client";
 import { createBridgeHandlers, MCP_LABEL } from "./bridge-handlers";
-import { resetStores } from "./test-utils";
+import { registerRun } from "./run-registry";
+import { emptySession } from "./sessions/session-model";
+import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
 
@@ -35,6 +36,19 @@ const CODEX: LocalAgentInfo = {
 
 const state = () => useAgentStore.getState();
 const past = () => useDocumentStore.getState().history.past;
+
+/** Begin `runId` in a session and register it as bridge-driven (what startLocalAgentRun does). */
+const activateLocal = (runId: string, sessionId = state().visibleSessionId) => {
+  state().beginRun(sessionId, runId, "p");
+  registerRun({
+    id: runId,
+    sessionId,
+    backend: "local",
+    controller: new AbortController(),
+    host: createToolHost({ runId }),
+    styleId: undefined,
+  });
+};
 
 const insertCall = (
   callId: string,
@@ -249,9 +263,9 @@ describe("bridge handlers", () => {
       ["3", false],
     ]);
     // Activity is visible: log entries and focus, but no run-level transaction count.
-    expect(state().log.filter((l) => l.kind === "tool")).toHaveLength(3);
-    expect(state().focusIds).toEqual(["rect-1"]);
-    expect(state().transactionCount).toBe(0);
+    expect(visible().log.filter((l) => l.kind === "tool")).toHaveLength(3);
+    expect(visible().focusIds).toEqual(["rect-1"]);
+    expect(visible().transactionCount).toBe(0);
   });
 
   test("tool_result carries images from the tool result", async () => {
@@ -308,26 +322,16 @@ describe("bridge handlers", () => {
     await handlers.handleMessage(insertCall("1", { kind: "run", runId: "r1" }));
     expect(sent[0]).toMatchObject({ isError: true });
 
-    setActiveRun({
-      id: "r1",
-      backend: "local",
-      controller: new AbortController(),
-      host: createToolHost(),
-    });
+    activateLocal("r1");
     await handlers.handleMessage(insertCall("2", { kind: "run", runId: "r1" }));
     expect(sent[1]).toMatchObject({ callId: "2", isError: false });
-    expect(state().transactionCount).toBe(1);
+    expect(visible().transactionCount).toBe(1);
+    expect(past().at(-1)?.runId).toBe("r1");
   });
 
   test("run_event maps text, tools, usage and completion into the store", async () => {
     const { handlers } = setup();
-    state().beginRun("r1", "p");
-    setActiveRun({
-      id: "r1",
-      backend: "local",
-      controller: new AbortController(),
-      host: createToolHost(),
-    });
+    activateLocal("r1");
     const event = (e: Extract<BridgeToEditor, { type: "run_event" }>["event"]) =>
       handlers.handleMessage({ type: "run_event", runId: "r1", event: e });
 
@@ -335,41 +339,54 @@ describe("bridge handlers", () => {
     await event({ kind: "tool", tool: "insert_nodes", status: "started" });
     await event({ kind: "tool", tool: "insert_nodes", status: "finished", isError: true });
     await event({ kind: "usage", inputTokens: 10, outputTokens: 5, costUsd: 0.01 });
-    expect(state().status).toBe("running");
-    expect(state().log.map((l) => l.kind)).toEqual(["assistant", "tool", "tool"]);
-    expect(state().usage).toEqual({ inputTokens: 10, outputTokens: 5, costUsd: 0.01 });
+    expect(visible().status).toBe("running");
+    expect(visible().log.map((l) => l.kind)).toEqual(["assistant", "tool", "tool"]);
+    expect(visible().usage).toEqual({ inputTokens: 10, outputTokens: 5, costUsd: 0.01 });
 
     await event({ kind: "done" });
-    expect(state().status).toBe("done");
+    expect(visible().status).toBe("done");
   });
 
   test("run_event error and a dropped connection fail the run", async () => {
     const { handlers } = setup();
-    state().beginRun("r1", "p");
-    const activate = () =>
-      setActiveRun({
-        id: "r1",
-        backend: "local",
-        controller: new AbortController(),
-        host: createToolHost(),
-      });
-    activate();
+    activateLocal("r1");
     await handlers.handleMessage({
       type: "run_event",
       runId: "r1",
       event: { kind: "error", message: "boom" },
     });
-    expect(state().status).toBe("failed");
-    expect(state().log.at(-1)?.text).toBe("boom");
+    expect(visible().status).toBe("failed");
+    expect(visible().log.at(-1)?.text).toBe("boom");
 
-    state().beginRun("r2", "p");
-    setActiveRun({
-      id: "r2",
-      backend: "local",
-      controller: new AbortController(),
-      host: createToolHost(),
-    });
+    activateLocal("r2");
     handlers.handleClosed();
-    expect(state().status).toBe("failed");
+    expect(visible().status).toBe("failed");
+  });
+
+  test("events and tool calls route to their own session; unknown runs are ignored", async () => {
+    const { handlers, sent } = setup();
+    const background = state().visibleSessionId;
+    activateLocal("bg");
+    state().showSession(emptySession("front"));
+    activateLocal("fg", "front");
+    const say = (runId: string, text: string) =>
+      handlers.handleMessage({ type: "run_event", runId, event: { kind: "text", text } });
+
+    await say("bg", "from background");
+    await say("fg", "from front");
+    await say("ghost", "nobody");
+    await handlers.handleMessage(insertCall("1", { kind: "run", runId: "bg" }));
+    expect(sent[0]).toMatchObject({ callId: "1", isError: false });
+
+    const bg = state().liveSessions[background]!;
+    expect(bg.log.map((l) => l.text)).toEqual(["from background"]);
+    expect(bg.transactionCount).toBe(1);
+    expect(visible().log.map((l) => l.text)).toEqual(["from front"]);
+    expect(visible().transactionCount).toBe(0);
+
+    // A dropped bridge fails every local run, shown or not.
+    handlers.handleClosed();
+    expect(state().liveSessions[background]?.status).toBe("failed");
+    expect(visible().status).toBe("failed");
   });
 });

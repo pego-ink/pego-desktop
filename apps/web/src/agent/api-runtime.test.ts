@@ -3,9 +3,9 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import Anthropic from "@anthropic-ai/sdk";
 import { describeApiError } from "./api-errors";
 import { checkToolInput, runApiAgent, toToolResultBlock, type MessagesClient } from "./api-runtime";
-import { resetStores } from "./test-utils";
+import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
-import { useAgentStore } from "./use-agent-store";
+import { runScope } from "./use-agent-store";
 import { toolByName } from "@pego/agent";
 
 type Body = Parameters<MessagesClient["beta"]["messages"]["stream"]>[0];
@@ -77,11 +77,11 @@ const run = (replies: Reply[], signal = new AbortController().signal) => {
   return { ...fake, done };
 };
 
-const state = () => useAgentStore.getState();
+const state = visible;
 
 beforeEach(() => {
   resetStores();
-  state().set({ status: "planning" });
+  runScope(null).set({ status: "planning" });
 });
 
 describe("executor loop", () => {

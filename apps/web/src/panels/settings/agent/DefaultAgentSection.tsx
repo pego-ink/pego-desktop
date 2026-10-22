@@ -3,9 +3,9 @@ import { NativeSelect } from "@pego/ui/components/native-select";
 import { PLANNER_MODEL } from "@/agent/api-runtime";
 import { findAgentInfo, LOCAL_AGENT_NAMES } from "@/agent/local-agents";
 import { useCustomProviders } from "@/panels/agent/custom-provider/use-custom-providers";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { ModelPicker } from "@/panels/agent/ModelPicker";
-import { API_BACKEND_LABEL, isRunActive } from "@/panels/agent/agent-format";
+import { API_BACKEND_LABEL } from "@/panels/agent/agent-format";
 import { Section } from "@/panels/settings/agent/Section";
 
 const API_VALUE = "api";
@@ -19,7 +19,7 @@ export const DefaultAgentSection = ({ flashing }: { flashing: boolean }) => {
   const customId = useAgentStore((s) => s.customProviderId);
   const agents = useAgentStore((s) => s.bridge.agents);
   const connected = useAgentStore((s) => s.bridge.connected);
-  const locked = useAgentStore((s) => isRunActive(s.status));
+  const locked = useAgentStore((s) => selectRunsActive(s) > 0);
   const setBackend = useAgentStore((s) => s.setBackend);
   const setLocalAgent = useAgentStore((s) => s.setLocalAgent);
   const setCustomProvider = useAgentStore((s) => s.setCustomProvider);

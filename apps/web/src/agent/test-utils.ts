@@ -1,23 +1,27 @@
 import { sampleDoc, type Op } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { cancelPendingDecisions } from "./decisions";
-import { setActiveRun, setRunTail } from "./active-run";
+import { runClaims } from "./run-claims";
+import { clearRuns } from "./run-registry";
 import { emptySession } from "./sessions/session-model";
-import { emptyBridge, useAgentStore } from "./use-agent-store";
+import { emptyBridge, useAgentStore, visibleSession, type SessionLive } from "./use-agent-store";
 
-/** Fresh document + agent state for each test. */
+/** Fresh document + agent state for each test: one visible session with a running "run-test". */
 export const resetStores = () => {
   cancelPendingDecisions();
-  setActiveRun(null);
-  setRunTail(null);
+  clearRuns();
+  runClaims.clear();
   useDocumentStore.getState().load(sampleDoc);
-  useAgentStore.getState().loadSession(emptySession());
-  useAgentStore.getState().beginRun("run-test", "prompt");
-  useAgentStore.getState().set({
-    status: "running",
-    bridge: emptyBridge(),
-  });
+  const session = emptySession();
+  const agent = useAgentStore.getState();
+  agent.resetSessions(session);
+  agent.beginRun(session.id, "run-test", "prompt");
+  agent.patchSession(session.id, { status: "running" });
+  agent.set({ bridge: emptyBridge() });
 };
+
+/** The session shown in the panel (the single-run fields tests read). */
+export const visible = (): SessionLive => visibleSession(useAgentStore.getState());
 
 let nodeSeq = 0;
 /** An insert op for a small rectangle under frame-1. */
