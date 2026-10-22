@@ -1,4 +1,5 @@
 import type { Layout, Op, PegoDocument } from "@pego/doc";
+import type { BrowserHost } from "./browser-types";
 
 /** A step of the agent's plan, shown in the agent panel. */
 export type PlanStep = { id: string; title: string; detail?: string };
@@ -61,6 +62,8 @@ export type ToolHost = {
     width: number;
     height: number;
   }) => Promise<{ src: string; alt?: string }>;
+  /** The in-app browser (desktop app only); `browser` returns `unsupported` without it. */
+  browser?: BrowserHost;
 };
 
 /** Base64 PNG attached to a tool result (screenshots). */

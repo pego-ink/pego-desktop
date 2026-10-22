@@ -1,4 +1,5 @@
-export type RailTab = "agent" | "layers" | "assets";
+/** "browser" exists only in the desktop app (see `railTabsFor`). */
+export type RailTab = "agent" | "layers" | "assets" | "browser";
 
 export type RailState = { tab: RailTab; open: boolean };
 
@@ -11,6 +12,7 @@ export const RAIL_TABS: readonly { id: RailTab; label: string }[] = [
   { id: "agent", label: "Agent" },
   { id: "layers", label: "Layers" },
   { id: "assets", label: "Assets" },
+  { id: "browser", label: "Browser" },
 ];
 
 const isRailTab = (value: unknown): value is RailTab => RAIL_TABS.some((tab) => tab.id === value);
