@@ -24,6 +24,49 @@ describe("mediaTools", () => {
   });
 });
 
+describe("place_image with attachment src", () => {
+  const withAttachments = () =>
+    Object.assign(createFakeHost(), {
+      getAttachment: (id: string) =>
+        id === "att-1" ? { src: PNG, name: "hero-photo.png" } : undefined,
+    });
+
+  test("resolves attachment:<id> through the host and names the layer after the file", async () => {
+    const host = withAttachments();
+    const { isError, data } = await call(
+      "place_image",
+      { src: "attachment:att-1", width: 300 },
+      host,
+    );
+    expect(isError).toBe(false);
+    const node = findNode(host.getDoc(), data.created.id);
+    expect(node).toMatchObject({ type: "image", src: PNG, name: "hero-photo", width: 300 });
+  });
+
+  test("an explicit name wins", async () => {
+    const host = withAttachments();
+    const { data } = await call("place_image", { src: "attachment:att-1", name: "Hero" }, host);
+    expect(findNode(host.getDoc(), data.created.id)).toMatchObject({ name: "Hero" });
+  });
+
+  test("unknown id is a clear error and leaves the document alone", async () => {
+    const host = withAttachments();
+    const before = host.getDoc();
+    const { isError, data } = await call("place_image", { src: "attachment:att-9" }, host);
+    expect(isError).toBe(true);
+    expect(data.error.code).toBe("unknown_attachment");
+    expect(data.error.message).toContain("att-9");
+    expect(host.getDoc()).toBe(before);
+  });
+
+  test("a host without attachments says so", async () => {
+    const { isError, data } = await call("place_image", { src: "attachment:att-1" });
+    expect(isError).toBe(true);
+    expect(data.error.code).toBe("unknown_attachment");
+    expect(data.error.message).toContain("no attachments");
+  });
+});
+
 describe("insert_svg", () => {
   test("inserts editable nodes in one op and returns ids and size", async () => {
     const { host, isError, data } = await call("insert_svg", { svg: SVG, width: 48, x: 5, y: 6 });
@@ -111,7 +154,7 @@ describe("place_image", () => {
       "https://192.168.1.4/a.png",
       "https://user:pw@example.com/a.png",
       "not a url",
-      `data:image/png;base64,${"A".repeat(6 * 1024 * 1024)}`,
+      `data:image/png;base64,${"A".repeat(8 * 1024 * 1024)}`,
     ];
     for (const src of bad) {
       const { isError, data } = await call("place_image", { src });

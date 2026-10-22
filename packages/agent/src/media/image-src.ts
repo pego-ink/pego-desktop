@@ -1,7 +1,8 @@
 /** Validation for image sources placed on the canvas (https URLs and data:image URLs). */
 
 /** Max length of a data URL string (about 3.7 MB of image bytes once base64-decoded). */
-export const MAX_DATA_URL_LENGTH = 5 * 1024 * 1024;
+/** Data URL length cap: a 5 MB image (the attachment limit) is about 6.7 M base64 chars plus the prefix. */
+export const MAX_DATA_URL_LENGTH = Math.ceil((5 * 1024 * 1024 * 4) / 3) + 128;
 export const MAX_URL_LENGTH = 2048;
 
 /** SVG is excluded on purpose: it can carry scripts. Vector art goes through insert_svg. */
@@ -24,7 +25,7 @@ export const validateImageSrc = (raw: string): string => {
   if (/^data:/i.test(src)) {
     if (src.length > MAX_DATA_URL_LENGTH) {
       throw new ImageSrcError(
-        `data URL is larger than ${MAX_DATA_URL_LENGTH / (1024 * 1024)} MB; use a smaller image or an https URL`,
+        "data URL is larger than 5 MB of image data; use a smaller image or an https URL",
       );
     }
     if (!DATA_URL.test(src)) {

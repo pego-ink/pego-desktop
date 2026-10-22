@@ -150,22 +150,50 @@ const checkedSrc = (src: string): string => {
   }
 };
 
+const ATTACHMENT_PREFIX = "attachment:";
+
+/** `attachment:<id>` -> the data: URL of an image the user attached; any other src as given. */
+const resolveSrc = (host: ToolHost, raw: string): { src: string; name?: string } => {
+  const trimmed = raw.trim();
+  if (!trimmed.toLowerCase().startsWith(ATTACHMENT_PREFIX)) return { src: raw };
+  const id = trimmed.slice(ATTACHMENT_PREFIX.length).trim();
+  const found = host.getAttachment?.(id);
+  if (!found) {
+    throw new ToolError(
+      "unknown_attachment",
+      `No attachment with id "${id}"${host.getAttachment ? "" : " (this editor has no attachments)"}.`,
+      "Use an id from the user's request (for example attachment:att-1), or an https URL.",
+    );
+  }
+  return found;
+};
+
 const imageSizeProps = (width: number | undefined, height: number | undefined) => ({
   width: width ?? height ?? 400,
   height: height ?? width ?? 300,
 });
 
+/** Layer name from a file name: no extension, at most 200 characters. */
+const layerName = (fileName: string): string =>
+  fileName
+    .replace(/\.[a-z0-9]{2,5}$/i, "")
+    .trim()
+    .slice(0, 200) || "Image";
+
 const placeImage = defineTool({
   name: "place_image",
   description:
     "Place a bitmap image (photo, screenshot, raster artwork) from a known source as an image node. " +
-    "src is an https URL or a base64 data:image URL (png, jpeg, gif, webp, avif; max 5 MB). SVG data URLs are rejected: use insert_svg for vectors. " +
+    "src is an https URL, a base64 data:image URL (png, jpeg, gif, webp, avif; max 5 MB), or attachment:<id> for an image the user attached to the request (the ids are listed in the request). SVG data URLs are rejected: use insert_svg for vectors. " +
     "Never invent URLs: only use ones the user gave you or that you know exist. If you need a new picture and generate_image is available, use that. Never fake photos with shapes. " +
     "fit: fill (cover the box, default), fit (contain), crop (no scaling), tile. Set width and height; if only one is given the box is square-ish to it. Add alt text.",
   inputSchema: {
     type: "object",
     properties: {
-      src: { type: "string", description: "https URL or data:image/...;base64,... URL." },
+      src: {
+        type: "string",
+        description: "https URL, data:image/...;base64,... URL, or attachment:<id>.",
+      },
       parentId: parentIdSchema,
       x: xSchema,
       y: ySchema,
@@ -194,15 +222,16 @@ const placeImage = defineTool({
     name: z.string().min(1).max(200).optional(),
   }),
   inputHint:
-    "Pass {src: https URL | data:image URL, parentId?, x?, y?, width?, height?, fit?, alt?}.",
+    "Pass {src: https URL | data:image URL | attachment:<id>, parentId?, x?, y?, width?, height?, fit?, alt?}.",
   run: (input, host) => {
     const parent = input.parentId ?? null;
-    const src = checkedSrc(input.src);
+    const resolved = resolveSrc(host, input.src);
+    const src = checkedSrc(resolved.src);
     const { node } = insertRaw(
       host,
       {
         type: "image",
-        name: input.name ?? "Image",
+        name: input.name ?? (resolved.name ? layerName(resolved.name) : "Image"),
         src,
         fit: input.fit ?? "fill",
         ...(input.alt ? { alt: input.alt } : {}),

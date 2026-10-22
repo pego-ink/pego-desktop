@@ -1,4 +1,5 @@
-import type { EditorToBridge } from "@pego/agent";
+import type { EditorToBridge, RunAttachment } from "@pego/agent";
+import { attachmentNote } from "./attachments";
 import { sendToBridge, startBridgeConnection } from "./bridge-client";
 import { setActiveRun, setRunTail } from "./active-run";
 import { findAgentInfo, LOCAL_AGENT_NAMES } from "./local-agents";
@@ -41,8 +42,9 @@ export const startLocalAgentRun = async (
   send: (message: EditorToBridge) => boolean = sendToBridge,
   /** Explicit skill for this run: undefined = auto-detect from the prompt, null = core only. */
   skillId?: string | null,
-  options: { bridgeWaitMs?: number } = {},
+  options: { bridgeWaitMs?: number; attachments?: readonly RunAttachment[] } = {},
 ): Promise<void> => {
+  const attachments = options.attachments ?? [];
   const waitMs = options.bridgeWaitMs ?? localRunConfig.bridgeWaitMs;
   const agent = useAgentStore.getState();
   const { localAgentId: agentId, bridge } = agent;
@@ -52,13 +54,20 @@ export const startLocalAgentRun = async (
 
   agent.beginRun(runId, prompt);
   agent.set({ runLabel: describeRunAgent(name, model) });
-  agent.appendLog({ kind: "user", text: prompt });
+  agent.appendLog({
+    kind: "user",
+    text: prompt,
+    ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
+  });
   setRunTail(null);
 
   // The CLI loads the skills itself through get_skill; the panel and log keep the user's text.
   const skills = resolveRunSkills(prompt, skillId);
   for (const text of skillLogLines(skills)) agent.appendLog({ kind: "info", text });
-  const prefix = skillPromptPrefix(skills);
+  // The images travel in run_start; one line names them so the agent knows they exist.
+  const prefix = [skillPromptPrefix(skills), attachmentNote(attachments)]
+    .filter(Boolean)
+    .join("\n\n");
   const agentPrompt = prefix ? `${prefix}\n\n${prompt}` : prompt;
 
   const fail = (text: string) => {
@@ -85,7 +94,7 @@ export const startLocalAgentRun = async (
     id: runId,
     backend: "local",
     controller: new AbortController(),
-    host: createToolHost({ onTransaction: setRunTail }),
+    host: createToolHost({ onTransaction: setRunTail, attachments }),
   });
   const message: EditorToBridge = {
     type: "run_start",
@@ -93,6 +102,7 @@ export const startLocalAgentRun = async (
     prompt: agentPrompt,
     agentId,
     ...(model ? { model } : {}),
+    ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
   };
   if (send(message)) return;
   // The store said "connected" but the socket was not open (e.g. replaced by a reload):

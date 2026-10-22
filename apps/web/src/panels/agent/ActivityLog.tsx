@@ -4,6 +4,7 @@ import { Markdown } from "@pego/ui/components/markdown";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore, type AgentLogEntry } from "@/agent/use-agent-store";
+import { AttachmentStrip } from "@/panels/agent/attachments/AttachmentStrip";
 import { collapseRuns, countFailed, groupLog, type ToolGroup } from "@/panels/agent/tool-groups";
 
 const ACTIVE_STATUSES = new Set(["planning", "running", "awaiting_decision"]);
@@ -89,11 +90,18 @@ const Entry = ({ entry, className }: { entry: AgentLogEntry; className?: string 
       return (
         <li
           className={cn(
-            "self-end rounded-md bg-muted px-2 py-1.5 text-xs whitespace-pre-wrap",
+            "flex flex-col gap-1.5 self-end rounded-md bg-muted px-2 py-1.5 text-xs",
             className,
           )}
         >
-          {entry.text}
+          {entry.attachments?.length ? (
+            <AttachmentStrip
+              attachments={entry.attachments}
+              size="sm"
+              className="flex flex-wrap justify-end gap-1"
+            />
+          ) : null}
+          <span className="whitespace-pre-wrap">{entry.text}</span>
         </li>
       );
     case "assistant":

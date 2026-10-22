@@ -50,6 +50,6 @@ export const insertPresetFrame = (preset: FramePreset): string | null => {
   useToolStore.getState().setTool("select");
   const viewport = useViewportStore.getState();
   const camera = focusCamera([box], viewport.size);
-  if (camera) viewport.setCamera(camera);
+  if (camera) viewport.animateTo(camera);
   return id;
 };

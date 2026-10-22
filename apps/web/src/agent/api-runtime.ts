@@ -7,9 +7,11 @@ import {
   planOutputSchema,
   toolByName,
   type PlanStep,
+  type RunAttachment,
   type ToolResult,
   type ToolSpec,
 } from "@pego/agent";
+import { anthropicUserContent } from "./attachments";
 import { AgentRunError, describeApiError, isAbortError } from "./api-errors";
 import { RunCancelledError } from "./decisions";
 import type { AgentToolHost } from "./tool-host";
@@ -161,6 +163,8 @@ type RuntimeContext = {
   skillsText?: string;
   /** Explicit skill for this run: undefined = auto-detect, null = core only. */
   skillId?: string | null;
+  /** Images the user attached; sent as image blocks before the text in planner and step turns. */
+  attachments?: readonly RunAttachment[];
 };
 
 const agent = () => useAgentStore.getState();
@@ -264,12 +268,12 @@ export const plannerRequest = (ctx: RuntimeContext, prompt: string): StreamParam
   const messages: BetaMessageParam[] = [
     {
       role: "user",
-      content: [
-        ctx.skillsText,
-        `Current document (JSON):\n${documentJson}\n\nUser request:\n${prompt}`,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
+      content: anthropicUserContent(
+        [ctx.skillsText, `Current document (JSON):\n${documentJson}\n\nUser request:\n${prompt}`]
+          .filter(Boolean)
+          .join("\n\n"),
+        ctx.attachments ?? [],
+      ),
     },
   ];
   if (isCompat(ctx)) {
@@ -456,7 +460,13 @@ const executeStep = async (
 ): Promise<StepOutcome> => {
   ctx.host.reportStep(step.id, "running");
   const messages: BetaMessageParam[] = [
-    { role: "user", content: stepPrompt(prompt, steps, step, ctx.skillsText) },
+    {
+      role: "user",
+      content: anthropicUserContent(
+        stepPrompt(prompt, steps, step, ctx.skillsText),
+        ctx.attachments ?? [],
+      ),
+    },
   ];
   let lastText = "";
 

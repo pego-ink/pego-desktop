@@ -1,9 +1,10 @@
 import { applyOps as applyDocOps, collectDocIds, type Op, type Transaction } from "@pego/doc";
-import type { PlanStep, StepStatus, ToolHost } from "@pego/agent";
+import type { PlanStep, RunAttachment, StepStatus, ToolHost } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
 import { listIconNames, loadIconData } from "@/canvas/icons";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
 import { generateImage } from "./generate-image";
 import { requestDecision } from "./decisions";
@@ -18,6 +19,8 @@ export type ToolHostOptions = {
   focusFromOps?: boolean;
   /** Called with the newest transaction after every apply. */
   onTransaction?: (transaction: Transaction) => void;
+  /** Images the user attached to this run, served to `place_image` as "attachment:<id>". */
+  attachments?: readonly RunAttachment[];
 };
 
 export type AgentToolHost = ToolHost & {
@@ -101,7 +104,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     const boxes = ids.flatMap((id) => layout.get(id) ?? []);
     const viewport = useViewportStore.getState();
     const camera = focusCamera(boxes, viewport.size);
-    if (camera) viewport.setCamera(camera);
+    if (camera) viewport.animateTo(camera);
   };
 
   const renderImage: NonNullable<ToolHost["renderImage"]> = async (nodeId, imageOptions) => {
@@ -124,6 +127,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     listIcons: listIconNames,
     renderImage,
     generateImage,
+    getAttachment: (id) => findAttachmentSrc(options.attachments ?? [], id),
     applyOps,
     setFocus: (ids) => useAgentStore.getState().set({ focusIds: ids }),
     reportPlan,

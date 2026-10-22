@@ -1,11 +1,14 @@
 import { create } from "zustand";
-import type {
-  DecisionRequest,
-  LocalAgentId,
-  LocalAgentInfo,
-  PlanStep,
-  StepStatus,
+import {
+  RUN_ATTACHMENT_LIMITS,
+  type DecisionRequest,
+  type LocalAgentId,
+  type LocalAgentInfo,
+  type PlanStep,
+  type RunAttachment,
+  type StepStatus,
 } from "@pego/agent";
+import { nextAttachmentId } from "@/agent/attachments";
 import {
   loadAgentPrefs,
   saveAgentPrefs,
@@ -28,6 +31,8 @@ export type AgentLogEntry = {
   kind: "user" | "assistant" | "tool" | "info" | "error";
   text: string;
   tool?: { name: string; isError: boolean };
+  /** Images the user attached (user entries only). */
+  attachments?: RunAttachment[];
 };
 
 export type BridgeStatus = {
@@ -75,6 +80,8 @@ type AgentState = {
   selectedSkillId: string | null | undefined;
   /** Same for the style skill (Bauhaus, Swiss…): undefined = auto, null = no style. */
   selectedStyleId: string | null | undefined;
+  /** Images attached in the composer for the next run; moved into the run on send. Never persisted. */
+  pendingAttachments: RunAttachment[];
   /** Who runs the current/last run, e.g. "Codex · gpt-5" (shown in the run header). */
   runLabel: string | null;
   status: RunStatus;
@@ -101,6 +108,10 @@ type AgentActions = {
   clearCustomProvider: (backend: Exclude<AgentBackend, "custom">) => void;
   setSelectedSkill: (skillId: string | null | undefined) => void;
   setSelectedStyle: (styleId: string | null | undefined) => void;
+  /** Attach an image to the next run (id assigned here). False when the count limit is reached. */
+  addAttachment: (attachment: Omit<RunAttachment, "id">) => boolean;
+  removeAttachment: (id: string) => void;
+  clearAttachments: () => void;
   /** Select a model for an agent; undefined/empty restores the CLI default. */
   setModel: (agentId: LocalAgentId, model: string | undefined) => void;
   /** Re-read persisted preferences (done once at store creation). */
@@ -147,6 +158,7 @@ const createAgentStore = () =>
       bridge: emptyBridge(),
       selectedSkillId: undefined,
       selectedStyleId: undefined,
+      pendingAttachments: [],
 
       set: (patch) => set(patch),
       setBackend: (backend) => {
@@ -155,6 +167,19 @@ const createAgentStore = () =>
       },
       setSelectedSkill: (selectedSkillId) => set({ selectedSkillId }),
       setSelectedStyle: (selectedStyleId) => set({ selectedStyleId }),
+      addAttachment: (attachment) => {
+        const current = get().pendingAttachments;
+        if (current.length >= RUN_ATTACHMENT_LIMITS.maxCount) return false;
+        set({
+          pendingAttachments: [...current, { ...attachment, id: nextAttachmentId(current) }],
+        });
+        return true;
+      },
+      removeAttachment: (id) =>
+        set((state) => ({
+          pendingAttachments: state.pendingAttachments.filter((item) => item.id !== id),
+        })),
+      clearAttachments: () => set({ pendingAttachments: [] }),
       setLocalAgent: (localAgentId) => {
         set({ localAgentId, explicit: true });
         persist();

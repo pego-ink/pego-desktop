@@ -45,6 +45,7 @@ const FAKES = [
 
 let added: Skill[] = [];
 beforeEach(() => {
+  localRunConfig.bridgeWaitMs = 0; // no bridge in tests: local runs fail fast instead of waiting
   resetStores();
   useAgentStore.getState().set({ selectedSkillId: undefined, selectedStyleId: undefined });
   setRunStyleId(undefined);
@@ -272,7 +273,6 @@ describe("manual skill choice lasts one run", () => {
 
   test("startRun clears selectedStyleId and hands it to the run", async () => {
     state().set({ backend: "local", bridge: emptyBridge() });
-    localRunConfig.bridgeWaitMs = 0; // no bridge in tests: fail fast instead of waiting
     state().setSelectedStyle("fakeswiss");
     useAgentStore.getState().set({ status: "idle" });
     await startRun("buat zzfoo page");

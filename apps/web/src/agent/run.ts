@@ -1,3 +1,4 @@
+import type { RunAttachment } from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { getActiveRun, getRunTail, setActiveRun, setRunTail } from "./active-run";
 import { loadApiKey } from "./api-key";
@@ -33,6 +34,13 @@ const defaultCustomDeps: CustomRunDeps = {
   runAnthropic: runApiAgent,
 };
 
+/** The user bubble of the activity log (carries the attached images, if any). */
+const userLogEntry = (text: string, attachments: readonly RunAttachment[]) => ({
+  kind: "user" as const,
+  text,
+  ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
+});
+
 /**
  * Backend "custom": load the selected provider and its key, then route by dialect. Same store
  * contract as the "api" backend (the runtimes never throw and end the run in the store), so
@@ -43,11 +51,12 @@ export const startCustomRun = async (
   text: string,
   skillId: string | null | undefined,
   deps: CustomRunDeps = defaultCustomDeps,
+  attachments: readonly RunAttachment[] = [],
 ): Promise<void> => {
   const agent = useAgentStore.getState();
   agent.beginRun(runId, text);
   agent.set({ runLabel: "Custom provider" });
-  agent.appendLog({ kind: "user", text });
+  agent.appendLog(userLogEntry(text, attachments));
   setRunTail(null);
 
   const fail = (message: string) => {
@@ -71,7 +80,7 @@ export const startCustomRun = async (
   useAgentStore.getState().set({ runLabel: `${provider.name} · ${provider.executorModel}` });
 
   const controller = new AbortController();
-  const host = createToolHost({ onTransaction: setRunTail });
+  const host = createToolHost({ onTransaction: setRunTail, attachments });
   setActiveRun({ id: runId, backend: "custom", controller, host });
   try {
     if (provider.kind === "openai-compatible") {
@@ -81,6 +90,7 @@ export const startCustomRun = async (
         host,
         signal: controller.signal,
         skillId,
+        attachments,
       });
     } else {
       await deps.runAnthropic(text, {
@@ -96,6 +106,7 @@ export const startCustomRun = async (
         host,
         signal: controller.signal,
         skillId,
+        attachments,
       });
     }
   } finally {
@@ -114,20 +125,23 @@ export const startRun = async (prompt: string): Promise<void> => {
   const styleId = agent.selectedStyleId;
   if (styleId !== undefined) agent.setSelectedStyle(undefined);
   setRunStyleId(styleId);
+  // Images from the composer move into this run; the composer starts empty again.
+  const attachments = agent.pendingAttachments;
+  if (attachments.length > 0) agent.clearAttachments();
 
   if (agent.backend === "local") {
-    await startLocalAgentRun(runId, text, undefined, skillId);
+    await startLocalAgentRun(runId, text, undefined, skillId, { attachments });
     return;
   }
 
   if (agent.backend === "custom") {
-    await startCustomRun(runId, text, skillId);
+    await startCustomRun(runId, text, skillId, undefined, attachments);
     return;
   }
 
   agent.beginRun(runId, text);
   agent.set({ runLabel: "Anthropic API" });
-  agent.appendLog({ kind: "user", text });
+  agent.appendLog(userLogEntry(text, attachments));
   setRunTail(null);
 
   const apiKey = await loadApiKey();
@@ -141,7 +155,7 @@ export const startRun = async (prompt: string): Promise<void> => {
   }
 
   const controller = new AbortController();
-  const host = createToolHost({ onTransaction: setRunTail });
+  const host = createToolHost({ onTransaction: setRunTail, attachments });
   setActiveRun({ id: runId, backend: "api", controller, host });
   try {
     await runApiAgent(text, {
@@ -149,6 +163,7 @@ export const startRun = async (prompt: string): Promise<void> => {
       host,
       signal: controller.signal,
       skillId,
+      attachments,
     });
   } finally {
     if (getActiveRun()?.id === runId) setActiveRun(null);

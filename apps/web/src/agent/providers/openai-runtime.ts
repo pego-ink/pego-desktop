@@ -6,8 +6,10 @@ import {
   planOutputSchema,
   toolByName,
   type PlanStep,
+  type RunAttachment,
   type ToolResult,
 } from "@pego/agent";
+import { attachmentNote, openAiImageParts } from "../attachments";
 import { AgentRunError, describeApiError, isAbortError } from "../api-errors";
 import { RunCancelledError } from "../decisions";
 import { resolveRunSkills, skillLogLines, skillsBlock } from "../run-skills";
@@ -22,6 +24,8 @@ export type OpenAiRunContext = {
   signal: AbortSignal;
   /** Explicit skill for this run: undefined = auto-detect, null = core only. */
   skillId?: string | null;
+  /** Images the user attached; sent as `image_url` parts in the planner and first step turns. */
+  attachments?: readonly RunAttachment[];
 };
 
 /*
@@ -78,6 +82,19 @@ type RunState = {
 };
 
 const agent = () => useAgentStore.getState();
+
+/** User message: plain text, or text + the attached images as `image_url` parts. */
+export const userContent = (
+  text: string,
+  attachments: readonly RunAttachment[] = [],
+): string | ContentPart[] => {
+  if (attachments.length === 0) return text;
+  const note = attachmentNote(attachments);
+  return [
+    { type: "text", text: note ? `${note}\n\n${text}` : text },
+    ...openAiImageParts(attachments),
+  ];
+};
 
 const cancelIfAborted = (signal: AbortSignal) => {
   if (signal.aborted) throw new RunCancelledError();
@@ -177,7 +194,7 @@ const stripImages = (messages: ChatMessage[]): ChatMessage[] =>
       .join("\n");
     return {
       role: "user",
-      content: `${text}\n(Screenshots omitted: this model does not accept images.)`,
+      content: `${text}\n(Images omitted: this model does not accept images.)`,
     };
   });
 
@@ -202,7 +219,7 @@ const chatWithImageFallback = async (
     state.images = false;
     agent().appendLog({
       kind: "info",
-      text: "This model does not accept images; continuing without screenshots.",
+      text: "This model does not accept images; continuing without them.",
     });
     return chat(state, body, messages);
   }
@@ -298,19 +315,26 @@ const requestPlan = async (state: RunState, prompt: string): Promise<PlanStep[]>
     { role: "system", content: PLANNER_SYSTEM },
     {
       role: "user",
-      content: [
-        state.skillsText,
-        `Current document (JSON):\n${JSON.stringify(host.getDoc())}\n\nUser request:\n${prompt}`,
-        PLAN_FORMAT_HINT,
-      ]
-        .filter(Boolean)
-        .join("\n\n"),
+      content: userContent(
+        [
+          state.skillsText,
+          `Current document (JSON):\n${JSON.stringify(host.getDoc())}\n\nUser request:\n${prompt}`,
+          PLAN_FORMAT_HINT,
+        ]
+          .filter(Boolean)
+          .join("\n\n"),
+        state.ctx.attachments,
+      ),
     },
   ];
   const body = { model: provider.plannerModel ?? provider.executorModel };
   let response: ChatResponse;
   try {
-    response = await chat(state, { ...body, response_format: { type: "json_object" } }, messages);
+    response = await chatWithImageFallback(
+      state,
+      { ...body, response_format: { type: "json_object" } },
+      messages,
+    );
   } catch (error) {
     // Providers without JSON mode answer 400; the prompt alone then asks for JSON.
     if (!(
@@ -320,7 +344,7 @@ const requestPlan = async (state: RunState, prompt: string): Promise<PlanStep[]>
     )) {
       throw error;
     }
-    response = await chat(state, body, messages);
+    response = await chatWithImageFallback(state, body, messages);
   }
   recordUsage(response);
   const choice = firstChoice(response, provider);
@@ -417,7 +441,13 @@ const executeStep = async (
   host.reportStep(step.id, "running");
   const messages: ChatMessage[] = [
     { role: "system", content: EXECUTOR_SYSTEM },
-    { role: "user", content: stepPrompt(prompt, steps, step, state.skillsText) },
+    {
+      role: "user",
+      content: userContent(
+        stepPrompt(prompt, steps, step, state.skillsText),
+        state.ctx.attachments,
+      ),
+    },
   ];
   let lastText = "";
 
