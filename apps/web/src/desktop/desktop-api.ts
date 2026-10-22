@@ -63,7 +63,11 @@ export type DesktopBrowserApi = {
    * Load an http(s) or file URL; a bare host ("example.com") gets https. Resolves when the load
    * finishes, rejects with a user-readable Error when it fails or the URL is refused.
    */
-  navigate: (url: string) => Promise<{ url: string; title: string }>;
+  navigate: (
+    url: string,
+    /** file: URLs load only with `allowFile` (the panel's address bar; never the agent). */
+    options?: { allowFile?: boolean },
+  ) => Promise<{ url: string; title: string }>;
   back: () => void;
   forward: () => void;
   reload: () => void;

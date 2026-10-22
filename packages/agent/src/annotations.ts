@@ -1,6 +1,7 @@
 /**
  * MCP tool annotations (https://modelcontextprotocol.io): hints clients use for display and
- * permission prompts. Pego tools only touch the open editor, so none is open-world.
+ * permission prompts. Pego tools only touch the open editor, except `browser`, which reaches
+ * out to websites (open-world).
  */
 export type ToolAnnotations = {
   title: string;
@@ -8,7 +9,7 @@ export type ToolAnnotations = {
   /** Only meaningful when not read-only: the tool can remove or overwrite existing content. */
   destructiveHint: boolean;
   idempotentHint: boolean;
-  openWorldHint: false;
+  openWorldHint: boolean;
 };
 
 type Kind = "read" | "add" | "change" | "destroy";
@@ -36,6 +37,7 @@ const TOOLS: Record<string, [title: string, kind: Kind]> = {
   insert_svg: ["Insert SVG", "add"],
   place_image: ["Place image", "add"],
   generate_image: ["Generate image", "add"],
+  browser: ["Browser", "change"],
   update_node: ["Update node", "change"],
   move_node: ["Move node", "change"],
   set_variables: ["Set variables", "change"],
@@ -70,6 +72,6 @@ export const toolAnnotations = (name: string): ToolAnnotations => {
     readOnlyHint: kind === "read",
     destructiveHint: kind === "destroy",
     idempotentHint: kind === "read" || IDEMPOTENT.has(name),
-    openWorldHint: false,
+    openWorldHint: name === "browser",
   };
 };

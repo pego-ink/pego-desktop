@@ -7,6 +7,7 @@ import {
 } from "@/update-status";
 import { isMenuCommand, MENU_COMMAND_CHANNEL, type MenuCommand } from "@/menu-channels";
 import { WINDOW_CHANNELS } from "@/window-chrome";
+import { BROWSER_CHANNELS } from "@/browser-channels";
 
 /**
  * Sandboxed preload. Exposes the `PegoDesktopApi` contract (apps/web/src/desktop/desktop-api.ts)
@@ -65,6 +66,49 @@ const onFullScreenChange = (listener: (fullScreen: boolean) => void): (() => voi
   };
 };
 
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null;
+
+const isBrowserState = (value: unknown): boolean =>
+  isRecord(value) && typeof value.url === "string" && typeof value.loading === "boolean";
+
+const subscribe = (
+  channel: string,
+  accept: (payload: unknown) => boolean,
+  listener: (payload: never) => void,
+  replay?: string,
+): (() => void) => {
+  if (typeof listener !== "function") return () => {};
+  let active = true;
+  const deliver = (payload: unknown): void => {
+    if (active && accept(payload)) (listener as (payload: unknown) => void)(payload);
+  };
+  const handler = (_event: unknown, payload: unknown): void => deliver(payload);
+  ipcRenderer.on(channel, handler);
+  if (replay) void ipcRenderer.invoke(replay).then(deliver, () => {});
+  return () => {
+    active = false;
+    ipcRenderer.removeListener(channel, handler);
+  };
+};
+
+const browser = {
+  show: (bounds: unknown): void => ipcRenderer.send(BROWSER_CHANNELS.show, bounds),
+  hide: (): void => ipcRenderer.send(BROWSER_CHANNELS.hide),
+  navigate: (url: unknown): Promise<unknown> => ipcRenderer.invoke(BROWSER_CHANNELS.navigate, url),
+  back: (): void => ipcRenderer.send(BROWSER_CHANNELS.back),
+  forward: (): void => ipcRenderer.send(BROWSER_CHANNELS.forward),
+  reload: (): void => ipcRenderer.send(BROWSER_CHANNELS.reload),
+  stop: (): void => ipcRenderer.send(BROWSER_CHANNELS.stop),
+  cdp: (method: unknown, params?: unknown): Promise<unknown> =>
+    ipcRenderer.invoke(BROWSER_CHANNELS.cdp, method, params),
+  // Replay the current state so a late subscriber sees the view as it is.
+  onState: (listener: (state: never) => void): (() => void) =>
+    subscribe(BROWSER_CHANNELS.state, isBrowserState, listener, BROWSER_CHANNELS.getState),
+  onPageMessage: (listener: (message: never) => void): (() => void) =>
+    subscribe(BROWSER_CHANNELS.pageMessage, () => true, listener),
+};
+
 contextBridge.exposeInMainWorld("pegoDesktop", {
   platform: process.platform,
   version,
@@ -74,4 +118,5 @@ contextBridge.exposeInMainWorld("pegoDesktop", {
   onMenuCommand,
   onFullScreenChange,
   setThemeSource: (mode: unknown): void => ipcRenderer.send(WINDOW_CHANNELS.themeSource, mode),
+  browser,
 });

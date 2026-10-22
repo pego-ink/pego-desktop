@@ -1,9 +1,11 @@
+import { useCallback, useMemo } from "react";
 import { PanelRightIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
 import { ZoomControl } from "@/components/ZoomControl";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { PagesPanel } from "@/pages/PagesPanel";
 import { AssetsPanel } from "@/assets/AssetsPanel";
+import { BrowserPanel } from "@/browser/BrowserPanel";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
 import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { PropertiesPanel } from "@/panels/PropertiesPanel";
@@ -17,7 +19,7 @@ import { usePanelWidth } from "@/hooks/use-panel-width";
 import { cn } from "@pego/ui/lib/utils";
 import { FileMenu } from "@/persistence/FileMenu";
 import { IconRail, railPanelId, railTabId } from "@/components/IconRail";
-import { RAIL_TABS, type RailTab } from "@/components/rail-state";
+import { hasDesktopBrowser, railTabsFor, type RailTab } from "@/components/rail-state";
 import { ShowRightPanelButton, usePanelShortcut } from "@/layout/PanelToggles";
 import { ThemeToggle } from "@/theme/ThemeToggle";
 import { Dashboard } from "@/workspace/Dashboard";
@@ -63,9 +65,19 @@ const LEFT_PANEL = {
   maxViewportRatio: 0.4,
 } as const;
 
+/** The browser needs room for a page: wider by default and allowed to grow further. */
+const BROWSER_PANEL = {
+  storageKey: "pego:browser-panel-width",
+  defaultWidth: 520,
+  min: 360,
+  max: 1200,
+  maxViewportRatio: 0.6,
+} as const;
+
 const RailPanel = ({ tab }: { tab: RailTab }) => {
   if (tab === "agent") return <AgentPanel />;
   if (tab === "assets") return <AssetsPanel />;
+  if (tab === "browser") return <BrowserPanel />;
   return (
     <>
       <PagesPanel />
@@ -77,7 +89,20 @@ const RailPanel = ({ tab }: { tab: RailTab }) => {
 /** Side panel: file header, then the agent, the pages and layers, or the assets. Resizable. */
 const LeftColumn = () => {
   const rail = useLayoutStore((s) => s.rail);
-  const { attachElement, ...panel } = usePanelWidth(LEFT_PANEL);
+  const tabs = useMemo(() => railTabsFor(hasDesktopBrowser()), []);
+  const standard = usePanelWidth(LEFT_PANEL);
+  const browser = usePanelWidth(BROWSER_PANEL);
+  const { attachElement: attachStandard } = standard;
+  const { attachElement: attachBrowser } = browser;
+  // One element, two remembered widths: the browser tab has its own.
+  const attachElement = useCallback(
+    (element: HTMLElement | null) => {
+      attachStandard(element);
+      attachBrowser(element);
+    },
+    [attachStandard, attachBrowser],
+  );
+  const panel = rail.tab === "browser" ? browser : standard;
   return (
     <aside
       ref={attachElement}
@@ -87,7 +112,7 @@ const LeftColumn = () => {
       className="relative shrink-0 flex-col border-r border-border bg-card [&:not([hidden])]:flex"
     >
       <FileMenu />
-      {RAIL_TABS.map(({ id }) => (
+      {tabs.map(({ id }) => (
         <div
           key={id}
           id={railPanelId(id)}
@@ -96,8 +121,9 @@ const LeftColumn = () => {
           hidden={rail.tab !== id}
           className="min-h-0 flex-1 flex-col [&:not([hidden])]:flex"
         >
-          {/* Assets are derived from the whole document: only compute them while shown. */}
-          {id !== "assets" || rail.tab === "assets" ? <RailPanel tab={id} /> : null}
+          {/* Assets are derived from the whole document, and the browser owns a native view:
+              mount both only while shown (the view keeps its page while hidden). */}
+          {(id !== "assets" && id !== "browser") || rail.tab === id ? <RailPanel tab={id} /> : null}
         </div>
       ))}
       <ResizeHandle

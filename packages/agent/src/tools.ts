@@ -32,6 +32,7 @@ import {
 import { editTools } from "./tools-edit";
 import { exportTools } from "./tools-export";
 import { inspectTools } from "./tools-inspect";
+import { browserTools } from "./tools-browser";
 import { mediaTools } from "./tools-media";
 import type { ToolSpec } from "./types";
 
@@ -553,6 +554,7 @@ export const agentTools: ToolSpec[] = [
   ...editTools,
   ...inspectTools,
   ...mediaTools,
+  ...browserTools,
   ...exportTools,
 ];
 

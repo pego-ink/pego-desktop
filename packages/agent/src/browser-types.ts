@@ -56,6 +56,8 @@ export type DomStyle = {
   letterSpacing?: number;
   textAlign?: string;
   textTransform?: string;
+  /** `object-fit` of replaced elements (images), "fill" omitted. */
+  objectFit?: string;
 };
 
 /** One node of a page snapshot. Invisible elements (display:none, zero size, hidden) are skipped. */

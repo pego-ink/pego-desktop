@@ -4,6 +4,7 @@ import { findNode, type PegoDocument } from "@pego/doc";
 import { agentTools, coreTools, toolByName } from "./tools";
 import { editTools } from "./tools-edit";
 import { inspectTools } from "./tools-inspect";
+import { browserTools } from "./tools-browser";
 import { mediaTools } from "./tools-media";
 import { exportTools } from "./tools-export";
 import { createFakeHost } from "./test-host";
@@ -28,9 +29,14 @@ describe("tool registry", () => {
     const names = agentTools.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
     expect(names).toEqual(
-      [...coreTools, ...editTools, ...inspectTools, ...mediaTools, ...exportTools].map(
-        (t) => t.name,
-      ),
+      [
+        ...coreTools,
+        ...editTools,
+        ...inspectTools,
+        ...mediaTools,
+        ...browserTools,
+        ...exportTools,
+      ].map((t) => t.name),
     );
     expect(coreTools.map((t) => t.name)).toEqual([
       "get_document",
@@ -461,7 +467,7 @@ describe("tool annotations", () => {
     for (const tool of agentTools) {
       const annotations = toolAnnotations(tool.name);
       expect(annotations.title).not.toBe(tool.name);
-      expect(annotations.openWorldHint).toBe(false);
+      expect(annotations.openWorldHint).toBe(tool.name === "browser");
     }
     expect(toolAnnotations("get_document")).toMatchObject({ readOnlyHint: true });
     expect(toolAnnotations("insert_nodes")).toMatchObject({

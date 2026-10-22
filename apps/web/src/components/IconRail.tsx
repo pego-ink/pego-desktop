@@ -1,11 +1,19 @@
-import { useEffect, useRef, type ComponentType, type KeyboardEvent, type SVGProps } from "react";
-import { ComponentIcon, LayersIcon, SettingsIcon, SparklesIcon } from "lucide-react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  type ComponentType,
+  type KeyboardEvent,
+  type SVGProps,
+} from "react";
+import { ComponentIcon, GlobeIcon, LayersIcon, SettingsIcon, SparklesIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import { Tooltip } from "@pego/ui/components/tooltip";
 import {
-  RAIL_TABS,
+  hasDesktopBrowser,
   moveRailFocus,
   railTabForShortcut,
+  railTabsFor,
   type RailState,
   type RailTab,
 } from "@/components/rail-state";
@@ -19,6 +27,7 @@ const TAB_ICONS: Record<RailTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   agent: SparklesIcon,
   layers: LayersIcon,
   assets: ComponentIcon,
+  browser: GlobeIcon,
 };
 
 export const railPanelId = (tab: RailTab) => `left-panel-${tab}`;
@@ -35,20 +44,21 @@ type Props = {
   homeActive?: boolean;
 };
 
-/** Narrow vertical tab rail: Agent, Layers and Assets. The active tab toggles the side panel. */
+/** Narrow vertical tab rail: Agent, Layers, Assets and (desktop) Browser. The active tab toggles the side panel. */
 export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = false }: Props) => {
   const listRef = useRef<HTMLDivElement>(null);
+  const tabs = useMemo(() => railTabsFor(hasDesktopBrowser()), []);
 
   useEffect(() => {
     const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      const tab = railTabForShortcut(e);
+      const tab = railTabForShortcut(e, tabs);
       if (!tab) return;
       e.preventDefault();
       onPress(tab);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [onPress]);
+  }, [onPress, tabs]);
 
   const onListKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     const buttons = Array.from(
@@ -97,7 +107,7 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
         onKeyDown={onListKeyDown}
         className="flex flex-col items-center gap-1"
       >
-        {RAIL_TABS.map((item, index) => {
+        {tabs.map((item, index) => {
           const Icon = TAB_ICONS[item.id];
           const selected = !homeActive && state.open && state.tab === item.id;
           const focusable = state.tab === item.id;
