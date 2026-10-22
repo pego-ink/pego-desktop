@@ -66,7 +66,7 @@ export const parseDocumentFile = (text: string): PegoDocument => {
   );
 };
 
-/** A new empty document: one 1440x1024 white frame named "Frame". */
+/** A new empty document: one page holding one 1440x1024 white frame named "Frame". */
 export const createEmptyDocument = (): PegoDocument =>
   documentSchema.parse({
     version: DOCUMENT_VERSION,
@@ -74,14 +74,21 @@ export const createEmptyDocument = (): PegoDocument =>
     name: "Untitled",
     children: [
       {
+        type: "page",
         id: createId(),
-        type: "frame",
-        name: "Frame",
-        x: 0,
-        y: 0,
-        width: 1440,
-        height: 1024,
-        fill: "#FFFFFF",
+        name: "Page 1",
+        children: [
+          {
+            id: createId(),
+            type: "frame",
+            name: "Frame",
+            x: 0,
+            y: 0,
+            width: 1440,
+            height: 1024,
+            fill: "#FFFFFF",
+          },
+        ],
       },
     ],
   });

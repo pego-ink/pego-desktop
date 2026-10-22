@@ -20,22 +20,31 @@ describe("fonts", () => {
 
   test("collects families and weights from text, variables and instances", () => {
     const doc = documentSchema.parse({
-      version: 1,
+      version: 2,
       id: "d",
       name: "Fonts",
       variables: { heading: { type: "string", value: "Manrope" } },
       children: [
         {
-          type: "frame",
-          id: "btn",
-          reusable: true,
+          type: "page",
+          id: "page-1",
+          name: "Page 1",
+          x: 0,
+          y: 0,
           children: [
-            { type: "text", id: "t", content: "Go", fontFamily: "Geist Mono", fontWeight: 500 },
+            {
+              type: "frame",
+              id: "btn",
+              reusable: true,
+              children: [
+                { type: "text", id: "t", content: "Go", fontFamily: "Geist Mono", fontWeight: 500 },
+              ],
+            },
+            { type: "ref", id: "r", ref: "btn" },
+            { type: "text", id: "h", content: "Hi", fontFamily: "$heading", fontWeight: 700 },
+            { type: "text", id: "b", content: "Body" },
           ],
         },
-        { type: "ref", id: "r", ref: "btn" },
-        { type: "text", id: "h", content: "Hi", fontFamily: "$heading", fontWeight: 700 },
-        { type: "text", id: "b", content: "Body" },
       ],
     });
     const used = usedFonts(doc, "Inter");

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Redo2Icon, SparklesIcon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
 import { LayersPanel } from "@/panels/LayersPanel";
+import { PagesPanel } from "@/pages/PagesPanel";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { useAgentStore } from "@/agent/use-agent-store";
@@ -95,6 +96,7 @@ const LeftColumn = () => {
         </TabButton>
       </div>
       <div className={cn("min-h-0 flex-1 flex-col", tab === "layers" ? "flex" : "hidden")}>
+        <PagesPanel />
         <LayersPanel />
       </div>
       <div className={cn("min-h-0 flex-1 flex-col", tab === "agent" ? "flex" : "hidden")}>

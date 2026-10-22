@@ -6,7 +6,7 @@ import { useInteractionState } from "@/interaction/interaction-state";
 import { duplicateOps } from "@/interaction/duplicate";
 import { escapeSelection } from "@/interaction/selection";
 import { nudgeOps, topmostSelected } from "@/interaction/transform";
-import { useDocumentStore } from "@/store/use-document-store";
+import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
@@ -50,7 +50,7 @@ export const useEditorShortcuts = () => {
       }
       if (e.code === "Digit1" && e.shiftKey && !mod) {
         e.preventDefault();
-        viewport.zoomToFit(contentBounds(doc.doc, getLayout(doc.doc)));
+        viewport.zoomToFit(contentBounds(doc.doc, getLayout(doc.doc), doc.pageId));
         return;
       }
       if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {
@@ -72,7 +72,7 @@ export const useEditorShortcuts = () => {
       }
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
-        doc.select(doc.doc.children.map((n) => n.id));
+        doc.select(activePage(doc).children.map((n) => n.id));
         return;
       }
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") {

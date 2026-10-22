@@ -78,7 +78,10 @@ export const Canvas = () => {
           canvas.scale(dpr, dpr);
           const editing = useTextEditStore.getState().target;
           const hiddenIds = editing?.mode === "edit" ? new Set([editing.id]) : undefined;
-          renderDocument(res, canvas, doc, layout, camera, { hiddenIds });
+          renderDocument(res, canvas, doc, layout, camera, {
+            hiddenIds,
+            pageId: useDocumentStore.getState().pageId,
+          });
           const agent = useAgentStore.getState();
           const agentFocusIds = isRunActive(agent.status) ? agent.focusIds : undefined;
           renderOverlay(res, canvas, {
@@ -108,8 +111,8 @@ export const Canvas = () => {
           const viewport = useViewportStore.getState();
           viewport.setSize(container.clientWidth, container.clientHeight);
           if (!viewport.fitted) {
-            const { doc } = useDocumentStore.getState();
-            viewport.zoomToFit(contentBounds(doc, getLayout(doc)));
+            const { doc, pageId } = useDocumentStore.getState();
+            viewport.zoomToFit(contentBounds(doc, getLayout(doc), pageId));
           }
           draw();
         };

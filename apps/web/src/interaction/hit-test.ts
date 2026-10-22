@@ -1,11 +1,12 @@
 import {
-  resolveInstance,
-  resolveNumber,
   type Box,
   type Layout,
+  pageOrFirst,
   type PegoDocument,
   type PegoNode,
   type PegoNodeType,
+  resolveInstance,
+  resolveNumber,
 } from "@pego/doc";
 
 export const pointInBox = (box: Box, x: number, y: number): boolean =>
@@ -81,15 +82,26 @@ const hitNodes = (
  * and rotated by `-rotation` degrees around its top-left, so the point is mapped into every node's
  * local space. Frames with `clip` hide children outside their (rotated) box.
  */
-export const hitPath = (doc: PegoDocument, layout: Layout, x: number, y: number): string[] | null =>
-  hitNodes(doc, doc.children, layout, { x, y }, ORIGIN, []);
+export const hitPath = (
+  doc: PegoDocument,
+  layout: Layout,
+  x: number,
+  y: number,
+  /** Page to hit-test (null = the first page); other pages are not on the canvas. */
+  pageId: string | null = null,
+): string[] | null =>
+  hitNodes(doc, pageOrFirst(doc, pageId).children, layout, { x, y }, ORIGIN, []);
 
 export type NodeIndexEntry = { parentId: string | null; type: PegoNodeType };
 export type NodeIndex = Map<string, NodeIndexEntry>;
 
 const indexCache = new WeakMap<PegoDocument, NodeIndex>();
 
-/** id -> parent/type for every real (non-expanded) node. Memoized per document snapshot. */
+/**
+ * id -> parent/type for every real (non-expanded) node on every page. Memoized per document
+ * snapshot. A page's top-level nodes have parent null, like a single-page canvas: pages
+ * themselves are not part of the index.
+ */
 export const getNodeIndex = (doc: PegoDocument): NodeIndex => {
   const cached = indexCache.get(doc);
   if (cached) return cached;
@@ -100,7 +112,7 @@ export const getNodeIndex = (doc: PegoDocument): NodeIndex => {
       if (node.type === "frame" || node.type === "group") walk(node.children, node.id);
     }
   };
-  walk(doc.children, null);
+  for (const page of doc.children) walk(page.children, null);
   indexCache.set(doc, index);
   return index;
 };

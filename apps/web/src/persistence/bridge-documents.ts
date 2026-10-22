@@ -19,13 +19,17 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
+/** A freshly loaded document shows its first page. */
 const zoomToDocument = (doc: PegoDocument) =>
-  useViewportStore.getState().zoomToFit(contentBounds(doc, getLayout(doc)));
+  useViewportStore.getState().zoomToFit(contentBounds(doc, getLayout(doc), null));
 
 const describe = (doc: PegoDocument) => {
-  const frames = doc.children.map((node) => node.name ?? node.type).slice(0, 8);
-  const more = doc.children.length - frames.length;
-  return `${doc.children.length} top-level node(s)${frames.length ? `: ${frames.join(", ")}${more > 0 ? `, +${more} more` : ""}` : ""}`;
+  const pages = doc.children.map((page) => {
+    const names = page.children.map((node) => node.name ?? node.type);
+    const shown = names.slice(0, 6).join(", ");
+    return `page "${page.name}": ${names.length} top-level node(s)${shown ? ` (${shown}${names.length > 6 ? ", ..." : ""})` : ""}`;
+  });
+  return pages.join("; ");
 };
 
 export const loadDocumentFromBridge = (input: unknown): OpOutcome => {
