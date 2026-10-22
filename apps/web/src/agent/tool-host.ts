@@ -1,7 +1,7 @@
 import { applyOps as applyDocOps, collectDocIds, type Op, type Transaction } from "@pego/doc";
 import type { PlanStep, StepStatus, ToolHost } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
-import { listIconNames, loadIconData } from "@/canvas/icons";
+import { getIconMarkup, listIconNames, loadIconData } from "@/canvas/icons";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { focusCamera } from "./focus-camera";
@@ -109,7 +109,12 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
       import("@/canvas/load-canvaskit"),
       import("@/canvas/render-image"),
     ]);
-    const res = await loadCanvasKit();
+    const [res, { requestDocumentFonts }] = await Promise.all([
+      loadCanvasKit(),
+      import("@/canvas/fonts"),
+    ]);
+    // Wait for the document's fonts so the agent judges the real typography.
+    await requestDocumentFonts(res.fonts, useDocumentStore.getState().doc, res.fontFamily);
     const doc = useDocumentStore.getState().doc;
     return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
   };
@@ -121,6 +126,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     setSelection,
     focusViewport,
     listIcons: listIconNames,
+    iconMarkup: getIconMarkup,
     renderImage,
     applyOps,
     setFocus: (ids) => useAgentStore.getState().set({ focusIds: ids }),
