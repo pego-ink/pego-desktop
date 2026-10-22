@@ -7,7 +7,7 @@ import { ProjectPanel } from "@/project/ProjectPanel";
 import { Dashboard } from "@/workspace/Dashboard";
 import { HomeButton } from "@/workspace/HomeButton";
 import { ThemeToggle } from "@/theme/ThemeToggle";
-import { PanelToggles } from "@/layout/PanelToggles";
+import { HidePanelButton, ShowPanelButtons, usePanelShortcut } from "@/layout/PanelToggles";
 import { usePanelsStore } from "@/layout/use-panels-store";
 import { WorkspaceTabs } from "@/workspace/WorkspaceTabs";
 import { useWorkspaceStore } from "@/workspace/use-workspace-store";
@@ -90,7 +90,7 @@ const LeftColumn = () => {
       <div
         role="tablist"
         aria-label="Left panel"
-        className="flex shrink-0 gap-0.5 border-b border-border p-1.5"
+        className="flex shrink-0 items-center gap-0.5 border-b border-border p-1.5"
       >
         <TabButton active={tab === "layers"} onClick={() => setTab("layers")}>
           Layers
@@ -102,6 +102,7 @@ const LeftColumn = () => {
             <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-[#B79CFF]" />
           ) : null}
         </TabButton>
+        <HidePanelButton side="left" className="ml-1" />
       </div>
       <div className={cn("min-h-0 flex-1 flex-col", tab === "layers" ? "flex" : "hidden")}>
         <ProjectPanel />
@@ -118,6 +119,7 @@ const LeftColumn = () => {
 export const EditorShell = () => {
   const view = useWorkspaceStore((s) => s.view);
   const { left, right } = usePanelsStore();
+  usePanelShortcut();
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
@@ -129,7 +131,6 @@ export const EditorShell = () => {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {view === "editor" ? <HistoryButtons /> : null}
-          {view === "editor" ? <PanelToggles /> : null}
           <ThemeToggle />
           <Button size="sm" variant="secondary">
             Share
@@ -141,7 +142,8 @@ export const EditorShell = () => {
       ) : (
         <div className="flex min-h-0 flex-1">
           {left ? <LeftColumn /> : null}
-          <main className="flex min-w-0 flex-1 flex-col">
+          <main className="relative flex min-w-0 flex-1 flex-col">
+            <ShowPanelButtons />
             <div className="min-h-0 flex-1">
               <Canvas />
             </div>
