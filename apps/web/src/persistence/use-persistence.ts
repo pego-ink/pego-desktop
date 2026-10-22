@@ -3,6 +3,7 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing } from "@/store/use-text-edit-store";
 import { readAutosave, writeAutosave } from "./autosave-db";
 import { openFile, saveFile, saveFileAs } from "./file-actions";
+import { isFileWriteInFlight, startFileAutosave } from "./file-autosave";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -45,7 +46,8 @@ const handleShortcut = (event: KeyboardEvent) => {
 };
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-  if (!(autosavePending && getIsDirty())) return;
+  // The browser copy covers everything except a pending IndexedDB write or a file write mid-flight.
+  if (!((autosavePending || isFileWriteInFlight()) && getIsDirty())) return;
   event.preventDefault();
 };
 
@@ -55,6 +57,7 @@ export const usePersistence = () => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let unsubscribe: (() => void) | undefined;
+    let stopFileAutosave: (() => void) | undefined;
 
     const schedule = () => {
       autosavePending = true;
@@ -73,6 +76,7 @@ export const usePersistence = () => {
         if (s.doc !== prev.doc) schedule();
       });
       const unsubFile = useFileStore.subscribe(schedule);
+      stopFileAutosave = startFileAutosave();
       unsubscribe = () => {
         unsubDoc();
         unsubFile();
@@ -85,6 +89,7 @@ export const usePersistence = () => {
       cancelled = true;
       clearTimeout(timer);
       unsubscribe?.();
+      stopFileAutosave?.();
       window.removeEventListener("keydown", handleShortcut, true);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };

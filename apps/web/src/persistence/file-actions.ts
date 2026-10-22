@@ -15,6 +15,8 @@ import {
   getSaveFilePicker,
   type PegoFileHandle,
 } from "./fs-access";
+import { noteManualSave, runExclusiveSave } from "./file-autosave";
+import { ensureWritePermission, writeToHandle } from "./file-permission";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
 const PICKER_TYPES = [{ description: "Pego file", accept: { [FILE_MIME]: [FILE_EXTENSION] } }];
@@ -73,17 +75,14 @@ const downloadFile = (name: string, text: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-const hasWritePermission = async (handle: PegoFileHandle) => {
-  if (!handle.queryPermission || !handle.requestPermission) return true;
-  if ((await handle.queryPermission({ mode: "readwrite" })) === "granted") return true;
-  return (await handle.requestPermission({ mode: "readwrite" })) === "granted";
-};
-
-const writeToHandle = async (handle: PegoFileHandle, text: string) => {
-  const writable = await handle.createWritable();
-  await writable.write(text);
-  await writable.close();
-};
+/** Writes the current doc to a handle inside the autosave queue, then marks it clean. */
+export const writeDocToHandle = (handle: PegoFileHandle, fileName: string) =>
+  runExclusiveSave(async () => {
+    const { doc } = useDocumentStore.getState();
+    await writeToHandle(handle, serializeDocument(doc));
+    useFileStore.getState().markSaved(doc, fileName, handle);
+    noteManualSave();
+  });
 
 export const saveFileAs = async () => {
   const { doc } = useDocumentStore.getState();
@@ -98,8 +97,7 @@ export const saveFileAs = async () => {
       return;
     }
     const handle = await showSaveFilePicker({ suggestedName: suggested, types: PICKER_TYPES });
-    await writeToHandle(handle, text);
-    useFileStore.getState().markSaved(doc, handle.name, handle);
+    await writeDocToHandle(handle, handle.name);
   } catch (error) {
     if (isAbortError(error)) return;
     toast.error(`Could not save file: ${errorMessage(error)}`);
@@ -109,14 +107,12 @@ export const saveFileAs = async () => {
 export const saveFile = async () => {
   const { handle, fileName } = useFileStore.getState();
   if (!handle) return saveFileAs();
-  const { doc } = useDocumentStore.getState();
   try {
-    if (!(await hasWritePermission(handle))) {
+    if (!(await ensureWritePermission(handle))) {
       toast.error("Write permission was denied. Choose where to save.");
       return saveFileAs();
     }
-    await writeToHandle(handle, serializeDocument(doc));
-    useFileStore.getState().markSaved(doc, fileName ?? handle.name, handle);
+    await writeDocToHandle(handle, fileName ?? handle.name);
   } catch (error) {
     toast.error(`Could not save file: ${errorMessage(error)}`);
   }

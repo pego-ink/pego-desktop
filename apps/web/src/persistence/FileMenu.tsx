@@ -1,9 +1,13 @@
 import { useEffect, useRef, useState } from "react";
-import { ChevronDownIcon } from "lucide-react";
+import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import { newDocument, openFile, saveFile, saveFileAs } from "./file-actions";
 import { DEFAULT_FILE_NAME } from "./file-format";
-import { useFileStore, useIsDirty } from "./use-file-store";
+import { useFileStore } from "./use-file-store";
+import { AutosaveStatus } from "./AutosaveStatus";
+import { toggleAutoSave } from "./autosave-actions";
+import { isFileAutosaveSupported } from "./file-autosave";
+import { useAutosaveStore } from "./use-autosave-store";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
@@ -20,7 +24,8 @@ export const FileMenu = () => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileName = useFileStore((s) => s.fileName) ?? DEFAULT_FILE_NAME;
-  const dirty = useIsDirty();
+  const autosaveEnabled = useAutosaveStore((s) => s.enabled);
+  const supported = isFileAutosaveSupported();
 
   useEffect(() => {
     if (!open) return;
@@ -52,15 +57,8 @@ export const FileMenu = () => {
       </Button>
       <span className="flex items-center gap-1.5 text-sm text-muted-foreground" title={fileName}>
         <span className="max-w-56 truncate">{fileName}</span>
-        {dirty ? (
-          <span
-            role="status"
-            aria-label="Unsaved changes"
-            title="Unsaved changes"
-            className="size-1.5 rounded-full bg-foreground"
-          />
-        ) : null}
       </span>
+      <AutosaveStatus />
       {open ? (
         <div
           role="menu"
@@ -83,6 +81,29 @@ export const FileMenu = () => {
               ) : null}
             </button>
           ))}
+          <div role="separator" className="-mx-1 my-1 h-px bg-border" />
+          <div
+            title={
+              supported
+                ? undefined
+                : "Saving to a file needs a Chromium browser. Changes are still kept in this browser."
+            }
+          >
+            <button
+              type="button"
+              role="menuitemcheckbox"
+              aria-checked={supported && autosaveEnabled}
+              disabled={!supported}
+              className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:pointer-events-none disabled:opacity-50"
+              onClick={() => {
+                setOpen(false);
+                toggleAutoSave();
+              }}
+            >
+              {supported ? "Auto save" : "Auto save (browser only)"}
+              {supported && autosaveEnabled ? <CheckIcon className="size-3.5" /> : null}
+            </button>
+          </div>
         </div>
       ) : null}
     </div>
