@@ -32,7 +32,7 @@ const ago = (ms: number): string => {
   return new Date(ms).toLocaleDateString();
 };
 
-/** The project's latest design, rendered by the canvas engine; a placeholder while it loads. */
+/** The project's design, rendered by the canvas engine; a placeholder while it loads. */
 const ProjectThumbnail = ({ project }: { project: ProjectInfo }) => {
   const theme = useThemeStore((s) => s.resolved);
   const key = `${project.id}:${project.modifiedAt}:${theme}`;
@@ -72,7 +72,7 @@ const ProjectThumbnail = ({ project }: { project: ProjectInfo }) => {
               {preview === "error"
                 ? "Preview unavailable"
                 : project.fileCount
-                  ? "Empty page"
+                  ? "Empty design"
                   : "No designs yet"}
             </>
           )}
@@ -105,9 +105,7 @@ const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean })
         </span>
         <div className="min-w-0">
           <div className="truncate text-sm font-medium text-foreground">{project.name}</div>
-          <div className="truncate text-[11px] text-muted-foreground">
-            design/{project.relativeDir}
-          </div>
+          <div className="truncate text-[11px] text-muted-foreground">{project.relativeDir}</div>
         </div>
       </div>
       {open ? (
@@ -138,11 +136,12 @@ const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean })
   </div>
 );
 
-/** Home page: every project of the repository, a way to create one, and how to use them from Claude Code. */
+/** Home page: every project in the design folder, a way to create one, and how to use them from Claude Code. */
 export const Dashboard = () => {
   const { status, projects, error } = useDashboardStore();
   const connected = useAgentStore((s) => s.bridge.connected);
   const projectDir = useAgentStore((s) => s.bridge.projectDir ?? null);
+  const rejected = useAgentStore((s) => s.bridge.rejectedReason);
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const openIds = useMemo(() => new Set(workspaces.map((workspace) => workspace.id)), [workspaces]);
   const [query, setQuery] = useState("");
@@ -170,9 +169,7 @@ export const Dashboard = () => {
           <div>
             <h1 className="text-xl font-semibold text-foreground">Projects</h1>
             <p className="mt-1 text-xs text-muted-foreground">
-              {projectDir
-                ? `Design projects in ${projectDir}`
-                : "Design projects of this repository"}
+              {projectDir ? `Design projects in ${projectDir}` : "Your design projects"}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -228,15 +225,21 @@ export const Dashboard = () => {
           </form>
         ) : null}
 
-        {status === "offline" ? (
+        {status === "offline" && rejected ? (
+          <div className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
+            The bridge on port 4519 is another Pego version and refused this editor: {rejected} Stop
+            it and start this app's bridge (bun run bridge in this repository, or the desktop app).
+          </div>
+        ) : status === "offline" ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-            Start the bridge with <code className="text-foreground">bun run bridge</code> to see the
-            projects in this repository's design/ folder. Scratch documents work without it.
+            Projects need the local Pego bridge. The desktop app starts it; in the browser run{" "}
+            <code className="text-foreground">bun run bridge</code>. Scratch documents work without
+            it.
           </div>
         ) : status === "none" ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-            This repository has no design/ folder. Create one (or set PEGO_DESIGN_DIR for the
-            bridge) to keep projects there.
+            The bridge has no design folder. The desktop app uses ~/Documents/Pego; a bridge started
+            in a repository uses its design/ folder (or set PEGO_DESIGN_DIR).
           </div>
         ) : status === "error" ? (
           <div className="rounded-lg border border-destructive/40 p-4 text-sm text-destructive">
@@ -263,7 +266,7 @@ export const Dashboard = () => {
             <span>
               Say the project name or id, for example "open project Checkout and design the payment
               screen" or "open project k3m9x0qa". Claude Code uses open_project, then edits that
-              project's files here.
+              project's design here.
             </span>
           </div>
         </div>

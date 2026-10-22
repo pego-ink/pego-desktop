@@ -3,7 +3,6 @@ import CanvasKitInit, {
   type FontMgr,
   type TypefaceFontProvider,
 } from "canvaskit-wasm";
-import { useFontStore } from "@/canvas/fonts";
 import { setTextMeasurer } from "@/canvas/layout";
 import { loadIconData } from "@/canvas/icons";
 import { createTextMeasurer } from "@/canvas/measure-text";
@@ -15,10 +14,13 @@ const INTER_URL = "/fonts/Inter.ttf";
 
 export type CanvasKitResources = {
   ck: CanvasKit;
-  /** Bundled Inter only: editor chrome drawn on the canvas (labels, badges). */
   fontMgr: FontMgr;
-  /** Document text: Inter plus every family fetched by `requestDocumentFonts`. */
-  fonts: TypefaceFontProvider;
+  /**
+   * Every face the editor can draw: the bundled Inter plus Google Fonts faces registered at
+   * runtime by the font service (`registerFont(data, family)`). Paragraphs should be built with
+   * `ParagraphBuilder.MakeFromFontProvider(style, fontProvider)`.
+   */
+  fontProvider: TypefaceFontProvider;
   fontFamily: string;
 };
 
@@ -31,13 +33,11 @@ const load = async (): Promise<CanvasKitResources> => {
   ]);
   const fontMgr = ck.FontMgr.FromData(fontData);
   if (!fontMgr) throw new Error("failed to load font data");
-  const fonts = ck.TypefaceFontProvider.Make();
-  fonts.registerFont(fontData, FONT_FAMILY);
-  const res = { ck, fontMgr, fonts, fontFamily: FONT_FAMILY };
+  const fontProvider = ck.TypefaceFontProvider.Make();
+  fontProvider.registerFont(fontData, FONT_FAMILY);
+  const res = { ck, fontMgr, fontProvider, fontFamily: FONT_FAMILY };
   await loadIconData();
   setTextMeasurer(createTextMeasurer(res));
-  // New fonts change text metrics: measure (and lay out) again.
-  useFontStore.subscribe(() => setTextMeasurer(createTextMeasurer(res)));
   return res;
 };
 

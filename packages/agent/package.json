@@ -15,7 +15,6 @@
   "dependencies": {
     "@anthropic-ai/sdk": "1.1.0",
     "@pego/doc": "workspace:*",
-    "@pego/export": "workspace:*",
     "zod": "^4.6.7"
   },
   "devDependencies": {

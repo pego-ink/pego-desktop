@@ -4,21 +4,26 @@ Electron shell for Pego. It serves the built web app (`apps/web/dist`) from a pr
 `app://pego/` protocol and starts the local bridge (`apps/bridge`) as a child process, so the
 desktop app gives the canvas, the agent panel and Claude Code MCP without a terminal.
 
-- appId `id.yolk.pego`, product name `Pego`. macOS: dmg + zip, arm64 + x64, signed and notarized.
-  Linux: AppImage + deb (x64). Windows: NSIS installer (x64). Linux and Windows builds are unsigned.
+- appId `id.yolk.pego`, product name `Pego`, macOS only for now (dmg + zip, arm64 + x64).
 - Single instance. Main/preload are bundled with `Bun.build` (`scripts/bundle.ts`) to CJS.
 
 ## Develop
 
 ```bash
 bun run desktop:dev      # Vite on :5173 + Electron pointing at it; bridge started with `bun run`
-bun run desktop:build    # web build + bridge binary + app for this machine in apps/desktop/release
-bun run desktop:build -- --linux --x64   # AppImage + deb
+bun run desktop:build    # web build + bridge binary + signed arm64 dmg/zip in apps/desktop/release
 ```
 
 `desktop:build` signs with the Developer ID found in the keychain and notarizes only when
 `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set. Extra args go to
 electron-builder: `bun run desktop:build -- --mac --arm64 --x64` (must include an arch flag).
+
+## Projects
+
+The app starts the bridge with `PEGO_DESIGN_DIR=~/Documents/Pego` (created on first launch). The
+dashboard lists the projects in that folder (`<project>/project.json` + `project.pego`), creates new
+ones, and project designs auto save there through the bridge. A bridge started from a repository
+(`bun run bridge`) uses that repository's `design/` folder instead.
 
 ## Security model
 
@@ -26,8 +31,7 @@ electron-builder: `bun run desktop:build -- --mac --arm64 --x64` (must include a
 - Navigation and `window.open` to anything outside the app origin are blocked; `https:` links open in the system browser.
 - All permission requests are denied (the editor needs none).
 - CSP is attached to every `app://pego` response (see `src/constants.ts`): `script-src 'self' 'wasm-unsafe-eval'`,
-  `connect-src` limited to `'self'`, `https://api.anthropic.com`, the font CDN (`https://api.fontsource.org`,
-  `https://cdn.jsdelivr.net`) and the bridge on `127.0.0.1:4519`.
+  `connect-src` limited to `'self'`, `https://api.anthropic.com` and the bridge on `127.0.0.1:4519`.
   It is not applied in `desktop:dev` (Vite HMR needs inline scripts).
 - The bridge only accepts editor sockets from `app://pego` and the Vite dev origin
   (`PEGO_ALLOWED_ORIGINS`), and only requests with a loopback `Host` header.
@@ -42,10 +46,9 @@ If port 4519 is already taken (for example `bun run bridge` is running) the app 
 The app stops only the bridge it started.
 
 Claude Code resolution: under `--compile` the Agent SDK's bundled CLI (a `node_modules` platform package) is not
-reachable, so the bridge falls back to `claude` on `PATH`. The app adds the usual install folders to the bridge's
-`PATH` per platform (`src/platform.ts`: `~/.local/bin`, Homebrew and `/usr/local/bin` on macOS, `~/.bun/bin` on
-Linux, `%APPDATA%\npm` on Windows), so this works when launched from Finder, a desktop launcher or the Start menu.
-Users need the `claude` CLI installed and logged in; the BYOK API-key backend works without it.
+reachable, so the bridge falls back to `claude` on `PATH`. The app passes a PATH that includes `~/.local/bin`,
+`/opt/homebrew/bin` and `/usr/local/bin` so this works when launched from Finder. Users need the `claude` CLI
+installed and logged in; the BYOK API-key backend works without it.
 
 ## Release
 

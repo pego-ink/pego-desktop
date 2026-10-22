@@ -1,8 +1,8 @@
+import { fontVariationsFor } from "@/fonts/variations";
 import type { Paragraph } from "canvaskit-wasm";
 import { resolveColor, resolveNumber, resolveString } from "@pego/doc";
 import type { TextMeasurer, TextNode, Variables } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
-import { useFontStore } from "@/canvas/fonts";
 import { createLruCache } from "@/canvas/render-cache";
 
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
@@ -10,8 +10,24 @@ const NO_WRAP_WIDTH = 100_000;
 
 const paragraphs = createLruCache<Paragraph>(512);
 
-const nearestWeight = (weight: number) =>
+export const nearestWeight = (weight: number) =>
   FONT_WEIGHTS.reduce((best, w) => (Math.abs(w - weight) < Math.abs(best - weight) ? w : best));
+
+/** Cache key of a paragraph: every input that changes its shape, including italic. */
+export const paragraphKey = (
+  parts: readonly [
+    content: string,
+    color: string,
+    size: number,
+    weight: number,
+    italic: boolean,
+    align: string,
+    family: string,
+    wrapWidth: number | undefined,
+    /** "var" when the face is drawn through a variable-font `wght` axis, else "static". */
+    axes?: "var" | "static",
+  ],
+): string => JSON.stringify(parts);
 
 /**
  * Shared paragraph setup for drawing and measuring. `wrapWidth` wraps the text at that width;
@@ -24,27 +40,25 @@ export const getParagraph = (
   variables: Variables,
   wrapWidth: number | undefined,
 ): Paragraph => {
-  const { ck, fonts, fontFamily } = res;
+  const { ck, fontProvider, fontFamily } = res;
   const content = resolveString(node.content, variables);
   const color = resolveColor(node.fill, variables) ?? "#000000";
   const size = resolveNumber(node.fontSize, variables, 14);
   const weight = nearestWeight(resolveNumber(node.fontWeight, variables, 400));
   const align = node.textAlign ?? "left";
-  const family =
-    node.fontFamily === undefined ? fontFamily : resolveString(node.fontFamily, variables);
-  const lineHeight = resolveNumber(node.lineHeight, variables, 0);
-  const letterSpacing = resolveNumber(node.letterSpacing, variables, 0);
-  const key = JSON.stringify([
-    useFontStore.getState().version,
+  const family = node.fontFamily ?? fontFamily;
+  const italic = node.fontStyle === "italic";
+  const variations = fontVariationsFor(family, weight);
+  const key = paragraphKey([
     content,
     color,
     size,
     weight,
+    italic,
     align,
     family,
-    lineHeight,
-    letterSpacing,
     wrapWidth,
+    variations ? ("var" as const) : ("static" as const),
   ]);
   const cached = paragraphs.get(key);
   if (cached) return cached;
@@ -54,14 +68,15 @@ export const getParagraph = (
       color: ck.parseColorString(color),
       fontFamilies: family === fontFamily ? [family] : [family, fontFamily],
       fontSize: size,
-      fontStyle: { weight: { value: weight } },
-      // CSS-like line height: the extra leading is split above and below each line.
-      ...(lineHeight > 0 ? { heightMultiplier: lineHeight, halfLeading: true } : {}),
-      ...(letterSpacing !== 0 ? { letterSpacing } : {}),
+      fontStyle: {
+        weight: { value: weight },
+        slant: italic ? ck.FontSlant.Italic : ck.FontSlant.Upright,
+      },
+      ...(variations ? { fontVariations: variations } : {}),
     },
     textAlign: ck.TextAlign[align === "center" ? "Center" : align === "right" ? "Right" : "Left"],
   });
-  const builder = ck.ParagraphBuilder.MakeFromFontProvider(style, fonts);
+  const builder = ck.ParagraphBuilder.MakeFromFontProvider(style, fontProvider);
   builder.addText(content);
   const paragraph = builder.build();
   builder.delete();

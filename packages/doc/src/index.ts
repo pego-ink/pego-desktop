@@ -1,5 +1,4 @@
 export * from "./schema";
-export * from "./migrate";
 export * from "./ops";
 export * from "./history";
 export * from "./resolve";
@@ -12,12 +11,8 @@ export {
   findLocation,
   findNode,
   isContainer,
-  pageOf,
-  pageOrFirst,
   type ContainerNode,
   type NodeLocation,
 } from "./tree";
 export { sampleDoc } from "./sample-doc";
-export * from "./pen";
-export * from "./paint";
 export * from "./file";

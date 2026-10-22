@@ -16,29 +16,20 @@ const node = (input: Record<string, unknown>): PegoNode => nodeSchema.parse(inpu
 
 const makeDoc = (): PegoDocument =>
   documentSchema.parse({
-    version: 2,
+    version: 0,
     id: "doc",
     name: "Test",
     variables: {},
     children: [
       {
-        type: "page",
-        id: "page-1",
-        name: "Page 1",
-        x: 0,
-        y: 0,
+        type: "frame",
+        id: "f1",
         children: [
-          {
-            type: "frame",
-            id: "f1",
-            children: [
-              { type: "rectangle", id: "r1", x: 10, y: 20 },
-              { type: "ellipse", id: "e1" },
-            ],
-          },
-          { type: "frame", id: "f2", children: [] },
+          { type: "rectangle", id: "r1", x: 10, y: 20 },
+          { type: "ellipse", id: "e1" },
         ],
       },
+      { type: "frame", id: "f2", children: [] },
     ],
   });
 
@@ -272,10 +263,8 @@ describe("property: random ops", () => {
       };
 
       const genOp = (doc: PegoDocument): Op => {
-        const everything = flatten(doc.children);
-        const all = everything.filter((n) => n.type !== "page");
-        const pages = everything.filter((n) => n.type === "page");
-        const containers = everything.filter(isContainer);
+        const all = flatten(doc.children);
+        const containers = all.filter(isContainer);
         const kind = pick([
           "insert",
           "insert",
@@ -286,21 +275,10 @@ describe("property: random ops", () => {
           "move",
           "delete",
           "setVariables",
-          "page",
         ]);
         const target = all.length > 0 ? pick(all) : null;
-        const parents = containers.map((c) => c.id);
+        const parents = [null, ...containers.map((c) => c.id)];
 
-        // Pages: add one at the root, or delete one while more than one exists.
-        if (kind === "page") {
-          if (pages.length > 1 && rand() < 0.5) return { op: "delete", id: pick(pages).id };
-          return {
-            op: "insert",
-            parentId: null,
-            index: int(3),
-            node: node({ type: "page", id: freshId(), name: "P", children: [] }),
-          };
-        }
         if (kind === "update" && target) {
           return pick<Op>([
             { op: "update", id: target.id, props: { x: int(500) } },
@@ -313,7 +291,7 @@ describe("property: random ops", () => {
           return { op: "replace", id: target.id, node: freshNode() };
         if (kind === "move" && target) {
           const banned = descendantIds(target);
-          const options = parents.filter((p) => !banned.has(p));
+          const options = parents.filter((p) => p === null || !banned.has(p));
           return { op: "move", id: target.id, parentId: pick(options), index: int(6) };
         }
         if (kind === "delete" && target) return { op: "delete", id: target.id };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { variablesSchema } from "@pego/doc";
-import { guides } from "../guides/index";
+import { coreSkill, skills } from "../skills/index";
 import { stylePresets } from "../styles/index";
 import { inspectTools } from "../tools-inspect";
 import { agentTools } from "../tools";
@@ -51,7 +51,6 @@ describe("registry", () => {
     const names = inspectTools.map((t) => t.name);
     expect(names).toEqual([
       "get_screenshot",
-      "get_code",
       "check_layout",
       "find_empty_space",
       "find_nodes",
@@ -59,6 +58,8 @@ describe("registry", () => {
       "set_selection",
       "focus_nodes",
       "search_icons",
+      "list_skills",
+      "get_skill",
       "get_guidelines",
       "list_styles",
       "get_style",
@@ -496,51 +497,99 @@ describe("search_icons", () => {
   });
 });
 
-describe("guides and styles", () => {
-  test("guides cover the required topics with content", () => {
-    expect(guides.map((g) => g.id)).toEqual([
-      "overview",
-      "web-app",
-      "mobile-app",
-      "landing-page",
-      "dashboard",
-      "components-and-tokens",
-      "typography-and-color",
-    ]);
-    const names = new Set(agentTools.map((t) => t.name));
-    for (const g of guides) {
-      expect(g.title.length).toBeGreaterThan(3);
-      expect(g.description.length).toBeGreaterThan(20);
-      expect(g.content.length).toBeGreaterThan(800);
-      // Every tool-looking word in a guide must be a real tool.
-      const mentioned = [...g.content.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map(
-        (m) => m[1] as string,
+describe("skills and styles", () => {
+  const FAKE_CORE = {
+    id: "fake-core",
+    title: "Fake core",
+    description: "Applies to everything",
+    keywords: [],
+    content: "Run check_layout.",
+    checklist: ["No overflow"],
+    styles: ["calm"],
+    core: true,
+  };
+  const FAKE_LANDING = {
+    id: "fake-landing",
+    title: "Fake landing",
+    description: "Marketing pages",
+    keywords: ["landing page"],
+    content: "Hero first.",
+    checklist: ["One CTA"],
+    styles: ["bold"],
+  };
+  const withFakeSkills = async (run: () => Promise<void>) => {
+    const added = [FAKE_CORE, FAKE_LANDING];
+    skills.unshift(...added);
+    try {
+      await run();
+    } finally {
+      for (const fake of added) skills.splice(skills.indexOf(fake), 1);
+    }
+  };
+
+  test("list_skills returns summaries without content", async () => {
+    await withFakeSkills(async () => {
+      const list = await call(createInspectHost(makeDoc([])), "list_skills");
+      const ids = list.json.skills.map((s: { id: string }) => s.id);
+      expect(ids).toContain("fake-landing");
+      const landing = list.json.skills.find((s: { id: string }) => s.id === "fake-landing");
+      expect(landing).toEqual({
+        id: "fake-landing",
+        title: "Fake landing",
+        category: "design",
+        description: "Marketing pages",
+        styles: ["bold"],
+      });
+    });
+  });
+
+  test("get_skill returns content, checklist and styles; rejects unknown ids", async () => {
+    await withFakeSkills(async () => {
+      const host = createInspectHost(makeDoc([]));
+      const one = await call(host, "get_skill", { id: "fake-landing" });
+      expect(one.json).toMatchObject({
+        id: "fake-landing",
+        content: "Hero first.",
+        checklist: ["One CTA"],
+        styles: ["bold"],
+      });
+      const miss = await call(host, "get_skill", { id: "nope" });
+      expect(miss.json.error.code).toBe("unknown_skill");
+      expect(miss.json.error.hint).toContain("list_skills");
+    });
+  });
+
+  test("get_guidelines is a thin alias over skills", async () => {
+    await withFakeSkills(async () => {
+      const host = createInspectHost(makeDoc([]));
+      const list = await call(host, "get_guidelines");
+      expect(list.json.skills.length).toBe(skills.length);
+      expect(list.json.skills[0].content).toBeUndefined();
+      expect((await call(host, "get_guidelines", { topic: "fake-landing" })).json.content).toBe(
+        "Hero first.",
       );
-      for (const word of mentioned) {
-        expect(
-          names.has(word) ||
-            ["fill_container", "fit_content", "space_between", "space_around"].includes(word),
-        ).toBe(true);
+      const overview = await call(host, "get_guidelines", { topic: "overview" });
+      expect(overview.json.id).toBe(coreSkill()?.id);
+      expect((await call(host, "get_guidelines", { topic: "nope" })).json.error.code).toBe(
+        "unknown_topic",
+      );
+    });
+  });
+
+  test("built-in skills only mention real tools", () => {
+    const names = new Set(agentTools.map((t) => t.name));
+    const allowed = ["fill_container", "fit_content", "space_between", "space_around"];
+    for (const skill of skills) {
+      const text = [skill.content, ...skill.checklist].join("\n");
+      for (const m of text.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)) {
+        const word = m[1] as string;
+        expect(names.has(word) || allowed.includes(word)).toBe(true);
       }
     }
   });
 
-  test("get_guidelines lists, returns content, and rejects unknown topics", async () => {
-    const host = createInspectHost(makeDoc([]));
-    const list = await call(host, "get_guidelines");
-    expect(list.json.guides).toHaveLength(7);
-    expect(list.json.guides[0].content).toBeUndefined();
-    const one = await tool("get_guidelines").run({ topic: "overview" }, host);
-    expect(one.content).toStartWith("# ");
-    expect(one.content).toContain("check_layout");
-    expect((await call(host, "get_guidelines", { topic: "nope" })).json.error.code).toBe(
-      "unknown_topic",
-    );
-  });
-
-  test("styles: 6-8 distinct presets whose variables parse and pass contrast", () => {
-    expect(stylePresets.length).toBeGreaterThanOrEqual(6);
-    expect(stylePresets.length).toBeLessThanOrEqual(8);
+  test("styles: distinct presets whose variables parse and pass contrast", () => {
+    expect(stylePresets.length).toBe(20);
     expect(new Set(stylePresets.map((s) => s.name)).size).toBe(stylePresets.length);
     expect(new Set(stylePresets.map((s) => s.variables.accent?.value)).size).toBe(
       stylePresets.length,
@@ -574,38 +623,5 @@ describe("guides and styles", () => {
     const applied = await setVariables.run({ variables: style.json.variables }, host);
     expect(applied.isError).toBe(false);
     expect((await call(host, "get_style", { name: "nope" })).json.error.code).toBe("unknown_style");
-  });
-});
-
-describe("contrast background", () => {
-  const contrastIssues = (children: unknown[]) =>
-    issuesOf(children).filter((issue) => issue.issue.includes("contrast"));
-
-  test("text on a shape drawn below it is measured against that shape", () => {
-    // White text over a red frame, both on a white page (the earlier false positive).
-    const page = (redFirst: boolean) => {
-      const red = frame("red", { x: 0, y: 0, width: 400, height: 120, fill: "#C13333" });
-      const label = text("label", "PEGO", { x: 20, y: 20, fill: "#FFFFFF", fontSize: 48 });
-      return [
-        frame(
-          "page",
-          { width: 800, height: 400, fill: "#FFFFFF" },
-          redFirst ? [red, label] : [label, red],
-        ),
-      ];
-    };
-    expect(contrastIssues(page(true))).toEqual([]);
-    // A shape drawn above the text does not count as its background.
-    expect(contrastIssues(page(false)).map((issue) => issue.nodeId)).toEqual(["label"]);
-  });
-
-  test("shapes that only partly cover the text are ignored", () => {
-    const issues = contrastIssues([
-      frame("page", { width: 800, height: 400, fill: "#FFFFFF" }, [
-        rect("chip", { x: 0, y: 0, width: 30, height: 30, fill: "#000000" }),
-        text("label", "Readable?", { x: 10, y: 10, fill: "#FFFFFF" }),
-      ]),
-    ]);
-    expect(issues.map((issue) => issue.nodeId)).toEqual(["label"]);
   });
 });

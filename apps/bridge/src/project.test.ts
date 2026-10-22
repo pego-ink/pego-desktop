@@ -27,13 +27,9 @@ describe("design folder", () => {
     expect(resolveDesignDir({}, tmpdir())).toBeNull();
   });
 
-  test("lists .pego and .pen files recursively, skipping node_modules", async () => {
+  test("lists .pego files recursively, skipping node_modules", async () => {
     const files = await listDesignFiles(design);
-    expect(files.map((file) => file.relativePath)).toEqual([
-      "flows/checkout.pego",
-      "landing.pego",
-      "old.pen",
-    ]);
+    expect(files.map((file) => file.relativePath)).toEqual(["flows/checkout.pego", "landing.pego"]);
     expect(files[1]).toMatchObject({ path: join(design, "landing.pego"), size: 17 });
   });
 
@@ -69,7 +65,7 @@ describe("design folder", () => {
       type: "project_request",
       requestId: "3",
       action: "read",
-      path: join(design, "old.pen"),
+      path: join(design, "flows", "checkout.pego"),
     });
     expect(read).toMatchObject({ ok: true, text: "{}" });
   });

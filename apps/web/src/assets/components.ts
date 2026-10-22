@@ -1,31 +1,28 @@
 import { createId, isContainer, type InsertOp, type PegoDocument, type PegoNode } from "@pego/doc";
 
-/** A reusable node (component) of the document and the page it lives on. */
-export type ComponentEntry = { id: string; name: string; pageId: string; pageName: string };
+/** A reusable node (component) of the document. */
+export type ComponentEntry = { id: string; name: string };
 
-/** Every component of the document, page by page, in tree order. */
+/** Every component of the document, in tree order (nested ones too). */
 export const listComponents = (doc: PegoDocument): ComponentEntry[] => {
   const found: ComponentEntry[] = [];
-  const walk = (nodes: readonly PegoNode[], pageId: string, pageName: string) => {
+  const walk = (nodes: readonly PegoNode[]) => {
     for (const node of nodes) {
-      if (node.reusable === true) {
-        found.push({ id: node.id, name: node.name ?? node.type, pageId, pageName });
-      }
-      if (isContainer(node)) walk(node.children, pageId, pageName);
+      if (node.reusable === true) found.push({ id: node.id, name: node.name ?? node.type });
+      if (isContainer(node)) walk(node.children);
     }
   };
-  for (const page of doc.children) walk(page.children, page.id, page.name);
+  walk(doc.children);
   return found;
 };
 
-/** Insert an instance (ref) of `component`, named after it, at the top level of `pageId`, at (x, y). */
+/** Insert an instance (ref) of `component`, named after it, at the top level, at (x, y). */
 export const instanceOp = (
   component: Pick<ComponentEntry, "id" | "name">,
-  pageId: string,
   at: { x: number; y: number },
 ): InsertOp => ({
   op: "insert",
-  parentId: pageId,
+  parentId: null,
   node: {
     type: "ref",
     id: createId(),

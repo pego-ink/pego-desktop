@@ -52,22 +52,11 @@ describe("selection helpers", () => {
 describe("marqueeSelect with rotation", () => {
   // 100x10 bar rotated 90° counter-clockwise around its top-left: drawn over x 0..10, y -100..0.
   const rotatedDoc: PegoDocument = {
-    version: 2,
+    version: 0,
     id: "d",
     name: "d",
     variables: {},
-    children: [
-      {
-        type: "page",
-        id: "page-1",
-        name: "Page 1",
-        x: 0,
-        y: 0,
-        children: [
-          { type: "rectangle", id: "bar", x: 0, y: 0, width: 100, height: 10, rotation: 90 },
-        ],
-      },
-    ],
+    children: [{ type: "rectangle", id: "bar", x: 0, y: 0, width: 100, height: 10, rotation: 90 }],
   };
   const rotatedLayout: Layout = new Map([["bar", { x: 0, y: 0, width: 100, height: 10 }]]);
 

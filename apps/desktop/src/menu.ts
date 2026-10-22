@@ -6,8 +6,7 @@ import { Menu, type MenuItemConstructorOptions } from "electron";
  */
 export const installMenu = (isDev: boolean): void => {
   const template: MenuItemConstructorOptions[] = [
-    // The app menu (About, Quit) is macOS only; elsewhere Quit lives in a File menu.
-    process.platform === "darwin" ? { role: "appMenu" } : { role: "fileMenu" },
+    { role: "appMenu" },
     { role: "editMenu" },
     {
       label: "View",

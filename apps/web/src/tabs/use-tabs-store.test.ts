@@ -1,10 +1,10 @@
 /// <reference types="bun" />
-import { beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
-import { resetTabs } from "./test-reset";
+import { resetTabs, restoreConfirm, stubConfirm } from "./test-reset";
 import {
   documentTitle,
   isProjectDesign,
@@ -24,12 +24,12 @@ beforeEach(() => {
   useAgentStore.getState().set({ status: "idle" });
   confirmAnswer = true;
   asked = 0;
-  (globalThis as { window?: unknown }).window ??= {};
-  (globalThis.window as { confirm: () => boolean }).confirm = () => {
+  stubConfirm(() => {
     asked++;
     return confirmAnswer;
-  };
+  });
 });
+afterEach(restoreConfirm);
 
 const edit = () => docs().commit([{ op: "update", id: "frame-1", props: { x: 10 } }]);
 

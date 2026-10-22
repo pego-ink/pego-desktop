@@ -6,19 +6,11 @@ import {
   findLocation,
   nodeSchema,
   OpError,
-  pageOrFirst,
   type Op,
   type PegoDocument,
   type PegoNode,
 } from "@pego/doc";
-import {
-  assignIds,
-  idTree,
-  onActivePage,
-  parseNode,
-  ToolError,
-  type CreatedNode,
-} from "../tool-kit";
+import { assignIds, idTree, parseNode, ToolError, type CreatedNode } from "../tool-kit";
 import {
   assertNoCycle,
   checkRefs,
@@ -184,8 +176,6 @@ const mergeRootProps = (node: PegoNode, overrides: Record<string, unknown>): Peg
 
 type State = {
   doc: PegoDocument;
-  /** Where operations with a null parent put content (see onActivePage). */
-  pageId: string;
   taken: Set<string>;
   aliases: Map<string, string>;
   ops: Op[];
@@ -212,8 +202,7 @@ const defineAlias = (
   return key;
 };
 
-const push = (state: State, requested: Op): void => {
-  const op = onActivePage(state.doc, requested, state.pageId);
+const push = (state: State, op: Op): void => {
   if (op.op === "insert" || op.op === "replace") checkRefs(state.doc, op.node);
   state.doc = applyOp(state.doc, op);
   state.ops.push(op);
@@ -347,11 +336,9 @@ const freshRefId = (state: State): string => {
 export const buildBatch = (
   doc: PegoDocument,
   operations: readonly BatchOperation[],
-  pageId: string = pageOrFirst(doc).id,
 ): BatchResult => {
   const state: State = {
     doc,
-    pageId,
     taken: collectDocIds(doc),
     aliases: new Map(),
     ops: [],

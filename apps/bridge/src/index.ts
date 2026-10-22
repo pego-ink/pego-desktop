@@ -7,7 +7,22 @@ const config = {
   ...configFromEnv(process.env),
   designDir: resolveDesignDir(process.env, process.env.INIT_CWD ?? process.cwd()),
 };
-const bridge = startBridge(config);
+
+const isAddressInUse = (error: unknown): boolean =>
+  typeof error === "object" &&
+  error !== null &&
+  (error as { code?: unknown }).code === "EADDRINUSE";
+
+let bridge: ReturnType<typeof startBridge>;
+try {
+  bridge = startBridge(config);
+} catch (error) {
+  if (!isAddressInUse(error)) throw error;
+  // Another bridge (the desktop app or a second `bun run dev`) already serves this port; the
+  // editor connects to whichever one is listening, so there is nothing to do here.
+  config.log(`A Pego bridge is already running on 127.0.0.1:${config.port}; using that one.`);
+  process.exit(0);
+}
 
 config.log(`Pego bridge listening on http://127.0.0.1:${bridge.port}`);
 config.log("");
@@ -21,8 +36,8 @@ config.log(
 );
 config.log(
   config.designDir
-    ? `Project design folder: ${config.designDir}`
-    : "No design folder found (set PEGO_DESIGN_DIR to show one in the project panel)",
+    ? `Design folder (projects): ${config.designDir}`
+    : "No design folder found (set PEGO_DESIGN_DIR to keep projects somewhere)",
 );
 config.log(
   config.allowedOrigins
@@ -36,6 +51,8 @@ const shutdown = async () => {
   stopping = true;
   config.log("Shutting down bridge...");
   bridge.stop();
+  // Let an active run kill its CLI process tree and delete its workdir before exiting.
+  await bridge.runs.whenIdle();
   process.exit(0);
 };
 process.on("SIGINT", () => void shutdown());

@@ -1,4 +1,4 @@
-import { createId, findNode, representativeColor, resolveString } from "@pego/doc";
+import { createId, findNode, resolveColor, resolveString } from "@pego/doc";
 import type { Op, PegoDocument } from "@pego/doc";
 import type { TextEditTarget } from "../store/use-text-edit-store";
 import { defaultTextColor } from "./default-text-color";
@@ -62,5 +62,5 @@ export const buildConfirmOps = (
 export const createTextColor = (doc: PegoDocument, parentId: string | null): string => {
   const parent = parentId ? findNode(doc, parentId) : null;
   const parentFill = parent && "fill" in parent ? parent.fill : undefined;
-  return defaultTextColor(representativeColor(parentFill, doc.variables));
+  return defaultTextColor(resolveColor(parentFill, doc.variables));
 };

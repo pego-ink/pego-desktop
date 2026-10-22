@@ -5,12 +5,9 @@ import { MAX_DOCUMENT_FILE_BYTES } from "./config";
 
 export class FileToolError extends Error {}
 
-const READABLE = new Set([".pego", ".pen"]);
-
 /**
- * Check a path the bridge is asked to read or write. Only absolute `.pego` paths (and `.pen` for
- * reading) are accepted, so the file tools cannot be pointed at arbitrary files. Returns the
- * normalized path.
+ * Check a path the bridge is asked to read or write. Only absolute `.pego` paths are accepted, so
+ * the file tools cannot be pointed at arbitrary files. Returns the normalized path.
  */
 export const checkDocumentPath = (path: string, mode: "read" | "write"): string => {
   if (!isAbsolute(path)) {
@@ -18,11 +15,11 @@ export const checkDocumentPath = (path: string, mode: "read" | "write"): string 
   }
   const normalized = normalize(path);
   const extension = extname(normalized).toLowerCase();
-  if (mode === "write" ? extension !== ".pego" : !READABLE.has(extension)) {
+  if (extension !== ".pego") {
     throw new FileToolError(
       mode === "write"
         ? `Pego only saves .pego files (got "${basename(normalized)}").`
-        : `Pego opens .pego and .pen files (got "${basename(normalized)}").`,
+        : `Pego only opens .pego files (got "${basename(normalized)}").`,
     );
   }
   return normalized;

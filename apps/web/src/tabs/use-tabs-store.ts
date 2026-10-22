@@ -28,7 +28,6 @@ export type TabSnapshot = {
   doc: PegoDocument;
   history: History;
   selection: string[];
-  pageId: string | null;
   camera: Camera;
   file: TabFile;
 };
@@ -49,21 +48,20 @@ export const useTabsStore = create<TabsState>(() => ({
 
 /** The live state of the active tab. */
 export const captureLive = (): TabSnapshot => {
-  const { doc, history, selection, pageId } = useDocumentStore.getState();
+  const { doc, history, selection } = useDocumentStore.getState();
   const { fileName, handle, bridgePath, savedDoc } = useFileStore.getState();
   return {
     doc,
     history,
     selection,
-    pageId,
     camera: useViewportStore.getState().camera,
     file: { fileName, handle, bridgePath, savedDoc },
   };
 };
 
 export const restoreLive = (snapshot: TabSnapshot) => {
-  const { doc, history, selection, pageId, camera, file } = snapshot;
-  useDocumentStore.setState({ doc, history, selection, pageId, hoveredId: null });
+  const { doc, history, selection, camera, file } = snapshot;
+  useDocumentStore.setState({ doc, history, selection, hoveredId: null });
   useFileStore.setState(file);
   useViewportStore.getState().setCamera(camera);
 };
@@ -82,7 +80,7 @@ export const isProjectDesign = (bridgePath: string | null): boolean =>
  * (its document name), other files their file name, new documents "Untitled".
  */
 export const documentTitle = (
-  doc: PegoDocument,
+  doc: Pick<PegoDocument, "name">,
   file: Pick<TabFile, "fileName" | "bridgePath">,
 ): string => (isProjectDesign(file.bridgePath) ? doc.name : (file.fileName ?? "Untitled"));
 
@@ -132,7 +130,7 @@ export type UnsavedPolicy = "ask" | "refuse" | "discard";
 export type OpenResult = "opened" | "busy" | "unsaved";
 
 /**
- * Show `doc` as the workspace's document (there is one per workspace; screens are pages).
+ * Show `doc` as the workspace's document (there is one per workspace).
  * Unsaved changes of the current document are asked about ("ask", the user), refused
  * ("refuse", Claude Code: save first) or dropped ("discard"). `saved` marks `doc` as matching
  * its file.

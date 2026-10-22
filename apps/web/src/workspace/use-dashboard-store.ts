@@ -5,7 +5,7 @@ import { requestProject } from "@/agent/bridge-client";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { openProject } from "@/project/use-project-store";
 
-/** Projects of the repository (design/<project>/project.json), as listed by the bridge. */
+/** Projects in the design folder (<project>/project.json), as listed by the bridge. */
 type DashboardState = {
   status: "offline" | "loading" | "ready" | "none" | "error";
   projects: ProjectInfo[];
@@ -36,7 +36,7 @@ export const refreshProjects = async (): Promise<void> => {
   }
 };
 
-/** Create design/<name>/project.json through the bridge and open the new project. */
+/** Create <design folder>/<name>/project.json through the bridge and open the new project. */
 export const createProjectFromDashboard = async (name: string): Promise<void> => {
   try {
     const response = await requestProject("create_project", undefined, name);

@@ -7,13 +7,16 @@ import {
   planOutputSchema,
   toolByName,
   type PlanStep,
+  type RunAttachment,
   type ToolResult,
   type ToolSpec,
 } from "@pego/agent";
+import { anthropicUserContent } from "./attachments";
 import { AgentRunError, describeApiError, isAbortError } from "./api-errors";
 import { RunCancelledError } from "./decisions";
 import type { AgentToolHost } from "./tool-host";
 import { toUsageDelta } from "./usage";
+import { resolveRunSkills, skillLogLines, skillsBlock } from "./run-skills";
 import { useAgentStore } from "./use-agent-store";
 
 type BetaMessage = Anthropic.Beta.BetaMessage;
@@ -63,16 +66,157 @@ export const createAnthropicClient = (apiKey: string): MessagesClient =>
   // The key is the user's own (BYOK) and the app has no backend to hold it, hence the opt-in.
   new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
 
+/**
+ * A user-added Anthropic-compatible endpoint (a gateway or proxy that speaks `/v1/messages`).
+ * `compat` drops the features such gateways rarely implement; the official API path (no provider)
+ * is untouched.
+ */
+export type ApiProviderConfig = {
+  baseUrl: string;
+  apiKey: string;
+  plannerModel: string;
+  executorModel: string;
+  compat: boolean;
+  /** Display name for log lines and errors; falls back to the base URL host. */
+  name?: string;
+};
+
+/** Output caps for compat providers: many backends reject the official API's larger values. */
+const COMPAT_MAX_TOKENS = 16_000;
+
+/** The slice of the plain (non-beta) SDK the compat client uses, so tests can inject a fake. */
+export type CompatSdk = {
+  messages: {
+    stream: (
+      body: Anthropic.MessageCreateParamsNonStreaming,
+      options?: { signal?: AbortSignal },
+    ) => { finalMessage: () => Promise<Anthropic.Message> };
+    create: (
+      body: Anthropic.MessageCreateParamsNonStreaming,
+      options?: { signal?: AbortSignal },
+    ) => Promise<Anthropic.Message>;
+  };
+};
+
+/** HTTP statuses that mean "this endpoint does not do that" rather than "your key/quota is bad". */
+const UNSUPPORTED_STATUSES = new Set([400, 404, 405, 415, 422, 501]);
+
+/**
+ * Streaming failed in a way that a non-streaming call might survive: the gateway rejected or
+ * does not implement SSE (those statuses), or answered with something the SDK's stream parser
+ * could not read. Auth, quota and network errors are not retried.
+ */
+export const shouldRetryNonStreaming = (error: unknown): boolean => {
+  if (isAbortError(error)) return false;
+  if (error instanceof Anthropic.APIError) {
+    return error.status !== undefined && UNSUPPORTED_STATUSES.has(error.status);
+  }
+  return error instanceof Anthropic.AnthropicError;
+};
+
+/**
+ * Client for an Anthropic-compatible provider. Uses the plain `/v1/messages` endpoint (not the
+ * beta namespace, which adds `?beta=true` and beta headers) and falls back to a non-streaming
+ * call once if the gateway cannot stream; later calls then skip streaming.
+ */
+export const createCompatClient = (
+  config: Pick<ApiProviderConfig, "baseUrl" | "apiKey">,
+  sdk: CompatSdk = new Anthropic({
+    apiKey: config.apiKey,
+    baseURL: config.baseUrl,
+    // BYOK like the official path: the user's key goes only to the base URL they entered.
+    dangerouslyAllowBrowser: true,
+  }),
+): MessagesClient => {
+  let streaming = true;
+  return {
+    beta: {
+      messages: {
+        stream: (body, options) => ({
+          finalMessage: async () => {
+            const params = body as unknown as Anthropic.MessageCreateParamsNonStreaming;
+            if (streaming) {
+              try {
+                return (await sdk.messages
+                  .stream(params, options)
+                  .finalMessage()) as unknown as BetaMessage;
+              } catch (error) {
+                if (!shouldRetryNonStreaming(error)) throw error;
+                streaming = false;
+              }
+            }
+            return (await sdk.messages.create(params, options)) as unknown as BetaMessage;
+          },
+        }),
+      },
+    },
+  };
+};
+
 type RuntimeContext = {
   client: MessagesClient;
+  /** Custom Anthropic-compatible provider; undefined = the official Anthropic API. */
+  provider?: ApiProviderConfig;
   host: AgentToolHost;
   signal: AbortSignal;
+  /** Skill text for the user turns (set by `runApiAgent`). */
+  skillsText?: string;
+  /** Explicit skill for this run: undefined = auto-detect, null = core only. */
+  skillId?: string | null;
+  /** Images the user attached; sent as image blocks before the text in planner and step turns. */
+  attachments?: readonly RunAttachment[];
 };
 
 const agent = () => useAgentStore.getState();
 
 const cancelIfAborted = (signal: AbortSignal) => {
   if (signal.aborted) throw new RunCancelledError();
+};
+
+const plannerModel = (ctx: RuntimeContext) => ctx.provider?.plannerModel ?? PLANNER_MODEL;
+const executorModel = (ctx: RuntimeContext) => ctx.provider?.executorModel ?? EXECUTOR_MODEL;
+const isCompat = (ctx: RuntimeContext) => ctx.provider?.compat === true;
+
+const hostOf = (url: string): string => {
+  try {
+    return new URL(url).host;
+  } catch {
+    return url;
+  }
+};
+
+const providerLabel = (provider: ApiProviderConfig) =>
+  provider.name?.trim() || hostOf(provider.baseUrl);
+
+/** Like `describeApiError`, but names the provider instead of Anthropic. */
+export const describeCompatError = (error: unknown, provider: ApiProviderConfig): string => {
+  const label = providerLabel(provider);
+  if (error instanceof Anthropic.AuthenticationError) {
+    return `${label} rejected the API key. Check it in Model settings.`;
+  }
+  if (error instanceof Anthropic.PermissionDeniedError) {
+    return `${label} did not allow this key to use the requested model.`;
+  }
+  if (error instanceof Anthropic.NotFoundError) {
+    return `${label} returned 404. Check the base URL and the model ids in Model settings.`;
+  }
+  if (error instanceof Anthropic.RateLimitError)
+    return `Rate limited by ${label}. Try again shortly.`;
+  if (error instanceof Anthropic.BadRequestError) {
+    return `${label} rejected the request: ${error.message}`;
+  }
+  if (error instanceof Anthropic.InternalServerError)
+    return `${label} is unavailable. Try again shortly.`;
+  if (error instanceof Anthropic.APIConnectionTimeoutError) {
+    return `The request to ${label} timed out. Try again.`;
+  }
+  if (error instanceof Anthropic.APIConnectionError) {
+    return `Could not reach ${hostOf(provider.baseUrl)}. Check the base URL and your connection. The server must also allow browser (CORS) requests.`;
+  }
+  if (error instanceof Anthropic.APIError) {
+    return `${label} error ${error.status ?? ""}: ${error.message}`.replace("  ", " ");
+  }
+  return describeApiError(error);
 };
 
 const recordUsage = (message: BetaMessage, requestedModel: string) =>
@@ -99,36 +243,71 @@ const assertCompleted = (message: BetaMessage, what: string) => {
 
 // ---- planner -------------------------------------------------------------------------------
 
-const requestPlan = async (ctx: RuntimeContext, prompt: string): Promise<PlanStep[]> => {
+/** JSON for the planner from a text reply: bare, fenced, or surrounded by prose. */
+export const extractJson = (text: string): unknown => {
+  const trimmed = text.trim();
+  const fenced = trimmed.match(/^```(?:json)?\s*([\s\S]*?)\s*```$/i)?.[1] ?? trimmed;
+  try {
+    return JSON.parse(fenced);
+  } catch {
+    const start = fenced.indexOf("{");
+    const end = fenced.lastIndexOf("}");
+    if (start < 0 || end <= start) throw new Error("no JSON object in the reply");
+    return JSON.parse(fenced.slice(start, end + 1));
+  }
+};
+
+/** Compat planner: no structured output, so the schema goes into the prompt and the JSON comes back as text. */
+const COMPAT_PLAN_FORMAT = `\n\nReply with ONLY one JSON object that matches this JSON Schema. No markdown fences, no commentary.\n${JSON.stringify(planOutputSchema)}`;
+
+/** Planner request body. Exported for tests. */
+export const plannerRequest = (ctx: RuntimeContext, prompt: string): StreamParams => {
   const documentJson = JSON.stringify(ctx.host.getDoc());
+  // Volatile content (document, request) goes in the user turn; the system prompt stays
+  // byte-identical across runs.
+  const messages: BetaMessageParam[] = [
+    {
+      role: "user",
+      content: anthropicUserContent(
+        [ctx.skillsText, `Current document (JSON):\n${documentJson}\n\nUser request:\n${prompt}`]
+          .filter(Boolean)
+          .join("\n\n"),
+        ctx.attachments ?? [],
+      ),
+    },
+  ];
+  if (isCompat(ctx)) {
+    return {
+      model: plannerModel(ctx),
+      max_tokens: COMPAT_MAX_TOKENS,
+      system: PLANNER_SYSTEM + COMPAT_PLAN_FORMAT,
+      messages,
+    };
+  }
+  return {
+    model: plannerModel(ctx),
+    max_tokens: PLANNER_MAX_TOKENS,
+    betas: [FALLBACK_BETA],
+    fallbacks: "default",
+    output_config: {
+      effort: PLANNER_EFFORT,
+      format: { type: "json_schema", schema: planOutputSchema },
+    },
+    system: PLANNER_SYSTEM,
+    messages,
+  };
+};
+
+const requestPlan = async (ctx: RuntimeContext, prompt: string): Promise<PlanStep[]> => {
+  const model = plannerModel(ctx);
   const message = await ctx.client.beta.messages
-    .stream(
-      {
-        model: PLANNER_MODEL,
-        max_tokens: PLANNER_MAX_TOKENS,
-        betas: [FALLBACK_BETA],
-        fallbacks: "default",
-        output_config: {
-          effort: PLANNER_EFFORT,
-          format: { type: "json_schema", schema: planOutputSchema },
-        },
-        system: PLANNER_SYSTEM,
-        // Volatile content (document, request) goes in the user turn; the system prompt stays
-        // byte-identical across runs.
-        messages: [
-          {
-            role: "user",
-            content: `Current document (JSON):\n${documentJson}\n\nUser request:\n${prompt}`,
-          },
-        ],
-      },
-      { signal: ctx.signal },
-    )
+    .stream(plannerRequest(ctx, prompt), { signal: ctx.signal })
     .finalMessage();
-  recordUsage(message, PLANNER_MODEL);
+  recordUsage(message, model);
   assertCompleted(message, "plan");
   try {
-    return parsePlan(JSON.parse(textOf(message)));
+    const text = textOf(message);
+    return parsePlan(isCompat(ctx) ? extractJson(text) : JSON.parse(text));
   } catch {
     throw new AgentRunError("The planner returned a plan that could not be read. Try again.");
   }
@@ -136,13 +315,44 @@ const requestPlan = async (ctx: RuntimeContext, prompt: string): Promise<PlanSte
 
 // ---- executor ------------------------------------------------------------------------------
 
-const executorTools: Anthropic.Beta.BetaTool[] = agentTools.map((tool) => ({
+const baseTools: Anthropic.Beta.BetaTool[] = agentTools.map((tool) => ({
   name: tool.name,
   description: tool.description,
   input_schema: tool.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
-  // Streamed tool input is not validated by the API; see `checkToolInput` and `runToolUse`.
+}));
+
+// Streamed tool input is not validated by the API; see `checkToolInput` and `runToolUse`.
+const executorTools: Anthropic.Beta.BetaTool[] = baseTools.map((tool) => ({
+  ...tool,
   eager_input_streaming: true,
 }));
+
+/** Executor request body. Exported for tests. */
+export const executorRequest = (ctx: RuntimeContext, messages: BetaMessageParam[]): StreamParams =>
+  isCompat(ctx)
+    ? {
+        // Plain request: no fallbacks/beta header, no effort, no eager input streaming, no
+        // top-level cache_control. The system-block breakpoint is a long-standing field.
+        model: executorModel(ctx),
+        max_tokens: COMPAT_MAX_TOKENS,
+        system: [{ type: "text", text: EXECUTOR_SYSTEM, cache_control: { type: "ephemeral" } }],
+        tools: baseTools,
+        messages,
+      }
+    : {
+        model: executorModel(ctx),
+        max_tokens: EXECUTOR_MAX_TOKENS,
+        betas: [FALLBACK_BETA],
+        fallbacks: "default",
+        output_config: { effort: EXECUTOR_EFFORT },
+        // Render order is tools -> system -> messages: the breakpoint on the system block caches
+        // the stable tools + system prefix across steps and runs; the top-level marker moves
+        // forward with the conversation so each loop turn reads the previous turn from cache.
+        cache_control: { type: "ephemeral" },
+        system: [{ type: "text", text: EXECUTOR_SYSTEM, cache_control: { type: "ephemeral" } }],
+        tools: executorTools,
+        messages,
+      };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
@@ -221,12 +431,14 @@ const planText = (steps: PlanStep[]) =>
     )
     .join("\n");
 
-const stepPrompt = (prompt: string, steps: PlanStep[], step: PlanStep): string => {
+const stepPrompt = (prompt: string, steps: PlanStep[], step: PlanStep, skillsText = ""): string => {
   const done = agent()
     .steps.filter((s) => s.status === "done" && s.summary)
     .map((s) => `- [${s.id}] ${s.summary}`)
     .join("\n");
   return [
+    // Skills first: identical across steps, so the cached prefix keeps covering them.
+    skillsText,
     `User request:\n${prompt}`,
     `Plan:\n${planText(steps)}`,
     done ? `Already completed:\n${done}` : "",
@@ -247,31 +459,23 @@ const executeStep = async (
   step: PlanStep,
 ): Promise<StepOutcome> => {
   ctx.host.reportStep(step.id, "running");
-  const messages: BetaMessageParam[] = [{ role: "user", content: stepPrompt(prompt, steps, step) }];
+  const messages: BetaMessageParam[] = [
+    {
+      role: "user",
+      content: anthropicUserContent(
+        stepPrompt(prompt, steps, step, ctx.skillsText),
+        ctx.attachments ?? [],
+      ),
+    },
+  ];
   let lastText = "";
 
   for (let turn = 0; turn < MAX_TURNS_PER_STEP; turn++) {
     cancelIfAborted(ctx.signal);
     const message = await ctx.client.beta.messages
-      .stream(
-        {
-          model: EXECUTOR_MODEL,
-          max_tokens: EXECUTOR_MAX_TOKENS,
-          betas: [FALLBACK_BETA],
-          fallbacks: "default",
-          output_config: { effort: EXECUTOR_EFFORT },
-          // Render order is tools -> system -> messages: the breakpoint on the system block caches
-          // the stable tools + system prefix across steps and runs; the top-level marker moves
-          // forward with the conversation so each loop turn reads the previous turn from cache.
-          cache_control: { type: "ephemeral" },
-          system: [{ type: "text", text: EXECUTOR_SYSTEM, cache_control: { type: "ephemeral" } }],
-          tools: executorTools,
-          messages,
-        },
-        { signal: ctx.signal },
-      )
+      .stream(executorRequest(ctx, messages), { signal: ctx.signal })
       .finalMessage();
-    recordUsage(message, EXECUTOR_MODEL);
+    recordUsage(message, executorModel(ctx));
 
     const text = textOf(message);
     if (text) {
@@ -319,7 +523,7 @@ const executeStep = async (
       results.push(result);
       agent().appendLog({
         kind: "tool",
-        text: block.name,
+        text: "",
         tool: { name: block.name, isError: result.is_error === true },
       });
     }
@@ -342,10 +546,17 @@ const finishCancelled = () => {
 };
 
 /** Plan with Opus, then execute each step with Sonnet. Never throws: ends in the store. */
-export const runApiAgent = async (prompt: string, ctx: RuntimeContext): Promise<void> => {
+export const runApiAgent = async (prompt: string, base: RuntimeContext): Promise<void> => {
+  const ctx: RuntimeContext = { ...base }; // private copy: skill text is filled in below
   const state = agent();
   try {
-    state.appendLog({ kind: "info", text: "Planning with Claude Opus 5.5" });
+    const skills = resolveRunSkills(prompt, ctx.skillId);
+    ctx.skillsText = skillsBlock(skills);
+    for (const text of skillLogLines(skills)) state.appendLog({ kind: "info", text });
+    state.appendLog({
+      kind: "info",
+      text: ctx.provider ? `Planning with ${plannerModel(ctx)}` : "Planning with Claude Opus 5.5",
+    });
     const steps = await requestPlan(ctx, prompt);
     ctx.host.reportPlan(steps);
     agent().set({ status: "running" });
@@ -372,7 +583,9 @@ export const runApiAgent = async (prompt: string, ctx: RuntimeContext): Promise<
       finishCancelled();
       return;
     }
-    const message = describeApiError(error);
+    const message = ctx.provider
+      ? describeCompatError(error, ctx.provider)
+      : describeApiError(error);
     const current = agent();
     for (const step of current.steps) {
       if (step.status === "running") current.setStepStatus(step.id, "failed", message);

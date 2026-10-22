@@ -2,7 +2,7 @@ import { sampleDoc, type Op } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { cancelPendingDecisions } from "./decisions";
 import { setActiveRun, setRunTail } from "./active-run";
-import { useAgentStore } from "./use-agent-store";
+import { emptyBridge, useAgentStore } from "./use-agent-store";
 
 /** Fresh document + agent state for each test. */
 export const resetStores = () => {
@@ -13,7 +13,7 @@ export const resetStores = () => {
   useAgentStore.getState().beginRun("run-test", "prompt");
   useAgentStore.getState().set({
     status: "running",
-    bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null, replaced: false },
+    bridge: emptyBridge(),
   });
 };
 

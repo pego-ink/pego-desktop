@@ -1,5 +1,5 @@
 import { resolveInstance } from "./instance";
-import { resolveNumber, resolveSides, type Sides } from "./resolve";
+import { resolveNumber } from "./resolve";
 import type { FrameNode, PegoDocument, PegoNode, TextNode, Variables } from "./schema";
 import { isContainer } from "./tree";
 
@@ -37,18 +37,6 @@ export const walkRendered = (
   }
 };
 
-/** The expanded (refs resolved) node with this id, including instance descendants. */
-export const findRenderedNode = (doc: PegoDocument, id: string): PegoNode | null => {
-  let found: PegoNode | null = null;
-  walkRendered(doc, doc.children, (node) => {
-    if (found) return false;
-    if (node.id !== id) return;
-    found = node;
-    return false;
-  });
-  return found;
-};
-
 type Size = { width: number; height: number };
 
 /** A sized node with its children placed relative to its own top-left corner. */
@@ -61,8 +49,16 @@ type Axis = "width" | "height";
 const crossOf = (axis: Axis): Axis => (axis === "width" ? "height" : "width");
 
 /** `padding` as [top, right, bottom, left] (CSS order). */
-const resolvePadding = (doc: PegoDocument, node: FrameNode): Sides =>
-  resolveSides(node.padding, doc.variables, 0);
+const resolvePadding = (doc: PegoDocument, node: FrameNode): [number, number, number, number] => {
+  const { padding } = node;
+  if (padding === undefined) return [0, 0, 0, 0];
+  if (!Array.isArray(padding)) {
+    const all = resolveNumber(padding, doc.variables, 0);
+    return [all, all, all, all];
+  }
+  const [top, right, bottom, left] = padding.map((v) => resolveNumber(v, doc.variables, 0));
+  return [top ?? 0, right ?? 0, bottom ?? 0, left ?? 0];
+};
 
 /**
  * Compute absolute boxes for every rendered node.
@@ -259,17 +255,14 @@ export const computeLayout = (doc: PegoDocument, measureText: TextMeasurer): Lay
     layout.set(sized.node.id, { x, y, width: sized.width, height: sized.height });
     for (const child of sized.children) record(child.sized, x + child.x, y + child.y);
   };
-  // Pages have no box: their content keeps its own x/y in canvas coordinates, page by page.
-  for (const page of doc.children) {
-    for (const raw of page.children) {
-      const node = expand(raw, 0);
-      if (!node) continue;
-      record(
-        sizeOf(node, 0),
-        resolveNumber(node.x, doc.variables, 0),
-        resolveNumber(node.y, doc.variables, 0),
-      );
-    }
+  for (const raw of doc.children) {
+    const node = expand(raw, 0);
+    if (!node) continue;
+    record(
+      sizeOf(node, 0),
+      resolveNumber(node.x, doc.variables, 0),
+      resolveNumber(node.y, doc.variables, 0),
+    );
   }
   return layout;
 };

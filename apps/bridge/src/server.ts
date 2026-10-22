@@ -1,3 +1,4 @@
+import { resolve, sep } from "node:path";
 import {
   BRIDGE_PROTOCOL_VERSION,
   type BridgeToEditor,
@@ -5,14 +6,14 @@ import {
   type RunEvent,
 } from "@pego/agent";
 import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
-import { createEditorHub, type EditorSocket } from "./editor-hub";
-import { isClaudeCodeAvailable } from "./claude-code";
+import { createEditorHub, MAX_EDITOR_SOCKETS, type EditorSocket } from "./editor-hub";
+import { createAgentDetector, type AgentDetector } from "./detection";
+import type { AgentAdapter } from "./agents/types";
 import { handleMcpRequest } from "./mcp";
 import { parseEditorMessage } from "./messages";
-import { createRunManager, type RunManager } from "./runs";
+import { createRunManager, parseRunMcpPath, type RunManager } from "./runs";
 import { isHostAllowed, isOriginAllowed } from "./security";
 import { writeDocumentFile } from "./files";
-import { resolve, sep } from "node:path";
 import { listDesignFiles, readProjectFile } from "./project";
 import { createProject, listProjects } from "./projects";
 
@@ -20,11 +21,22 @@ type SocketData = { greeted: boolean };
 
 export type BridgeOptions = BridgeConfig & {
   /** Overrides for tests. */
-  claudeCodeAvailable?: () => boolean;
+  adapters?: AgentAdapter[];
+  detector?: AgentDetector;
   runManagerFactory?: (deps: {
     callTool: ReturnType<typeof createEditorHub>["callTool"];
     emit: (runId: string, event: RunEvent) => void;
+    mcpOrigin: () => string;
+    adapters?: AgentAdapter[];
   }) => RunManager;
+};
+
+const sendTo = (ws: { send: (data: string) => unknown }, message: BridgeToEditor): void => {
+  try {
+    ws.send(JSON.stringify(message));
+  } catch {
+    // the editor went away while we were detecting
+  }
 };
 
 const text = (status: number, body: string): Response =>
@@ -32,7 +44,9 @@ const text = (status: number, body: string): Response =>
 
 type ProjectRequest = Extract<EditorToBridge, { type: "project_request" }>;
 
-/** List the design folder or read one file from it; failures become `ok: false` replies. */
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** List or create projects, list the design folder or read one file; failures become `ok: false`. */
 export const answerProjectRequest = async (
   root: string | null,
   request: ProjectRequest,
@@ -56,24 +70,29 @@ export const answerProjectRequest = async (
     if (!request.path) return { ...base, ok: false, root, error: "Missing path." };
     return { ...base, ok: true, root, text: await readProjectFile(root, request.path) };
   } catch (error) {
-    return {
-      ...base,
-      ok: false,
-      root,
-      error: error instanceof Error ? error.message : String(error),
-    };
+    return { ...base, ok: false, root, error: errorText(error) };
   }
 };
 
 export const startBridge = (options: BridgeOptions) => {
+  const designDir = options.designDir ?? null;
   const hub = createEditorHub({ toolTimeoutMs: options.toolTimeoutMs });
-  const sendRunEvent = (runId: string, event: RunEvent) =>
-    void hub.send({ type: "run_event", runId, event });
+  // Only the editor that started a run hears about it; the owner is forgotten once it ends.
+  const sendRunEvent = (runId: string, event: RunEvent) => {
+    hub.sendToRunOwner(runId, { type: "run_event", runId, event });
+    if (event.kind === "done" || event.kind === "error") hub.clearRunOwner(runId);
+  };
+  let openSockets = 0;
+  // Resolved lazily: the port is only known once the server is listening (port 0 in tests).
+  const mcpOrigin = () => `http://127.0.0.1:${server.port}`;
   const runs = (options.runManagerFactory ?? createRunManager)({
     callTool: hub.callTool,
     emit: sendRunEvent,
+    mcpOrigin,
+    ...(options.adapters ? { adapters: options.adapters } : {}),
   });
-  const checkClaude = options.claudeCodeAvailable ?? isClaudeCodeAvailable;
+  const detector =
+    options.detector ?? createAgentDetector(options.adapters ? { adapters: options.adapters } : {});
 
   const server = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
@@ -91,18 +110,28 @@ export const startBridge = (options: BridgeOptions) => {
         if (!isOriginAllowed(origin, options.allowedOrigins)) {
           return text(403, "Forbidden: origin not allowed");
         }
+        if (openSockets >= MAX_EDITOR_SOCKETS) {
+          return text(503, "Too many editor connections");
+        }
         if (srv.upgrade(request, { data: { greeted: false } })) return undefined;
         return text(426, "Upgrade Required");
       }
 
-      if (pathname === "/mcp") {
+      const runToken = parseRunMcpPath(pathname);
+      if (pathname === "/mcp" || pathname.startsWith("/mcp/run/")) {
         // Browsers always send Origin; MCP clients (Claude Code) do not. Reject web pages.
         if (origin !== null && !isOriginAllowed(origin, options.allowedOrigins)) {
           return text(403, "Forbidden: origin not allowed");
         }
         const length = Number(request.headers.get("content-length") ?? 0);
         if (length > MAX_MCP_BODY_BYTES) return text(413, "Payload too large");
-        return handleMcpRequest(request, hub.callTool, options.designDir ?? null);
+        if (pathname === "/mcp") {
+          return handleMcpRequest(request, hub.callTool, undefined, { designDir });
+        }
+        // Run-scoped endpoint: the token is the credential and dies with the run.
+        const run = runToken ? runs.resolveRunToken(runToken) : undefined;
+        if (!run) return text(404, "Not found");
+        return handleMcpRequest(request, hub.callTool, { kind: "run", runId: run.runId });
       }
 
       return text(404, "Not found");
@@ -127,20 +156,26 @@ export const startBridge = (options: BridgeOptions) => {
             );
             return;
           }
+          if (!hub.attach(socket, message.documentName)) {
+            ws.close(1013, `Too many editor connections (max ${MAX_EDITOR_SOCKETS})`);
+            return;
+          }
           ws.data.greeted = true;
-          hub.attach(socket, message.documentName);
-          const welcome: BridgeToEditor = {
-            type: "welcome",
-            protocol: BRIDGE_PROTOCOL_VERSION,
-            claudeCodeAvailable: checkClaude(),
-            mcpUrl: `http://127.0.0.1:${server.port}/mcp`,
-            projectDir: options.designDir ?? null,
-          };
-          ws.send(JSON.stringify(welcome));
+          void detector.detectAll().then((agents) => {
+            const welcome: BridgeToEditor = {
+              type: "welcome",
+              protocol: BRIDGE_PROTOCOL_VERSION,
+              claudeCodeAvailable: agents.some((a) => a.id === "claude-code" && a.installed),
+              mcpUrl: `http://127.0.0.1:${server.port}/mcp`,
+              agents,
+              projectDir: designDir,
+            };
+            sendTo(ws, welcome);
+          });
           return;
         }
 
-        if (!ws.data.greeted || !hub.isActive(socket)) {
+        if (!ws.data.greeted || !hub.isAttached(socket)) {
           ws.close(1008, "Send hello first");
           return;
         }
@@ -150,34 +185,59 @@ export const startBridge = (options: BridgeOptions) => {
             isError: message.isError,
             ...(message.images?.length ? { images: message.images } : {}),
           });
+        } else if (message.type === "focus") {
+          hub.focus(socket);
         } else if (message.type === "run_start") {
-          runs.start(message.runId, message.prompt);
-        } else if (message.type === "run_cancel") {
-          runs.cancel(message.runId);
+          if (!hub.setRunOwner(message.runId, socket)) {
+            sendTo(ws, {
+              type: "run_event",
+              runId: message.runId,
+              event: { kind: "error", message: "A run with this id is already in progress." },
+            });
+            return;
+          }
+          runs.start({
+            runId: message.runId,
+            prompt: message.prompt,
+            agentId: message.agentId,
+            ...(message.model ? { model: message.model } : {}),
+            ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+          });
+        } else if (message.type === "agents_refresh") {
+          void detector.detectAll(true).then((agents) => sendTo(ws, { type: "agents", agents }));
+        } else if (message.type === "models_request") {
+          const { agentId } = message;
+          void detector
+            .listModels(agentId)
+            .then(({ models, error }) =>
+              sendTo(ws, { type: "models", agentId, models, ...(error ? { error } : {}) }),
+            );
         } else if (message.type === "project_request") {
-          void answerProjectRequest(options.designDir ?? null, message).then((reply) =>
-            ws.send(JSON.stringify(reply)),
-          );
-        } else {
+          void answerProjectRequest(designDir, message).then((reply) => sendTo(ws, reply));
+        } else if (message.type === "save_file") {
           const { requestId, path, text: content } = message;
           void writeDocumentFile(path, content).then(
-            () => ws.send(JSON.stringify({ type: "save_file_result", requestId, ok: true })),
+            () => sendTo(ws, { type: "save_file_result", requestId, ok: true }),
             (error: unknown) =>
-              ws.send(
-                JSON.stringify({
-                  type: "save_file_result",
-                  requestId,
-                  ok: false,
-                  error: error instanceof Error ? error.message : String(error),
-                } satisfies BridgeToEditor),
-              ),
+              sendTo(ws, {
+                type: "save_file_result",
+                requestId,
+                ok: false,
+                error: errorText(error),
+              }),
           );
+        } else if (hub.getRunOwner(message.runId) === socket) {
+          runs.cancel(message.runId);
         }
       },
+      open() {
+        openSockets += 1;
+      },
       close(ws) {
+        openSockets = Math.max(0, openSockets - 1);
         const socket = ws as unknown as EditorSocket;
-        if (hub.isActive(socket)) runs.cancelAll();
-        hub.detach(socket);
+        // Cancel only the runs this editor started; other editors' runs carry on.
+        for (const runId of hub.detach(socket)) runs.cancel(runId);
       },
     },
   });

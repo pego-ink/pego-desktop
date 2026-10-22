@@ -118,24 +118,3 @@ export const getIconPath = (ck: CanvasKit, name: string): Path | null => {
   iconPaths.set(name, path);
   return path;
 };
-
-const escapeAttr = (value: unknown) =>
-  String(value).replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;");
-
-/**
- * Inner SVG markup of a lucide icon on its 24x24 grid (no `<svg>` wrapper, no stroke attrs), for
- * SVG and HTML export. Null when the icon is unknown or the data has not loaded.
- */
-export const getIconMarkup = (name: string): string | null => {
-  const node = iconData?.[toPascalCase(name)];
-  if (!node) return null;
-  return node
-    .map(([tag, props]) => {
-      const attrs = Object.entries(props)
-        .filter(([key]) => key !== "key")
-        .map(([key, value]) => ` ${key}="${escapeAttr(value)}"`)
-        .join("");
-      return `<${tag}${attrs}/>`;
-    })
-    .join("");
-};

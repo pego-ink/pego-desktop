@@ -9,6 +9,8 @@ export type StylePreset = {
   bestFor: string;
   /** Google Fonts family names. */
   fonts: { heading: string; body: string; mono: string };
+  /** Weights to use per role; each must exist in the family. */
+  weights: { heading: number[]; body: number[]; mono: number[] };
   /** Pixel scale for type; use these sizes instead of inventing new ones. */
   typeScale: {
     caption: number;
@@ -21,6 +23,8 @@ export type StylePreset = {
   };
   /** Ready for set_variables: color tokens and number tokens (radius, spacing). */
   variables: Variables;
+  /** Structural traits the agent can act on. */
+  layout: { grid: string; density: string; corners: string; imagery: string; icons: string };
   stroke: string;
   elevation: string;
   dos: string[];

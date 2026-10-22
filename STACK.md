@@ -29,7 +29,6 @@ pego/
   packages/
     doc/            Document schema (Zod), ops, apply/invert, layout engine (flex), validation
     agent/          Provider-neutral tools, document serialization, prompts, bridge protocol; pure, no I/O
-    export/         HTML/CSS and SVG export from document + layout; pure, no I/O
     ui/             shadcn components + tokens (mono dark palette)
   design/           Exported designs (png/html) + pego.pen source
 ```

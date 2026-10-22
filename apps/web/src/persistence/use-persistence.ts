@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { createId, emptyHistory, loadDocument } from "@pego/doc";
+import { createId, documentSchema, emptyHistory } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { captureLive, tabIsDirty, useTabsStore, type TabSnapshot } from "@/tabs/use-tabs-store";
@@ -19,6 +19,7 @@ import {
 } from "./autosave-db";
 import { isDirty } from "./file-format";
 import { openFile, saveFile, saveFileAs } from "./file-actions";
+import { isFileWriteInFlight, startFileAutosave } from "./file-autosave";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
 const AUTOSAVE_DELAY_MS = 800;
@@ -77,14 +78,13 @@ const writeCurrent = async () => {
 };
 
 const toSnapshot = (tab: AutosavedTab): TabSnapshot | null => {
-  // Autosaves written by an older Pego hold an older document version.
-  const doc = loadDocument(tab.doc);
-  if (!doc) return null;
+  const parsed = documentSchema.safeParse(tab.doc);
+  if (!parsed.success) return null;
+  const doc = parsed.data;
   return {
     doc,
     history: emptyHistory(),
     selection: [],
-    pageId: null,
     camera: useViewportStore.getState().camera,
     file: {
       fileName: tab.fileName,
@@ -162,7 +162,9 @@ const handleShortcut = (event: KeyboardEvent) => {
 };
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
-  if (!(autosavePending && (getIsDirty() || useTabsStore.getState().tabs.some(tabIsDirty)))) return;
+  // The browser copy covers everything except a pending IndexedDB write or a file write mid-flight.
+  if (!(autosavePending || isFileWriteInFlight())) return;
+  if (!(getIsDirty() || useTabsStore.getState().tabs.some(tabIsDirty))) return;
   event.preventDefault();
 };
 
@@ -172,6 +174,7 @@ export const usePersistence = () => {
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout> | undefined;
     let unsubscribe: (() => void) | undefined;
+    let stopFileAutosave: (() => void) | undefined;
 
     const schedule = () => {
       autosavePending = true;
@@ -192,6 +195,7 @@ export const usePersistence = () => {
       const unsubFile = useFileStore.subscribe(schedule);
       const unsubTabs = useTabsStore.subscribe(schedule);
       const unsubWorkspaces = useWorkspaceStore.subscribe(schedule);
+      stopFileAutosave = startFileAutosave();
       unsubscribe = () => {
         unsubDoc();
         unsubFile();
@@ -206,6 +210,7 @@ export const usePersistence = () => {
       cancelled = true;
       clearTimeout(timer);
       unsubscribe?.();
+      stopFileAutosave?.();
       window.removeEventListener("keydown", handleShortcut, true);
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };

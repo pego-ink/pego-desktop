@@ -1,0 +1,7 @@
+{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/tmp/pego-run","session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff","model":"Auto","permissionMode":"default"}
+{"type":"user","message":{"role":"user","content":[{"type":"text","text":"Call get_document once, then reply DONE."}]},"session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"Fetching the document."}]},"session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}
+{"type":"tool_call","subtype":"started","call_id":"call_1","tool_call":{"mcpToolCall":{"args":{"name":"pego-get_document","args":{},"toolCallId":"call_1","providerIdentifier":"pego","toolName":"get_document"}}},"session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}
+{"type":"tool_call","subtype":"completed","call_id":"call_1","tool_call":{"mcpToolCall":{"args":{"name":"pego-get_document","args":{},"toolCallId":"call_1","providerIdentifier":"pego","toolName":"get_document"},"result":{"success":{"content":[{"text":{"text":"{}"}}],"isError":false}}}},"session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}
+{"type":"assistant","message":{"role":"assistant","content":[{"type":"text","text":"DONE"}]},"session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff"}
+{"type":"result","subtype":"success","duration_ms":5234,"duration_api_ms":5234,"is_error":false,"result":"Fetching the document.DONE","session_id":"c6b62c6f-7ead-4fd6-9922-e952131177ff","request_id":"10e11780-df2f-45dc-a1ff-4540af32e9c0"}

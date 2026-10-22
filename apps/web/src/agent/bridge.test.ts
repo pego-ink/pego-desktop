@@ -1,6 +1,11 @@
 /// <reference types="bun" />
 import { beforeEach, describe, expect, test } from "bun:test";
-import { BRIDGE_REPLACED_CLOSE_CODE, type BridgeToEditor, type EditorToBridge } from "@pego/agent";
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  type BridgeToEditor,
+  type EditorToBridge,
+  type LocalAgentInfo,
+} from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { setActiveRun } from "./active-run";
 import { createBridgeClient, parseBridgeMessage, type SocketLike } from "./bridge-client";
@@ -14,7 +19,7 @@ class FakeSocket implements SocketLike {
   closed = false;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
-  onclose: ((event?: { code?: number }) => void) | null = null;
+  onclose: ((event?: { code?: number; reason?: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   send = (data: string) => void this.sent.push(data);
   close = () => {
@@ -23,6 +28,14 @@ class FakeSocket implements SocketLike {
   };
   receive = (message: unknown) => this.onmessage?.({ data: JSON.stringify(message) });
 }
+
+const CODEX: LocalAgentInfo = {
+  id: "codex",
+  name: "Codex",
+  installed: true,
+  version: "0.9.0",
+  supportsModels: true,
+};
 
 const state = () => useAgentStore.getState();
 const past = () => useDocumentStore.getState().history.past;
@@ -47,7 +60,6 @@ describe("bridge client", () => {
     const timers: { fn: () => void; ms: number }[] = [];
     const messages: BridgeToEditor[] = [];
     let closed = 0;
-    let replaced = 0;
     const client = createBridgeClient({
       url: "ws://test",
       createSocket: () => {
@@ -58,19 +70,11 @@ describe("bridge client", () => {
       documentName: () => "doc.pego",
       onMessage: (m) => messages.push(m),
       onClosed: () => closed++,
-      onReplaced: () => replaced++,
       backoff: (attempt) => 100 * (attempt + 1),
       setTimer: (fn, ms) => timers.push({ fn, ms }),
       clearTimer: () => {},
     });
-    return {
-      client,
-      sockets,
-      timers,
-      messages,
-      closedCount: () => closed,
-      replacedCount: () => replaced,
-    };
+    return { client, sockets, timers, messages, closedCount: () => closed };
   };
 
   test("sends hello on open and forwards valid messages only", () => {
@@ -79,20 +83,48 @@ describe("bridge client", () => {
     sockets[0]!.onopen?.();
     expect(JSON.parse(sockets[0]!.sent[0]!)).toMatchObject({
       type: "hello",
+      protocol: BRIDGE_PROTOCOL_VERSION,
       documentName: "doc.pego",
     });
     expect(client.isOpen()).toBe(true);
 
     sockets[0]!.receive({
       type: "welcome",
-      protocol: 1,
+      protocol: 3,
       claudeCodeAvailable: true,
       mcpUrl: "http://x",
+      agents: [],
     });
     sockets[0]!.receive({ type: "tool_call", callId: 5 }); // malformed
     sockets[0]!.onmessage?.({ data: "not json" });
     sockets[0]!.onmessage?.({ data: new ArrayBuffer(2) });
     expect(messages.map((m) => m.type)).toEqual(["welcome"]);
+  });
+
+  test("a bridge of another Pego version refusing the editor is reported, then retried", () => {
+    const reasons: string[] = [];
+    const sockets: FakeSocket[] = [];
+    const timers: (() => void)[] = [];
+    const client = createBridgeClient({
+      url: "ws://test",
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      documentName: () => "doc.pego",
+      onMessage: () => {},
+      onClosed: () => {},
+      onRejected: (reason) => reasons.push(reason),
+      setTimer: (fn) => timers.push(fn),
+      clearTimer: () => {},
+    });
+    client.start();
+    sockets[0]!.onopen?.();
+    sockets[0]!.onclose?.({ code: 4001, reason: "Protocol mismatch" });
+    expect(reasons).toEqual(["Protocol mismatch"]);
+    expect(timers).toHaveLength(1);
+    client.stop();
   });
 
   test("reconnects quietly with growing backoff and resets after a connection", () => {
@@ -109,24 +141,6 @@ describe("bridge client", () => {
     expect(timers.map((t) => t.ms)).toEqual([100]);
   });
 
-  test("a tab replaced by another one waits for takeOver instead of reconnecting", () => {
-    const { client, sockets, timers, closedCount, replacedCount } = setup();
-    client.start();
-    sockets[0]!.onopen?.();
-    sockets[0]!.onclose?.({ code: BRIDGE_REPLACED_CLOSE_CODE });
-    expect(closedCount()).toBe(1);
-    expect(replacedCount()).toBe(1);
-    expect(client.isReplaced()).toBe(true);
-    expect(timers).toHaveLength(0);
-    expect(sockets).toHaveLength(1);
-
-    client.takeOver();
-    expect(sockets).toHaveLength(2);
-    expect(client.isReplaced()).toBe(false);
-    sockets[1]!.onopen?.();
-    expect(client.isOpen()).toBe(true);
-  });
-
   test("stop closes and never reconnects; send reports a closed socket", () => {
     const { client, sockets, timers, closedCount } = setup();
     client.start();
@@ -136,6 +150,76 @@ describe("bridge client", () => {
     expect(timers).toHaveLength(0);
     expect(closedCount()).toBe(1);
     expect(client.send({ type: "run_cancel", runId: "r" })).toBe(false);
+  });
+
+  test("sends focus on window focus and when the page becomes visible, only while connected", () => {
+    const listeners = new Map<string, () => void>();
+    const target = {
+      visibilityState: "hidden",
+      addEventListener: (type: string, fn: () => void) => void listeners.set(type, fn),
+      removeEventListener: (type: string) => void listeners.delete(type),
+    };
+    const sockets: FakeSocket[] = [];
+    const client = createBridgeClient({
+      url: "ws://test",
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      documentName: () => "doc.pego",
+      onMessage: () => {},
+      onClosed: () => {},
+      setTimer: () => 0,
+      clearTimer: () => {},
+      windowTarget: target,
+      documentTarget: target,
+    });
+    client.start();
+    const socket = sockets[0] as FakeSocket;
+    listeners.get("focus")?.();
+    expect(socket.sent).toHaveLength(0); // not open yet
+    socket.onopen?.();
+    listeners.get("focus")?.();
+    target.visibilityState = "hidden";
+    listeners.get("visibilitychange")?.();
+    target.visibilityState = "visible";
+    listeners.get("visibilitychange")?.();
+    expect(socket.sent.slice(1).map((s) => JSON.parse(s))).toEqual([
+      { type: "focus" },
+      { type: "focus" },
+    ]);
+    client.stop();
+    expect(listeners.size).toBe(0);
+  });
+
+  test("parseBridgeMessage handles v3 welcome, agents and models", () => {
+    const parse = (value: unknown) => parseBridgeMessage(JSON.stringify(value));
+    expect(
+      parse({
+        type: "welcome",
+        protocol: 3,
+        claudeCodeAvailable: false,
+        mcpUrl: "u",
+        agents: [CODEX, { id: "nope", name: "x", installed: true, supportsModels: false }, 7],
+      }),
+    ).toMatchObject({ type: "welcome", agents: [CODEX] });
+    // A welcome without agents still parses (older bridge): empty list.
+    expect(
+      parse({ type: "welcome", protocol: 2, claudeCodeAvailable: true, mcpUrl: "u" }),
+    ).toMatchObject({ agents: [] });
+    expect(parse({ type: "agents", agents: [CODEX] })).toEqual({ type: "agents", agents: [CODEX] });
+    expect(parse({ type: "agents", agents: "x" })).toBeNull();
+    expect(parse({ type: "models", agentId: "codex", models: ["a", "b"] })).toEqual({
+      type: "models",
+      agentId: "codex",
+      models: ["a", "b"],
+    });
+    expect(parse({ type: "models", agentId: "codex", models: [], error: "boom" })).toMatchObject({
+      error: "boom",
+    });
+    expect(parse({ type: "models", agentId: "bogus", models: [] })).toBeNull();
+    expect(parse({ type: "models", agentId: "codex", models: [1] })).toBeNull();
   });
 
   test("parseBridgeMessage rejects unknown types", () => {
@@ -161,23 +245,21 @@ describe("bridge handlers", () => {
     const { handlers } = setup();
     await handlers.handleMessage({
       type: "welcome",
-      protocol: 1,
+      protocol: 3,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
-      projectDir: "/repo/design",
+      agents: [CODEX],
+      projectDir: null,
     });
     expect(state().bridge).toEqual({
       connected: true,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
-      replaced: false,
-      projectDir: "/repo/design",
+      agents: [CODEX],
+      projectDir: null,
     });
     handlers.handleClosed();
     expect(state().bridge.connected).toBe(false);
-    handlers.handleReplaced();
-    expect(state().bridge).toMatchObject({ connected: false, replaced: true });
-    expect(state().log.at(-1)?.text).toMatch(/Another Pego window/);
   });
 
   test("mcp calls: separate transactions after 2s, extended within 2s, labelled Claude Code", async () => {
@@ -260,7 +342,7 @@ describe("bridge handlers", () => {
 
     setActiveRun({
       id: "r1",
-      backend: "claude-code",
+      backend: "local",
       controller: new AbortController(),
       host: createToolHost(),
     });
@@ -274,7 +356,7 @@ describe("bridge handlers", () => {
     state().beginRun("r1", "p");
     setActiveRun({
       id: "r1",
-      backend: "claude-code",
+      backend: "local",
       controller: new AbortController(),
       host: createToolHost(),
     });
@@ -299,7 +381,7 @@ describe("bridge handlers", () => {
     const activate = () =>
       setActiveRun({
         id: "r1",
-        backend: "claude-code",
+        backend: "local",
         controller: new AbortController(),
         host: createToolHost(),
       });
@@ -315,7 +397,7 @@ describe("bridge handlers", () => {
     state().beginRun("r2", "p");
     setActiveRun({
       id: "r2",
-      backend: "claude-code",
+      backend: "local",
       controller: new AbortController(),
       host: createToolHost(),
     });

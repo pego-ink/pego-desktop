@@ -81,6 +81,78 @@ html.light {
   --radius-xl: calc(var(--radius) + 4px);
   --font-sans: "Geist", "Inter", ui-sans-serif, system-ui, sans-serif;
   --font-mono: "Geist Mono", ui-monospace, SFMono-Regular, monospace;
+  /* Motion tokens. Mirrored in lib/motion.ts. */
+  --ease-out: cubic-bezier(0.23, 1, 0.32, 1);
+  --ease-in-out: cubic-bezier(0.77, 0, 0.175, 1);
+  --duration-instant: 100ms;
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 250ms;
+}
+
+/* Shared enter/exit keyframes. Use the `scale` property so they compose with `translate` centering. */
+@keyframes pego-pop-in {
+  from {
+    opacity: 0;
+    scale: 0.96;
+  }
+  to {
+    opacity: 1;
+    scale: 1;
+  }
+}
+@keyframes pego-pop-out {
+  from {
+    opacity: 1;
+    scale: 1;
+  }
+  to {
+    opacity: 0;
+    scale: 0.96;
+  }
+}
+@keyframes pego-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+@keyframes pego-fade-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+@keyframes pego-tooltip-in {
+  from {
+    opacity: 0;
+    translate: var(--tt-x, 0) var(--tt-y, 0);
+  }
+  to {
+    opacity: 1;
+    translate: 0 0;
+  }
+}
+@keyframes pego-slide-up-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Sonner toasts: match the motion tokens (its defaults are 400ms with a bouncy curve). */
+[data-sonner-toaster] [data-sonner-toast] {
+  transition-timing-function: var(--ease-out);
+  transition-duration:
+    var(--duration-slow), var(--duration-slow), var(--duration-slow), var(--duration-base);
 }
 
 @layer base {
@@ -91,5 +163,45 @@ html.light {
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
+  }
+}
+
+/* Reduced motion: keep opacity changes (they aid comprehension), drop transforms and loops. */
+@media (prefers-reduced-motion: reduce) {
+  @keyframes pego-tooltip-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes pego-pop-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  @keyframes pego-pop-out {
+    from {
+      opacity: 1;
+    }
+    to {
+      opacity: 0;
+    }
+  }
+  @keyframes pego-slide-up-in {
+    from {
+      opacity: 0;
+    }
+    to {
+      opacity: 1;
+    }
+  }
+  .animate-pulse,
+  .animate-spin {
+    animation: none;
   }
 }

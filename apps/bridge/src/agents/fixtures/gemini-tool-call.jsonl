@@ -1,0 +1,6 @@
+{"type":"init","timestamp":"2026-10-22T06:52:16.202Z","session_id":"91b5efc0-3dbe-478a-a98b-fdb22068aaad","model":"gemini-2.5-flash"}
+{"type":"message","timestamp":"2026-10-22T06:52:16.202Z","role":"user","content":"Call get_document once, then reply DONE."}
+{"type":"tool_use","timestamp":"2026-10-22T06:52:16.218Z","tool_name":"mcp_pego_get_document","tool_id":"mcp_pego_get_document__mcp_pego_get_document_1792651936209_0","parameters":{}}
+{"type":"tool_result","timestamp":"2026-10-22T06:52:16.241Z","tool_id":"mcp_pego_get_document__mcp_pego_get_document_1792651936209_0","status":"success","output":"{\"name\":\"Test\",\"nodes\":[]}"}
+{"type":"message","timestamp":"2026-10-22T06:52:16.244Z","role":"assistant","content":"DONE","delta":true}
+{"type":"result","timestamp":"2026-10-22T06:52:16.244Z","status":"success","stats":{"total_tokens":26,"input_tokens":20,"output_tokens":6,"cached":0,"input":20,"duration_ms":43,"tool_calls":1,"models":{"gemini-3.5-flash":{"total_tokens":26,"input_tokens":20,"output_tokens":6,"cached":0,"input":20}}}}

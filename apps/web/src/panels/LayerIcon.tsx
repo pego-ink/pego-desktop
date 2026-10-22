@@ -1,7 +1,6 @@
 import {
   CircleIcon,
   ComponentIcon,
-  FileIcon,
   FrameIcon,
   GroupIcon,
   ImageIcon,
@@ -17,13 +16,13 @@ import { cn } from "@pego/ui/lib/utils";
 const ICONS: Record<PegoNodeType, LucideIcon> = {
   frame: FrameIcon,
   group: GroupIcon,
-  page: FileIcon,
   rectangle: SquareIcon,
   ellipse: CircleIcon,
   path: PenToolIcon,
   text: TypeIcon,
   icon: ShapesIcon,
   ref: ComponentIcon,
+  image: ImageIcon,
 };
 
 /** Icon for a node: reusable nodes and instances get the violet component icon. */

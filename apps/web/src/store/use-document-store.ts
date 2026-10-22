@@ -6,8 +6,6 @@ import {
   emptyHistory,
   extendLast as extendLastOps,
   OpError,
-  pageOrFirst,
-  placeOnPage,
   redo as redoOps,
   undo as undoOps,
   type History,
@@ -23,8 +21,6 @@ type DocumentState = {
   /** Selected node ids (top-level document ids; instance internals select their instance). */
   selection: string[];
   hoveredId: string | null;
-  /** The page shown on the canvas; null = the first page. Read it through `activePage`. */
-  pageId: string | null;
 
   /** Apply ops as one undo step. Returns false (and toasts) when an op does not fit the doc. */
   commit: (ops: Op[], meta?: { label?: string; source?: TransactionSource }) => boolean;
@@ -36,8 +32,6 @@ type DocumentState = {
   undo: () => void;
   redo: () => void;
   select: (ids: string[]) => void;
-  /** Show another page: clears selection and hover. */
-  setPage: (pageId: string) => void;
   /** Replace the whole document (open file, restore autosave). Clears history and selection. */
   load: (doc: PegoDocument) => void;
   setHovered: (id: string | null) => void;
@@ -52,16 +46,6 @@ const pruneSelection = (doc: PegoDocument, selection: string[], hoveredId: strin
   };
 };
 
-/** UI code builds ops with `parentId: null` for "the top level": that is the shown page. */
-const onShownPage = (doc: PegoDocument, pageId: string | null, ops: Op[]): Op[] => {
-  const page = pageOrFirst(doc, pageId).id;
-  return ops.map((op) => placeOnPage(doc, op, page));
-};
-
-/** The page shown on the canvas (falls back to the first when the stored one is gone). */
-export const activePage = (state: { doc: PegoDocument; pageId: string | null }) =>
-  pageOrFirst(state.doc, state.pageId);
-
 const reportOpError = (error: unknown): false => {
   if (!(error instanceof OpError)) throw error;
   console.warn(error);
@@ -74,12 +58,11 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   history: emptyHistory(),
   selection: [],
   hoveredId: null,
-  pageId: null,
 
   commit: (ops, meta) => {
-    const { doc, history, selection, hoveredId, pageId } = get();
+    const { doc, history, selection, hoveredId } = get();
     try {
-      const next = commitOps(doc, history, onShownPage(doc, pageId, ops), {
+      const next = commitOps(doc, history, ops, {
         source: meta?.source ?? "user",
         label: meta?.label,
       });
@@ -95,9 +78,9 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   extendLast: (ops) => {
-    const { doc, history, selection, hoveredId, pageId } = get();
+    const { doc, history, selection, hoveredId } = get();
     try {
-      const next = extendLastOps(doc, history, onShownPage(doc, pageId, ops));
+      const next = extendLastOps(doc, history, ops);
       set({
         doc: next.doc,
         history: next.history,
@@ -124,8 +107,6 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   select: (ids) => set({ selection: ids }),
-  setPage: (pageId) => set({ pageId, selection: [], hoveredId: null }),
-  load: (doc) =>
-    set({ doc, history: emptyHistory(), selection: [], hoveredId: null, pageId: null }),
+  load: (doc) => set({ doc, history: emptyHistory(), selection: [], hoveredId: null }),
   setHovered: (id) => set({ hoveredId: id }),
 }));

@@ -1,0 +1,2 @@
+{"type":"system","subtype":"init","apiKeySource":"login","cwd":"/tmp/pego-run","session_id":"s","model":"Auto","permissionMode":"default"}
+{"type":"tool_call","subtype":"started","call_id":"call_2","tool_call":{"shellToolCall":{"args":{"command":"ls"}}},"session_id":"s"}

@@ -1,9 +1,19 @@
 import { z } from "zod";
-import { EDITOR_OPS, type ProjectInfo, type ToolAnnotations } from "@pego/agent";
+import { EDITOR_OPS, type ProjectInfo, type ToolTarget } from "@pego/agent";
 import type { CallTool, ToolOutcome, ToolSource } from "./editor-hub";
 import { FileToolError, readDocumentFile, writeDocumentFile } from "./files";
 import { listDesignFiles } from "./project";
 import { createProject, findProject, listProjects } from "./projects";
+import { PROJECT_PARAM, resolveProjectTarget } from "./project-target";
+
+/** MCP tool annotations (hints for clients about what a tool does). */
+type ToolAnnotations = {
+  title: string;
+  readOnlyHint: boolean;
+  destructiveHint: boolean;
+  idempotentHint: boolean;
+  openWorldHint: boolean;
+};
 
 type FileTool = {
   name: string;
@@ -22,13 +32,13 @@ export const FILE_TOOLS: FileTool[] = [
     name: "open_document",
     title: "Open design file",
     description:
-      "Open a .pego file (or import a .pen file) from disk in the connected Pego editor, in its own tab (an already open file is shown again and reloaded from disk unless it has unsaved changes). " +
-      "Use an absolute path inside the user's project, e.g. <repo>/design/app.pego. discardUnsaved: true reloads an open file even with unsaved changes. " +
+      "Open a .pego file from disk in the connected Pego editor (an already open file is shown again and reloaded from disk unless it has unsaved changes). " +
+      "Use an absolute path, e.g. a file inside a project folder from list_projects. discardUnsaved: true reloads an open file even with unsaved changes. " +
       "To start a new design file, save_document with a new path instead.",
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Absolute path of a .pego or .pen file." },
+        path: { type: "string", description: "Absolute path of a .pego file." },
         discardUnsaved: {
           type: "boolean",
           description: "Reload an already open file from disk even if its tab has unsaved changes.",
@@ -50,12 +60,14 @@ export const FILE_TOOLS: FileTool[] = [
     title: "Save design file",
     description:
       "Save the open Pego document to disk as .pego JSON. Without path it saves to the file it was opened from; " +
+      "with project it saves that project's design (edits made with project are also saved automatically). " +
       "with an absolute .pego path it saves there (a new file, or overwriting that file) and keeps using that path. " +
-      "Call it when a design step is finished so the file in the repo is up to date.",
+      "Call it when a design step is finished so the file on disk is up to date.",
     inputSchema: {
       type: "object",
       properties: {
         path: { type: "string", description: "Absolute .pego path. Omit to save in place." },
+        project: PROJECT_PARAM,
       },
       additionalProperties: false,
     },
@@ -94,7 +106,7 @@ FILE_TOOLS.push(
     inputSchema: {
       type: "object",
       properties: {
-        path: { type: "string", description: "Absolute path of a .pego or .pen file." },
+        path: { type: "string", description: "Absolute path of a .pego file." },
       },
       required: ["path"],
       additionalProperties: false,
@@ -122,7 +134,7 @@ FILE_TOOLS.push(
     name: "list_projects",
     title: "List projects",
     description:
-      "List the design projects of this repository (folders in design/ with a project.json): id, name, folder, number of files and last change. " +
+      "List the user's design projects (folders in the Pego design folder with a project.json): id, name, folder, number of files and last change. " +
       "When the user names a project (by name or id), call open_project before designing.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: projectAnnotations("List projects", true),
@@ -131,8 +143,9 @@ FILE_TOOLS.push(
     name: "open_project",
     title: "Open project",
     description:
-      "Open a project in the Pego editor and make it the active one, by id or by name (exact, case-insensitive, or an unambiguous prefix). " +
-      "The project's design (project.pego in its folder, screens as pages) becomes the active tab; all edit tools work on it. Call save_document after editing.",
+      "Show a project in the Pego window, by id or by name (exact, case-insensitive, or an unambiguous prefix). " +
+      "Not needed just to edit: every tool takes project and then works on that project in the background. " +
+      "The project's design (project.pego in its folder) becomes the shown document; all edit tools work on it. Call save_document after editing.",
     inputSchema: {
       type: "object",
       properties: {
@@ -150,7 +163,7 @@ FILE_TOOLS.push(
     name: "create_project",
     title: "Create project",
     description:
-      "Create a new design project (design/<name>/project.json) and open it in the editor. Returns its id and folder.",
+      "Create a new design project (<design folder>/<name>/project.json) and open it in the editor. Returns its id and folder.",
     inputSchema: {
       type: "object",
       properties: { name: { type: "string", description: "Project name shown on the dashboard." } },
@@ -167,7 +180,10 @@ const openInput = z.strictObject({
   path: z.string().min(1),
   discardUnsaved: z.boolean().optional(),
 });
-const saveInput = z.strictObject({ path: z.string().min(1).optional() });
+const saveInput = z.strictObject({
+  path: z.string().min(1).optional(),
+  project: z.string().min(1).optional(),
+});
 const snapshotSchema = z.object({
   text: z.string(),
   path: z.string().nullable(),
@@ -180,16 +196,27 @@ const fail = (content: string): ToolOutcome => ({ content, isError: true });
 const openDocument = async (input: unknown, callTool: CallTool, source: ToolSource) => {
   const parsed = openInput.safeParse(input);
   if (!parsed.success)
-    return fail("Pass {path: string (absolute .pego/.pen), discardUnsaved?: boolean}.");
+    return fail("Pass {path: string (absolute .pego), discardUnsaved?: boolean}.");
   const { path, discardUnsaved } = parsed.data;
   const text = await readDocumentFile(path);
   return callTool(EDITOR_OPS.loadDocument, { text, path, discardUnsaved }, source);
 };
 
-const saveDocument = async (input: unknown, callTool: CallTool, source: ToolSource) => {
+const saveDocument = async (
+  input: unknown,
+  callTool: CallTool,
+  source: ToolSource,
+  designDir: string | null,
+) => {
   const parsed = saveInput.safeParse(input);
-  if (!parsed.success) return fail("Pass {path?: string (absolute .pego)}.");
-  const snapshot = await callTool(EDITOR_OPS.snapshotDocument, {}, source);
+  if (!parsed.success) return fail("Pass {path?: string (absolute .pego), project?: string}.");
+  let project: ToolTarget | undefined;
+  if (parsed.data.project) {
+    const resolved = await resolveProjectTarget(designDir, parsed.data.project);
+    if ("error" in resolved) return fail(resolved.error);
+    project = resolved.target;
+  }
+  const snapshot = await callTool(EDITOR_OPS.snapshotDocument, {}, source, project);
   if (snapshot.isError) return snapshot;
   const data = snapshotSchema.parse(JSON.parse(snapshot.content));
   const target = parsed.data.path ?? data.path;
@@ -204,6 +231,7 @@ const saveDocument = async (input: unknown, callTool: CallTool, source: ToolSour
     EDITOR_OPS.markSaved,
     { snapshotId: data.snapshotId, path: written },
     source,
+    project,
   );
   const size = `${Math.max(1, Math.round(Buffer.byteLength(data.text) / 1024))} KB`;
   return {
@@ -250,7 +278,7 @@ const listDocuments = async (callTool: CallTool, source: ToolSource, designDir: 
     }
   }
   const folder = projectDir ?? designDir;
-  if (!folder) lines.push("Project: no design/ folder (set PEGO_DESIGN_DIR for the bridge).");
+  if (!folder) lines.push("Project: no design folder (set PEGO_DESIGN_DIR for the bridge).");
   else {
     const files = await listDesignFiles(folder);
     lines.push(`Files in ${folder}:`);
@@ -263,7 +291,7 @@ const listDocuments = async (callTool: CallTool, source: ToolSource, designDir: 
 
 const switchDocument = async (input: unknown, callTool: CallTool, source: ToolSource) => {
   const parsed = z.strictObject({ path: z.string().min(1) }).safeParse(input);
-  if (!parsed.success) return fail("Pass {path: string (absolute .pego/.pen)}.");
+  if (!parsed.success) return fail("Pass {path: string (absolute .pego)}.");
   const switched = await callTool(EDITOR_OPS.switchTab, { path: parsed.data.path }, source);
   if (!switched.isError || !switched.content.startsWith("not_open")) return switched;
   return openDocument({ path: parsed.data.path }, callTool, source);
@@ -283,7 +311,7 @@ const openProjectTool = async (
 ) => {
   const parsed = z.strictObject({ project: z.string().min(1) }).safeParse(input);
   if (!parsed.success) return fail("Pass {project: string (id or name)}.");
-  if (!designDir) return fail("This repository has no design/ folder, so it has no projects.");
+  if (!designDir) return fail("The bridge has no design folder, so there are no projects.");
   const projects = await listProjects(designDir);
   const found = findProject(projects, parsed.data.project);
   if (!("project" in found)) {
@@ -305,7 +333,7 @@ const openProjectTool = async (
   const others = files.filter((file) => file.path !== project.mainFile);
   return {
     content: [
-      `Opened project ${project.name} (id ${project.id}). Its design ${project.mainFile} is the active tab: add screens as pages (create_page) and call save_document when done.`,
+      `Opened project ${project.name} (id ${project.id}). Its design ${project.mainFile} is now shown in the window: add screens as top-level frames and call save_document when done.`,
       ...(others.length
         ? [
             `Other design files in the project:\n${others.map((file) => `- ${file.path}`).join("\n")}`,
@@ -324,7 +352,7 @@ const createProjectTool = async (
 ) => {
   const parsed = z.strictObject({ name: z.string().trim().min(1) }).safeParse(input);
   if (!parsed.success) return fail("Pass {name: string}.");
-  if (!designDir) return fail("This repository has no design/ folder to create projects in.");
+  if (!designDir) return fail("The bridge has no design folder to create projects in.");
   const project = await createProject(designDir, parsed.data.name);
   const opened = await callTool(EDITOR_OPS.openProject, project, source);
   return {
@@ -346,7 +374,7 @@ export const runFileTool = async (
     if (name === "list_documents") return await listDocuments(callTool, source, designDir);
     if (name === "switch_document") return await switchDocument(input, callTool, source);
     if (name === "list_projects") {
-      if (!designDir) return fail("This repository has no design/ folder, so it has no projects.");
+      if (!designDir) return fail("The bridge has no design folder, so there are no projects.");
       const projects = await listProjects(designDir);
       return {
         content: projects.length
@@ -358,7 +386,7 @@ export const runFileTool = async (
     if (name === "open_project") return await openProjectTool(input, callTool, source, designDir);
     if (name === "create_project")
       return await createProjectTool(input, callTool, source, designDir);
-    return await saveDocument(input, callTool, source);
+    return await saveDocument(input, callTool, source, designDir);
   } catch (error) {
     if (error instanceof FileToolError) return fail(error.message);
     return fail(`File tool failed: ${error instanceof Error ? error.message : String(error)}`);
@@ -366,6 +394,10 @@ export const runFileTool = async (
 };
 
 /** Appended to the MCP server instructions when the file tools are available. */
-export const FILE_TOOLS_INSTRUCTIONS = `## Design files
+export const FILE_TOOLS_INSTRUCTIONS = `## Design files and projects
 
-Designs live in the user's repository in design/, one folder per project with a project.json (id, name) and the project's design, project.pego (screens are its pages). When the user names a project by name or id, call open_project first (list_projects shows them; create_project makes one); it opens project.pego as the active tab. list_documents shows the active project, its open tabs and its files. Edits always go to the active tab: use switch_document (or open_document) to work on a named file; to start a new one, build it in a new document and call save_document with a new path (for example <repo>/design/<name>.pego). Call save_document whenever a step is finished, so the file on disk matches the canvas.`;
+Designs live in the Pego design folder (the desktop app uses ~/Documents/Pego; a bridge started from a repository uses its design/ folder), one folder per project with a project.json (id, name) and the project's design, project.pego. list_projects shows them; create_project makes one.
+
+When the user names a project (by name or id, often pasted as "Pego project: <name> (id <id>)" with node ids), pass project: "<id>" to EVERY tool call (get_document, get_node, batch_design, insert_svg, get_screenshot, ...). The tools then work on that project's design in the background, even when the Pego window shows another project, and the edits are saved to its project.pego automatically. Only call open_project when the user wants to see the project in the window.
+
+Without project, tools act on the document shown in the window; list_documents tells which one that is. To work on a loose .pego file, use open_document; save_document writes the shown document (or the project's design with project) to disk.`;

@@ -1,9 +1,9 @@
 import type { ReadResourceResult, Resource } from "@modelcontextprotocol/sdk/types.js";
-import { guides } from "@pego/agent";
+import { skills, skillToMarkdown } from "@pego/agent";
 import type { CallTool, ToolSource } from "./editor-hub";
 
 export const DOCUMENT_URI = "pego://document";
-const GUIDE_PREFIX = "pego://guides/";
+const SKILL_PREFIX = "pego://skills/";
 
 export const listPegoResources = (): Resource[] => [
   {
@@ -13,11 +13,11 @@ export const listPegoResources = (): Resource[] => [
     description: "The serialized document open in the connected Pego editor.",
     mimeType: "text/plain",
   },
-  ...guides.map((guide) => ({
-    uri: `${GUIDE_PREFIX}${guide.id}`,
-    name: guide.id,
-    title: guide.title,
-    description: guide.description,
+  ...skills.map((skill) => ({
+    uri: `${SKILL_PREFIX}${skill.id}`,
+    name: skill.id,
+    title: skill.title,
+    description: `${skill.description} [${skill.core ? "core" : (skill.category ?? "design")}]`,
     mimeType: "text/markdown",
   })),
 ];
@@ -33,8 +33,8 @@ export const readPegoResource = async (
     const text = outcome.isError ? `Error: ${outcome.content}` : outcome.content;
     return { contents: [{ uri, mimeType: "text/plain", text }] };
   }
-  if (!uri.startsWith(GUIDE_PREFIX)) return undefined;
-  const guide = guides.find((entry) => `${GUIDE_PREFIX}${entry.id}` === uri);
-  if (!guide) return undefined;
-  return { contents: [{ uri, mimeType: "text/markdown", text: guide.content }] };
+  if (!uri.startsWith(SKILL_PREFIX)) return undefined;
+  const skill = skills.find((entry) => `${SKILL_PREFIX}${entry.id}` === uri);
+  if (!skill) return undefined;
+  return { contents: [{ uri, mimeType: "text/markdown", text: skillToMarkdown(skill) }] };
 };

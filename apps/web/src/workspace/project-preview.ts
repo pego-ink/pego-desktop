@@ -1,4 +1,4 @@
-import { importPen, pageOrFirst, type PegoDocument } from "@pego/doc";
+import type { PegoDocument } from "@pego/doc";
 import type { ProjectFile, ProjectInfo } from "@pego/agent";
 import { requestProject } from "@/agent/bridge-client";
 import { getLayout } from "@/canvas/layout";
@@ -39,11 +39,6 @@ export const fitPreviewCamera = (
   };
 };
 
-const parse = (text: string, path: string): PegoDocument =>
-  path.toLowerCase().endsWith(".pen")
-    ? importPen(JSON.parse(text), "preview").doc
-    : parseDocumentFile(text);
-
 const bytesToDataUri = (bytes: Uint8Array): string => {
   let binary = "";
   for (let i = 0; i < bytes.length; i += 0x8000) {
@@ -52,24 +47,25 @@ const bytesToDataUri = (bytes: Uint8Array): string => {
   return `data:image/png;base64,${btoa(binary)}`;
 };
 
-/** Render the first page of a document to a PNG data URI (null when the page is empty). */
+/** Render a document to a PNG data URI (null when it is empty). */
 const renderPreview = async (doc: PegoDocument, theme: ResolvedTheme): Promise<string | null> => {
-  const [{ loadCanvasKit }, { renderDocument }, { requestDocumentFonts }] = await Promise.all([
-    import("@/canvas/load-canvaskit"),
-    import("@/canvas/render-document"),
-    import("@/canvas/fonts"),
-  ]);
+  const [{ loadCanvasKit }, { renderDocument }, { collectFontFaces }, { ensureFontFace }] =
+    await Promise.all([
+      import("@/canvas/load-canvaskit"),
+      import("@/canvas/render-document"),
+      import("@/fonts/use-document-fonts"),
+      import("@/fonts/font-service"),
+    ]);
   const res = await loadCanvasKit();
-  await requestDocumentFonts(res.fonts, doc, res.fontFamily);
+  // The document's fonts first, so the thumbnail shows the real typography.
+  await Promise.all(collectFontFaces(doc).map(ensureFontFace));
   const layout = getLayout(doc);
-  const page = pageOrFirst(doc);
-  const bounds = contentBounds(doc, layout, page.id);
+  const bounds = contentBounds(doc, layout);
   if (!bounds) return null;
   const surface = res.ck.MakeSurface(PREVIEW_WIDTH, PREVIEW_HEIGHT);
   if (!surface) return null;
   try {
     renderDocument(res, surface.getCanvas(), doc, layout, fitPreviewCamera(bounds), {
-      pageId: page.id,
       background: CANVAS_BACKGROUND[theme],
     });
     surface.flush();
@@ -89,7 +85,7 @@ const cache = new Map<string, Promise<ProjectPreview>>();
 let queue: Promise<unknown> = Promise.resolve();
 
 /**
- * Preview of a project's latest design. Cached per project change time and theme; renders run
+ * Preview of a project's design. Cached per project change time and theme; renders run
  * one at a time so a dashboard full of projects does not spike WASM memory.
  */
 export const getProjectPreview = (
@@ -108,7 +104,7 @@ export const getProjectPreview = (
       files.find((candidate) => candidate.path === project.mainFile) ?? previewFile(files);
     if (!file) return { image: null, file: null };
     const read = await requestProject("read", file.path);
-    const image = await renderPreview(parse(read.text ?? "", file.path), theme);
+    const image = await renderPreview(parseDocumentFile(read.text ?? ""), theme);
     return image ? { image, file: file.relativePath } : { image: null, file: file.relativePath };
   })();
   const run = queue.then(() => job);

@@ -1,9 +1,9 @@
-import { createId, importPen, type PegoDocument } from "@pego/doc";
+import { createId, type PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { contentBounds } from "@/interaction/camera";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
-import { FILE_EXTENSION, parseDocumentFile, serializeDocument } from "./file-format";
+import { parseDocumentFile, serializeDocument } from "./file-format";
 import {
   documentTitle,
   findTabByPath,
@@ -31,24 +31,16 @@ type Json = Record<string, unknown>;
 const isObject = (value: unknown): value is Json =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
-/** A freshly loaded document shows its first page. */
+/** A freshly loaded document is fitted to the view. */
 const zoomToDocument = (doc: PegoDocument) =>
-  useViewportStore.getState().zoomToFit(contentBounds(doc, getLayout(doc), null));
+  useViewportStore.getState().zoomToFit(contentBounds(doc, getLayout(doc)));
 
 const describe = (doc: PegoDocument) => {
-  const pages = doc.children.map((page) => {
-    const names = page.children.map((node) => node.name ?? node.type);
-    const shown = names.slice(0, 6).join(", ");
-    return `page "${page.name}": ${names.length} top-level node(s)${shown ? ` (${shown}${names.length > 6 ? ", ..." : ""})` : ""}`;
-  });
-  return pages.join("; ");
+  const names = doc.children.map((node) => node.name ?? node.type);
+  const shown = names.slice(0, 6).join(", ");
+  return `${names.length} top-level node(s)${shown ? ` (${shown}${names.length > 6 ? ", ..." : ""})` : ""}`;
 };
 
-/**
- * Open a design file's text (read from disk by the bridge) in a tab. A file that is already open
- * is shown again; its tab is reloaded from disk unless it has unsaved changes (or `reload` is
- * false). `.pen` files import as an unsaved document that saves next to them as `.pego`.
- */
 const BUSY: OpOutcome = {
   content: "The editor is busy with an agent run; try again when it finishes.",
   isError: true,
@@ -66,8 +58,7 @@ const unsavedOutcome = (policy: UnsavedPolicy): OpOutcome =>
 /**
  * Show a design file's text (read from disk by the bridge) as the workspace's document. The file
  * already shown is reloaded from disk unless it has unsaved changes (or `reload` is false).
- * `.pen` files import as an unsaved document that saves next to them as `.pego`. `unsaved` says
- * what happens to unsaved changes of another document shown now.
+ * `unsaved` says what happens to unsaved changes of another document shown now.
  */
 export const openDocumentText = (
   text: string,
@@ -77,35 +68,6 @@ export const openDocumentText = (
   const policy: UnsavedPolicy = options.discardUnsaved ? "discard" : (options.unsaved ?? "ask");
   const name = fileNameOf(path);
   try {
-    if (path.toLowerCase().endsWith(".pen")) {
-      const base = name.replace(/\.pen$/i, "");
-      // The .pen file is never written; saving goes to a .pego next to it.
-      const target = path.replace(/\.pen$/i, FILE_EXTENSION);
-      const existing = findTabByPath(target);
-      if (existing) {
-        switchTab(existing.id);
-        return {
-          content: `${fileNameOf(target)} is already open (from ${name}); showing it.`,
-          isError: false,
-        };
-      }
-      const { doc, warnings } = importPen(JSON.parse(text), base);
-      const result = openTab(
-        doc,
-        { fileName: `${base}${FILE_EXTENSION}`, bridgePath: target },
-        { saved: false, unsaved: policy },
-      );
-      if (result === "busy") return BUSY;
-      if (result === "unsaved") return unsavedOutcome(policy);
-      const notes = warnings.map((w) => `- ${w.message}${w.count > 1 ? ` (${w.count}x)` : ""}`);
-      return {
-        content: [
-          `Imported ${name} (${describe(doc)}). It is unsaved; save_document writes ${target}.`,
-          ...(notes.length > 0 ? ["Not converted:", ...notes] : []),
-        ].join("\n"),
-        isError: false,
-      };
-    }
     const doc = parseDocumentFile(text);
     const existing = findTabByPath(path);
     if (existing) {

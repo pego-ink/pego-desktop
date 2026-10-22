@@ -1,13 +1,12 @@
 import { z } from "zod";
-import { findLocation, findRenderedNode, type Layout, type PegoDocument } from "@pego/doc";
-import { exportHtml } from "@pego/export";
+import { findLocation, type Layout, type PegoDocument } from "@pego/doc";
 import { checkLayout } from "./inspect/check-layout";
 import { findEmptySpace } from "./inspect/empty-space";
 import { findNodes, searchIcons } from "./inspect/search";
-import { findGuide, guides } from "./guides/index";
 import { serializeDocument } from "./serialize";
+import { coreSkill, findSkill, skills, type Skill } from "./skills/index";
 import { findStyle, stylePresets } from "./styles/index";
-import { defineTool, ok, okText, ToolError } from "./tool-kit";
+import { defineTool, ok, ToolError } from "./tool-kit";
 import type { ToolHost, ToolResult, ToolSpec } from "./types";
 
 const id = z.string().min(1);
@@ -109,64 +108,11 @@ const getScreenshot = defineTool({
   },
 });
 
-const MIME_EXTENSIONS: Record<string, string> = {
-  "image/png": "png",
-  "image/jpeg": "jpg",
-  "image/webp": "webp",
-  "image/gif": "gif",
-};
-
-const getCode = defineTool({
-  name: "get_code",
-  description:
-    "Get a node (usually a screen or section frame) as a standalone HTML page with CSS: flex frames become flexbox, variables become CSS custom properties, gradients/shadows/blur become CSS, icons inline SVG, instances are expanded. " +
-    "Use it to implement a Pego design in code: translate the result into the project's framework and conventions (components, Tailwind, design tokens) instead of pasting it verbatim. " +
-    "Image fills are referenced by file name (images/image-N.ext) and listed in the result; the user can export them from Pego.",
-  inputSchema: {
-    type: "object",
-    properties: {
-      nodeId: { type: "string", minLength: 1, description: "Node to export with its subtree." },
-    },
-    required: ["nodeId"],
-    additionalProperties: false,
-  },
-  schema: z.strictObject({ nodeId: id }),
-  inputHint: "Pass {nodeId: string}.",
-  run: (input, host) => {
-    const doc = host.getDoc();
-    if (!findRenderedNode(doc, input.nodeId)) {
-      throw new ToolError(
-        "node_not_found",
-        `node "${input.nodeId}" not found`,
-        "Call get_document or find_nodes to see the current ids.",
-      );
-    }
-    const images = new Map<string, string>();
-    const html = exportHtml(doc, requireLayout(host), input.nodeId, {
-      icon: (name) => host.iconMarkup?.(name) ?? null,
-      imageUrl: (src) => {
-        const known = images.get(src);
-        if (known) return known;
-        const mime = src.slice(5, src.indexOf(";"));
-        const name = `images/image-${images.size + 1}.${MIME_EXTENSIONS[mime] ?? "png"}`;
-        images.set(src, name);
-        return name;
-      },
-    });
-    const notes = [...images].map(
-      ([src, name], i) =>
-        `${name}: image fill #${i + 1} (${Math.round((src.length * 3) / 4 / 1024)} KB)`,
-    );
-    const content = notes.length > 0 ? `${html}<!-- images:\n${notes.join("\n")}\n-->\n` : html;
-    return { content, isError: false };
-  },
-});
-
 const checkLayoutTool = defineTool({
   name: "check_layout",
   description:
     "Analyze the document layout for problems and return a compact list of issues {severity, nodeId, name, issue, hint}, errors first, at most 50, plus a one-line summary. " +
-    "Detects: children overflowing their parent (and whether it clips), text that needs more height than its fixed height, zero-size nodes, partially overlapping siblings in layout none frames, x/y set on flex children (ignored), text contrast below WCAG AA against what is painted below it (ancestor fills and shapes it sits on), fill_container inside a parent that hugs on the same axis, and empty frames. " +
+    "Detects: children overflowing their parent (and whether it clips), text that needs more height than its fixed height, zero-size nodes, partially overlapping siblings in layout none frames, x/y set on flex children (ignored), text contrast below WCAG AA against the nearest ancestor fill, fill_container inside a parent that hugs on the same axis, and empty frames. " +
     "Run it after building each section (pass the section's nodeId) and once on the whole document at the end. Fix issues with update_node and run it again.",
   inputSchema: {
     type: "object",
@@ -223,7 +169,7 @@ const findEmptySpaceTool = defineTool({
     const layout = requireLayout(host);
     const doc = host.getDoc();
     if (input.nearNodeId) requireIds(doc, [input.nearNodeId]);
-    const placement = findEmptySpace(doc, layout, input, host.getActivePageId?.());
+    const placement = findEmptySpace(doc, layout, input);
     return ok({
       x: round(placement.x),
       y: round(placement.y),
@@ -400,42 +346,112 @@ const searchIconsTool = defineTool({
   },
 });
 
-// --- guides and styles -------------------------------------------------------------
+// --- skills and styles -------------------------------------------------------------
+
+const skillIds = (): string => skills.map((skill) => skill.id).join(", ") || "none yet";
+
+const skillSummary = (skill: Skill) => ({
+  id: skill.id,
+  title: skill.title,
+  description: skill.description,
+  category: skill.core ? "core" : (skill.category ?? "design"),
+  styles: skill.styles,
+  ...(skill.core ? { core: true } : {}),
+});
+
+const skillDetail = (skill: Skill) => ({
+  ...skillSummary(skill),
+  content: skill.content,
+  checklist: skill.checklist,
+});
+
+const unknownSkill = (what: string, name: string): ToolError =>
+  new ToolError(
+    what,
+    `no skill named "${name}"`,
+    `Available: ${skillIds()}. Call list_skills to see them.`,
+  );
+
+const listSkills = defineTool({
+  name: "list_skills",
+  description:
+    "List the Pego skills (id, title, category, description, suggested style ids). Categories: core (applies to every design), design (the kind of design: landing page, dashboard...) and style (a visual language such as Bauhaus or Swiss: typography, color, composition). Pass category to filter. Pick the design skill for the structure and, when the request names a style, the style skill; then call get_skill for them before building.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      category: {
+        type: "string",
+        enum: ["design", "style"],
+        description: "Only list skills of this category.",
+      },
+    },
+    additionalProperties: false,
+  },
+  schema: z.strictObject({ category: z.enum(["design", "style"]).optional() }),
+  inputHint: 'Optional {category: "design" | "style"}.',
+  run: (input) =>
+    ok({
+      skills: skills
+        .filter(
+          (skill) =>
+            !input.category || (!skill.core && (skill.category ?? "design") === input.category),
+        )
+        .map(skillSummary),
+    }),
+});
+
+const getSkill = defineTool({
+  name: "get_skill",
+  description:
+    "Get one design skill: its full guidance, the checklist to verify before reporting done, and suggested style ids. " +
+    `Skills: ${skillIds()}. ` +
+    "The core skill applies to every design: read it once per task, plus the skill for the kind of design, before building.",
+  inputSchema: {
+    type: "object",
+    properties: { id: { type: "string", minLength: 1, description: "Skill id from list_skills." } },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({ id: z.string().min(1) }),
+  inputHint: "Pass {id: string}, a skill id from list_skills.",
+  run: (input) => {
+    const skill = findSkill(input.id);
+    if (!skill) throw unknownSkill("unknown_skill", input.id);
+    return ok(skillDetail(skill));
+  },
+});
+
+/** Topics of the retired guides mapped to the skill that now covers them. */
+const LEGACY_TOPICS: Record<string, string> = {
+  overview: "core",
+  "typography-and-color": "core",
+  "components-and-tokens": "design-system",
+};
+
+const resolveLegacyTopic = (topic: string): Skill | undefined => {
+  const key = topic.trim().toLowerCase();
+  if (key === "core" || key === "overview" || key === "typography-and-color") {
+    return coreSkill() ?? findSkill(LEGACY_TOPICS[key] ?? key);
+  }
+  return findSkill(LEGACY_TOPICS[key] ?? key);
+};
 
 const getGuidelines = defineTool({
   name: "get_guidelines",
   description:
-    "Design guidance written for Pego. Without topic it lists the guides; with a topic it returns the full guide. " +
-    `Topics: ${guides.map((guide) => guide.id).join(", ")}. ` +
-    "Read overview once per task, plus the guide for the kind of design (web-app, mobile-app, landing-page, dashboard), before building.",
+    "Deprecated alias of the skills: without topic it lists the skills (same as list_skills); with a topic (a skill id; overview means core) it returns that skill (same as get_skill). Prefer list_skills and get_skill.",
   inputSchema: {
     type: "object",
-    properties: {
-      topic: { type: "string", enum: guides.map((guide) => guide.id), description: "Guide id." },
-    },
+    properties: { topic: { type: "string", description: "Skill id, or the legacy topic name." } },
     additionalProperties: false,
   },
   schema: z.strictObject({ topic: z.string().min(1).optional() }),
-  inputHint: `Optional {topic}: one of ${guides.map((guide) => guide.id).join(", ")}.`,
+  inputHint: "Optional {topic}: a skill id. Prefer get_skill.",
   run: (input) => {
-    if (input.topic === undefined) {
-      return ok({
-        guides: guides.map(({ id: guideId, title, description }) => ({
-          id: guideId,
-          title,
-          description,
-        })),
-      });
-    }
-    const guide = findGuide(input.topic);
-    if (!guide) {
-      throw new ToolError(
-        "unknown_topic",
-        `no guide named "${input.topic}"`,
-        `Available: ${guides.map((g) => g.id).join(", ")}.`,
-      );
-    }
-    return okText(guide.content);
+    if (input.topic === undefined) return ok({ skills: skills.map(skillSummary) });
+    const skill = resolveLegacyTopic(input.topic);
+    if (!skill) throw unknownSkill("unknown_topic", input.topic);
+    return ok(skillDetail(skill));
   },
 });
 
@@ -490,10 +506,9 @@ const getStyle = defineTool({
   },
 });
 
-/** Eyes and context: screenshots, layout checks, search, selection, viewport, icons, guides, styles. */
+/** Eyes and context: screenshots, layout checks, search, selection, viewport, icons, skills, styles. */
 export const inspectTools: ToolSpec[] = [
   getScreenshot,
-  getCode,
   checkLayoutTool,
   findEmptySpaceTool,
   findNodesTool,
@@ -501,6 +516,8 @@ export const inspectTools: ToolSpec[] = [
   setSelectionTool,
   focusNodesTool,
   searchIconsTool,
+  listSkills,
+  getSkill,
   getGuidelines,
   listStyles,
   getStyle,

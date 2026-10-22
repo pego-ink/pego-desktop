@@ -10,6 +10,11 @@ const estimateText: TextMeasurer = (node, maxWidth) => {
 let measureText: TextMeasurer = estimateText;
 let cache = new WeakMap<PegoDocument, Layout>();
 
+/** Drop cached layouts, e.g. after a web font finished loading and text metrics changed. */
+export const invalidateLayout = () => {
+  cache = new WeakMap();
+};
+
 /** Register the CanvasKit-backed text measurer. Invalidates cached layouts. */
 export const setTextMeasurer = (measurer: TextMeasurer) => {
   measureText = measurer;

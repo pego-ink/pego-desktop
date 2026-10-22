@@ -1,41 +1,33 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
-import { applyOp, findNode, isContainer, type PegoDocument } from "@pego/doc";
+import { applyOp, type PegoDocument } from "@pego/doc";
 import { buildMoveOp, dropZoneAt } from "./drop-position";
 
 const rect = (id: string) => ({ type: "rectangle" as const, id, x: 0, y: 0 });
 const doc: PegoDocument = {
-  version: 2,
+  version: 0,
   id: "d",
   name: "d",
   variables: {},
   children: [
     {
-      type: "page",
-      id: "page-1",
-      name: "Page 1",
+      type: "frame",
+      id: "f1",
       x: 0,
       y: 0,
-      children: [
-        {
-          type: "frame",
-          id: "f1",
-          x: 0,
-          y: 0,
-          layout: "none",
-          children: [rect("a"), rect("b"), rect("c")],
-        },
-        { type: "frame", id: "f2", x: 0, y: 0, layout: "none", children: [] },
-        rect("r"),
-      ],
+      layout: "none",
+      children: [rect("a"), rect("b"), rect("c")],
     },
+    { type: "frame", id: "f2", x: 0, y: 0, layout: "none", children: [] },
+    rect("r"),
   ],
 };
 
-const ids = (d: PegoDocument, parent: string) => {
-  const node = findNode(d, parent);
-  return node && isContainer(node) ? node.children.map((n) => n.id) : [];
-};
+const ids = (d: PegoDocument, parent: string | null) =>
+  (parent === null
+    ? d.children
+    : (d.children.find((n) => n.id === parent) as never as { children: { id: string }[] }).children
+  ).map((n: { id: string }) => n.id);
 
 describe("dropZoneAt", () => {
   test("non-containers split in halves", () => {
@@ -89,7 +81,7 @@ describe("buildMoveOp", () => {
     expect(buildMoveOp(doc, "a", "r", "after")).toEqual({
       op: "move",
       id: "a",
-      parentId: "page-1",
+      parentId: null,
       index: 3,
     });
   });

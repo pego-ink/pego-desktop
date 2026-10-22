@@ -1,115 +1,133 @@
-import { mkdtemp, rm } from "node:fs/promises";
+import { randomBytes } from "node:crypto";
+import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
-import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
-import { agentTools, CLAUDE_CODE_SYSTEM, type RunEvent } from "@pego/agent";
-import { SDK_SERVER_NAME } from "./config";
+import { join, sep } from "node:path";
+import {
+  CLAUDE_CODE_SYSTEM,
+  type LocalAgentId,
+  type RunAttachment,
+  type RunEvent,
+} from "@pego/agent";
+import { attachmentPromptNote, writeAttachments } from "./attachments";
+import { agentAdapters } from "./agents/registry";
+import { buildChildEnv } from "./agents/env";
+import type { AgentAdapter } from "./agents/types";
 import type { CallTool } from "./editor-hub";
 import { createPegoMcpServer } from "./mcp";
-import { resolveClaudeExecutable } from "./claude-code";
-import { createMapState, describeRunFailure, mapSdkMessage } from "./run-events";
 
-const MAX_TURNS = 60;
+const WORKDIR_PREFIX = "pego-run-";
+const RUN_TOKEN_PATTERN = /^[A-Za-z0-9_-]{32,128}$/;
 
-/** Env for the Claude Code child: keep the user's login, drop API-key overrides. */
-const childEnv = (): Record<string, string | undefined> => {
-  const env: Record<string, string | undefined> = { ...process.env };
-  delete env.ANTHROPIC_API_KEY;
-  delete env.ANTHROPIC_AUTH_TOKEN;
-  env.CLAUDE_AGENT_SDK_CLIENT_APP = "pego-bridge/0.0.0";
-  return env;
+export type RunRequest = {
+  runId: string;
+  prompt: string;
+  agentId: LocalAgentId;
+  model?: string;
+  /** Validated composer images; written to the run's workdir before the adapter starts. */
+  attachments?: RunAttachment[];
+};
+
+export type RunManagerDeps = {
+  callTool: CallTool;
+  emit: (runId: string, event: RunEvent) => void;
+  /** Origin the run-scoped MCP endpoint is served from, e.g. `http://127.0.0.1:4519`. */
+  mcpOrigin: () => string;
+  /** Defaults to every registered adapter. */
+  adapters?: AgentAdapter[];
+  /** Environment the child env is derived from (default: the bridge's own). */
+  baseEnv?: () => Record<string, string | undefined>;
+  /** Parent of the per-run temp directories (default: the OS temp dir). */
+  tmpRoot?: string;
+};
+
+/** Pull the run token out of `/mcp/run/<token>`; `undefined` when the path has another shape. */
+export const parseRunMcpPath = (pathname: string): string | undefined => {
+  const prefix = "/mcp/run/";
+  if (!pathname.startsWith(prefix)) return undefined;
+  const token = pathname.slice(prefix.length);
+  return RUN_TOKEN_PATTERN.test(token) ? token : undefined;
 };
 
 /**
- * Agent SDK options: only Pego's tools exist (built-ins disabled, `dontAsk` denies the rest),
- * no settings/CLAUDE.md/skills are loaded, nothing is persisted, and the process runs in an
- * empty scratch directory.
+ * One local-agent run at a time. Per run: an empty temp workdir (removed afterwards), an
+ * unguessable run-scoped MCP token (valid only while the run is active) and a child env with
+ * API keys stripped. Cancellation aborts the adapter, which kills the CLI's process tree.
  */
-export const buildQueryOptions = (input: {
-  cwd: string;
-  abortController: AbortController;
-  mcpServer: ReturnType<typeof createPegoMcpServer>;
-  executable?: string;
-}): Options => ({
-  abortController: input.abortController,
-  cwd: input.cwd,
-  systemPrompt: CLAUDE_CODE_SYSTEM,
-  tools: [],
-  allowedTools: agentTools.map((tool) => `mcp__${SDK_SERVER_NAME}__${tool.name}`),
-  mcpServers: {
-    [SDK_SERVER_NAME]: { type: "sdk", name: SDK_SERVER_NAME, instance: input.mcpServer },
-  },
-  strictMcpConfig: true,
-  permissionMode: "dontAsk",
-  settingSources: [],
-  persistSession: false,
-  maxTurns: MAX_TURNS,
-  env: childEnv(),
-  ...(input.executable ? { pathToClaudeCodeExecutable: input.executable } : {}),
-});
-
-type RunManagerDeps = {
-  callTool: CallTool;
-  emit: (runId: string, event: RunEvent) => void;
-  /** Injectable for tests; defaults to the real Agent SDK. */
-  runQuery?: typeof query;
-};
-
-/** One Agent SDK run at a time; cancellation via AbortController. */
 export const createRunManager = (deps: RunManagerDeps) => {
-  const runQuery = deps.runQuery ?? query;
+  const adapters = deps.adapters ?? agentAdapters;
+  const tokens = new Map<string, string>();
   let active: { runId: string; abort: AbortController } | null = null;
 
-  const start = (runId: string, prompt: string): void => {
+  const start = (request: RunRequest): void => {
+    const { runId } = request;
     if (active) {
       deps.emit(runId, { kind: "error", message: "Another run is already in progress." });
       return;
     }
+    const adapter = adapters.find((candidate) => candidate.id === request.agentId);
+    if (!adapter) {
+      deps.emit(runId, { kind: "error", message: `Unknown agent "${request.agentId}".` });
+      return;
+    }
     const abort = new AbortController();
     active = { runId, abort };
-    void execute(runId, prompt, abort).finally(() => {
+    void execute(request, adapter, abort).finally(() => {
       if (active?.runId === runId) active = null;
     });
   };
 
-  const execute = async (runId: string, prompt: string, abort: AbortController) => {
-    const state = createMapState();
+  const execute = async (request: RunRequest, adapter: AgentAdapter, abort: AbortController) => {
+    const { runId } = request;
     let finished = false;
     const emit = (event: RunEvent) => {
-      if (event.kind === "done" || event.kind === "error") {
-        if (finished) return;
-        finished = true;
-      }
+      if (finished) return;
+      if (event.kind === "done" || event.kind === "error") finished = true;
       deps.emit(runId, event);
     };
-    let scratch: string | undefined;
+    const token = randomBytes(32).toString("base64url");
+    let workdir: string | undefined;
+    let root: string | undefined;
     try {
-      scratch = await mkdtemp(join(tmpdir(), "pego-bridge-run-"));
-      const mcpServer = createPegoMcpServer({
-        callTool: deps.callTool,
-        source: () => ({ kind: "run", runId }),
+      root = await realpath(deps.tmpRoot ?? tmpdir());
+      workdir = await mkdtemp(join(root, WORKDIR_PREFIX));
+      const attachments = await writeAttachments(workdir, request.attachments ?? []);
+      tokens.set(token, runId);
+      await adapter.run({
+        runId,
+        prompt: `${request.prompt}${attachmentPromptNote(attachments)}`,
+        ...(attachments.length > 0 ? { attachments } : {}),
+        ...(request.model ? { model: request.model } : {}),
+        mcpUrl: `${deps.mcpOrigin()}/mcp/run/${token}`,
+        systemPrompt: CLAUDE_CODE_SYSTEM,
+        workdir,
+        env: buildChildEnv(deps.baseEnv?.() ?? process.env),
+        createMcpServer: () =>
+          createPegoMcpServer({
+            callTool: deps.callTool,
+            source: () => ({ kind: "run", runId }),
+          }),
+        signal: abort.signal,
+        emit,
       });
-      const stream = runQuery({
-        prompt,
-        options: buildQueryOptions({
-          cwd: scratch,
-          abortController: abort,
-          mcpServer,
-          executable: resolveClaudeExecutable(),
-        }),
+      emit({
+        kind: "error",
+        message: abort.signal.aborted
+          ? "Run cancelled."
+          : `${adapter.name} ended without a result.`,
       });
-      for await (const message of stream as AsyncIterable<SDKMessage>) {
-        for (const event of mapSdkMessage(message, state)) emit(event);
-      }
-      if (abort.signal.aborted) emit({ kind: "error", message: "Run cancelled." });
-      else emit({ kind: "error", message: "Claude Code ended without a result." });
     } catch (error) {
       emit({
         kind: "error",
-        message: abort.signal.aborted ? "Run cancelled." : describeRunFailure(error),
+        message: abort.signal.aborted
+          ? "Run cancelled."
+          : `${adapter.name} failed: ${error instanceof Error ? error.message : String(error)}`.slice(
+              0,
+              500,
+            ),
       });
     } finally {
-      if (scratch) await rm(scratch, { recursive: true, force: true }).catch(() => undefined);
+      tokens.delete(token);
+      if (workdir && root) await removeWorkdir(workdir, root);
     }
   };
 
@@ -119,7 +137,35 @@ export const createRunManager = (deps: RunManagerDeps) => {
 
   const cancelAll = (): void => active?.abort.abort();
 
-  return { start, cancel, cancelAll, isRunning: () => active !== null };
+  /** Resolves once no run is active (after its process tree is gone and its workdir removed). */
+  const whenIdle = async (timeoutMs = 5000): Promise<void> => {
+    const deadline = Date.now() + timeoutMs;
+    while (active && Date.now() < deadline) await Bun.sleep(20);
+  };
+
+  return {
+    start,
+    cancel,
+    cancelAll,
+    whenIdle,
+    isRunning: () => active !== null,
+    /** The run a `/mcp/run/<token>` request belongs to, or `undefined` (unknown / run over). */
+    resolveRunToken: (token: string): { runId: string } | undefined => {
+      const runId = tokens.get(token);
+      return runId === undefined ? undefined : { runId };
+    },
+  };
+};
+
+/** Delete a directory this module created, after re-checking it sits directly under `root`. */
+const removeWorkdir = async (workdir: string, root: string): Promise<void> => {
+  const resolved = await realpath(workdir).catch(() => undefined);
+  if (!resolved) return;
+  const name = resolved.slice(root.length + 1);
+  const safe =
+    resolved.startsWith(root + sep) && name.startsWith(WORKDIR_PREFIX) && !name.includes(sep);
+  if (!safe) return;
+  await rm(resolved, { recursive: true, force: true }).catch(() => undefined);
 };
 
 export type RunManager = ReturnType<typeof createRunManager>;

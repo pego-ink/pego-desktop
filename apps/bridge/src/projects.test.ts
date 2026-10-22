@@ -23,7 +23,7 @@ describe("projects", () => {
       mainFile: join(shop.dir, "project.pego"),
     });
     const design = JSON.parse(await readFile(shop.mainFile, "utf8"));
-    expect(design).toMatchObject({ format: "pego", version: 2, document: { name: "Kirimi Shop" } });
+    expect(design).toMatchObject({ format: "pego", version: 0, document: { name: "Kirimi Shop" } });
     expect(again.relativeDir).toBe("kirimi-shop-2");
     expect(shop.id).toMatch(/^[a-z0-9]{8}$/);
     const meta = JSON.parse(await readFile(join(shop.dir, "project.json"), "utf8"));
@@ -62,7 +62,7 @@ describe("projects", () => {
       root,
     );
     expect(open.content).toStartWith("Opened project Kirimi Shop");
-    expect(open.content).toContain("project.pego is the active tab");
+    expect(open.content).toContain("project.pego is now shown in the window");
     expect(open.content).toContain("Other design files in the project:");
     expect(open.content).toContain("home.pego");
     expect(opened[0]).toMatchObject({ name: "Kirimi Shop" });

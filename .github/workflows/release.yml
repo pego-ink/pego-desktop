@@ -1,8 +1,7 @@
 name: Release
 
-# Push a tag like v0.1.0 (must equal apps/desktop/package.json version). macOS builds are signed
-# and notarized; Linux (AppImage, deb) and Windows (NSIS installer) builds are unsigned for now.
-# All of them are attached to one DRAFT release. Publish it manually afterwards.
+# Push a tag like v0.1.0 (must equal apps/desktop/package.json version). The job builds, signs,
+# notarizes and attaches the DMGs/zips to a DRAFT release. Publish it manually afterwards.
 on:
   push:
     tags: ["v*"]
@@ -95,83 +94,19 @@ jobs:
             echo "NOTARIZED OK: ${dmg} (Developer ID, stapled, Gatekeeper accepts)"
           done
 
-      - uses: actions/upload-artifact@v4
-        with:
-          name: macos
-          path: |
-            apps/desktop/release/Pego-*.dmg
-            apps/desktop/release/Pego-*.zip
-          if-no-files-found: error
-
-  linux:
-    runs-on: ubuntu-latest
-    timeout-minutes: 45
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check tag matches app version
-        run: |
-          version="$(node -p 'require("./apps/desktop/package.json").version')"
-          [ "v${version}" = "${{ github.ref_name }}" ] || { echo "::error::tag does not match ${version}"; exit 1; }
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
-      - run: bun install --frozen-lockfile
-      - name: Build AppImage and deb (x64)
-        working-directory: apps/desktop
-        run: bun run scripts/build.ts --linux --x64 --publish never
-      - uses: actions/upload-artifact@v4
-        with:
-          name: linux
-          path: |
-            apps/desktop/release/Pego-*.AppImage
-            apps/desktop/release/*.deb
-          if-no-files-found: error
-
-  windows:
-    runs-on: windows-latest
-    timeout-minutes: 45
-    defaults:
-      run:
-        shell: bash
-    steps:
-      - uses: actions/checkout@v4
-      - name: Check tag matches app version
-        run: |
-          version="$(node -p 'require("./apps/desktop/package.json").version')"
-          [ "v${version}" = "${{ github.ref_name }}" ] || { echo "::error::tag does not match ${version}"; exit 1; }
-      - uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: 1.3.11
-      - run: bun install --frozen-lockfile
-      - name: Build NSIS installer (x64)
-        working-directory: apps/desktop
-        run: bun run scripts/build.ts --win --x64 --publish never
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows
-          path: apps/desktop/release/Pego-*.exe
-          if-no-files-found: error
-
-  release:
-    needs: [macos, linux, windows]
-    runs-on: ubuntu-latest
-    env:
-      TAG: ${{ github.ref_name }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/download-artifact@v4
-        with:
-          path: dist
-          merge-multiple: true
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -l dist
+          # Versions with a pre-release suffix (e.g. 0.0.1-beta) are marked as pre-releases.
+          prerelease=()
+          case "${VERSION}" in *-*) prerelease=(--prerelease) ;; esac
           gh release create "${TAG}" \
             --draft \
+            "${prerelease[@]}" \
             --verify-tag \
             --title "${TAG}" \
             --generate-notes \
-            dist/*
+            apps/desktop/release/Pego-*.dmg \
+            apps/desktop/release/Pego-*.zip
           echo "Draft release ${TAG} created. Review it, then publish: gh release edit ${TAG} --draft=false"

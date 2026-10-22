@@ -13,7 +13,7 @@ import {
 describe("file format", () => {
   test("round trips the showcase doc", () => {
     const text = serializeDocument(showcaseDoc);
-    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 2 });
+    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 0 });
     expect(parseDocumentFile(text)).toEqual(documentSchema.parse(showcaseDoc));
   });
 
@@ -23,32 +23,8 @@ describe("file format", () => {
 
   test("rejects wrong format and version", () => {
     expect(() => parseDocumentFile(JSON.stringify({ format: "x" }))).toThrow(FileFormatError);
-    const newer = JSON.stringify({ format: "pego", version: 9, document: {} });
-    expect(() => parseDocumentFile(newer)).toThrow(/newer Pego \(file version 9/);
-    const bogus = JSON.stringify({ format: "pego", version: "1", document: {} });
-    expect(() => parseDocumentFile(bogus)).toThrow(/Unsupported Pego file version "1"/);
-  });
-
-  test("opens version 0 files by migrating them", () => {
-    const text = JSON.stringify({
-      format: "pego",
-      version: 0,
-      document: {
-        version: 0,
-        id: "d",
-        name: "Old",
-        children: [{ type: "rectangle", id: "r", width: 10, height: 10, fill: "#fff" }],
-      },
-    });
-    const doc = parseDocumentFile(text);
-    expect(doc.version).toBe(2);
-    expect(doc.children).toHaveLength(1);
-    expect(doc.children[0]).toMatchObject({ type: "page", name: "Page 1" });
-    expect(doc.children[0]!.children[0]).toMatchObject({
-      id: "r",
-      type: "rectangle",
-      fill: "#fff",
-    });
+    const wrongVersion = JSON.stringify({ format: "pego", version: 9, document: {} });
+    expect(() => parseDocumentFile(wrongVersion)).toThrow(/version 9/);
   });
 
   test("rejects schema errors with the first issues", () => {
@@ -63,9 +39,7 @@ describe("file format", () => {
   test("empty document has one 1440x1024 white frame", () => {
     const doc = createEmptyDocument();
     expect(doc.children).toHaveLength(1);
-    expect(doc.children[0]).toMatchObject({ type: "page", name: "Page 1" });
-    expect(doc.children[0]!.children).toHaveLength(1);
-    expect(doc.children[0]!.children[0]).toMatchObject({
+    expect(doc.children[0]).toMatchObject({
       type: "frame",
       name: "Frame",
       width: 1440,

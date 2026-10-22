@@ -1,14 +1,15 @@
 import {
   BRIDGE_DEFAULT_PORT,
   BRIDGE_PROTOCOL_VERSION,
-  BRIDGE_REPLACED_CLOSE_CODE,
   type BridgeToEditor,
   type EditorToBridge,
+  type LocalAgentInfo,
 } from "@pego/agent";
-import { toast } from "sonner";
+import { isLocalAgentId } from "./agent-prefs";
 import { DEFAULT_FILE_NAME } from "@/persistence/file-format";
 import { useFileStore } from "@/persistence/use-file-store";
 import { createBridgeHandlers } from "./bridge-handlers";
+import { useAgentStore } from "./use-agent-store";
 
 /** The subset of `WebSocket` the client uses (a fake implements it in tests). */
 export type SocketLike = {
@@ -16,19 +17,29 @@ export type SocketLike = {
   close: () => void;
   onopen: (() => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
-  onclose: ((event?: { code?: number }) => void) | null;
+  onclose: ((event?: { code?: number; reason?: string }) => void) | null;
   onerror: (() => void) | null;
 };
 
+/** The slice of `window` / `document` used to detect focus (fakes implement it in tests). */
+export type EventTargetLike = {
+  addEventListener: (type: string, listener: () => void) => void;
+  removeEventListener: (type: string, listener: () => void) => void;
+};
+
 export type BridgeClientOptions = {
+  /** Where `focus` events come from (default: `window`, when it exists). */
+  windowTarget?: EventTargetLike | null;
+  /** Where `visibilitychange` events come from (default: `document`, when it exists). */
+  documentTarget?: (EventTargetLike & { visibilityState?: string }) | null;
   url?: string;
   createSocket?: (url: string) => SocketLike;
   documentName?: () => string;
   /** Called for every valid message from the bridge. */
   onMessage: (message: BridgeToEditor) => void;
   onClosed: () => void;
-  /** Another editor tab took the bridge. The client stays disconnected until `takeOver`. */
-  onReplaced?: () => void;
+  /** The bridge refused this editor (another Pego version is listening); it keeps retrying. */
+  onRejected?: (reason: string) => void;
   /** Reconnect delay for the nth consecutive failure (ms). */
   backoff?: (attempt: number) => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -42,12 +53,26 @@ const bridgePortFromLocation = (): number => {
   return Number.isInteger(port) && port > 0 && port < 65536 ? port : BRIDGE_DEFAULT_PORT;
 };
 
+/** Close code the bridge sends when the editor speaks another protocol version. */
+const BRIDGE_PROTOCOL_MISMATCH_CODE = 4001;
+
 export const bridgeUrl = (port = bridgePortFromLocation()) => `ws://127.0.0.1:${port}/editor`;
 
 const defaultBackoff = (attempt: number) => Math.min(1_000 * 2 ** attempt, 30_000);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
+
+const isAgentInfo = (value: unknown): value is LocalAgentInfo =>
+  isRecord(value) &&
+  isLocalAgentId(value.id) &&
+  typeof value.name === "string" &&
+  typeof value.installed === "boolean" &&
+  typeof value.supportsModels === "boolean";
+
+/** Keep only well-formed agent entries (unknown agent ids are dropped). */
+const sanitizeAgents = (value: unknown): LocalAgentInfo[] =>
+  Array.isArray(value) ? value.filter(isAgentInfo) : [];
 
 /**
  * Parse and shape-check one bridge frame. The bridge is a local process, but its frames still
@@ -65,7 +90,26 @@ export const parseBridgeMessage = (data: unknown): BridgeToEditor | null => {
   switch (value.type) {
     case "welcome":
       return typeof value.claudeCodeAvailable === "boolean" && typeof value.mcpUrl === "string"
-        ? (value as unknown as BridgeToEditor)
+        ? ({
+            ...value,
+            agents: sanitizeAgents(value.agents),
+            projectDir: typeof value.projectDir === "string" ? value.projectDir : null,
+          } as unknown as BridgeToEditor)
+        : null;
+    case "agents":
+      return Array.isArray(value.agents)
+        ? ({ type: "agents", agents: sanitizeAgents(value.agents) } satisfies BridgeToEditor)
+        : null;
+    case "models":
+      return isLocalAgentId(value.agentId) &&
+        Array.isArray(value.models) &&
+        value.models.every((model) => typeof model === "string")
+        ? ({
+            type: "models",
+            agentId: value.agentId,
+            models: value.models as string[],
+            ...(typeof value.error === "string" ? { error: value.error } : {}),
+          } satisfies BridgeToEditor)
         : null;
     case "tool_call":
       return typeof value.callId === "string" &&
@@ -78,9 +122,6 @@ export const parseBridgeMessage = (data: unknown): BridgeToEditor | null => {
         ? (value as unknown as BridgeToEditor)
         : null;
     case "project_response":
-      return typeof value.requestId === "string" && typeof value.ok === "boolean"
-        ? (value as unknown as BridgeToEditor)
-        : null;
     case "save_file_result":
       return typeof value.requestId === "string" && typeof value.ok === "boolean"
         ? (value as unknown as BridgeToEditor)
@@ -96,9 +137,6 @@ export type BridgeClient = {
   /** False when the socket is not open (message dropped). */
   send: (message: EditorToBridge) => boolean;
   isOpen: () => boolean;
-  /** Reconnect after another tab replaced this one (the user picked this tab again). */
-  takeOver: () => void;
-  isReplaced: () => boolean;
 };
 
 /**
@@ -118,11 +156,31 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
   let stopped = true;
   let attempt = 0;
   let timer: unknown = null;
-  /** Set after another tab replaced this one: no automatic reconnects until `takeOver`. */
-  let parked = false;
+
+  const windowTarget =
+    options.windowTarget !== undefined
+      ? options.windowTarget
+      : typeof window === "undefined"
+        ? null
+        : window;
+  const documentTarget =
+    options.documentTarget !== undefined
+      ? options.documentTarget
+      : typeof document === "undefined"
+        ? null
+        : document;
+
+  /** Tell the bridge this editor is now the one the user is looking at. */
+  const announceFocus = () => {
+    if (!socket || !open) return;
+    socket.send(JSON.stringify({ type: "focus" } satisfies EditorToBridge));
+  };
+  const onVisibility = () => {
+    if (documentTarget?.visibilityState === "visible") announceFocus();
+  };
 
   const scheduleReconnect = () => {
-    if (stopped || parked || timer !== null) return;
+    if (stopped || timer !== null) return;
     timer = setTimer(() => {
       timer = null;
       connect();
@@ -167,11 +225,8 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
       socket = null;
       open = false;
       if (wasOpen) options.onClosed();
-      if (event?.code === BRIDGE_REPLACED_CLOSE_CODE) {
-        // Reconnecting would kick the other tab, which would kick this one back, forever.
-        parked = true;
-        options.onReplaced?.();
-        return;
+      if (event?.code === BRIDGE_PROTOCOL_MISMATCH_CODE) {
+        options.onRejected?.(event.reason || "The bridge speaks another protocol version.");
       }
       scheduleReconnect();
     };
@@ -181,19 +236,15 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
     start: () => {
       if (!stopped) return;
       stopped = false;
-      parked = false;
       attempt = 0;
+      windowTarget?.addEventListener("focus", announceFocus);
+      documentTarget?.addEventListener("visibilitychange", onVisibility);
       connect();
     },
-    takeOver: () => {
-      if (stopped || !parked) return;
-      parked = false;
-      attempt = 0;
-      connect();
-    },
-    isReplaced: () => parked,
     stop: () => {
       stopped = true;
+      windowTarget?.removeEventListener("focus", announceFocus);
+      documentTarget?.removeEventListener("visibilitychange", onVisibility);
       if (timer !== null) clearTimer(timer);
       timer = null;
       const current = socket;
@@ -215,14 +266,19 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
 // ---- app singleton -------------------------------------------------------------------------
 
 let client: BridgeClient | null = null;
-const handlers = createBridgeHandlers({ send: (message) => client?.send(message) ?? false });
+// Created on first use, not at import: the handlers' modules import this one back.
+let handlerSet: ReturnType<typeof createBridgeHandlers> | null = null;
+const handlers = () =>
+  (handlerSet ??= createBridgeHandlers({ send: (message) => client?.send(message) ?? false }));
 
-const SAVE_TIMEOUT_MS = 15_000;
+const REQUEST_TIMEOUT_MS = 15_000;
+const OFFLINE =
+  "the Pego bridge is not running (start it with bun run bridge, or open the desktop app)";
 const pendingSaves = new Map<string, (error: string | null) => void>();
 
 /**
- * Ask the bridge to write a document to `path` on disk (File → Save for documents opened
- * through Claude Code's open_document). Rejects when the bridge is not connected or fails.
+ * Ask the bridge to write a document to `path` on disk (a project's design, or a file Claude
+ * Code opened). Rejects when the bridge is not connected or the write fails.
  */
 export const saveFileViaBridge = (path: string, text: string): Promise<void> =>
   new Promise((resolve, reject) => {
@@ -230,7 +286,7 @@ export const saveFileViaBridge = (path: string, text: string): Promise<void> =>
     const timer = setTimeout(() => {
       pendingSaves.delete(requestId);
       reject(new Error("the Pego bridge did not answer"));
-    }, SAVE_TIMEOUT_MS);
+    }, REQUEST_TIMEOUT_MS);
     pendingSaves.set(requestId, (error) => {
       clearTimeout(timer);
       pendingSaves.delete(requestId);
@@ -238,16 +294,14 @@ export const saveFileViaBridge = (path: string, text: string): Promise<void> =>
       else resolve();
     });
     if (!client?.send({ type: "save_file", requestId, path, text })) {
-      pendingSaves.get(requestId)?.(
-        "the Pego bridge is not running (start it with bun run bridge)",
-      );
+      pendingSaves.get(requestId)?.(OFFLINE);
     }
   });
 
 type ProjectResponse = Extract<BridgeToEditor, { type: "project_response" }>;
 const pendingProject = new Map<string, (response: ProjectResponse) => void>();
 
-/** Ask the bridge for the design folder listing, or one file's text. Rejects when offline. */
+/** Ask the bridge for projects, the design folder listing or one file's text. Rejects when offline. */
 export const requestProject = (
   action: "list" | "read" | "projects" | "create_project",
   path?: string,
@@ -258,7 +312,7 @@ export const requestProject = (
     const timer = setTimeout(() => {
       pendingProject.delete(requestId);
       reject(new Error("the Pego bridge did not answer"));
-    }, SAVE_TIMEOUT_MS);
+    }, REQUEST_TIMEOUT_MS);
     pendingProject.set(requestId, (response) => {
       clearTimeout(timer);
       pendingProject.delete(requestId);
@@ -275,11 +329,24 @@ export const requestProject = (
     if (!sent) {
       clearTimeout(timer);
       pendingProject.delete(requestId);
-      reject(new Error("the Pego bridge is not running (start it with bun run bridge)"));
+      reject(new Error(OFFLINE));
     }
   });
 
-/** Send to the bridge if connected. Used by the Claude Code run (`run_start`/`run_cancel`). */
+/** Replies to `save_file` / `project_request` settle their promise; anything else goes on. */
+const settleRequest = (message: BridgeToEditor): boolean => {
+  if (message.type === "project_response") {
+    pendingProject.get(message.requestId)?.(message);
+    return true;
+  }
+  if (message.type === "save_file_result") {
+    pendingSaves.get(message.requestId)?.(message.ok ? null : (message.error ?? "save failed"));
+    return true;
+  }
+  return false;
+};
+
+/** Send to the bridge if connected. Used by the local agent run (`run_start`/`run_cancel`) and agent/model requests. */
 export const sendToBridge = (message: EditorToBridge): boolean => client?.send(message) ?? false;
 
 /**
@@ -287,31 +354,25 @@ export const sendToBridge = (message: EditorToBridge): boolean => client?.send(m
  * the app shell, normally through `useBridgeConnection()`. Idempotent; returns a stop function
  * that disconnects and stops reconnecting.
  */
+// Dev hot reload re-runs this module with a fresh `client`; close the old socket first so
+// only one connection per page talks to the bridge.
+import.meta.hot?.dispose((data: { reconnect?: boolean }) => {
+  data.reconnect = client !== null;
+  client?.stop();
+  client = null;
+});
+
 export const startBridgeConnection = (): (() => void) => {
   if (!client) {
     client = createBridgeClient({
       onMessage: (message) => {
-        if (message.type === "project_response") {
-          pendingProject.get(message.requestId)?.(message);
-          return;
-        }
-        if (message.type === "save_file_result") {
-          pendingSaves.get(message.requestId)?.(
-            message.ok ? null : (message.error ?? "save failed"),
-          );
-          return;
-        }
-        void handlers.handleMessage(message);
+        if (!settleRequest(message)) void handlers().handleMessage(message);
       },
-      onClosed: handlers.handleClosed,
-      onReplaced: () => {
-        handlers.handleReplaced();
-        toast.info("Claude Code is now connected to another Pego window", {
-          description: "Edits from Claude Code go to that window until you switch back.",
-          action: { label: "Use this window", onClick: () => takeOverBridge() },
-          duration: 15_000,
-        });
-      },
+      onClosed: () => handlers().handleClosed(),
+      onRejected: (reason) =>
+        useAgentStore.setState((state) => ({
+          bridge: { ...state.bridge, rejectedReason: reason },
+        })),
     });
   }
   client.start();
@@ -321,5 +382,8 @@ export const startBridgeConnection = (): (() => void) => {
   };
 };
 
-/** Make this tab the one Claude Code edits again, after another tab took the bridge. */
-export const takeOverBridge = (): void => client?.takeOver();
+// After a hot reload replaced this module, reopen the connection right away so the panel and
+// `sendToBridge` use the same live socket (the app's mount effect does not run again).
+if ((import.meta.hot?.data as { reconnect?: boolean } | undefined)?.reconnect) {
+  startBridgeConnection();
+}

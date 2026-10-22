@@ -186,3 +186,50 @@ export const restoreWorkspaces = (
     view,
   });
 };
+
+const findWorkspace = (id: string) =>
+  useWorkspaceStore.getState().workspaces.find((workspace) => workspace.id === id);
+
+/**
+ * The document state of a workspace that is open but not shown (tools edit it in the
+ * background); null when the workspace is live or not open.
+ */
+export const backgroundSnapshot = (id: string): TabSnapshot | null =>
+  findWorkspace(id)?.saved?.live ?? null;
+
+/** Change a background workspace's document state. False when it is live or not open. */
+export const updateBackgroundSnapshot = (
+  id: string,
+  update: (snapshot: TabSnapshot) => TabSnapshot,
+): boolean => {
+  if (!backgroundSnapshot(id)) return false;
+  useWorkspaceStore.setState((state) => ({
+    workspaces: state.workspaces.map((workspace) =>
+      workspace.id === id && workspace.saved
+        ? { ...workspace, saved: { ...workspace.saved, live: update(workspace.saved.live) } }
+        : workspace,
+    ),
+  }));
+  return true;
+};
+
+/** Open a project's workspace without showing it, holding `snapshot` as its document. */
+export const addBackgroundWorkspace = (
+  project: Pick<ProjectInfo, "id" | "name" | "dir">,
+  snapshot: TabSnapshot,
+): void => {
+  if (findWorkspace(project.id)) return;
+  const tabId = createId();
+  useWorkspaceStore.setState((state) => ({
+    workspaces: [
+      ...state.workspaces,
+      {
+        id: project.id,
+        name: project.name,
+        dir: project.dir,
+        kind: "project",
+        saved: { tabs: [{ id: tabId, snapshot: null }], activeId: tabId, live: snapshot },
+      },
+    ],
+  }));
+};

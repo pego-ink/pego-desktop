@@ -77,9 +77,7 @@ export type OpErrorCode =
   | "parent_not_container"
   | "duplicate_id"
   | "invalid_props"
-  | "cycle"
-  | "invalid_parent"
-  | "last_page";
+  | "cycle";
 
 /** Thrown when an op cannot apply to the document. `code` is stable for agents and UI. */
 export class OpError extends Error {
@@ -182,22 +180,10 @@ const setVariables = (
   return next;
 };
 
-/** Pages live at the document root and nothing else does. */
-const assertPlacement = (node: PegoNode, parentId: string | null): void => {
-  if ((node.type === "page") === (parentId === null)) return;
-  throw new OpError(
-    "invalid_parent",
-    node.type === "page"
-      ? `page "${node.id}" can only sit at the document root (parentId null)`
-      : `"${node.id}" must go inside a page, frame or group, not the document root`,
-  );
-};
-
 /** Apply an op, returning a new document (never mutates). Throws `OpError` when the op does not fit the document. */
 export const applyOp = (doc: PegoDocument, op: Op): PegoDocument => {
   switch (op.op) {
     case "insert": {
-      assertPlacement(op.node, op.parentId);
       locateChildren(doc, op.parentId);
       assertFreshIds(op.node, collectDocIds(doc));
       return insertAt(doc, op.parentId, op.index, op.node);
@@ -208,7 +194,6 @@ export const applyOp = (doc: PegoDocument, op: Op): PegoDocument => {
     }
     case "replace": {
       const loc = locate(doc, op.id);
-      assertPlacement(op.node, loc.parentId);
       const taken = collectDocIds(doc);
       for (const id of collectIds(loc.node)) taken.delete(id);
       assertFreshIds(op.node, taken);
@@ -216,20 +201,14 @@ export const applyOp = (doc: PegoDocument, op: Op): PegoDocument => {
     }
     case "move": {
       const loc = locate(doc, op.id);
-      assertPlacement(loc.node, op.parentId);
       locateChildren(doc, op.parentId);
       if (op.parentId !== null && isSelfOrDescendant(doc, op.id, op.parentId)) {
         throw new OpError("cycle", `cannot move "${op.id}" into itself or its descendant`);
       }
       return insertAt(removeAt(doc, loc), op.parentId, op.index, loc.node);
     }
-    case "delete": {
-      const loc = locate(doc, op.id);
-      if (loc.node.type === "page" && doc.children.length === 1) {
-        throw new OpError("last_page", "a document needs at least one page");
-      }
-      return removeAt(doc, loc);
-    }
+    case "delete":
+      return removeAt(doc, locate(doc, op.id));
     case "setVariables":
       return { ...doc, variables: setVariables(doc.variables, op.variables) };
   }
@@ -264,21 +243,6 @@ export const invertOp = (doc: PegoDocument, op: Op): Op => {
       return { op: "setVariables", variables };
     }
   }
-};
-
-/**
- * Editors and tools speak of `parentId: null` as the top level of the canvas. Content lives on
- * pages, so an insert or move of anything but a page with a null parent goes to `pageId`.
- * Page ops (and every other op) pass through unchanged.
- */
-export const placeOnPage = (doc: PegoDocument, op: Op, pageId: string): Op => {
-  if (op.op === "insert" && op.parentId === null && op.node.type !== "page") {
-    return { ...op, parentId: pageId };
-  }
-  if (op.op === "move" && op.parentId === null && findLocation(doc, op.id)?.node.type !== "page") {
-    return { ...op, parentId: pageId };
-  }
-  return op;
 };
 
 /**

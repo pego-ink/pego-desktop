@@ -3,9 +3,8 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { APP_ORIGIN, BRIDGE_HOST, BRIDGE_PORT, DEV_ORIGINS } from "@/constants";
-import { bridgeBinaryName, bridgeSearchPath, type DesktopPlatform } from "@/platform";
 
 let child: ChildProcess | null = null;
 
@@ -23,16 +22,33 @@ const isPortOpen = (port: number): Promise<boolean> =>
     });
   });
 
-const platform = process.platform as DesktopPlatform;
+/** Apps launched from Finder get a minimal PATH; add where `claude` and `bun` usually live. */
+const bridgePath = (): string => {
+  const extra = [join(homedir(), ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin"];
+  const current = (process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(":");
+  return [...new Set([...extra, ...current])].join(":");
+};
 
 /** Packaged: compiled binary in Resources. Dev: run the TypeScript entry with `bun`. */
 const bridgeCommand = (): { command: string; args: string[] } | null => {
   if (app.isPackaged) {
-    const binary = join(process.resourcesPath, "bridge", bridgeBinaryName(platform));
+    const binary = join(process.resourcesPath, "bridge", "pego-bridge");
     return existsSync(binary) ? { command: binary, args: [] } : null;
   }
   const entry = join(app.getAppPath(), "..", "bridge", "src", "index.ts");
   return { command: "bun", args: ["run", entry] };
+};
+
+/** Projects live in ~/Documents/Pego (created on first start); null when it cannot be made. */
+const designDir = (): string | null => {
+  const dir = join(app.getPath("documents"), "Pego");
+  try {
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch (error) {
+    console.error(`[bridge] could not create ${dir}: ${(error as Error).message}`);
+    return null;
+  }
 };
 
 export const startBridge = async (): Promise<void> => {
@@ -45,14 +61,14 @@ export const startBridge = async (): Promise<void> => {
     console.error("[bridge] bridge binary not found, agent features via Claude Code are disabled");
     return;
   }
+  const projects = designDir();
   const proc = spawn(spec.command, spec.args, {
     env: {
       ...process.env,
-      // Windows env lookups are case-insensitive but the copied object is not: set both.
-      PATH: bridgeSearchPath(platform, homedir(), process.env),
-      ...(platform === "win32" ? { Path: bridgeSearchPath(platform, homedir(), process.env) } : {}),
+      PATH: bridgePath(),
       PEGO_BRIDGE_PORT: String(BRIDGE_PORT),
       PEGO_ALLOWED_ORIGINS: [APP_ORIGIN, ...DEV_ORIGINS].join(","),
+      ...(projects ? { PEGO_DESIGN_DIR: projects } : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });

@@ -65,20 +65,6 @@ describe("bridge documents", () => {
     expect(getIsDirty()).toBe(true);
   });
 
-  test("imports .pen as unsaved, saving next to it as .pego", () => {
-    const pen = JSON.stringify({
-      version: "2.21",
-      children: [{ type: "frame", id: "f", name: "Home" }],
-    });
-    const outcome = loadDocumentFromBridge({ text: pen, path: "/repo/old.pen" });
-    expect(outcome.content).toContain("save_document writes /repo/old.pego");
-    expect(useFileStore.getState()).toMatchObject({
-      fileName: "old.pego",
-      bridgePath: "/repo/old.pego",
-    });
-    expect(getIsDirty()).toBe(true);
-  });
-
   test("list and switch for the MCP tools", () => {
     loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
     const listed = JSON.parse(listTabsForBridge().content) as {

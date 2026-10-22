@@ -1,8 +1,23 @@
 import { z } from "zod";
-import type { EditorToBridge } from "@pego/agent";
+import {
+  LOCAL_AGENT_IDS,
+  RUN_ATTACHMENT_LIMITS,
+  RUN_ATTACHMENT_TYPES,
+  type EditorToBridge,
+} from "@pego/agent";
+import { hasImageSignature, sanitizeAttachmentName } from "./attachments";
 import { MAX_DOCUMENT_FILE_BYTES } from "./config";
 
 const id = z.string().min(1).max(128);
+const agentId = z.enum(LOCAL_AGENT_IDS);
+/** Model ids pass through to the CLI unchanged; just keep them printable and never flag-like. */
+const isSafeModelId = (value: string): boolean =>
+  !value.startsWith("-") &&
+  [...value].every((char) => {
+    const code = char.charCodeAt(0);
+    return code > 0x1f && code !== 0x7f;
+  });
+const modelId = z.string().min(1).max(200).refine(isSafeModelId, "invalid model id");
 
 /** Limits for screenshots attached to a `tool_result`. */
 export const MAX_IMAGES_PER_RESULT = 4;
@@ -36,6 +51,33 @@ const imagesSchema = z
     "images too large",
   );
 
+const MAX_ATTACHMENT_BASE64_LENGTH = Math.ceil((RUN_ATTACHMENT_LIMITS.maxBytes * 4) / 3) + 4;
+const MAX_PROMPT_CHARS = 100_000;
+
+const attachmentSchema = z
+  .object({
+    id: z.string().regex(/^att-\d{1,6}$/),
+    name: z.string().max(1024).transform(sanitizeAttachmentName),
+    mediaType: z.enum(RUN_ATTACHMENT_TYPES),
+    data: z
+      .string()
+      .min(4)
+      .max(MAX_ATTACHMENT_BASE64_LENGTH)
+      .refine((data) => data.length % 4 === 0 && BASE64.test(data), "invalid base64")
+      .refine((data) => decodedBytes(data) <= RUN_ATTACHMENT_LIMITS.maxBytes, "image too large"),
+    width: z.number().int().positive().max(MAX_IMAGE_DIMENSION).optional(),
+    height: z.number().int().positive().max(MAX_IMAGE_DIMENSION).optional(),
+  })
+  // The bytes must be the image type the editor claims (CLIs sniff content, not our label).
+  .refine((attachment) => hasImageSignature(attachment.mediaType, attachment.data), {
+    message: "image data does not match its type",
+  });
+
+const attachmentsSchema = z
+  .array(attachmentSchema)
+  .max(RUN_ATTACHMENT_LIMITS.maxCount)
+  .refine((items) => new Set(items.map((item) => item.id)).size === items.length, "duplicate id");
+
 /** Runtime validation of every frame the editor sends. Mirrors `EditorToBridge`. */
 export const editorMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -50,7 +92,17 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
     isError: z.boolean(),
     images: imagesSchema.optional(),
   }),
-  z.object({ type: z.literal("run_start"), runId: id, prompt: z.string().min(1).max(100_000) }),
+  z.object({
+    type: z.literal("run_start"),
+    runId: id,
+    prompt: z.string().min(1).max(MAX_PROMPT_CHARS),
+    agentId,
+    model: modelId.optional(),
+    attachments: attachmentsSchema.optional(),
+  }),
+  z.object({ type: z.literal("focus") }),
+  z.object({ type: z.literal("agents_refresh") }),
+  z.object({ type: z.literal("models_request"), agentId }),
   z.object({ type: z.literal("run_cancel"), runId: id }),
   z.object({
     type: z.literal("project_request"),

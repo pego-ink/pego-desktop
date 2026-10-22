@@ -6,7 +6,7 @@ import { FileToolError, readDocumentFile } from "./files";
 
 const DESIGN_FOLDER = "design";
 const MAX_FILES = 500;
-const DOCUMENT_EXTENSIONS = new Set([".pego", ".pen"]);
+const DOCUMENT_EXTENSION = ".pego";
 const SKIPPED = new Set(["node_modules", ".git"]);
 
 const isDirectory = (path: string) => {
@@ -39,7 +39,7 @@ export const resolveDesignDir = (
   }
 };
 
-/** Every .pego/.pen file under `root` (hidden folders and node_modules skipped), sorted by path. */
+/** Every .pego file under `root` (hidden folders and node_modules skipped), sorted by path. */
 export const listDesignFiles = async (root: string): Promise<ProjectFile[]> => {
   const files: ProjectFile[] = [];
   const walk = async (dir: string): Promise<void> => {
@@ -49,7 +49,7 @@ export const listDesignFiles = async (root: string): Promise<ProjectFile[]> => {
       if (entry.name.startsWith(".") || SKIPPED.has(entry.name)) continue;
       const path = join(dir, entry.name);
       if (entry.isDirectory()) await walk(path);
-      else if (entry.isFile() && DOCUMENT_EXTENSIONS.has(extname(entry.name).toLowerCase())) {
+      else if (entry.isFile() && extname(entry.name).toLowerCase() === DOCUMENT_EXTENSION) {
         const info = await stat(path);
         files.push({
           path,

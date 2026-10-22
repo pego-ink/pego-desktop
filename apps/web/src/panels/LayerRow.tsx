@@ -118,7 +118,12 @@ const LayerRowImpl = ({
           !hasChildren && "invisible",
         )}
       >
-        <ChevronRightIcon className={cn("size-3 transition-transform", expanded && "rotate-90")} />
+        <ChevronRightIcon
+          className={cn(
+            "size-3 transition-transform duration-(--duration-fast) ease-out",
+            expanded && "rotate-90",
+          )}
+        />
       </button>
       <LayerIcon node={node} />
       {renaming ? (

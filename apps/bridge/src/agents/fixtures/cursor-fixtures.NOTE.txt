@@ -1,0 +1,1 @@
+SYNTHETIC: cursor fixtures are built from https://cursor.com/docs/cli/reference/output-format (no logged-in cursor-agent was available); the mcpToolCall shape is not documented there and is an assumption.

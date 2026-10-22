@@ -5,28 +5,19 @@ import { defaultTextColor, DARK_TEXT, LIGHT_TEXT } from "./default-text-color";
 import { deriveEditorStyle } from "./editor-style";
 
 const doc: PegoDocument = {
-  version: 2,
+  version: 1,
   variables: { fg: { type: "color", value: "#FF0000" }, size: { type: "number", value: 20 } },
   children: [
     {
-      type: "page",
-      id: "page-1",
-      name: "Page 1",
+      id: "f",
+      type: "frame",
       x: 0,
       y: 0,
-      children: [
-        {
-          id: "f",
-          type: "frame",
-          x: 0,
-          y: 0,
-          width: 100,
-          height: 100,
-          fill: "#FFFFFF",
-          layout: "none",
-          children: [{ id: "t", type: "text", x: 0, y: 0, content: "hello" }],
-        },
-      ],
+      width: 100,
+      height: 100,
+      fill: "#FFFFFF",
+      layout: "none",
+      children: [{ id: "t", type: "text", x: 0, y: 0, content: "hello" }],
     },
   ],
 } as unknown as PegoDocument;

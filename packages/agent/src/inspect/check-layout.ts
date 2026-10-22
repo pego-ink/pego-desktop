@@ -2,7 +2,6 @@ import {
   findLocation,
   isContainer,
   MAX_INSTANCE_DEPTH,
-  representativeColor,
   resolveColor,
   resolveInstance,
   resolveNumber,
@@ -72,40 +71,15 @@ const estimateTextHeight = (node: TextNode, width: number, doc: PegoDocument): n
 };
 
 /**
- * Everything painted below `node` that covers its whole box, bottom to top: each ancestor, then
- * the ancestor's earlier children (drawn before the branch holding `node`) whose box contains it,
- * e.g. a colored shape that text sits on inside a `layout: none` frame.
+ * Nearest ancestor background as an opaque color. Translucent fills are composited over the next
+ * ancestor fill; returns null when no ancestor gives an opaque base to compare against.
  */
-const layersBelow = (node: PegoNode, ancestors: PegoNode[], ctx: Context): PegoNode[] => {
-  const box = ctx.layout.get(node.id);
-  const path = [...ancestors, node];
-  const layers: PegoNode[] = [];
-  ancestors.forEach((ancestor, k) => {
-    layers.push(ancestor);
-    const onPath = path[k + 1];
-    if (!box || !onPath || !isContainer(ancestor)) return;
-    for (const raw of ancestor.children) {
-      if (raw.id === onPath.id) break;
-      const sibling = raw.type === "ref" ? resolveInstance(ctx.doc, raw) : raw;
-      const siblingBox = sibling && ctx.layout.get(sibling.id);
-      if (sibling && siblingBox && contains(siblingBox, box)) layers.push(sibling);
-    }
-  });
-  return layers;
-};
-
-/**
- * The background behind a node as an opaque color: the topmost layer below it with a fill,
- * translucent fills composited over the next one down; null when nothing opaque is found.
- */
-const backgroundOf = (layersBelowNode: PegoNode[], doc: PegoDocument): Rgba | null => {
+const backgroundOf = (ancestors: PegoNode[], doc: PegoDocument): Rgba | null => {
   const layers: Rgba[] = [];
-  for (let i = layersBelowNode.length - 1; i >= 0; i--) {
-    const ancestor = layersBelowNode[i] as PegoNode;
+  for (let i = ancestors.length - 1; i >= 0; i--) {
+    const ancestor = ancestors[i] as PegoNode;
     if (!("fill" in ancestor) || ancestor.fill === undefined) continue;
-    // Contrast over an image is unknown; a gradient counts as its first stop.
-    if (typeof ancestor.fill === "object" && ancestor.fill.type === "image") return null;
-    const color = representativeColor(ancestor.fill, doc.variables);
+    const color = resolveColor(ancestor.fill, doc.variables);
     const rgba = color ? parseHex(color) : null;
     if (!rgba) continue;
     layers.push(rgba);
@@ -210,11 +184,11 @@ const checkNode = (
     }
   }
 
-  // Text contrast against what is painted below it (ancestor fills and shapes it sits on).
+  // Text contrast against the nearest ancestor fill.
   if (node.type === "text") {
     const color = resolveColor(node.fill, doc.variables);
     const fg = color ? parseHex(color) : null;
-    const bg = fg ? backgroundOf(layersBelow(node, ancestors, ctx), doc) : null;
+    const bg = fg ? backgroundOf(ancestors, doc) : null;
     if (fg && bg) {
       const ratio = contrastRatio(compositeOver(fg, bg), bg);
       const needed = wcagAaThreshold(

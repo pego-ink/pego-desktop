@@ -26,10 +26,6 @@ export type ToolHost = {
   // Editor capabilities. Optional so pure/test hosts can omit them; tools that need one
   // return an `unsupported` error when it is missing.
 
-  /** The page the user is looking at; `parentId: null` in tools means this page. */
-  getActivePageId?: () => string | null;
-  /** Show this page in the editor. */
-  setActivePage?: (pageId: string) => void;
   /** Computed absolute boxes of the current document (same as the renderer uses). */
   getLayout?: () => Layout;
   /** Node ids the user has selected in the editor. */
@@ -39,13 +35,28 @@ export type ToolHost = {
   focusViewport?: (ids: string[]) => void;
   /** Icon names available to `icon` nodes (lucide, kebab-case). */
   listIcons?: () => string[];
-  /** Inner SVG markup of a lucide icon on its 24x24 grid, for code export. */
-  iconMarkup?: (iconName: string) => string | null;
+  /**
+   * Images the user attached to the current run, for `place_image` with src "attachment:<id>".
+   * Returns a data: URL, or undefined for an unknown id.
+   */
+  getAttachment?: (id: string) => { src: string; name: string } | undefined;
   /** Render a node (and its subtree only) to PNG, as drawn on canvas. */
   renderImage?: (
     nodeId: string,
     options?: { scale?: number; maxSize?: number },
   ) => Promise<ToolImage>;
+  /**
+   * Generate a bitmap with the user's image model. Resolves with a `data:image/...;base64,` URL
+   * (or an https URL) and optional alt text; rejects with a user-readable message. Missing when the host
+   * cannot generate images at all: `generate_image` then returns `unsupported`. A host that has the
+   * capability but no provider configured may reject with an Error named `ImageUnsupportedError`
+   * to get the same `unsupported` result with its own message.
+   */
+  generateImage?: (request: {
+    prompt: string;
+    width: number;
+    height: number;
+  }) => Promise<{ src: string; alt?: string }>;
 };
 
 /** Base64 PNG attached to a tool result (screenshots). */

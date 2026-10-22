@@ -1,6 +1,6 @@
 {
   "name": "@pego/desktop",
-  "version": "0.1.0",
+  "version": "0.0.1-beta",
   "private": true,
   "description": "Pego desktop app (Electron shell around apps/web + the local bridge)",
   "author": "Ari Padrian",

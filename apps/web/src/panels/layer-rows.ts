@@ -1,4 +1,4 @@
-import { findNode, isContainer, pageOrFirst, type PegoDocument, type PegoNode } from "@pego/doc";
+import { findNode, isContainer, type PegoDocument, type PegoNode } from "@pego/doc";
 
 export type LayerRowData = {
   node: PegoNode;
@@ -12,8 +12,6 @@ export type LayerRowData = {
 export const flattenLayers = (
   doc: PegoDocument,
   collapsed: ReadonlySet<string>,
-  /** Page whose layers are listed (null = the first). */
-  pageId: string | null = null,
 ): LayerRowData[] => {
   const rows: LayerRowData[] = [];
   const walk = (nodes: PegoNode[], depth: number, parentId: string | null) => {
@@ -24,11 +22,11 @@ export const flattenLayers = (
       if (isContainer(node) && expanded) walk(node.children, depth + 1, node.id);
     }
   };
-  walk(pageOrFirst(doc, pageId).children, 0, null);
+  walk(doc.children, 0, null);
   return rows;
 };
 
-/** Ids of every ancestor container of `id` (nearest first), pages excluded. */
+/** Ids of every ancestor container of `id` (nearest first). */
 export const ancestorIds = (doc: PegoDocument, id: string): string[] => {
   const walk = (nodes: PegoNode[], trail: string[]): string[] | null => {
     for (const node of nodes) {
@@ -39,11 +37,7 @@ export const ancestorIds = (doc: PegoDocument, id: string): string[] => {
     }
     return null;
   };
-  for (const page of doc.children) {
-    const found = walk(page.children, []);
-    if (found) return found;
-  }
-  return [];
+  return walk(doc.children, []) ?? [];
 };
 
 /** Row label: own name, else the referenced component's name for refs ("Instance" if missing), else the type. */

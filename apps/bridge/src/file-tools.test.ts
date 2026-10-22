@@ -12,13 +12,13 @@ afterAll(() => rm(dir, { recursive: true, force: true }));
 const source = { kind: "mcp" as const };
 
 describe("checkDocumentPath", () => {
-  test("accepts absolute .pego (and .pen for reading) only", () => {
+  test("accepts absolute .pego paths only", () => {
     expect(checkDocumentPath("/a/b/../app.pego", "write")).toBe("/a/app.pego");
-    expect(checkDocumentPath("/a/old.PEN", "read")).toBe("/a/old.PEN");
+    expect(checkDocumentPath("/a/APP.PEGO", "read")).toBe("/a/APP.PEGO");
     for (const [path, mode] of [
       ["design/app.pego", "read"],
       ["/etc/passwd", "read"],
-      ["/a/old.pen", "write"],
+      ["/a/old.pen", "read"],
       ["/a/notes.json", "write"],
     ] as const) {
       expect(() => checkDocumentPath(path, mode)).toThrow(FileToolError);

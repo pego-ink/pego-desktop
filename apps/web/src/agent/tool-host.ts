@@ -1,11 +1,18 @@
-import { applyOps as applyDocOps, collectDocIds, type Op, type Transaction } from "@pego/doc";
-import type { PlanStep, StepStatus, ToolHost } from "@pego/agent";
+import {
+  applyOps as applyDocOps,
+  collectDocIds,
+  type Op,
+  type PegoDocument,
+  type Transaction,
+} from "@pego/doc";
+import type { PlanStep, RunAttachment, StepStatus, ToolHost } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
-import { getIconMarkup, listIconNames, loadIconData } from "@/canvas/icons";
-import { activePage, useDocumentStore } from "@/store/use-document-store";
-import { showPage, showPageOf } from "@/pages/page-actions";
+import { listIconNames, loadIconData } from "@/canvas/icons";
+import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
+import { generateImage } from "./generate-image";
 import { requestDecision } from "./decisions";
 import { useAgentStore } from "./use-agent-store";
 
@@ -18,11 +25,33 @@ export type ToolHostOptions = {
   focusFromOps?: boolean;
   /** Called with the newest transaction after every apply. */
   onTransaction?: (transaction: Transaction) => void;
+  /** Images the user attached to this run, served to `place_image` as "attachment:<id>". */
+  attachments?: readonly RunAttachment[];
 };
 
 export type AgentToolHost = ToolHost & {
   /** Next `applyOps` starts a new undo transaction instead of extending the last one. */
   newGroup: () => void;
+};
+
+/** Render a node of `doc` to PNG on an offscreen surface (screenshots, any workspace). */
+export const renderDocNodeImage = async (
+  doc: PegoDocument,
+  nodeId: string,
+  imageOptions?: { scale?: number; maxSize?: number },
+) => {
+  // Loaded on demand: CanvasKit (and its wasm) only matter once a screenshot is requested.
+  const [{ loadCanvasKit }, { renderNodeImage }, { collectFontFaces }, { ensureFontFace }] =
+    await Promise.all([
+      import("@/canvas/load-canvaskit"),
+      import("@/canvas/render-image"),
+      import("@/fonts/use-document-fonts"),
+      import("@/fonts/font-service"),
+    ]);
+  const res = await loadCanvasKit();
+  // The document's fonts first, so the agent judges the real typography.
+  await Promise.all(collectFontFaces(doc).map(ensureFontFace));
+  return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
 };
 
 const touchedIds = (ops: Op[]): string[] =>
@@ -97,42 +126,26 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
   };
 
   const focusViewport = (ids: string[]) => {
-    // Nodes on another page: show that page first.
-    if (ids[0] !== undefined) showPageOf(ids[0]);
     const layout = getLayout(useDocumentStore.getState().doc);
     const boxes = ids.flatMap((id) => layout.get(id) ?? []);
     const viewport = useViewportStore.getState();
     const camera = focusCamera(boxes, viewport.size);
-    if (camera) viewport.setCamera(camera);
+    if (camera) viewport.animateTo(camera);
   };
 
-  const renderImage: NonNullable<ToolHost["renderImage"]> = async (nodeId, imageOptions) => {
-    // Loaded on demand: CanvasKit (and its wasm) only matter once a screenshot is requested.
-    const [{ loadCanvasKit }, { renderNodeImage }] = await Promise.all([
-      import("@/canvas/load-canvaskit"),
-      import("@/canvas/render-image"),
-    ]);
-    const [res, { requestDocumentFonts }] = await Promise.all([
-      loadCanvasKit(),
-      import("@/canvas/fonts"),
-    ]);
-    // Wait for the document's fonts so the agent judges the real typography.
-    await requestDocumentFonts(res.fonts, useDocumentStore.getState().doc, res.fontFamily);
-    const doc = useDocumentStore.getState().doc;
-    return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
-  };
+  const renderImage: NonNullable<ToolHost["renderImage"]> = (nodeId, imageOptions) =>
+    renderDocNodeImage(useDocumentStore.getState().doc, nodeId, imageOptions);
 
   return {
     getDoc: () => useDocumentStore.getState().doc,
     getLayout: () => getLayout(useDocumentStore.getState().doc),
-    getActivePageId: () => activePage(useDocumentStore.getState()).id,
-    setActivePage: showPage,
     getSelection: () => useDocumentStore.getState().selection,
     setSelection,
     focusViewport,
     listIcons: listIconNames,
-    iconMarkup: getIconMarkup,
     renderImage,
+    generateImage,
+    getAttachment: (id) => findAttachmentSrc(options.attachments ?? [], id),
     applyOps,
     setFocus: (ids) => useAgentStore.getState().set({ focusIds: ids }),
     reportPlan,

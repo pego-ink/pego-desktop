@@ -11,15 +11,14 @@ import {
   ReadResourceRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { agentTools, CLAUDE_CODE_SYSTEM, toolAnnotations } from "@pego/agent";
+import { agentTools, CLAUDE_CODE_SYSTEM } from "@pego/agent";
 import type { CallTool, ToolOutcome, ToolSource } from "./editor-hub";
 import { getPegoPrompt, pegoPrompts } from "./mcp-prompts";
 import { listPegoResources, readPegoResource } from "./mcp-resources";
 import { FILE_TOOLS, FILE_TOOLS_INSTRUCTIONS, isFileTool, runFileTool } from "./file-tools";
+import { resolveProjectTarget, takeProjectArg, withProjectParam } from "./project-target";
 
 const MAX_TOOL_INPUT_BYTES = 1024 * 1024;
-/** Reported to MCP clients; bump with user-visible changes to the tool surface. */
-export const PEGO_MCP_VERSION = "0.2.0";
 
 /** Images (screenshots) come first so a client that truncates still sees them, then the text. */
 export const toCallToolResult = (outcome: ToolOutcome): CallToolResult => ({
@@ -45,7 +44,7 @@ export const createPegoMcpServer = (options: {
   clientName?: string;
   /** Also serve the file tools (read and write design files on this machine). */
   fileTools?: boolean;
-  /** The project's design folder for list_documents. */
+  /** The design folder holding the projects. */
   designDir?: string | null;
 }): McpServer => {
   const fileTools = options.fileTools ? FILE_TOOLS : [];
@@ -53,25 +52,23 @@ export const createPegoMcpServer = (options: {
     ? `${CLAUDE_CODE_SYSTEM}\n\n${FILE_TOOLS_INSTRUCTIONS}`
     : CLAUDE_CODE_SYSTEM;
   const server = new McpServer(
-    { name: "pego", version: PEGO_MCP_VERSION },
+    { name: "pego", version: "0.0.0" },
     { instructions: instructions || undefined },
   );
   server.server.registerCapabilities({ tools: {}, resources: {}, prompts: {} });
   const sourceOf = () => options.source({ clientName: options.clientName });
 
   server.server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: agentTools
-      .map((tool) => {
-        const annotations = toolAnnotations(tool.name);
-        return {
-          name: tool.name,
-          title: annotations.title,
-          description: tool.description,
-          inputSchema: { type: "object" as const, ...tool.inputSchema },
-          annotations,
-        };
-      })
-      .concat(fileTools),
+    tools: [
+      ...agentTools.map((tool) => ({
+        name: tool.name,
+        description: tool.description,
+        inputSchema: options.fileTools
+          ? withProjectParam({ type: "object" as const, ...tool.inputSchema })
+          : { type: "object" as const, ...tool.inputSchema },
+      })),
+      ...fileTools,
+    ],
   }));
 
   server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
@@ -93,7 +90,19 @@ export const createPegoMcpServer = (options: {
     if (JSON.stringify(input ?? {}).length > MAX_TOOL_INPUT_BYTES) {
       return toCallToolResult({ content: "Tool input is too large.", isError: true });
     }
-    return toCallToolResult(await options.callTool(name, input ?? {}, sourceOf()));
+    if (!options.fileTools) {
+      return toCallToolResult(await options.callTool(name, input ?? {}, sourceOf()));
+    }
+    // `project` targets a project's design without showing it in the window.
+    const split = takeProjectArg(input ?? {});
+    if (split.invalid) {
+      return toCallToolResult({ content: "project must be a project id or name.", isError: true });
+    }
+    if (!split.project)
+      return toCallToolResult(await options.callTool(name, split.input, sourceOf()));
+    const resolved = await resolveProjectTarget(options.designDir ?? null, split.project);
+    if ("error" in resolved) return toCallToolResult({ content: resolved.error, isError: true });
+    return toCallToolResult(await options.callTool(name, split.input, sourceOf(), resolved.target));
   });
 
   server.server.setRequestHandler(ListResourcesRequestSchema, () => ({
@@ -141,15 +150,18 @@ const clientNameOf = (request: Request): string | undefined => {
 export const handleMcpRequest = async (
   request: Request,
   callTool: CallTool,
-  designDir: string | null = null,
+  /** Fixed attribution for run-scoped endpoints; defaults to the calling MCP client. */
+  fixedSource?: ToolSource,
+  /** Serve the file tools with this design folder (the terminal endpoint, not runs). */
+  files?: { designDir: string | null },
 ): Promise<Response> => {
   const clientName = clientNameOf(request);
   const server = createPegoMcpServer({
     callTool,
     clientName,
-    source: ({ clientName: name }) => ({ kind: "mcp", clientName: name }),
-    fileTools: true,
-    designDir,
+    source: ({ clientName: name }) => fixedSource ?? { kind: "mcp", clientName: name },
+    fileTools: files !== undefined,
+    designDir: files?.designDir ?? null,
   });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

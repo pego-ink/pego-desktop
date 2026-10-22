@@ -9,8 +9,9 @@ type FileState = {
   fileName: string | null;
   handle: PegoFileHandle | null;
   /**
-   * Absolute path of the file on disk when the document was opened or saved through the local
-   * bridge (Claude Code's open_document / save_document). Save writes back there via the bridge.
+   * Absolute path of the file on disk when the document is a project's design or was opened or
+   * saved through the local bridge (Claude Code's open_document / save_document). Save and auto
+   * save write back there via the bridge.
    */
   bridgePath: string | null;
   /** The doc object at last save/open; null = unknown (restored unsaved work), always dirty. */
