@@ -76,6 +76,9 @@ export const startLocalAgentRun = async (
     text: shown,
     ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
     ...(options.steered ? { steered: "delivered" as const } : {}),
+    ...(options.parts?.some((part) => part.kind === "mention")
+      ? { parts: [...options.parts] }
+      : {}),
   });
 
   // The CLI loads the skills itself through get_skill; the panel and log keep the user's text.

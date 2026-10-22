@@ -35,6 +35,9 @@ type Started = {
   attachments: unknown;
   steered: boolean;
   displayText?: string;
+  parts?: unknown;
+  skillId?: string;
+  styleId?: string | null;
 };
 let started: Started[] = [];
 let cancelled: string[] = [];
@@ -50,6 +53,9 @@ const fakeStartRun: typeof queueDeps.startRun = async (text, options = {}) => {
     attachments: options.attachments,
     steered: options.steered === true,
     displayText: options.displayText,
+    parts: options.parts,
+    skillId: options.skillId,
+    styleId: options.styleId,
   });
   const runId = `fake-${++runSeq}`;
   agent().beginRun(sessionId, runId, text);
@@ -353,5 +359,41 @@ describe("displayText", () => {
     editQueued(sid(), id, "edited");
     expect(live(sid()).queue[0]?.displayText).toBeUndefined();
     expect(live(sid()).queue[0]?.text).toBe("edited");
+  });
+});
+
+describe("mentions", () => {
+  const parts = [
+    { kind: "text" as const, text: "make " },
+    { kind: "mention" as const, mention: "layer" as const, label: "Hero" },
+  ];
+  const display = { displayText: "make @Hero", parts, styleId: "bauhaus" };
+
+  test("chips and mention skills reach the run, also from the queue", () => {
+    submitPrompt(sid(), 'ctx\n\nRequest: make "Hero" [layer h1]', display);
+    expect(started[0]).toMatchObject({ displayText: "make @Hero", parts, styleId: "bauhaus" });
+    submitPrompt(sid(), "ctx two", display);
+    expect(live(sid()).queue[0]).toMatchObject({ parts, styleId: "bauhaus" });
+    endRun(sid(), "done");
+    advanceQueues();
+    expect(started[1]).toMatchObject({ text: "ctx two", parts, styleId: "bauhaus" });
+  });
+
+  test("text without chips stores no parts; an edit drops them", () => {
+    submitPrompt(sid(), "busy");
+    submitPrompt(sid(), "plain", { parts: [{ kind: "text", text: "plain" }] });
+    expect(live(sid()).queue[0]?.parts).toBeUndefined();
+    submitPrompt(sid(), "ctx", display);
+    const id = live(sid()).queue[1]!.id;
+    editQueued(sid(), id, "make @Hero bigger");
+    expect(live(sid()).queue[1]).toMatchObject({ text: "make @Hero bigger", styleId: "bauhaus" });
+    expect(live(sid()).queue[1]?.parts).toBeUndefined();
+  });
+
+  test("a steer bubble shows the chips; the agent gets the full text", () => {
+    const { steerInbox } = registerInBrowserRun(sid(), "r1");
+    expect(steerNow(sid(), "ctx\n\nRequest: make it", [], display)).toBe("steered");
+    expect(live(sid()).log.at(-1)).toMatchObject({ text: "make @Hero", parts, steered: "pending" });
+    expect(steerInbox.drain()[0]?.text).toBe("ctx\n\nRequest: make it");
   });
 });
