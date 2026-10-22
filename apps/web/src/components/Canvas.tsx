@@ -11,6 +11,7 @@ import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
+import { useImageDrop } from "@/interaction/use-image-drop";
 import { AgentCursor } from "@/components/AgentCursor";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { Toolbar } from "@/components/Toolbar";
@@ -26,6 +27,7 @@ export const Canvas = () => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useCanvasPointer(canvasRef);
+  useImageDrop(canvasRef);
   useEditorShortcuts();
 
   // Cursor follows interaction state without re-rendering React.

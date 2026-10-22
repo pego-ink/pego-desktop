@@ -110,3 +110,48 @@ describe("serializeDocument", () => {
     expect(compact).toContain('text#text-1 "Title" x=80 y=56 width=640');
   });
 });
+
+describe("serializeDocument image nodes", () => {
+  const withImage = documentSchema.parse({
+    version: 0,
+    id: "d",
+    name: "Img",
+    variables: {},
+    children: [
+      {
+        type: "image",
+        id: "pic",
+        src: `data:image/png;base64,${"A".repeat(4096)}`,
+        fit: "crop",
+        alt: "A cat",
+        width: 100,
+        height: 50,
+      },
+      { type: "image", id: "remote", src: "https://example.com/a.png", width: 10, height: 10 },
+      {
+        type: "path",
+        id: "arrow",
+        geometry: "M0 0L10 10",
+        strokeCap: "round",
+        endMarker: "arrow",
+        width: 10,
+        height: 10,
+      },
+    ],
+  });
+  const text = serializeDocument(withImage);
+
+  test("never dumps base64", () => {
+    expect(text).not.toContain("AAAA");
+    expect(text).toContain("src=<data:image/png 3KB>");
+    expect(text).toContain("fit=crop");
+    expect(text).toContain('alt="A cat"');
+  });
+  test("keeps https URLs", () => {
+    expect(text).toContain('src="https://example.com/a.png"');
+  });
+  test("lists new path props", () => {
+    expect(text).toContain("strokeCap=round");
+    expect(text).toContain("endMarker=arrow");
+  });
+});

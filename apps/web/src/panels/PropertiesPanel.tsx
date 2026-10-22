@@ -7,7 +7,9 @@ import { DocumentSummary } from "@/panels/properties/DocumentSummary";
 import { PositionSection } from "@/panels/properties/PositionSection";
 import { AppearanceSection, FillSection, StrokeSection } from "@/panels/properties/StyleSections";
 import { LayoutSection } from "@/panels/properties/LayoutSection";
+import { ImageSection } from "@/panels/properties/ImageSection";
 import { IconSection, RefSection, TextSection } from "@/panels/properties/ContentSections";
+import { PathSection } from "@/panels/properties/PathSection";
 import { hasFill, hasStroke } from "@/panels/properties/node-props";
 
 const SingleNodeSections = ({ node }: { node: PegoNode }) => (
@@ -18,8 +20,10 @@ const SingleNodeSections = ({ node }: { node: PegoNode }) => (
     {node.type === "frame" ? <LayoutSection node={node} /> : null}
     {node.type === "text" ? <TextSection nodes={[node]} /> : null}
     {node.type === "icon" ? <IconSection node={node} /> : null}
+    {node.type === "image" ? <ImageSection node={node} /> : null}
     {hasFill(node) ? <FillSection node={node} /> : null}
     {hasStroke(node) ? <StrokeSection node={node} /> : null}
+    {node.type === "path" ? <PathSection node={node} /> : null}
   </>
 );
 

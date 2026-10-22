@@ -24,6 +24,18 @@ const fmt = (value: unknown): string => {
 
 const GEOMETRY_PREVIEW = 48;
 
+/** Short stand-in for an image source: never put base64 into the model context. */
+export const describeSrc = (src: string): string => {
+  const data = /^data:([^;,]+)/i.exec(src);
+  if (data) return `<data:${data[1]} ${formatBytes(Math.floor((src.length * 3) / 4))}>`;
+  return src.length > 120 ? JSON.stringify(`${src.slice(0, 117)}...`) : JSON.stringify(src);
+};
+
+const formatBytes = (bytes: number): string =>
+  bytes >= 1024 * 1024
+    ? `${(bytes / (1024 * 1024)).toFixed(1)}MB`
+    : `${Math.max(1, Math.round(bytes / 1024))}KB`;
+
 const fmtStroke = (stroke: { color: string; width: number | string }): string =>
   `${fmt(stroke.color)}:${stroke.width}`;
 
@@ -59,6 +71,17 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
     const cut = geometry.length > GEOMETRY_PREVIEW;
     const shown = cut ? `${geometry.slice(0, GEOMETRY_PREVIEW)}...` : geometry;
     tokens.push(`geometry=${JSON.stringify(shown)}${cut ? `(${geometry.length} chars)` : ""}`);
+  }
+  if (n.type === "path") {
+    push("strokeCap", n.strokeCap);
+    push("strokeJoin", n.strokeJoin);
+    push("startMarker", n.startMarker);
+    push("endMarker", n.endMarker);
+  }
+  if (n.type === "image") {
+    tokens.push(`src=${describeSrc(n.src as string)}`);
+    push("fit", n.fit);
+    push("alt", n.alt);
   }
   if (n.type === "text") {
     tokens.push(`content=${JSON.stringify(n.content)}`);

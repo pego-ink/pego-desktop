@@ -14,6 +14,8 @@ import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { getIconPath } from "@/canvas/icons";
 import { getParagraph } from "@/canvas/measure-text";
 import { createLruCache } from "@/canvas/render-cache";
+import { drawImageNode } from "@/canvas/render-image-node";
+import { strokePathWithExtras } from "@/canvas/render-path-extras";
 import type { Camera } from "@/canvas/types";
 
 type Paints = { fill: Paint; stroke: Paint; layer: Paint; iconStroke: Paint };
@@ -106,7 +108,16 @@ const drawContent = (scene: Scene, node: PegoNode, box: Box) => {
       const path = getSvgPath(ck, node.geometry);
       if (!path) return;
       fillWith(scene, fill, (paint) => canvas.drawPath(path, paint));
-      strokeWith(scene, node, (paint) => canvas.drawPath(path, paint));
+      strokeWith(scene, node, (paint) =>
+        strokePathWithExtras(
+          ck,
+          canvas,
+          path,
+          paint,
+          node,
+          resolveNumber(node.stroke?.width, doc.variables, 1),
+        ),
+      );
       return;
     }
     case "text": {
@@ -126,6 +137,9 @@ const drawContent = (scene: Scene, node: PegoNode, box: Box) => {
       canvas.restore();
       return;
     }
+    case "image":
+      drawImageNode(res, canvas, node, box, doc.variables);
+      return;
     default:
       return;
   }

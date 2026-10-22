@@ -17,6 +17,8 @@ const sizing: JsonSchema = {
   description: "Pixels, or fill_container / fit_content.",
 };
 
+const MARKERS = ["none", "arrow", "triangle", "circle", "bar"];
+
 /** Settable node props (everything except id, type and children). */
 const nodePropSchemas: Record<string, JsonSchema> = {
   name: { type: "string", description: "Layer name shown in the layers panel." },
@@ -56,6 +58,38 @@ const nodePropSchemas: Record<string, JsonSchema> = {
     description: "Frame only. Cross-axis alignment.",
   },
   geometry: { type: "string", description: "Path only. SVG path data." },
+  strokeCap: {
+    type: "string",
+    enum: ["butt", "round", "square"],
+    description: "Path only. Line end shape.",
+  },
+  strokeJoin: {
+    type: "string",
+    enum: ["miter", "round", "bevel"],
+    description: "Path only. Corner shape.",
+  },
+  startMarker: {
+    type: "string",
+    enum: MARKERS,
+    description: "Path only. Decoration at the path start.",
+  },
+  endMarker: {
+    type: "string",
+    enum: MARKERS,
+    description: "Path only. Decoration at the path end.",
+  },
+  src: {
+    type: "string",
+    description:
+      "Image only. A data: URL (embedded) or an https URL. Existing images are shown as a placeholder; do not invent base64.",
+  },
+  fit: {
+    type: "string",
+    enum: ["fill", "fit", "crop", "tile"],
+    description:
+      "Image only. fill covers the box, fit contains, crop is natural size, tile repeats.",
+  },
+  alt: { type: "string", description: "Image only. Alt text." },
   content: { type: "string", description: "Text only. The text, or a $variable reference." },
   fontFamily: { type: "string", description: "Text only." },
   fontSize: numberValue,
@@ -74,10 +108,11 @@ const nodePropSchemas: Record<string, JsonSchema> = {
 };
 
 export const NODE_FORMAT_DESCRIPTION =
-  "A node object. `type` is required: frame | group | rectangle | ellipse | path | text | icon | ref. " +
+  "A node object. `type` is required: frame | group | rectangle | ellipse | path | text | icon | image | ref. " +
   "`id` is optional (assigned when omitted). Only frame and group take `children` (same node format, nested). " +
   "Other fields apply per type: frame (layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke), " +
-  "rectangle (cornerRadius, fill, stroke), ellipse (fill, stroke), path (geometry, fill, stroke), " +
+  "rectangle (cornerRadius, fill, stroke), ellipse (fill, stroke), path (geometry, strokeCap, strokeJoin, startMarker, endMarker, fill, stroke), " +
+  "image (src, fit, cornerRadius, stroke, alt), " +
   "text (content, fontFamily, fontSize, fontWeight, fontStyle, textAlign, fill), icon (iconName, iconSet, fill), " +
   "ref (ref, descendants). Colors are hex or $variable; sizes are pixels, fill_container or fit_content.";
 
@@ -87,7 +122,7 @@ export const nodeJsonSchema: JsonSchema = {
   properties: {
     type: {
       type: "string",
-      enum: ["frame", "group", "rectangle", "ellipse", "path", "text", "icon", "ref"],
+      enum: ["frame", "group", "rectangle", "ellipse", "path", "text", "icon", "image", "ref"],
     },
     id: { type: "string", description: "Optional. Omit to get a generated id." },
     ...nodePropSchemas,
