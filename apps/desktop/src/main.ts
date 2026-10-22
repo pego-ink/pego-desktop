@@ -69,12 +69,27 @@ const createWindow = (): void => {
   void win.loadURL(devUrl ?? APP_URL);
 };
 
+/** Origin of a permission request URL, or "" when it is missing or unparsable. */
+const requestOrigin = (url: string | undefined): string => {
+  if (!url) return "";
+  try {
+    return originOf(new URL(url));
+  } catch {
+    return "";
+  }
+};
+
 const hardenSession = (): void => {
-  // The editor needs no device permissions; File System Access pickers are not permission-gated.
-  session.defaultSession.setPermissionRequestHandler((_wc, _permission, callback) =>
-    callback(false),
+  // The only permission the editor needs is `fileSystem`: File System Access must be allowed to
+  // read and write the .pego files the user picked (Save / Open / auto save). Everything else
+  // (camera, mic, notifications, …) stays denied, and only the app's own origin is trusted.
+  session.defaultSession.setPermissionRequestHandler((_wc, permission, callback, details) =>
+    callback(permission === "fileSystem" && requestOrigin(details.requestingUrl) === appOrigin),
   );
-  session.defaultSession.setPermissionCheckHandler(() => false);
+  session.defaultSession.setPermissionCheckHandler(
+    (_wc, permission, requestingOrigin) =>
+      permission === "fileSystem" && requestOrigin(requestingOrigin) === appOrigin,
+  );
 };
 
 if (!app.requestSingleInstanceLock()) {
