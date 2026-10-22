@@ -23,6 +23,7 @@ import {
   readTarget,
   type DocumentTarget,
 } from "@/workspace/document-target";
+import { sharedBrowserHost } from "@/browser/browser-host";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
 import { generateImage } from "./generate-image";
@@ -228,6 +229,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
   };
 
+  const browser = sharedBrowserHost();
+
   return {
     getDoc: () => state().doc,
     getLayout: () => getLayout(state().doc),
@@ -250,5 +253,6 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     },
     run,
     ...(target ? { target } : {}),
+    ...(browser ? { browser } : {}),
   };
 };

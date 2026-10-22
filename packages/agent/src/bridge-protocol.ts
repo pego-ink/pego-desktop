@@ -1,4 +1,4 @@
-import type { DecisionRequest, PlanStep, StepStatus } from "./types";
+import type { DecisionRequest, PlanStep, StepStatus, ToolImage } from "./types";
 
 /**
  * WebSocket protocol between the editor tab (client) and the local bridge (`apps/bridge`).
@@ -76,8 +76,8 @@ export type EditorToBridge =
       callId: string;
       content: string;
       isError: boolean;
-      /** Base64 PNGs (e.g. get_screenshot); the bridge maps them to MCP image content. */
-      images?: { mediaType: "image/png"; data: string; width: number; height: number }[];
+      /** Base64 images (e.g. get_screenshot); the bridge maps them to MCP image content. */
+      images?: ToolImage[];
     }
   /** This editor was focused or became visible; the bridge routes MCP tool calls to it. */
   | { type: "focus" }

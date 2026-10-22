@@ -2,6 +2,7 @@ import { app, BrowserWindow, session, shell } from "electron";
 import { join } from "node:path";
 import { APP_ORIGIN, APP_URL } from "@/constants";
 import { startBridge, stopBridge } from "@/bridge";
+import { registerBrowserIpc } from "@/browser-ipc";
 import { installMenu } from "@/menu";
 import { registerAppProtocol, registerAppScheme } from "@/protocol";
 import { registerUpdateIpc } from "@/update-ipc";
@@ -116,6 +117,7 @@ if (!app.requestSingleInstanceLock()) {
     await startBridge();
     await registerUpdateIpc(appOrigin, () => mainWindow);
     registerWindowIpc(appOrigin);
+    registerBrowserIpc(appOrigin);
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

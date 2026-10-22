@@ -31,7 +31,7 @@ const xSchema = { type: "number", description: "X inside the parent (pixels)." }
 const ySchema = { type: "number", description: "Y inside the parent (pixels)." };
 
 /** Where to put an inserted asset when the caller gave no coordinates. */
-const defaultPosition = (
+export const defaultPosition = (
   host: ToolHost,
   parent: string | null,
   x: number | undefined,
@@ -50,7 +50,7 @@ const defaultPosition = (
 };
 
 /** Assign ids, validate against the node schema and insert as ONE op (one undo step). */
-const insertRaw = (
+export const insertRaw = (
   host: ToolHost,
   raw: Record<string, unknown>,
   parent: string | null,

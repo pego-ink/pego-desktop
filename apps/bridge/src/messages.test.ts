@@ -60,7 +60,7 @@ describe("parseEditorMessage", () => {
       expect(result([{ ...png, data: "***" }]).ok).toBe(false);
       expect(result([{ ...png, data: "abc" }]).ok).toBe(false);
       expect(result([{ ...png, data: "data:image/png;base64,AAAA" }]).ok).toBe(false);
-      expect(result([{ ...png, mediaType: "image/jpeg" }]).ok).toBe(false);
+      expect(result([{ ...png, mediaType: "image/gif" }]).ok).toBe(false);
       expect(result([{ ...png, width: 0 }]).ok).toBe(false);
       expect(result([{ ...png, height: 1.5 }]).ok).toBe(false);
     });

@@ -31,7 +31,7 @@ const decodedBytes = (data: string): number => {
 };
 
 const imageSchema = z.object({
-  mediaType: z.literal("image/png"),
+  mediaType: z.enum(["image/png", "image/jpeg", "image/webp"]),
   data: z
     .string()
     .min(4)

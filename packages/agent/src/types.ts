@@ -1,4 +1,5 @@
 import type { Layout, Op, PegoDocument } from "@pego/doc";
+import type { BrowserHost } from "./browser-types";
 
 /** A step of the agent's plan, shown in the agent panel. */
 export type PlanStep = { id: string; title: string; detail?: string };
@@ -61,10 +62,15 @@ export type ToolHost = {
     width: number;
     height: number;
   }) => Promise<{ src: string; alt?: string }>;
+  /** The in-app browser (desktop app only); `browser` returns `unsupported` without it. */
+  browser?: BrowserHost;
 };
 
-/** Base64 PNG attached to a tool result (screenshots). */
-export type ToolImage = { mediaType: "image/png"; data: string; width: number; height: number };
+/** Image media types a tool result may carry. */
+export type ToolImageType = "image/png" | "image/jpeg" | "image/webp";
+
+/** Base64 image attached to a tool result (screenshots). */
+export type ToolImage = { mediaType: ToolImageType; data: string; width: number; height: number };
 
 /** Tool output in a provider-neutral shape (maps to tool_result / MCP CallToolResult). */
 export type ToolResult = { content: string; isError: boolean; images?: ToolImage[] };

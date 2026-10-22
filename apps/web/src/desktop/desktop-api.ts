@@ -30,6 +30,59 @@ export type PegoDesktopApi = {
   onFullScreenChange?: (listener: (fullScreen: boolean) => void) => () => void;
   /** Point the native theme (traffic lights, dialogs, menus) at the editor's theme mode. */
   setThemeSource?: (mode: "light" | "dark" | "system") => void;
+  /** The in-app browser view (absent in older shells and in a plain browser). */
+  browser?: DesktopBrowserApi;
+};
+
+/** A rectangle in the editor window, CSS px from the top-left of the page viewport. */
+export type DesktopBrowserBounds = { x: number; y: number; width: number; height: number };
+
+/** State of the in-app browser view; pushed on every change (replayed on subscribe). */
+export type DesktopBrowserState = {
+  /** "" before the first load. */
+  url: string;
+  title: string;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  /** The view is attached and painted (shown with bounds, not hidden). */
+  visible: boolean;
+  /** The last load failed: a user-readable reason, cleared by the next successful load. */
+  error?: string;
+};
+
+/**
+ * One native view (Electron WebContentsView, own session partition) drawn over the browser
+ * panel. Created lazily by the first call; it keeps its page while hidden.
+ */
+export type DesktopBrowserApi = {
+  /** Show the view at `bounds` (also used to move/resize it). Zero-size bounds hide it. */
+  show: (bounds: DesktopBrowserBounds) => void;
+  hide: () => void;
+  /**
+   * Load an http(s) or file URL; a bare host ("example.com") gets https. Resolves when the load
+   * finishes, rejects with a user-readable Error when it fails or the URL is refused.
+   */
+  navigate: (
+    url: string,
+    /** file: URLs load only with `allowFile` (the panel's address bar; never the agent). */
+    options?: { allowFile?: boolean },
+  ) => Promise<{ url: string; title: string }>;
+  back: () => void;
+  forward: () => void;
+  reload: () => void;
+  stop: () => void;
+  /**
+   * Send one Chrome DevTools Protocol command (via webContents.debugger) and resolve with its
+   * result. Only the DOM, Input, Page, Runtime, Emulation, CSS and Accessibility domains pass.
+   */
+  cdp: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+  onState: (listener: (state: DesktopBrowserState) => void) => () => void;
+  /**
+   * Messages the page's injected scripts send with `console.debug("__pego__:" + JSON)`, parsed
+   * (e.g. the element picker's `{ type: "picked" }`). Returns an unsubscribe function.
+   */
+  onPageMessage: (listener: (message: unknown) => void) => () => void;
 };
 
 export type DesktopMenuCommand = "select-all" | "close-tab";
