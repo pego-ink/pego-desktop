@@ -30,10 +30,12 @@ Open http://localhost:5173. This starts the editor and the local bridge (`127.0.
 detected automatically. If a bridge is already running (for example the desktop app), the second one exits and the
 editor uses the running one.
 
-Pego opens on the **Dashboard**: the projects of this repository (`design/<project>/` with a `project.json` and
-the design itself, `project.pego`, listed by the bridge with a preview). Open a project to get its own tab in the header with its files in the left panel; documents
-open as tabs above the canvas and autosave in the browser (IndexedDB). **Scratch** holds documents outside any
-project. Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files anywhere on disk.
+Pego opens the editor on a local document. Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files anywhere
+on disk; once saved, changes autosave to the file, and everything is also kept in the browser (IndexedDB), so it
+works offline. When the bridge is running in a repository with a `design/` folder, the Pego logo opens the
+**Dashboard** with that repository's projects (`design/<project>/` with a `project.json` and the design,
+`project.pego`). An open project gets its own tab in the header and autosaves to its `project.pego` through the
+bridge; **Scratch** holds local documents outside any project.
 
 From Claude Code, name the project: "open project Pego Website and add a pricing section" (or use its id); the
 MCP tools `list_projects`, `open_project` and `create_project` do the rest.
@@ -58,8 +60,8 @@ With the editor open (`bun run dev` or the desktop app), register Pego's MCP ser
 claude mcp add --transport http pego http://127.0.0.1:4519/mcp
 ```
 
-Then ask Claude Code to design; changes appear live in the open Pego tab. The server also exposes design guides as
-resources and the prompts `design_screen`, `polish_selection` and `extract_components`.
+Then ask Claude Code to design; changes appear live in the Pego window you used last (several windows can stay
+connected). The server also exposes design guides as resources and the prompts `design_screen`, `polish_selection` and `extract_components`.
 
 The bridge listens on `127.0.0.1:4519` only and accepts editor connections from localhost origins (and `app://pego`
 for the desktop app).

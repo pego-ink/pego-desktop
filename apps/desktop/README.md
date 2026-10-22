@@ -26,8 +26,9 @@ electron-builder: `bun run desktop:build -- --mac --arm64 --x64` (must include a
 - Navigation and `window.open` to anything outside the app origin are blocked; `https:` links open in the system browser.
 - All permission requests are denied (the editor needs none).
 - CSP is attached to every `app://pego` response (see `src/constants.ts`): `script-src 'self' 'wasm-unsafe-eval'`,
-  `connect-src` limited to `'self'`, `https://api.anthropic.com`, the font CDN (`https://api.fontsource.org`,
-  `https://cdn.jsdelivr.net`) and the bridge on `127.0.0.1:4519`.
+  `connect-src` limited to `'self'`, `https://api.anthropic.com`, any `https:` origin plus loopback `http` (custom
+  model providers the user configures; this also covers the font CDN `https://cdn.jsdelivr.net`) and the bridge on
+  `127.0.0.1:4519`.
   It is not applied in `desktop:dev` (Vite HMR needs inline scripts).
 - The bridge only accepts editor sockets from `app://pego` and the Vite dev origin
   (`PEGO_ALLOWED_ORIGINS`), and only requests with a loopback `Host` header.
@@ -70,7 +71,8 @@ their blockmaps and `latest-mac.yml` using the built-in `GITHUB_TOKEN` (`content
 - `electron-builder` is run with `--publish never` in CI; it still writes `latest-mac.yml` (one file listing the arm64 and
   x64 zip + dmg; `channel: latest` keeps that name even for `-beta` versions). macOS updates need the zip target and a
   signed + notarized app. Squirrel.Mac verifies the new build is signed by the same identity before installing.
-- `src/updater.ts`: packaged builds only. Checks 10s after launch and every 6h, `autoDownload` and `autoInstallOnAppQuit`
+- `src/updater.ts`: packaged macOS builds only (Linux and Windows have no update feed yet; release.yml only
+  publishes `latest-mac.yml`). Checks 10s after launch and every 6h, `autoDownload` and `autoInstallOnAppQuit`
   on. Status goes to the renderer over IPC (`src/update-status.ts` holds the status model, validation and channel names);
   the web app reads it from `window.pegoDesktop` (`apps/web/src/desktop`). `desktop:dev` skips the updater.
 - Pre-releases: electron-updater sets `allowPrerelease` from the installed version. A `-beta` build (current) accepts beta

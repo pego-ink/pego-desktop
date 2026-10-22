@@ -30,11 +30,11 @@ PR and push to `main`.
 ```
 apps/web/        React + Vite editor: canvas/, interaction/, panels/, agent/, persistence/, store/
 apps/bridge/     Bun server: MCP (Streamable HTTP), Claude Agent SDK runs, WebSocket to the editor
-apps/desktop/    Electron shell (macOS), starts the bridge itself
+apps/desktop/    Electron shell (macOS signed + auto-update; Linux, Windows), starts the bridge itself
 apps/api/        Hono on Workers, frozen, not used by the editor
 packages/doc/    schema (Zod), ops + inverse, history, tree helpers, instances, flex layout
-packages/agent/  provider-neutral tools, prompts, guides, style presets, serialization, bridge protocol
-packages/export/ HTML/CSS and SVG export of a node from document + layout (pure)
+packages/agent/  provider-neutral tools, prompts, skills, style presets, export (code/SVG), serialization,
+                 bridge protocol
 packages/ui/     shadcn components and tokens
 design/          mocks (.pen, png, html), not linted
 ```
@@ -46,7 +46,7 @@ design/          mocks (.pen, png, html), not linted
   mutate a `PegoDocument` in place; ops return a new document.
 - **Undo = inverse ops.** `history.ts` records one transaction per gesture, panel edit or agent step
   (`source: "user" | "agent"`). Drags use `extendLast` so one gesture is one undo step.
-- **`packages/doc`, `packages/agent` and `packages/export` are pure**: no DOM, React, network or file I/O. Editor capabilities reach
+- **`packages/doc` and `packages/agent` are pure**: no DOM, React, network or file I/O. Editor capabilities reach
   tools only through `ToolHost` (`packages/agent/src/types.ts`); optional capabilities return an `unsupported`
   error when missing.
 - **Tools never throw.** `ToolSpec.run` turns errors into `{ isError: true }` results.
@@ -54,12 +54,17 @@ design/          mocks (.pen, png, html), not linted
 - **Skia only renders.** Hit-testing, selection, transforms and layout are ours (`apps/web/src/interaction`,
   `packages/doc/src/layout.ts`).
 - The bridge binds to `127.0.0.1:4519` only and checks origins (`apps/bridge/src/security.ts`). Keep it that way.
+- **Several editors share one bridge** (`apps/bridge/src/editor-hub.ts`, protocol v6): every editor window stays
+  connected; MCP calls (and the file tools) go to the most recently focused one, agent runs talk only to the
+  editor that started them (up to `MAX_CONCURRENT_RUNS` = 3 at once, each with its own run-scoped MCP endpoint),
+  `run_steer` feeds a running run. Two windows with the same project file: last focused wins, the other's
+  `save_file` is refused until it is focused again (its changes stay in its browser autosave).
 - The user's Anthropic API key stays in the browser and is sent only to `api.anthropic.com`.
 
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **2**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **3**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -67,19 +72,21 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 2, "document": { ... } }
+{ "format": "pego", "version": 3, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
 versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosave), then validated with
 `documentSchema`. Version 1 added `effects`, per-side stroke widths, text `lineHeight`/`letterSpacing`, path
-`viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1").
+`viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
+added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
+change: the bump makes older builds refuse these files instead of dropping the props).
 
 ### Document
 
 ```json
 {
-  "version": 2,
+  "version": 3,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -112,16 +119,17 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 Every node has `id` (unique in the whole document), `type`, and optionally `name`, `x`, `y` (default `0`),
 `width`, `height`, `rotation`, `opacity`, `reusable`.
 
-| Type        | Extra props                                                                                                                 | Children |
-| ----------- | --------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `frame`     | `fill`, `stroke`, `effects`, `cornerRadius`, `clip`, `layout`, `gap`, `padding`, `justifyContent`, `alignItems`             | yes      |
-| `group`     | none                                                                                                                        | yes      |
-| `rectangle` | `fill`, `stroke`, `effects`, `cornerRadius`                                                                                 | no       |
-| `ellipse`   | `fill`, `stroke`, `effects`                                                                                                 | no       |
-| `path`      | `fill`, `stroke`, `effects`, `geometry` (SVG path data, required), `viewBox`                                                | no       |
-| `text`      | `content` (required), `fontFamily`, `fontSize`, `fontWeight`, `lineHeight`, `letterSpacing`, `textAlign`, `fill`, `effects` | no       |
-| `icon`      | `iconSet` (default `"lucide"`), `iconName` (kebab-case, required), `fill`, `effects`                                        | no       |
-| `ref`       | `ref` (id of a reusable node, required), `descendants` (overrides)                                                          | no       |
+| Type        | Extra props                                                                                                                              | Children |
+| ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| `frame`     | `fill`, `stroke`, `effects`, `cornerRadius`, `clip`, `layout`, `gap`, `padding`, `justifyContent`, `alignItems`                          | yes      |
+| `group`     | none                                                                                                                                     | yes      |
+| `rectangle` | `fill`, `stroke`, `effects`, `cornerRadius`                                                                                              | no       |
+| `ellipse`   | `fill`, `stroke`, `effects`                                                                                                              | no       |
+| `path`      | `fill`, `stroke`, `effects`, `geometry` (SVG path data, required), `viewBox`, `strokeCap`, `strokeJoin`, `startMarker`, `endMarker`      | no       |
+| `text`      | `content` (required), `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeight`, `letterSpacing`, `textAlign`, `fill`, `effects` | no       |
+| `image`     | `src` (data: or https URL, required), `fit` (`fill` \| `fit` \| `crop` \| `tile`), `cornerRadius`, `stroke`, `alt`                       | no       |
+| `icon`      | `iconSet` (default `"lucide"`), `iconName` (kebab-case, required), `fill`, `effects`                                                     | no       |
+| `ref`       | `ref` (id of a reusable node, required), `descendants` (overrides)                                                                       | no       |
 
 Value rules:
 
@@ -141,6 +149,10 @@ Value rules:
 - **Text**: `lineHeight` is a multiple of `fontSize` (CSS unitless), `letterSpacing` is in px, `fontFamily` may
   be a string `$variable`.
 - **Path**: with `viewBox: [minX, minY, width, height]` the geometry is scaled to the node's size.
+  `strokeCap` (`butt | round | square`), `strokeJoin` (`miter | round | bevel`) and the open-path markers
+  `startMarker` / `endMarker` (`none | arrow | triangle | circle | bar`) ride on the stroke.
+- **Image node** vs **image fill**: an `image` node is a placed bitmap (its own layer, `fit` like Figma); an image
+  fill paints a shape's background. Both survive export.
 - **Numbers** (`x`, `gap`, `fontSize`, `cornerRadius`, ...): a number or a `$variable`.
 - **Sizing** (`width`, `height`): a number, `"fit_content"` (hug children; frames default to it, text measures
   itself) or `"fill_container"` (take the parent's remaining space).
@@ -188,54 +200,58 @@ result as an unsaved `.pego`. Differences it handles: `.pen` frames without `lay
 padding. Instances that restyle their root or replace a descendant are detached. Anything else it cannot
 represent is dropped and reported as a warning, never silently. Test fixture: `design/pego.pen`.
 
-## Projects, workspaces and tabs
+## Documents, sources and workspaces
 
+- **Two document sources, one model** (`apps/web/src/persistence/document-source.ts`). The default is a local
+  `.pego` file (File System Access API): open/save, file autosave (`file-autosave.ts`, debounced, permission
+  resume, paused state) and the IndexedDB browser copy (`use-persistence.ts`); it works offline, no bridge
+  needed. The second is a bridge file: a project's `project.pego` or a file opened by MCP `open_document`,
+  written through the bridge (`save_file`) and autosaved the same way while the bridge is connected ("Bridge
+  offline" otherwise, then it resumes). Never lose unsaved work: `isFileWriteInFlight` guards unload, and a
+  pending autosave is written before another workspace's document replaces the live one.
 - **Projects** are folders in the repository's `design/` with a `project.json` (`{ id, name, createdAt }`) and
-  the project's design, `project.pego` (one document; screens are its pages), e.g. `design/pego-website/`.
-  Opening a project opens `project.pego` (created when missing); its tab and the header show the project name
-  (the document name), other files their file name. The bridge finds `design/` (nearest `.git` above where it runs;
-  `PEGO_DESIGN_DIR` overrides), lists projects (`apps/bridge/src/projects.ts`) and creates them.
-- **Workspaces** (`apps/web/src/workspace/use-workspace-store.ts`): the header shows Dashboard, Scratch
-  (documents outside any project) and one tab per open project. Each workspace keeps its own document tabs;
-  only the live one is in the stores, like document tabs. The Dashboard is a view, not a workspace.
-- **One document per workspace** (`apps/web/src/tabs/use-tabs-store.ts`): a project shows its `project.pego`,
-  Scratch one loose document; screens are pages, there is no document tab bar. The shown document lives in the
-  normal stores (document, file, viewport). Open documents through `openTab` (File > Open, drops, .pen import,
-  `open_document`, the project panel), never with `useDocumentStore.load` directly; it asks the user about
-  unsaved changes ("ask"), refuses for Claude Code ("refuse": save first) or drops them ("discard"). Switching
-  projects is blocked while a panel agent run is active. Autosave stores every workspace.
-- Inside a project, like Figma: the left panel has Layers (pages + layer tree), Assets (the document's
-  components, `apps/web/src/assets/`; click to show, + to place an instance) and Agent. There is no file list;
-  other `.pego` files are opened with File > Open or by Claude Code. Bridge reads are limited to `design/`.
+  the project's design, `project.pego` (one document; screens are its pages), e.g. `design/pego-website/`. Its
+  document id is the project id (chat sessions are keyed by document id). The bridge finds `design/` (nearest
+  `.git` above where it runs; `PEGO_DESIGN_DIR` overrides), lists projects (`apps/bridge/src/projects.ts`) and
+  creates them. Projects, the dashboard and the project tabs appear only while a bridge serves a design folder.
+- **Workspaces** (`apps/web/src/workspace/use-workspace-store.ts`): Scratch (local files, the default) and one
+  per open project, each with **one document**. The shown document lives in the normal stores (document, file,
+  viewport; `workspace/live-document.ts`), the others keep a snapshot. Open documents through `openDocument`
+  (File > Open, drops, .pen import, `open_document`, projects), never with `useDocumentStore.load` directly; it
+  asks the user about unsaved changes ("ask"), refuses for Claude Code ("refuse": save first) or drops them
+  ("discard"). Switching is blocked while a panel agent run is active. The Dashboard is a view (the Pego logo in
+  the icon rail opens it), not a workspace.
+- Editor chrome: icon rail with Agent, Layers (pages + layer tree) and Assets (the document's components,
+  `apps/web/src/assets/`), resizable side panel, properties column (pin, hide); `Ctrl/⌘ + \` hides both sides.
+  Layout state is one store, `apps/web/src/store/use-layout-store.ts`.
 - MCP: `list_projects`, `open_project` (by id, name or unambiguous prefix), `create_project`,
-  `list_documents` (active project, open tabs, files) and `switch_document`; edit tools act on the active tab of
-  the active project.
+  `list_documents` (the open documents, one per workspace) and `switch_document`; they act on the focused editor.
 - Dev: `?bridge=4599` in the editor URL connects to a bridge on another port (`PEGO_BRIDGE_PORT=4599 bun run
 bridge`), handy for testing without touching your main editor tab.
 
 ## Export
 
-`packages/export`: `exportHtml(doc, layout, nodeId)` and `exportSvg(doc, layout, nodeId)`. Both take the layout the
-canvas uses, so positions and hug sizes match; SVG also takes `textLines` (CanvasKit line breaks) and HTML maps
-flex frames to flexbox, variables to CSS custom properties. The editor's Export section
-(`apps/web/src/export/export-actions.ts`) adds PNG via `renderNodeImage` with a transparent background. When
-you add a node prop, update the canvas renderer and both exporters together, and check them side by side.
+One engine, in `packages/agent/src/export/`: `exportCode` (React + Tailwind or HTML/CSS) and `exportSvg`, used by
+the `export_code` / `export_image` tools and the editor's Export section (`apps/web/src/export/`, PNG via
+`renderNodeImage`, code preview dialog). Both take the layout the canvas uses, so positions and hug sizes match.
+When you add a node prop, update the canvas renderer and the exporter together, and check them side by side.
+(The separate `@pego/export` package and the `get_code` tool were folded into this engine in the dev_echo merge.)
 
 ## Agent
 
 - Tools: `packages/agent/src/tools.ts` (registry), `tools-edit.ts`, `tools-inspect.ts`, `edit/`, `inspect/`.
-- Prompts: `prompts.ts`. Design guides (`get_guidelines`): `guides/`. Style presets (`list_styles`,
-  `get_style`): `styles/presets.ts`.
+- Prompts: `prompts.ts`. Design guidance is the skills system (`skills/`: one design skill plus one style
+  skill per run, `list_skills` / `get_skill`; `get_guidelines` maps old topic names onto skills). Style presets
+  (`list_styles`, `get_style`): `styles/presets.ts`.
 - BYOK models: planner `claude-opus-5-5`, executor `claude-sonnet-5-5` (`apps/web/src/agent/api-runtime.ts`).
 - Plan and progress always go through `report_plan` / `report_step` so every backend drives the same panel.
 - MCP (`apps/bridge/src/mcp.ts`): every tool carries annotations (`packages/agent/src/annotations.ts`); add a new
   tool there too. Over HTTP the bridge also serves `open_document` / `save_document`
   (`apps/bridge/src/file-tools.ts`): the bridge reads and writes absolute `.pego` paths (reads `.pen`), the
   editor parses and serializes (`apps/web/src/persistence/bridge-documents.ts`), and File → Save writes back to
-  that path through the bridge. Only one editor tab is connected at a time; a replaced tab waits for "Use this
-  window" instead of reconnecting.
-- `get_code` returns a node as HTML/CSS (via `@pego/export`) so Claude Code can implement a design; image fills
-  are replaced by file names to keep the result small.
+  that path through the bridge. These go to the focused editor; agent runs never get them.
+- `export_code` returns a node as React + Tailwind or HTML/CSS so Claude Code can implement a design; embedded
+  image data is cut to keep the result small.
 - Add a test next to every new tool (`*.test.ts`, use `test-host.ts`).
 
 ## Code conventions

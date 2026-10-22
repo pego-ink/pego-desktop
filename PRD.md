@@ -69,10 +69,16 @@ Non-goals (for now):
 - macOS desktop app (Electron), signed and notarized release pipeline.
 - Format v1 with migrations: shadows, layer blur, per-side borders, line height and letter spacing.
 - `.pen` import through File → Open (M1-1, P0 part), with a warning list for anything not converted.
-- Linear/radial gradient and embedded image fills; export of a node to PNG (1x-3x), SVG and HTML/CSS (M1-2,
-  M1-3, M1-4, M1-5); agent tool `get_code` for design-to-code.
-- Multiple pages per document (M1-6), web fonts from Fontsource (M1-7), Linux and Windows desktop builds
-  (M1-8), drag & drop of files and images.
+- Linear/radial gradient and embedded image fills; export of a node to PNG (1x-3x), SVG, HTML/CSS and React +
+  Tailwind (M1-2, M1-3, M1-4, M1-5); agent tools `export_code` / `export_image` for design-to-code.
+- Multiple pages per document (M1-6), web fonts for any `fontFamily` (M1-7, Google Fonts catalog with variable
+  axes and italics), Linux and Windows desktop builds (M1-8), drag & drop of files and images.
+- Image nodes, pen/pencil/line/arrow tools with caps, joins and markers, rotated selection, Figma-like
+  drag/reparent, per-file agent chat sessions, parallel local-agent runs with steer, settings modal, light/dark.
+
+> Merge note (dev_echo into feat/ui): one export engine (`packages/agent/src/export`, replaces `@pego/export` and
+> `get_code`); the bridge keeps several editors connected (focus routing, no single-editor takeover); local
+> `.pego` files stay the default document source and bridge projects are the second one (see CLAUDE.md).
 
 ## 7. Requirements by milestone
 
