@@ -134,9 +134,10 @@ describe("insert_nodes", () => {
     expect(frame.children[2]?.id).toBe("rect-1");
   });
 
-  test("inserts at document root with null parent", async () => {
+  test("null parent inserts at the top of the active page", async () => {
     const { host } = await call("insert_nodes", { parentId: null, nodes: [{ type: "frame" }] });
-    expect(host.doc().children).toHaveLength(2);
+    expect(host.doc().children).toHaveLength(1);
+    expect(host.doc().children[0]!.children).toHaveLength(2);
   });
 
   test("invalid node reports path and hint, and changes nothing", async () => {
@@ -275,7 +276,7 @@ describe("update_node / replace_node / move_node / delete_nodes", () => {
     );
     expect(isError).toBe(false);
     expect(data.deleted).toEqual(["frame-1"]);
-    expect(host.doc().children).toHaveLength(0);
+    expect(host.doc().children[0]!.children).toHaveLength(0);
   });
 
   test("delete with a missing id is atomic", async () => {
@@ -465,5 +466,56 @@ describe("tool annotations", () => {
       readOnlyHint: false,
       destructiveHint: true,
     });
+  });
+});
+
+describe("pages", () => {
+  const pageHost = () => {
+    const host = createFakeHost();
+    let active: string | null = null;
+    host.getActivePageId = () => active;
+    host.setActivePage = (id) => {
+      active = id;
+    };
+    return host;
+  };
+
+  test("create_page adds a page, switches to it, and null parents land there", async () => {
+    const host = pageHost();
+    const created = await call("create_page", { name: "Components" }, host);
+    expect(created.isError).toBe(false);
+    const pageId = created.data.id as string;
+    expect(host.getActivePageId?.()).toBe(pageId);
+    await call(
+      "insert_nodes",
+      { parentId: null, nodes: [{ type: "rectangle", id: "on-p2" }] },
+      host,
+    );
+    const page = host.doc().children.find((p) => p.id === pageId);
+    expect(page?.children.map((n) => n.id)).toEqual(["on-p2"]);
+    const text = (await call("get_document", {}, host)).text;
+    expect(text).toContain(`pages: page-1 "Page 1" (`);
+    expect(text).toContain(`${pageId} "Components" (active, 1 node)`);
+    expect(text).toContain(`tree of page ${pageId}:`);
+    expect(text).not.toContain("frame-1");
+  });
+
+  test("go_to_page switches and rejects unknown pages", async () => {
+    const host = pageHost();
+    const created = await call("create_page", { name: "Two", activate: false }, host);
+    expect(host.getActivePageId?.()).toBeNull();
+    expect((await call("go_to_page", { pageId: created.data.id }, host)).isError).toBe(false);
+    expect(host.getActivePageId?.()).toBe(created.data.id);
+    const missing = await call("go_to_page", { pageId: "nope" }, host);
+    expect(missing.data.error.code).toBe("page_not_found");
+  });
+
+  test("instances resolve components from another page", async () => {
+    const host = pageHost();
+    const created = await call("create_page", { name: "Screens" }, host);
+    const result = await call("create_instance", { componentId: "frame-1", parentId: null }, host);
+    // frame-1 is not reusable in the sample doc: the error proves the lookup crossed pages.
+    expect(result.data.error.message).toContain("frame-1");
+    expect(created.isError).toBe(false);
   });
 });

@@ -36,6 +36,8 @@ const TOOLS: Record<string, [title: string, kind: Kind]> = {
   set_instance_overrides: ["Set instance overrides", "change"],
   set_selection: ["Select nodes", "change"],
   focus_nodes: ["Focus nodes", "change"],
+  create_page: ["Create page", "add"],
+  go_to_page: ["Go to page", "change"],
   report_plan: ["Report plan", "change"],
   report_step: ["Report step", "change"],
   ask_user: ["Ask the user", "change"],

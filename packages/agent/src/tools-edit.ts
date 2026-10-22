@@ -2,6 +2,7 @@ import { z } from "zod";
 import {
   applyOp,
   cloneWithFreshIds,
+  createId,
   collectDocIds,
   findLocation,
   OpError,
@@ -23,7 +24,16 @@ import {
 } from "./edit/components";
 import { batchSchema, buildBatch, MAX_BATCH_OPERATIONS } from "./edit/batch";
 import { idJsonSchema, indexJsonSchema, nodeJsonSchema, parentIdJsonSchema } from "./json-schemas";
-import { assignIds, commitOps, defineTool, idTree, ok, parseNode, ToolError } from "./tool-kit";
+import {
+  activePageId,
+  assignIds,
+  commitOps,
+  defineTool,
+  idTree,
+  ok,
+  parseNode,
+  ToolError,
+} from "./tool-kit";
 import type { JsonSchema, ToolSpec } from "./types";
 
 const id = z.string().min(1);
@@ -181,7 +191,7 @@ const batchDesign = defineTool({
   inputHint:
     'Pass {operations: [{op: "insert", parent: "@hero" | id | null, node: {...}, as?: "name"}, {op: "update", target, props}, {op: "replace", target, node}, {op: "move", target, parent, index?}, {op: "delete", target}, {op: "copy", source, parent, overrides?}, {op: "instance", component, parent, props?, overrides?}]}. Each operation needs its `op` field.',
   run: (input, host) => {
-    const result = buildBatch(host.getDoc(), input.operations);
+    const result = buildBatch(host.getDoc(), input.operations, activePageId(host));
     host.applyOps(result.ops);
     host.setFocus(result.focus);
     return withWarnings(
@@ -469,7 +479,8 @@ const copyNodes = defineTool({
           : "Call get_document to see the current ids.";
         throw new ToolError("node_not_found", `node "${originalId}" not found`, hint);
       }
-      const destination = input.parentId === undefined ? loc.parentId : input.parentId;
+      const destination =
+        input.parentId === undefined ? loc.parentId : (input.parentId ?? activePageId(host));
       const at =
         input.parentId === undefined
           ? loc.index + 1
@@ -505,6 +516,87 @@ const copyNodes = defineTool({
 });
 
 /** Productivity tools: batch_design, components, copy_nodes. */
+// --- pages -------------------------------------------------------------------------
+
+const createPage = defineTool({
+  name: "create_page",
+  description:
+    "Add a page to the document (pages hold separate canvases, e.g. one per flow plus a Components page). " +
+    "By default the editor switches to it, so later edits with parentId null land on the new page. Rename a page with update_node and remove one with delete_nodes (a document keeps at least one page).",
+  inputSchema: {
+    type: "object",
+    properties: {
+      name: { type: "string", minLength: 1, description: "Page name shown in the pages list." },
+      index: indexJsonSchema,
+      activate: {
+        type: "boolean",
+        description: "Switch the editor to the new page (default true).",
+      },
+    },
+    required: ["name"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({
+    name: z.string().trim().min(1),
+    index: z.number().int().nonnegative().optional(),
+    activate: z.boolean().optional(),
+  }),
+  inputHint: "Pass {name: string, index?: integer, activate?: boolean}.",
+  run: (input, host) => {
+    const page = {
+      type: "page" as const,
+      id: createId(),
+      name: input.name,
+      x: 0,
+      y: 0,
+      children: [],
+    };
+    commitOps(host, [
+      {
+        op: "insert",
+        parentId: null,
+        ...(input.index === undefined ? {} : { index: input.index }),
+        node: page,
+      },
+    ]);
+    if (input.activate !== false) host.setActivePage?.(page.id);
+    return ok({
+      ok: true,
+      id: page.id,
+      active: input.activate !== false && Boolean(host.setActivePage),
+    });
+  },
+});
+
+const goToPage = defineTool({
+  name: "go_to_page",
+  description:
+    "Show a page in the editor. Later edits with parentId null go to this page, and get_document shows its tree.",
+  inputSchema: {
+    type: "object",
+    properties: { pageId: idJsonSchema("Id of the page to show (see pages: in get_document).") },
+    required: ["pageId"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({ pageId: id }),
+  inputHint: "Pass {pageId: string}.",
+  run: (input, host) => {
+    const page = host.getDoc().children.find((candidate) => candidate.id === input.pageId);
+    if (!page) {
+      throw new ToolError(
+        "page_not_found",
+        `page "${input.pageId}" not found`,
+        "Call get_document: the pages line lists every page id.",
+      );
+    }
+    if (!host.setActivePage) {
+      throw new ToolError("unsupported", "This editor connection cannot switch pages.");
+    }
+    host.setActivePage(page.id);
+    return ok({ ok: true, page: page.id, name: page.name });
+  },
+});
+
 export const editTools: ToolSpec[] = [
   batchDesign,
   createComponent,
@@ -512,4 +604,6 @@ export const editTools: ToolSpec[] = [
   setInstanceOverrides,
   detachInstance,
   copyNodes,
+  createPage,
+  goToPage,
 ];
