@@ -1,9 +1,10 @@
-import { useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import { ArrowUpIcon, SquareIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import { cancelRun, startRun } from "@/agent/run";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
+import { AgentSelector } from "@/panels/agent/AgentSelector";
 import { isRunActive, selectionHint } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 
@@ -17,6 +18,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const selectionCount = useDocumentStore((s) => s.selection.length);
   const hint = selectionHint(selectionCount);
 
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [value, setValue] = useState("");
   const [seenSeed, setSeenSeed] = useState(seed.key);
   if (seenSeed !== seed.key) {
@@ -49,6 +51,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       )}
     >
       <textarea
+        ref={textareaRef}
         aria-label="Prompt"
         value={value}
         disabled={active}
@@ -58,13 +61,16 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         placeholder={active ? "Agent is working…" : "Describe what to design…"}
         className="max-h-40 min-h-12 w-full resize-none bg-transparent px-1 text-xs leading-5 text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground disabled:cursor-not-allowed"
       />
-      <div className="mt-1 flex items-center justify-between gap-2">
+      <div className="mt-1 flex items-center gap-2">
+        <AgentSelector restoreFocusRef={textareaRef} />
         {hint ? (
-          <span className="truncate rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground">
+          <span className="min-w-0 flex-1 truncate rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground">
             {hint}
           </span>
         ) : (
-          <span className="text-[11px] text-muted-foreground">Enter to send</span>
+          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+            Enter to send
+          </span>
         )}
         {active ? (
           <button

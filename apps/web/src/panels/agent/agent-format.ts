@@ -142,3 +142,19 @@ export const EXAMPLE_PROMPTS = [
 
 export const BRIDGE_COMMAND = "bun run bridge";
 export const MCP_ADD_COMMAND = "claude mcp add --transport http pego http://127.0.0.1:4519/mcp";
+
+export type ProviderId = "anthropic" | "openai" | "opencode" | "qwen" | "gemini" | "cursor";
+
+/** Whose logo represents each local agent CLI. */
+export const AGENT_PROVIDER: Record<LocalAgentId, ProviderId> = {
+  "claude-code": "anthropic",
+  codex: "openai",
+  opencode: "opencode",
+  qwen: "qwen",
+  gemini: "gemini",
+  cursor: "cursor",
+};
+
+/** The first backtick-quoted command in an agent note (e.g. "Run `codex login` once"). */
+export const noteCommand = (note: string | undefined): string | null =>
+  note?.match(/`([^`]+)`/)?.[1]?.trim() || null;

@@ -3,12 +3,14 @@ import { BRIDGE_COMMAND, MCP_ADD_COMMAND } from "@/panels/agent/agent-format";
 import { StatusDot } from "@/panels/agent/StatusDot";
 
 /** How-to shown while the local bridge is not reachable. */
-export const BridgeSetup = () => (
+export const BridgeSetup = ({ showStatus = true }: { showStatus?: boolean }) => (
   <div className="grid gap-2">
-    <div className="flex items-center gap-2 text-xs">
-      <StatusDot tone="off" />
-      <span className="text-foreground">Bridge not running</span>
-    </div>
+    {showStatus ? (
+      <div className="flex items-center gap-2 text-xs">
+        <StatusDot tone="off" />
+        <span className="text-foreground">Bridge not running</span>
+      </div>
+    ) : null}
     <div className="grid gap-1.5">
       <p className="text-[11px] leading-4 text-muted-foreground">
         Start the local bridge from the Pego repo. It finds Claude Code, Codex, opencode, Qwen Code,

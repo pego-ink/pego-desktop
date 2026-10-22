@@ -1,10 +1,8 @@
 import { useState } from "react";
-import { SettingsIcon, SparklesIcon } from "lucide-react";
+import { SparklesIcon } from "lucide-react";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore } from "@/agent/use-agent-store";
-import { AgentPicker } from "@/panels/agent/AgentPicker";
-import { AgentsDialog } from "@/panels/agent/AgentsDialog";
 import { ActivityLog } from "@/panels/agent/ActivityLog";
 import { AgentComposer } from "@/panels/agent/AgentComposer";
 import { AgentEmptyState } from "@/panels/agent/AgentEmptyState";
@@ -20,7 +18,7 @@ import {
   runStatusLabel,
 } from "@/panels/agent/agent-format";
 
-const RunHeader = ({ onOpenAgents }: { onOpenAgents: () => void }) => {
+const RunHeader = () => {
   const status = useAgentStore((s) => s.status);
   const steps = useAgentStore((s) => s.steps);
   const prompt = useAgentStore((s) => s.prompt);
@@ -54,15 +52,6 @@ const RunHeader = ({ onOpenAgents }: { onOpenAgents: () => void }) => {
           </span>
         )}
       </div>
-      <button
-        type="button"
-        aria-label="Agents"
-        title="Agents"
-        onClick={onOpenAgents}
-        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4"
-      >
-        <SettingsIcon />
-      </button>
     </PanelHeader>
   );
 };
@@ -113,13 +102,10 @@ export const AgentPanel = () => {
   const decision = useAgentStore((s) => s.decision);
   const status = useAgentStore((s) => s.status);
   const [seed, setSeed] = useState({ text: "", key: 0 });
-  const [agentsOpen, setAgentsOpen] = useState(false);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <RunHeader onOpenAgents={() => setAgentsOpen(true)} />
-      <AgentPicker />
-      <AgentsDialog open={agentsOpen} onOpenChange={setAgentsOpen} />
+      <RunHeader />
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {hasRun ? (
           <RunView />

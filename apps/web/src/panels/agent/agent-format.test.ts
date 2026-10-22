@@ -4,6 +4,8 @@ import type { RunStep } from "@/agent/use-agent-store";
 import {
   agentDetail,
   agentStatus,
+  AGENT_PROVIDER,
+  noteCommand,
   customModelCandidate,
   filterModels,
   INSTALL_HINTS,
@@ -120,5 +122,17 @@ describe("agent-format", () => {
     expect(customModelCandidate(["a"], "  ")).toBeNull();
     expect(customModelCandidate(["a"], "a")).toBeNull();
     expect(customModelCandidate(["a"], " my/model ")).toBe("my/model");
+  });
+
+  test("noteCommand extracts the first backtick command", () => {
+    expect(noteCommand("Run `codex login` once")).toBe("codex login");
+    expect(noteCommand("Not signed in")).toBeNull();
+    expect(noteCommand(undefined)).toBeNull();
+  });
+
+  test("every local agent has a provider", () => {
+    expect(AGENT_PROVIDER["claude-code"]).toBe("anthropic");
+    expect(AGENT_PROVIDER.codex).toBe("openai");
+    expect(Object.keys(AGENT_PROVIDER)).toHaveLength(6);
   });
 });
