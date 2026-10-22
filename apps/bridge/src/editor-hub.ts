@@ -1,9 +1,14 @@
 import { randomUUID } from "node:crypto";
-import type { BridgeToEditor, ToolImage } from "@pego/agent";
+import type { BridgeToEditor, ToolImage, ToolTarget } from "@pego/agent";
 
 export type ToolSource = Extract<BridgeToEditor, { type: "tool_call" }>["source"];
 export type ToolOutcome = { content: string; isError: boolean; images?: ToolImage[] };
-export type CallTool = (tool: string, input: unknown, source: ToolSource) => Promise<ToolOutcome>;
+export type CallTool = (
+  tool: string,
+  input: unknown,
+  source: ToolSource,
+  target?: ToolTarget,
+) => Promise<ToolOutcome>;
 
 /** The slice of a WebSocket the hub needs (satisfied by Bun's ServerWebSocket). */
 export type EditorSocket = {
@@ -107,7 +112,7 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
   const resolveTarget = (source: ToolSource): EditorSocket | undefined =>
     source.kind === "run" ? runOwners.get(source.runId) : activeEntry()?.socket;
 
-  const callTool: CallTool = (tool, input, source) => {
+  const callTool: CallTool = (tool, input, source, target) => {
     const socket = resolveTarget(source);
     if (!socket) return Promise.resolve({ content: NO_EDITOR_MESSAGE, isError: true });
     const callId = randomUUID();
@@ -120,7 +125,14 @@ export const createEditorHub = (options: { toolTimeoutMs: number }) => {
         });
       }, options.toolTimeoutMs);
       pending.set(callId, { resolve, timer, socket });
-      const sent = trySend(socket, { type: "tool_call", callId, tool, input, source });
+      const sent = trySend(socket, {
+        type: "tool_call",
+        callId,
+        tool,
+        input,
+        source,
+        ...(target ? { target } : {}),
+      });
       if (!sent) {
         clearTimeout(timer);
         pending.delete(callId);

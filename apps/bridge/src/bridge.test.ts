@@ -14,6 +14,10 @@ import type { AgentAdapter } from "./agents/types";
 import { MAX_EDITOR_SOCKETS, NO_EDITOR_MESSAGE } from "./editor-hub";
 import type { RunRequest } from "./runs";
 import { startBridge, type Bridge } from "./server";
+import { createProject } from "./projects";
+import { mkdtemp, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 
 const ORIGIN = "http://localhost:5173";
 const ECHO_TOOL = {
@@ -233,6 +237,7 @@ describe("protocol and tool forwarding", () => {
       protocol: BRIDGE_PROTOCOL_VERSION,
       claudeCodeAvailable: true,
       mcpUrl: bridge.mcpUrl,
+      projectDir: null,
       agents: [
         {
           id: "claude-code",
@@ -508,6 +513,50 @@ describe("MCP over HTTP", () => {
       content: [{ type: "text", text: "echo: hello" }],
       isError: false,
     });
+  });
+
+  test("a project argument targets that project and is not passed to the tool", async () => {
+    const designDir = await mkdtemp(join(tmpdir(), "pego-target-"));
+    try {
+      const shop = await createProject(designDir, "Shop");
+      const bridge = start({ designDir });
+      const { editor } = await greet(bridge);
+      const list = await parseRpc(
+        await mcpPost(bridge, { jsonrpc: "2.0", id: 1, method: "tools/list" }),
+      );
+      const echo = list.result.tools.find((t: { name: string }) => t.name === "test_echo");
+      expect(echo.inputSchema.properties.project.type).toBe("string");
+
+      const pending = mcpPost(bridge, {
+        jsonrpc: "2.0",
+        id: 2,
+        method: "tools/call",
+        params: { name: "test_echo", arguments: { text: "hi", project: "shop" } },
+      });
+      const call = (await editor.next("tool_call")) as Extract<
+        BridgeToEditor,
+        { type: "tool_call" }
+      >;
+      expect(call.input).toEqual({ text: "hi" });
+      expect(call.target).toEqual({
+        project: { id: shop.id, name: "Shop", dir: shop.dir, mainFile: shop.mainFile },
+      });
+      editor.send({ type: "tool_result", callId: call.callId, content: "ok", isError: false });
+      expect((await parseRpc(await pending)).result.isError).toBe(false);
+
+      const missing = await parseRpc(
+        await mcpPost(bridge, {
+          jsonrpc: "2.0",
+          id: 3,
+          method: "tools/call",
+          params: { name: "test_echo", arguments: { text: "hi", project: "nope" } },
+        }),
+      );
+      expect(missing.result.isError).toBe(true);
+      expect(missing.result.content[0].text).toStartWith('No project "nope"');
+    } finally {
+      await rm(designDir, { recursive: true, force: true });
+    }
   });
 
   test("maps editor isError and no-editor to MCP tool errors; unknown tool errors", async () => {

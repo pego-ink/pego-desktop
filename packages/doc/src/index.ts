@@ -15,3 +15,4 @@ export {
   type NodeLocation,
 } from "./tree";
 export { sampleDoc } from "./sample-doc";
+export * from "./file";

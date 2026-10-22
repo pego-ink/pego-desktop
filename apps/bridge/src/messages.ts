@@ -6,6 +6,7 @@ import {
   type EditorToBridge,
 } from "@pego/agent";
 import { hasImageSignature, sanitizeAttachmentName } from "./attachments";
+import { MAX_DOCUMENT_FILE_BYTES } from "./config";
 
 const id = z.string().min(1).max(128);
 const agentId = z.enum(LOCAL_AGENT_IDS);
@@ -103,6 +104,19 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("agents_refresh") }),
   z.object({ type: z.literal("models_request"), agentId }),
   z.object({ type: z.literal("run_cancel"), runId: id }),
+  z.object({
+    type: z.literal("project_request"),
+    requestId: id,
+    action: z.enum(["list", "read", "projects", "create_project"]),
+    path: z.string().min(1).max(4096).optional(),
+    name: z.string().min(1).max(200).optional(),
+  }),
+  z.object({
+    type: z.literal("save_file"),
+    requestId: id,
+    path: z.string().min(1).max(4096),
+    text: z.string().max(MAX_DOCUMENT_FILE_BYTES),
+  }),
 ]) satisfies z.ZodType<EditorToBridge>;
 
 export type ParseResult = { ok: true; message: EditorToBridge } | { ok: false; error: string };

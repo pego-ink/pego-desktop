@@ -1,4 +1,10 @@
-import { BRIDGE_PROTOCOL_VERSION, type BridgeToEditor, type RunEvent } from "@pego/agent";
+import { resolve, sep } from "node:path";
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  type BridgeToEditor,
+  type EditorToBridge,
+  type RunEvent,
+} from "@pego/agent";
 import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
 import { createEditorHub, MAX_EDITOR_SOCKETS, type EditorSocket } from "./editor-hub";
 import { createAgentDetector, type AgentDetector } from "./detection";
@@ -7,6 +13,9 @@ import { handleMcpRequest } from "./mcp";
 import { parseEditorMessage } from "./messages";
 import { createRunManager, parseRunMcpPath, type RunManager } from "./runs";
 import { isHostAllowed, isOriginAllowed } from "./security";
+import { writeDocumentFile } from "./files";
+import { listDesignFiles, readProjectFile } from "./project";
+import { createProject, listProjects } from "./projects";
 
 type SocketData = { greeted: boolean };
 
@@ -33,7 +42,40 @@ const sendTo = (ws: { send: (data: string) => unknown }, message: BridgeToEditor
 const text = (status: number, body: string): Response =>
   new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
 
+type ProjectRequest = Extract<EditorToBridge, { type: "project_request" }>;
+
+const errorText = (error: unknown) => (error instanceof Error ? error.message : String(error));
+
+/** List or create projects, list the design folder or read one file; failures become `ok: false`. */
+export const answerProjectRequest = async (
+  root: string | null,
+  request: ProjectRequest,
+): Promise<BridgeToEditor> => {
+  const base = { type: "project_response" as const, requestId: request.requestId };
+  if (!root) return { ...base, ok: false, error: "No design folder in this project.", root };
+  try {
+    if (request.action === "projects") {
+      return { ...base, ok: true, root, projects: await listProjects(root) };
+    }
+    if (request.action === "create_project") {
+      return { ...base, ok: true, root, project: await createProject(root, request.name ?? "") };
+    }
+    if (request.action === "list") {
+      const dir = request.path ? resolve(request.path) : root;
+      if (dir !== root && !dir.startsWith(root + sep)) {
+        return { ...base, ok: false, root, error: "Not in the project's design folder." };
+      }
+      return { ...base, ok: true, root, files: await listDesignFiles(dir) };
+    }
+    if (!request.path) return { ...base, ok: false, root, error: "Missing path." };
+    return { ...base, ok: true, root, text: await readProjectFile(root, request.path) };
+  } catch (error) {
+    return { ...base, ok: false, root, error: errorText(error) };
+  }
+};
+
 export const startBridge = (options: BridgeOptions) => {
+  const designDir = options.designDir ?? null;
   const hub = createEditorHub({ toolTimeoutMs: options.toolTimeoutMs });
   // Only the editor that started a run hears about it; the owner is forgotten once it ends.
   const sendRunEvent = (runId: string, event: RunEvent) => {
@@ -83,7 +125,9 @@ export const startBridge = (options: BridgeOptions) => {
         }
         const length = Number(request.headers.get("content-length") ?? 0);
         if (length > MAX_MCP_BODY_BYTES) return text(413, "Payload too large");
-        if (pathname === "/mcp") return handleMcpRequest(request, hub.callTool);
+        if (pathname === "/mcp") {
+          return handleMcpRequest(request, hub.callTool, undefined, { designDir });
+        }
         // Run-scoped endpoint: the token is the credential and dies with the run.
         const run = runToken ? runs.resolveRunToken(runToken) : undefined;
         if (!run) return text(404, "Not found");
@@ -124,6 +168,7 @@ export const startBridge = (options: BridgeOptions) => {
               claudeCodeAvailable: agents.some((a) => a.id === "claude-code" && a.installed),
               mcpUrl: `http://127.0.0.1:${server.port}/mcp`,
               agents,
+              projectDir: designDir,
             };
             sendTo(ws, welcome);
           });
@@ -167,6 +212,20 @@ export const startBridge = (options: BridgeOptions) => {
             .then(({ models, error }) =>
               sendTo(ws, { type: "models", agentId, models, ...(error ? { error } : {}) }),
             );
+        } else if (message.type === "project_request") {
+          void answerProjectRequest(designDir, message).then((reply) => sendTo(ws, reply));
+        } else if (message.type === "save_file") {
+          const { requestId, path, text: content } = message;
+          void writeDocumentFile(path, content).then(
+            () => sendTo(ws, { type: "save_file_result", requestId, ok: true }),
+            (error: unknown) =>
+              sendTo(ws, {
+                type: "save_file_result",
+                requestId,
+                ok: false,
+                error: errorText(error),
+              }),
+          );
         } else if (hub.getRunOwner(message.runId) === socket) {
           runs.cancel(message.runId);
         }

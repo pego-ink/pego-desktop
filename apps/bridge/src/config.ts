@@ -6,6 +6,8 @@ import { BRIDGE_DEFAULT_PORT } from "@pego/agent";
  * results (document dumps, up to 8MB of screenshots = ~10.7MB as base64) are far smaller.
  */
 export const MAX_WS_MESSAGE_BYTES = 48 * 1024 * 1024;
+/** Largest .pego file the bridge reads or writes. */
+export const MAX_DOCUMENT_FILE_BYTES = 10 * 1024 * 1024;
 /** Largest MCP HTTP request body. */
 export const MAX_MCP_BODY_BYTES = 1024 * 1024;
 /** How long the bridge waits for the editor to answer a forwarded tool call. */
@@ -19,6 +21,8 @@ export type BridgeConfig = {
   allowedOrigins: string[] | null;
   toolTimeoutMs: number;
   log: (line: string) => void;
+  /** The design folder holding the projects (see project.ts); null = none. */
+  designDir?: string | null;
 };
 
 const parsePort = (raw: string | undefined): number => {

@@ -18,6 +18,13 @@ bun run desktop:build    # web build + bridge binary + signed arm64 dmg/zip in a
 `APPLE_ID`, `APPLE_APP_SPECIFIC_PASSWORD` and `APPLE_TEAM_ID` are set. Extra args go to
 electron-builder: `bun run desktop:build -- --mac --arm64 --x64` (must include an arch flag).
 
+## Projects
+
+The app starts the bridge with `PEGO_DESIGN_DIR=~/Documents/Pego` (created on first launch). The
+dashboard lists the projects in that folder (`<project>/project.json` + `project.pego`), creates new
+ones, and project designs auto save there through the bridge. A bridge started from a repository
+(`bun run bridge`) uses that repository's `design/` folder instead.
+
 ## Security model
 
 - `contextIsolation`, `sandbox`, no `nodeIntegration`; the preload only exposes `window.pegoDesktop.platform`.

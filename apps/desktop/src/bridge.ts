@@ -3,7 +3,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import { createConnection } from "node:net";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { existsSync } from "node:fs";
+import { existsSync, mkdirSync } from "node:fs";
 import { APP_ORIGIN, BRIDGE_HOST, BRIDGE_PORT, DEV_ORIGINS } from "@/constants";
 
 let child: ChildProcess | null = null;
@@ -39,6 +39,18 @@ const bridgeCommand = (): { command: string; args: string[] } | null => {
   return { command: "bun", args: ["run", entry] };
 };
 
+/** Projects live in ~/Documents/Pego (created on first start); null when it cannot be made. */
+const designDir = (): string | null => {
+  const dir = join(app.getPath("documents"), "Pego");
+  try {
+    mkdirSync(dir, { recursive: true });
+    return dir;
+  } catch (error) {
+    console.error(`[bridge] could not create ${dir}: ${(error as Error).message}`);
+    return null;
+  }
+};
+
 export const startBridge = async (): Promise<void> => {
   if (await isPortOpen(BRIDGE_PORT)) {
     console.log(`[bridge] port ${BRIDGE_PORT} already in use, reusing the running bridge`);
@@ -49,12 +61,14 @@ export const startBridge = async (): Promise<void> => {
     console.error("[bridge] bridge binary not found, agent features via Claude Code are disabled");
     return;
   }
+  const projects = designDir();
   const proc = spawn(spec.command, spec.args, {
     env: {
       ...process.env,
       PATH: bridgePath(),
       PEGO_BRIDGE_PORT: String(BRIDGE_PORT),
       PEGO_ALLOWED_ORIGINS: [APP_ORIGIN, ...DEV_ORIGINS].join(","),
+      ...(projects ? { PEGO_DESIGN_DIR: projects } : {}),
     },
     stdio: ["ignore", "pipe", "pipe"],
   });
