@@ -1,4 +1,4 @@
-import { useId, useState } from "react";
+import { Fragment, useId, useState } from "react";
 import {
   AlertCircleIcon,
   ChevronRightIcon,
@@ -13,6 +13,7 @@ import type { AgentLogEntry } from "@/agent/use-agent-store";
 import { AssistantText } from "@/panels/agent/AssistantText";
 import { AttachmentStrip } from "@/panels/agent/attachments/AttachmentStrip";
 import { formatBytes } from "@/panels/agent/agent-format";
+import { MentionPill } from "@/panels/agent/mentions/MentionPill";
 import { collapseRuns, countFailed, groupLog, type ToolGroup } from "@/panels/agent/tool-groups";
 
 const ENTER_CLASS = "animate-[pego-slide-up-in_160ms_var(--ease-out)]";
@@ -149,7 +150,17 @@ const Entry = ({
             </span>
           ) : null}
           {entry.steered ? <SteeredLabel state={entry.steered} /> : null}
-          <span className="whitespace-pre-wrap">{entry.text}</span>
+          <span className="whitespace-pre-wrap">
+            {entry.parts
+              ? entry.parts.map((part, index) =>
+                  part.kind === "text" ? (
+                    <Fragment key={index}>{part.text}</Fragment>
+                  ) : (
+                    <MentionPill key={index} kind={part.mention} label={part.label} />
+                  ),
+                )
+              : entry.text}
+          </span>
         </li>
       );
     case "assistant":

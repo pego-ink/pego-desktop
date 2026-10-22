@@ -1,7 +1,12 @@
-import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
-import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { ArrowUpIcon, PaperclipIcon, PlusIcon, SquareIcon } from "lucide-react";
+import { EditorContent, useEditor } from "@tiptap/react";
+import StarterKit from "@tiptap/starter-kit";
+import { Placeholder } from "@tiptap/extensions";
+import { mentionTitle, skills, type MentionRef } from "@pego/agent";
 import { cn } from "@pego/ui/lib/utils";
 import { submitPrompt, steerNow } from "@/agent/queue";
+import { buildRunPrompt } from "@/agent/run-prompt";
 import { cancelRun } from "@/agent/run";
 import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -13,6 +18,16 @@ import { ATTACH_ACCEPT, pastedImageFiles } from "@/panels/agent/attachments/atta
 import { useAttachmentDrop } from "@/panels/agent/attachments/use-attachment-drop";
 import { isRunActive, selectionHint } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
+import { composerToPrompt, textToComposer } from "@/panels/agent/mentions/composer-doc";
+import {
+  chipContent,
+  createMentionExtension,
+  createSubmitExtension,
+  type MentionMenuHooks,
+  type MentionMenuState,
+} from "@/panels/agent/mentions/mention-extension";
+import { MentionMenu } from "@/panels/agent/mentions/MentionMenu";
+import { mentionSuggestions } from "@/panels/agent/mentions/mention-sources";
 
 const ACTION_BUTTON =
   "flex size-7 items-center justify-center rounded-full bg-foreground text-background outline-none transition-[background-color,opacity,scale] duration-120 ease-out focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]";
@@ -22,42 +37,208 @@ type AgentComposerProps = {
   seed: { text: string; key: number };
 };
 
+type EditorHooks = MentionMenuHooks & { menuOpen: boolean; submit: (steer: boolean) => void };
+
+const IDLE_PLACEHOLDER = "Describe what to design… (@ to mention)";
+const BUSY_PLACEHOLDER = "Queue a message… (@ to mention)";
+
+/**
+ * What the editor's extensions call into. They are created once with the editor, so the
+ * component hands them its latest handlers through this object (updated after each render).
+ */
+class ComposerLink {
+  hooks: EditorHooks = {
+    items: () => [],
+    onChange: () => {},
+    onKeyDown: () => false,
+    menuOpen: false,
+    submit: () => {},
+  };
+  placeholder = IDLE_PLACEHOLDER;
+  update(hooks: EditorHooks, placeholder: string) {
+    this.hooks = hooks;
+    this.placeholder = placeholder;
+  }
+}
+
+/** Suggestions for the @ menu from the live stores (read when the user types). */
+const suggestionsFor = (query: string) => {
+  const { doc, pageId, selection } = useDocumentStore.getState();
+  const { pendingAttachments } = useAgentStore.getState();
+  return mentionSuggestions(query, {
+    doc,
+    pageId,
+    selection,
+    skills,
+    attachments: pendingAttachments,
+  });
+};
+
 export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const active = useVisibleRun((s) => isRunActive(s.status));
   const runId = useVisibleRun((s) => s.runId);
   const sessionId = useAgentStore((s) => s.visibleSessionId);
-  const selectionCount = useDocumentStore((s) => s.selection.length);
-  const hint = selectionHint(selectionCount);
+  const selection = useDocumentStore((s) => s.selection);
+  const hint = selectionHint(selection.length);
 
   const attachments = useAgentStore((s) => s.pendingAttachments);
   const removeAttachment = useAgentStore((s) => s.removeAttachment);
   const drop = useAttachmentDrop(true);
 
-  const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState("");
-  const [seenSeed, setSeenSeed] = useState(seed.key);
-  if (seenSeed !== seed.key) {
-    setSeenSeed(seed.key);
-    setValue(seed.text);
-  }
+  const focusRef = useRef<HTMLElement | null>(null);
+  const [menu, setMenu] = useState<MentionMenuState | null>(null);
+  const [menuIndex, setMenuIndex] = useState(0);
+  /** The prompt as plain text (chips as "@Label"): drives Send and the skill chip. */
+  const [plain, setPlain] = useState("");
 
-  const canSend = value.trim().length > 0;
+  const [link] = useState(() => new ComposerLink());
 
-  /** Send the box: a run starts now when the chat is idle, otherwise the message is queued. */
+  const editor = useEditor({
+    extensions: [
+      StarterKit.configure({
+        blockquote: false,
+        bold: false,
+        bulletList: false,
+        code: false,
+        codeBlock: false,
+        dropcursor: false,
+        gapcursor: false,
+        heading: false,
+        horizontalRule: false,
+        italic: false,
+        link: false,
+        listItem: false,
+        listKeymap: false,
+        orderedList: false,
+        strike: false,
+        trailingNode: false,
+        underline: false,
+      }),
+      Placeholder.configure({
+        placeholder: () => link.placeholder,
+      }),
+      createMentionExtension(() => link.hooks),
+      createSubmitExtension(() => link.hooks),
+    ],
+    editorProps: {
+      attributes: {
+        "aria-label": "Prompt",
+        "aria-multiline": "true",
+        role: "textbox",
+        class:
+          "tiptap max-h-40 min-h-12 overflow-y-auto px-1 text-xs leading-5 text-foreground outline-none",
+      },
+      handlePaste: (_view, event) => {
+        const data = event.clipboardData;
+        if (!data) return false;
+        const images = pastedImageFiles(Array.from(data.files), Array.from(data.types));
+        if (images.length === 0) return false; // plain text paste stays the editor's
+        event.preventDefault();
+        void addAttachmentFiles(images);
+        return true;
+      },
+      // Files dropped on the text are attachments (the container's drop handler adds them).
+      handleDrop: (_view, event) => (event.dataTransfer?.files.length ?? 0) > 0,
+    },
+    onUpdate: ({ editor: current }) => setPlain(current.getText()),
+  });
+
+  /**
+   * Send the box: a run starts now when the chat is idle, otherwise the message is queued
+   * (`steer` sends it into the running agent instead). Mentions are resolved now: the agent
+   * gets their context block, the bubble shows the chips.
+   */
   const send = (steer = false) => {
-    if (!canSend) return;
-    const prompt = value.trim();
+    if (!editor) return;
+    const prompt = composerToPrompt(editor.getJSON());
+    if (!prompt.text.trim()) return;
     // The images travel with the message; the composer starts empty again.
     const images = useAgentStore.getState().pendingAttachments;
-    setValue("");
+    const run = buildRunPrompt(useDocumentStore.getState().doc, prompt, {
+      attachments: images.map(({ id, name }) => ({ id, name })),
+    });
+    if (!run.agentText) return;
+    const display = {
+      displayText: run.displayText,
+      parts: run.parts,
+      skillId: run.skillId,
+      styleId: run.styleId,
+    };
+    const restore = editor.getJSON();
+    editor.commands.clearContent(true);
     const result =
       steer && active
-        ? steerNow(sessionId, prompt, images)
-        : submitPrompt(sessionId, prompt, { attachments: images });
-    if (result === "refused") setValue(prompt);
+        ? steerNow(sessionId, run.agentText, images, display)
+        : submitPrompt(sessionId, run.agentText, { ...display, attachments: images });
+    if (result === "refused") editor.commands.setContent(restore, { emitUpdate: true });
     else if (images.length > 0) useAgentStore.getState().clearAttachments();
   };
+
+  useLayoutEffect(() => {
+    link.update(
+      {
+        items: suggestionsFor,
+        onChange: (state) => {
+          setMenu(state);
+          setMenuIndex(0);
+        },
+        onKeyDown: (event) => {
+          if (!menu) return false;
+          const count = menu.items.length;
+          if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+            if (count > 0) {
+              setMenuIndex((index) =>
+                event.key === "ArrowDown" ? (index + 1) % count : (index - 1 + count) % count,
+              );
+            }
+            return true;
+          }
+          if (event.key === "Enter" || event.key === "Tab") {
+            const item = menu.items[Math.min(menuIndex, count - 1)];
+            if (item) menu.choose(item);
+            return true;
+          }
+          if (event.key === "Escape") {
+            setMenu(null);
+            return true;
+          }
+          return false;
+        },
+        menuOpen: menu !== null,
+        submit: send,
+      },
+      active ? BUSY_PLACEHOLDER : IDLE_PLACEHOLDER,
+    );
+  });
+
+  useEffect(() => {
+    if (!editor) return;
+    focusRef.current = editor.view.dom;
+    // Redraw so the placeholder follows the busy state.
+    editor.view.dispatch(editor.state.tr);
+  }, [editor, active]);
+
+  const seededKey = useRef(seed.key);
+  useEffect(() => {
+    if (!editor || seededKey.current === seed.key) return;
+    seededKey.current = seed.key;
+    editor.commands.setContent(textToComposer(seed.text), { emitUpdate: true });
+    editor.commands.focus("end");
+  }, [editor, seed]);
+
+  const addSelection = () => {
+    if (!editor || selection.length === 0) return;
+    const ref: MentionRef = { kind: "layer", ids: [...selection] };
+    const label = mentionTitle(useDocumentStore.getState().doc, ref) ?? "Selection";
+    editor
+      .chain()
+      .focus()
+      .insertContent([chipContent(ref, label), { type: "text", text: " " }])
+      .run();
+  };
+
+  const canSend = plain.trim().length > 0;
 
   const onPickFiles = (files: FileList | null) => {
     if (files) void addAttachmentFiles(Array.from(files));
@@ -65,48 +246,31 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
-  const onPaste = (event: ClipboardEvent<HTMLTextAreaElement>) => {
-    const { files, types } = event.clipboardData;
-    const images = pastedImageFiles(Array.from(files), Array.from(types));
-    if (images.length === 0) return; // plain text paste stays the browser's
-    event.preventDefault();
-    void addAttachmentFiles(images);
-  };
-
-  const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
-    event.preventDefault();
-    // Cmd/Ctrl+Enter while the agent works sends the message into the run right away.
-    send(event.metaKey || event.ctrlKey);
-  };
-
   return (
     <div
       {...drop.handlers}
       className={cn(
-        "relative rounded-lg border border-border bg-muted/40 p-2 transition-[border-color,opacity] duration-(--duration-fast) ease-out focus-within:border-ring",
+        "pego-composer relative rounded-lg border border-border bg-muted/40 p-2 transition-[border-color,opacity] duration-(--duration-fast) ease-out focus-within:border-ring",
         drop.dragging && "border-ring",
       )}
     >
+      {menu ? (
+        <MentionMenu
+          items={menu.items}
+          active={Math.min(menuIndex, Math.max(0, menu.items.length - 1))}
+          onChoose={menu.choose}
+          onHover={setMenuIndex}
+        />
+      ) : null}
       <AttachmentStrip
         attachments={attachments}
         onRemove={(attachment) => {
           removeAttachment(attachment.id);
-          textareaRef.current?.focus();
+          editor?.commands.focus();
         }}
         className="mb-1 flex flex-wrap gap-2 px-1 pt-2"
       />
-      <textarea
-        ref={textareaRef}
-        aria-label="Prompt"
-        value={value}
-        rows={2}
-        onChange={(event) => setValue(event.target.value)}
-        onKeyDown={onKeyDown}
-        onPaste={onPaste}
-        placeholder={active ? "Queue a message…" : "Describe what to design…"}
-        className="max-h-40 min-h-12 w-full resize-none bg-transparent px-1 text-xs leading-5 text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground disabled:cursor-not-allowed"
-      />
+      <EditorContent editor={editor} />
       <div className="mt-1 flex items-center gap-1">
         <input
           ref={fileInputRef}
@@ -127,15 +291,23 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         >
           <PaperclipIcon aria-hidden className="size-3.5" />
         </button>
-        <AgentSelector restoreFocusRef={textareaRef} />
-        <SkillChip prompt={value} restoreFocusRef={textareaRef} />
+        <AgentSelector restoreFocusRef={focusRef} />
+        <SkillChip prompt={plain} restoreFocusRef={focusRef} />
         {hint ? (
-          <span className="min-w-0 flex-1 truncate rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground">
-            {hint}
-          </span>
+          <button
+            type="button"
+            title={`Add the ${hint.replace(" selected", "")} to the prompt as a mention`}
+            aria-label={`Add ${hint.replace(" selected", "")} to the prompt`}
+            onClick={addSelection}
+            className="flex min-w-0 flex-1 items-center gap-1 truncate rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            <PlusIcon aria-hidden className="size-3 shrink-0" />
+            <span className="truncate">{hint.replace(" selected", "")}</span>
+          </button>
         ) : (
-          // Spacer keeps the send button at the end of the row.
-          <span aria-hidden className="min-w-0 flex-1" />
+          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+            {hint ?? "Enter to send · @ to mention"}
+          </span>
         )}
         <div className="flex shrink-0 items-center gap-1">
           {active ? (
