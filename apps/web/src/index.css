@@ -1,0 +1,10 @@
+@import "@pego/ui/globals.css";
+
+/* Scan shared UI components for utility classes. */
+@source "../../../packages/ui/src";
+
+html,
+body,
+#root {
+  height: 100%;
+}

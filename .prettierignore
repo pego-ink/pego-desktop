@@ -1,0 +1,8 @@
+node_modules
+dist
+.wrangler
+graft
+design
+bun.lock
+STACK.md
+apps/web/public/fonts
