@@ -3,10 +3,12 @@ import {
   type BridgeToEditor,
   type EditorToBridge,
   type LocalAgentId,
+  type LocalAgentInfo,
   type RunEvent,
   type ToolImage,
   type ToolSpec,
 } from "@pego/agent";
+import { pickDefaultAgent } from "./agent-prefs";
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
 import { createToolHost } from "./tool-host";
@@ -24,6 +26,13 @@ export type BridgeHandlerDeps = {
 };
 
 const agent = () => useAgentStore.getState();
+
+/** Until the user picks one, use the first ready local agent the bridge reports. */
+const applyDefaultAgent = (agents: readonly LocalAgentInfo[]): void => {
+  if (agent().explicit) return;
+  const id = pickDefaultAgent(agents);
+  if (id) agent().set({ backend: "local", localAgentId: id });
+};
 
 /** Close out a local agent run: remaining steps resolve according to the final status. */
 const endRun = (status: "done" | "failed" | "cancelled") => {
@@ -151,6 +160,7 @@ export const createBridgeHandlers = ({
   const handleMessage = async (message: BridgeToEditor): Promise<void> => {
     switch (message.type) {
       case "welcome":
+        applyDefaultAgent(message.agents);
         agent().set({
           bridge: {
             connected: true,
@@ -164,6 +174,7 @@ export const createBridgeHandlers = ({
         });
         return;
       case "agents":
+        applyDefaultAgent(message.agents);
         agent().set({
           bridge: { ...agent().bridge, agents: message.agents },
           agentsRefreshing: false,

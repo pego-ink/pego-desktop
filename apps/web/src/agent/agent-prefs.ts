@@ -1,4 +1,4 @@
-import { LOCAL_AGENT_IDS, type LocalAgentId } from "@pego/agent";
+import { LOCAL_AGENT_IDS, type LocalAgentId, type LocalAgentInfo } from "@pego/agent";
 
 /** Which engine runs the panel's agent. `local` goes through the bridge to a local agent CLI. */
 export type AgentBackend = "api" | "local";
@@ -10,15 +10,26 @@ export type AgentPrefs = {
   localAgentId: LocalAgentId;
   /** Selected model per local agent; a missing key means the CLI's default. */
   modelByAgent: Partial<Record<LocalAgentId, string>>;
+  /** The user picked the backend/agent themselves; until then Pego picks a ready local agent. */
+  explicit: boolean;
 };
 
 export const AGENT_PREFS_KEY = "pego.agent.prefs.v1";
 
 export const defaultAgentPrefs = (): AgentPrefs => ({
-  backend: "api",
+  backend: "local",
   localAgentId: DEFAULT_LOCAL_AGENT,
   modelByAgent: {},
+  explicit: false,
 });
+
+/**
+ * The local agent to use when the user has not chosen one: the first ready agent (installed,
+ * nothing to fix) in display order, else the first installed one. Null when none is installed.
+ */
+export const pickDefaultAgent = (agents: readonly LocalAgentInfo[]): LocalAgentId | null =>
+  (agents.find((agent) => agent.installed && !agent.note) ?? agents.find((a) => a.installed))?.id ??
+  null;
 
 export const isLocalAgentId = (value: unknown): value is LocalAgentId =>
   typeof value === "string" && (LOCAL_AGENT_IDS as readonly string[]).includes(value);
@@ -44,8 +55,14 @@ export const parseAgentPrefs = (raw: string | null): AgentPrefs => {
   }
   if (typeof value !== "object" || value === null) return prefs;
   const record = value as Record<string, unknown>;
-  if (record.backend === "api" || record.backend === "local") prefs.backend = record.backend;
-  if (isLocalAgentId(record.localAgentId)) prefs.localAgentId = record.localAgentId;
+  prefs.explicit = record.explicit === true;
+  // Before `explicit` existed every save was an explicit pick, except the untouched "api" default.
+  if (record.explicit === undefined && record.backend === "local") prefs.explicit = true;
+  if (prefs.explicit && (record.backend === "api" || record.backend === "local")) {
+    prefs.backend = record.backend;
+  }
+  if (prefs.explicit && isLocalAgentId(record.localAgentId))
+    prefs.localAgentId = record.localAgentId;
   if (typeof record.modelByAgent === "object" && record.modelByAgent !== null) {
     for (const [id, model] of Object.entries(record.modelByAgent)) {
       if (isLocalAgentId(id) && typeof model === "string" && model.trim()) {

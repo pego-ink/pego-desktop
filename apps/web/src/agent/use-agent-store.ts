@@ -61,6 +61,8 @@ type AgentState = {
   localAgentId: LocalAgentId;
   /** Selected model per local agent; undefined = the CLI's default. */
   modelByAgent: Partial<Record<LocalAgentId, string>>;
+  /** The user picked the backend/agent; until then a ready local agent is chosen automatically. */
+  explicit: boolean;
   modelsByAgent: Partial<Record<LocalAgentId, ModelsEntry>>;
   /** An `agents_refresh` is in flight. */
   agentsRefreshing: boolean;
@@ -113,6 +115,7 @@ const prefsOf = (state: AgentPrefs): AgentPrefs => ({
   backend: state.backend,
   localAgentId: state.localAgentId,
   modelByAgent: state.modelByAgent,
+  explicit: state.explicit,
 });
 
 let logSeq = 0;
@@ -128,11 +131,11 @@ export const useAgentStore = create<AgentState & AgentActions>((set, get) => {
 
     set: (patch) => set(patch),
     setBackend: (backend) => {
-      set({ backend });
+      set({ backend, explicit: true });
       persist();
     },
     setLocalAgent: (localAgentId) => {
-      set({ localAgentId });
+      set({ localAgentId, explicit: true });
       persist();
     },
     setModel: (agentId, model) => {

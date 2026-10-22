@@ -2,7 +2,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { BridgeToEditor, EditorToBridge, LocalAgentInfo } from "@pego/agent";
 import { getActiveRun } from "./active-run";
-import { AGENT_PREFS_KEY, loadAgentPrefs, parseAgentPrefs } from "./agent-prefs";
+import { AGENT_PREFS_KEY, loadAgentPrefs, parseAgentPrefs, pickDefaultAgent } from "./agent-prefs";
 import { createBridgeHandlers } from "./bridge-handlers";
 import { startLocalAgentRun } from "./local-agent-run";
 import { refreshAgents, requestModels } from "./local-agents";
@@ -58,6 +58,7 @@ describe("agent prefs persistence", () => {
       backend: "local",
       localAgentId: "codex",
       modelByAgent: { codex: "gpt-5", opencode: "anthropic/claude-sonnet" },
+      explicit: true,
     });
 
     useAgentStore.setState({ backend: "api", localAgentId: "claude-code", modelByAgent: {} });
@@ -84,7 +85,7 @@ describe("agent prefs persistence", () => {
           modelByAgent: { bogus: "m", codex: 3 },
         }),
       ),
-    ).toEqual({ backend: "api", localAgentId: "claude-code", modelByAgent: {} });
+    ).toEqual({ backend: "local", localAgentId: "claude-code", modelByAgent: {}, explicit: false });
     const throwing = {
       getItem: () => {
         throw new Error("blocked");
@@ -93,9 +94,60 @@ describe("agent prefs persistence", () => {
         throw new Error("blocked");
       },
     };
-    expect(loadAgentPrefs(throwing).backend).toBe("api");
+    expect(loadAgentPrefs(throwing).backend).toBe("local");
     Object.defineProperty(globalThis, "localStorage", { value: throwing, configurable: true });
     expect(() => state().setBackend("local")).not.toThrow();
+  });
+});
+
+describe("default agent", () => {
+  test("pickDefaultAgent prefers a ready agent, then any installed one", () => {
+    expect(
+      pickDefaultAgent([
+        info("claude-code", { installed: false }),
+        info("codex", { note: "Run codex login" }),
+        info("opencode"),
+      ]),
+    ).toBe("opencode");
+    expect(pickDefaultAgent([info("codex", { note: "login" })])).toBe("codex");
+    expect(pickDefaultAgent([info("codex", { installed: false })])).toBeNull();
+  });
+
+  test("legacy prefs: an untouched api default is not treated as a choice", () => {
+    expect(
+      parseAgentPrefs(JSON.stringify({ backend: "api", localAgentId: "codex" })),
+    ).toMatchObject({
+      backend: "local",
+      localAgentId: "claude-code",
+      explicit: false,
+    });
+    expect(
+      parseAgentPrefs(JSON.stringify({ backend: "local", localAgentId: "codex" })),
+    ).toMatchObject({
+      backend: "local",
+      localAgentId: "codex",
+      explicit: true,
+    });
+  });
+
+  test("welcome selects a ready local agent until the user picks one", async () => {
+    const handlers = createBridgeHandlers({ send: () => true });
+    const welcome = (agents: LocalAgentInfo[]): BridgeToEditor => ({
+      type: "welcome",
+      protocol: 3,
+      claudeCodeAvailable: false,
+      mcpUrl: "http://m",
+      agents,
+    });
+    useAgentStore.setState({ backend: "api", localAgentId: "claude-code", explicit: false });
+    await handlers.handleMessage(
+      welcome([info("claude-code", { installed: false }), info("opencode")]),
+    );
+    expect(state()).toMatchObject({ backend: "local", localAgentId: "opencode" });
+
+    state().setBackend("api");
+    await handlers.handleMessage(welcome([info("claude-code")]));
+    expect(state()).toMatchObject({ backend: "api", explicit: true });
   });
 });
 
