@@ -9,6 +9,7 @@
   "scripts": {
     "dev": "bun run --parallel --filter '@pego/web' --filter '@pego/api' dev",
     "build": "bun run --filter '*' build",
+    "bridge": "bun run --cwd apps/bridge start",
     "typecheck": "bun run --filter '*' typecheck",
     "lint": "eslint .",
     "format": "prettier --write .",
