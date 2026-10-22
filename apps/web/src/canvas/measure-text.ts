@@ -1,3 +1,4 @@
+import { fontVariationsFor } from "@/fonts/variations";
 import type { Paragraph } from "canvaskit-wasm";
 import { resolveColor, resolveNumber, resolveString } from "@pego/doc";
 import type { TextMeasurer, TextNode, Variables } from "@pego/doc";
@@ -23,6 +24,8 @@ export const paragraphKey = (
     align: string,
     family: string,
     wrapWidth: number | undefined,
+    /** "var" when the face is drawn through a variable-font `wght` axis, else "static". */
+    axes?: "var" | "static",
   ],
 ): string => JSON.stringify(parts);
 
@@ -45,7 +48,18 @@ export const getParagraph = (
   const align = node.textAlign ?? "left";
   const family = node.fontFamily ?? fontFamily;
   const italic = node.fontStyle === "italic";
-  const key = paragraphKey([content, color, size, weight, italic, align, family, wrapWidth]);
+  const variations = fontVariationsFor(family, weight);
+  const key = paragraphKey([
+    content,
+    color,
+    size,
+    weight,
+    italic,
+    align,
+    family,
+    wrapWidth,
+    variations ? ("var" as const) : ("static" as const),
+  ]);
   const cached = paragraphs.get(key);
   if (cached) return cached;
 
@@ -58,6 +72,7 @@ export const getParagraph = (
         weight: { value: weight },
         slant: italic ? ck.FontSlant.Italic : ck.FontSlant.Upright,
       },
+      ...(variations ? { fontVariations: variations } : {}),
     },
     textAlign: ck.TextAlign[align === "center" ? "Center" : align === "right" ? "Right" : "Left"],
   });
