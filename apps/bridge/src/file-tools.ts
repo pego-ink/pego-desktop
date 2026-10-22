@@ -74,8 +74,8 @@ FILE_TOOLS.push(
     name: "list_documents",
     title: "List design files",
     description:
-      "List the documents open as tabs in the Pego editor (which one is active, which have unsaved changes) and the design files of the project (the repository's design/ folder). " +
-      "Edit tools always work on the active tab; use switch_document to change it.",
+      "Show the active project, the document shown in the Pego editor (and whether it has unsaved changes) and the project's design files. " +
+      "Edit tools always work on the shown document; use switch_document to show another file.",
     inputSchema: { type: "object", properties: {}, additionalProperties: false },
     annotations: {
       title: "List design files",
@@ -89,7 +89,7 @@ FILE_TOOLS.push(
     name: "switch_document",
     title: "Switch design file",
     description:
-      "Make a design file the active tab: shows its tab when it is open, otherwise opens it (like open_document). " +
+      "Show a design file in the editor (like open_document; refused when the shown document has unsaved changes, so save_document first). " +
       "Pass the absolute path from list_documents.",
     inputSchema: {
       type: "object",
@@ -230,7 +230,7 @@ const listDocuments = async (callTool: CallTool, source: ToolSource, designDir: 
   const lines: string[] = [];
   const tabs = await callTool(EDITOR_OPS.listTabs, {}, source);
   let projectDir: string | null = null;
-  if (tabs.isError) lines.push(`Open tabs: unavailable (${tabs.content})`);
+  if (tabs.isError) lines.push(`Shown document: unavailable (${tabs.content})`);
   else {
     const state = tabsSchema.parse(JSON.parse(tabs.content));
     if (state.project) {
@@ -239,7 +239,7 @@ const listDocuments = async (callTool: CallTool, source: ToolSource, designDir: 
         `Active project: ${state.project.name} (id ${state.project.id}, ${state.project.dir})`,
       );
     } else lines.push("Active project: none (scratch documents); open one with open_project.");
-    lines.push("Open tabs:");
+    lines.push("Shown document:");
     for (const tab of state.tabs) {
       const flags = [tab.active ? "active" : "", tab.dirty ? "unsaved" : ""]
         .filter(Boolean)

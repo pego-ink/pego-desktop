@@ -4,7 +4,7 @@ import { sampleDoc } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { resetTabs } from "@/tabs/test-reset";
-import { tabIsDirty, tabTitle, useTabsStore } from "@/tabs/use-tabs-store";
+import { tabTitle, useTabsStore } from "@/tabs/use-tabs-store";
 import {
   listTabsForBridge,
   loadDocumentFromBridge,
@@ -26,10 +26,10 @@ beforeEach(() => {
 const titles = () => useTabsStore.getState().tabs.map(tabTitle);
 
 describe("bridge documents", () => {
-  test("opens a .pego file as saved, remembering its path (reusing the untouched tab)", () => {
+  test("opens a .pego file as saved, remembering its path", () => {
     const outcome = loadDocumentFromBridge({ text: pegoText, path: "/repo/design/app.pego" });
     expect(outcome.isError).toBe(false);
-    expect(outcome.content).toStartWith("Opened /repo/design/app.pego in a tab");
+    expect(outcome.content).toStartWith("Opened /repo/design/app.pego");
     expect(useDocumentStore.getState().doc.name).toBe("From disk");
     expect(useFileStore.getState()).toMatchObject({
       fileName: "app.pego",
@@ -39,25 +39,29 @@ describe("bridge documents", () => {
     expect(titles()).toEqual(["app.pego"]);
   });
 
-  test("a second file opens in a new tab; the first keeps its unsaved work", () => {
+  test("Claude Code never drops unsaved work unless it says so", () => {
     loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
     useDocumentStore.getState().commit([{ op: "update", id: "frame-1", props: { x: 5 } }]);
-    loadDocumentFromBridge({ text: pegoText, path: "/repo/design/b.pego" });
-    expect(titles()).toEqual(["a.pego", "b.pego"]);
-    const first = useTabsStore.getState().tabs[0]!;
-    expect(tabIsDirty(first)).toBe(true);
+    const refused = loadDocumentFromBridge({ text: pegoText, path: "/repo/design/b.pego" });
+    expect(refused.isError).toBe(true);
+    expect(refused.content).toContain("has unsaved changes. Call save_document first");
+    expect(useFileStore.getState().bridgePath).toBe("/repo/design/a.pego");
+    const dropped = loadDocumentFromBridge({
+      text: pegoText,
+      path: "/repo/design/b.pego",
+      discardUnsaved: true,
+    });
+    expect(dropped.isError).toBe(false);
+    expect(titles()).toEqual(["b.pego"]);
   });
 
-  test("an open file is shown again: reloaded when clean, kept when it has unsaved changes", () => {
+  test("the shown file is reloaded when clean, kept when it has unsaved changes", () => {
     loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
-    loadDocumentFromBridge({ text: pegoText, path: "/repo/design/b.pego" });
     const again = loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
     expect(again.content).toStartWith("Reloaded /repo/design/a.pego");
-    expect(titles()).toEqual(["a.pego", "b.pego"]);
     useDocumentStore.getState().commit([{ op: "update", id: "frame-1", props: { x: 9 } }]);
-    loadDocumentFromBridge({ text: pegoText, path: "/repo/design/b.pego" });
     const kept = loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
-    expect(kept.content).toContain("unsaved changes");
+    expect(kept.content).toContain("unsaved changes; keeping them");
     expect(getIsDirty()).toBe(true);
   });
 
@@ -75,18 +79,15 @@ describe("bridge documents", () => {
     expect(getIsDirty()).toBe(true);
   });
 
-  test("list and switch tabs for the MCP tools", () => {
+  test("list and switch for the MCP tools", () => {
     loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
-    loadDocumentFromBridge({ text: pegoText, path: "/repo/design/b.pego" });
     const listed = JSON.parse(listTabsForBridge().content) as {
       tabs: { path: string; active: boolean }[];
     };
     expect(listed.tabs.map((tab) => [tab.path, tab.active])).toEqual([
-      ["/repo/design/a.pego", false],
-      ["/repo/design/b.pego", true],
+      ["/repo/design/a.pego", true],
     ]);
     expect(switchTabForBridge({ path: "/repo/design/a.pego" }).isError).toBe(false);
-    expect(useFileStore.getState().bridgePath).toBe("/repo/design/a.pego");
     expect(switchTabForBridge({ path: "/nope.pego" }).content).toStartWith("not_open");
   });
 
