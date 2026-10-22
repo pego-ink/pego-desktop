@@ -12,7 +12,7 @@ type ModelPickerProps = {
   disabled?: boolean;
 };
 
-/** Dropdown for an agent's default model (used in Model settings). */
+/** Dropdown for an agent's default model (used in the Agent & Models settings). */
 export const ModelPicker = ({ agentId, disabled }: ModelPickerProps) => {
   const selected = useAgentStore((s) => s.modelByAgent[agentId]);
   const setModel = useAgentStore((s) => s.setModel);
