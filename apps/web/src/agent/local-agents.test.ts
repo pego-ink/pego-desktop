@@ -271,7 +271,7 @@ describe("local agent runs", () => {
     expect(state().runLabel).toBe("Claude Code");
   });
 
-  test("not installed agent or missing bridge fails without sending", () => {
+  test("not installed agent or missing bridge fails without sending", async () => {
     const sent: EditorToBridge[] = [];
     const send = (m: EditorToBridge) => (sent.push(m), true);
     state().setLocalAgent("gemini");
@@ -281,15 +281,15 @@ describe("local agent runs", () => {
     expect(state().log.at(-1)?.text).toContain("not installed");
 
     useAgentStore.setState({ bridge: emptyBridge() });
-    startLocalAgentRun("r4", "p", send);
+    await startLocalAgentRun("r4", "p", send, undefined, { bridgeWaitMs: 0 });
     expect(state().log.at(-1)?.text).toContain("bridge is not running");
     expect(sent).toEqual([]);
     expect(getActiveRun()).toBeNull();
   });
 
-  test("failed send clears the active run", () => {
+  test("failed send clears the active run", async () => {
     connect([info("claude-code")]);
-    startLocalAgentRun("r5", "p", () => false);
+    await startLocalAgentRun("r5", "p", () => false, undefined, { bridgeWaitMs: 0 });
     expect(getActiveRun()).toBeNull();
     expect(state().status).toBe("failed");
   });

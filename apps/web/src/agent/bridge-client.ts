@@ -253,7 +253,8 @@ export const sendToBridge = (message: EditorToBridge): boolean => client?.send(m
  */
 // Dev hot reload re-runs this module with a fresh `client`; close the old socket first so
 // only one connection per page talks to the bridge.
-import.meta.hot?.dispose(() => {
+import.meta.hot?.dispose((data: { reconnect?: boolean }) => {
+  data.reconnect = client !== null;
   client?.stop();
   client = null;
 });
@@ -271,3 +272,9 @@ export const startBridgeConnection = (): (() => void) => {
     started.stop();
   };
 };
+
+// After a hot reload replaced this module, reopen the connection right away so the panel and
+// `sendToBridge` use the same live socket (the app's mount effect does not run again).
+if ((import.meta.hot?.data as { reconnect?: boolean } | undefined)?.reconnect) {
+  startBridgeConnection();
+}

@@ -1,5 +1,5 @@
 import type { EditorToBridge } from "@pego/agent";
-import { sendToBridge } from "./bridge-client";
+import { sendToBridge, startBridgeConnection } from "./bridge-client";
 import { setActiveRun, setRunTail } from "./active-run";
 import { findAgentInfo, LOCAL_AGENT_NAMES } from "./local-agents";
 import { resolveRunSkills, skillLogLines, skillPromptPrefix } from "./run-skills";
@@ -15,13 +15,35 @@ export const describeRunAgent = (name: string, model?: string): string =>
  * ...). Plan, steps and decisions arrive as tool calls (report_plan, report_step, ask_user)
  * handled by `bridge-handlers`; text, tool activity, usage and completion arrive as `run_event`s.
  */
-export const startLocalAgentRun = (
+/** How long a run waits for the bridge connection to come (back) up before failing. Tests lower it. */
+export const localRunConfig = { bridgeWaitMs: 5000 };
+
+/** Resolves true once the store reports a connected bridge, false after `timeoutMs`. */
+export const waitForBridge = (timeoutMs: number): Promise<boolean> =>
+  new Promise((resolve) => {
+    if (useAgentStore.getState().bridge.connected) return resolve(true);
+    if (timeoutMs <= 0) return resolve(false);
+    const timer = setTimeout(() => {
+      unsubscribe();
+      resolve(false);
+    }, timeoutMs);
+    const unsubscribe = useAgentStore.subscribe((state) => {
+      if (!state.bridge.connected) return;
+      clearTimeout(timer);
+      unsubscribe();
+      resolve(true);
+    });
+  });
+
+export const startLocalAgentRun = async (
   runId: string,
   prompt: string,
   send: (message: EditorToBridge) => boolean = sendToBridge,
   /** Explicit skill for this run: undefined = auto-detect from the prompt, null = core only. */
   skillId?: string | null,
-): void => {
+  options: { bridgeWaitMs?: number } = {},
+): Promise<void> => {
+  const waitMs = options.bridgeWaitMs ?? localRunConfig.bridgeWaitMs;
   const agent = useAgentStore.getState();
   const { localAgentId: agentId, bridge } = agent;
   const info = findAgentInfo(bridge.agents, agentId);
@@ -45,7 +67,15 @@ export const startLocalAgentRun = (
   };
 
   if (!bridge.connected) {
-    return fail("The local bridge is not running. Start it with `bun run bridge`.");
+    // The socket may be reconnecting (reload, bridge restart): make sure a connection attempt
+    // is running and give it a moment before giving up.
+    startBridgeConnection();
+    agent.appendLog({ kind: "info", text: "Connecting to the local bridge…" });
+    if (!(await waitForBridge(waitMs))) {
+      return fail(
+        "The local bridge is not running. Start it with `bun run dev` or `bun run bridge`.",
+      );
+    }
   }
   if (info && !info.installed) {
     return fail(`${name} is not installed. ${info.note ?? "Install it, then refresh agents."}`);
@@ -57,12 +87,20 @@ export const startLocalAgentRun = (
     controller: new AbortController(),
     host: createToolHost({ onTransaction: setRunTail }),
   });
-  if (
-    !send({ type: "run_start", runId, prompt: agentPrompt, agentId, ...(model ? { model } : {}) })
-  ) {
-    setActiveRun(null);
-    fail("Could not reach the local bridge.");
-  }
+  const message: EditorToBridge = {
+    type: "run_start",
+    runId,
+    prompt: agentPrompt,
+    agentId,
+    ...(model ? { model } : {}),
+  };
+  if (send(message)) return;
+  // The store said "connected" but the socket was not open (e.g. replaced by a reload):
+  // restart the connection, wait for it, and try once more.
+  startBridgeConnection();
+  if ((await waitForBridge(waitMs)) && send(message)) return;
+  setActiveRun(null);
+  fail("Could not reach the local bridge. Reload Pego (⌘R) if this keeps happening.");
 };
 
 export const cancelLocalAgentRun = (runId: string): void => {

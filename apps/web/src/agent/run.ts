@@ -116,7 +116,7 @@ export const startRun = async (prompt: string): Promise<void> => {
   setRunStyleId(styleId);
 
   if (agent.backend === "local") {
-    startLocalAgentRun(runId, text, undefined, skillId);
+    await startLocalAgentRun(runId, text, undefined, skillId);
     return;
   }
 

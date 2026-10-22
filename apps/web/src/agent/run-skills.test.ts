@@ -1,4 +1,5 @@
 /// <reference types="bun" />
+import { localRunConfig } from "./local-agent-run";
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import {
   EXECUTOR_SYSTEM,
@@ -271,6 +272,7 @@ describe("manual skill choice lasts one run", () => {
 
   test("startRun clears selectedStyleId and hands it to the run", async () => {
     state().set({ backend: "local", bridge: emptyBridge() });
+    localRunConfig.bridgeWaitMs = 0; // no bridge in tests: fail fast instead of waiting
     state().setSelectedStyle("fakeswiss");
     useAgentStore.getState().set({ status: "idle" });
     await startRun("buat zzfoo page");
