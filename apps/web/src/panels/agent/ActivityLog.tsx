@@ -4,14 +4,7 @@ import { Markdown } from "@pego/ui/components/markdown";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore, type AgentLogEntry } from "@/agent/use-agent-store";
-import {
-  collapseRuns,
-  countFailed,
-  groupLog,
-  summarizeNames,
-  toolName,
-  type ToolGroup,
-} from "@/panels/agent/tool-groups";
+import { collapseRuns, countFailed, groupLog, type ToolGroup } from "@/panels/agent/tool-groups";
 
 const ACTIVE_STATUSES = new Set(["planning", "running", "awaiting_decision"]);
 
@@ -20,8 +13,7 @@ const ToolGroupRow = ({ group, live }: { group: ToolGroup; live: boolean }) => {
   const listId = useId();
   const { calls } = group;
   const failed = countFailed(calls);
-  const latest = calls.at(-1);
-  const showLive = live && !open && latest !== undefined;
+  const showLive = live && !open;
   return (
     <li className="font-mono text-[11px] leading-4">
       <button
@@ -40,7 +32,6 @@ const ToolGroupRow = ({ group, live }: { group: ToolGroup; live: boolean }) => {
           <span className="font-semibold">
             {calls.length} {calls.length === 1 ? "tool" : "tools"}
           </span>
-          {showLive ? <> · running {toolName(latest)}…</> : <> · {summarizeNames(calls)}</>}
           {failed > 0 ? <span className="text-destructive"> · {failed} failed</span> : null}
         </span>
         <ChevronRightIcon

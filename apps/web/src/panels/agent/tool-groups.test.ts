@@ -1,12 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import type { AgentLogEntry } from "@/agent/use-agent-store";
-import {
-  collapseRuns,
-  countFailed,
-  groupLog,
-  summarizeNames,
-  toolDetail,
-} from "@/panels/agent/tool-groups";
+import { collapseRuns, countFailed, groupLog, toolDetail } from "@/panels/agent/tool-groups";
 
 let seq = 0;
 const tool = (name: string, isError = false, text = ""): AgentLogEntry => ({
@@ -34,12 +28,6 @@ describe("groupLog", () => {
 });
 
 describe("summaries", () => {
-  test("distinct names in call order, first 3 then +k", () => {
-    const calls = ["a", "b", "a", "c", "d", "e"].map((n) => tool(n));
-    expect(summarizeNames(calls)).toBe("a, b, c +2");
-    expect(summarizeNames(calls.slice(0, 3))).toBe("a, b");
-  });
-
   test("countFailed", () => {
     expect(countFailed([tool("a"), tool("b", true), tool("c", true)])).toBe(2);
   });

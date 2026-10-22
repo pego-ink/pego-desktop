@@ -30,16 +30,6 @@ export const groupLog = (log: readonly AgentLogEntry[]): LogItem[] => {
 export const countFailed = (calls: readonly AgentLogEntry[]) =>
   calls.filter((call) => call.tool?.isError).length;
 
-/** Distinct tool names in first-call order. */
-export const distinctNames = (calls: readonly AgentLogEntry[]) => [...new Set(calls.map(toolName))];
-
-/** "a, b, c +2": first `max` distinct names, then the remainder count. */
-export const summarizeNames = (calls: readonly AgentLogEntry[], max = 3) => {
-  const names = distinctNames(calls);
-  const shown = names.slice(0, max).join(", ");
-  return names.length > max ? `${shown} +${names.length - max}` : shown;
-};
-
 /** Consecutive identical calls (same name, detail and outcome) collapse into one run with a count. */
 export const collapseRuns = (calls: readonly AgentLogEntry[]): ToolRun[] => {
   const runs: ToolRun[] = [];
