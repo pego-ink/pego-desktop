@@ -80,6 +80,7 @@ const textSchema = baseNode.extend({
   fontFamily: z.string().optional(),
   fontSize: numberValueSchema.optional(),
   fontWeight: numberValueSchema.optional(),
+  fontStyle: z.enum(["normal", "italic"]).optional(),
   textAlign: z.enum(["left", "center", "right"]).optional(),
   fill: colorValueSchema.optional(),
 });

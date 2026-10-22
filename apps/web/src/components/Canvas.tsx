@@ -14,6 +14,7 @@ import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
+import { useFontEvents } from "@/fonts/font-events";
 import { useTextEditStore } from "@/store/use-text-edit-store";
 import { useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
@@ -119,6 +120,7 @@ export const Canvas = () => {
           useViewportStore.subscribe(schedule),
           useInteractionState.subscribe(schedule),
           useTextEditStore.subscribe(schedule),
+          useFontEvents.subscribe(schedule),
           useAgentStore.subscribe((state, prev) => {
             if (state.focusIds !== prev.focusIds || state.status !== prev.status) schedule();
           }),
