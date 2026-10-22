@@ -25,7 +25,7 @@ const size = z.number().finite().positive().max(10000);
 const parentIdSchema = {
   anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
   description:
-    "Id of the frame/group to insert into, or null (default) for the document root. Without x/y, root insertions land to the right of existing content.",
+    "Id of the frame/group to insert into, or null (default) for the top level of the active page. Without x/y, top-level insertions land to the right of the page's content.",
 };
 const xSchema = { type: "number", description: "X inside the parent (pixels)." };
 const ySchema = { type: "number", description: "Y inside the parent (pixels)." };

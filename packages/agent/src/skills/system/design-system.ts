@@ -41,7 +41,7 @@ Purpose: a small set of decisions that a team can reuse. Success: change one var
 - States as separate labeled instances (default, hover, disabled) in the documentation, not hidden.
 
 ## Documentation frames
-One frame per group on the canvas, titled with a heading and a one-line rule: Colors (swatch rectangle 96x96 + token name + hex), Type (each size with name, size/weight, sample line), Spacing (bars at true widths), Radius, Components (every variant with a label under it). Grid with gap 48 between groups, 24 inside. Document styling uses the system's own tokens.
+Put the system on its own page ("Design System", create_page) with the source components; screens instance them from their own pages. One frame per group on the canvas, titled with a heading and a one-line rule: Colors (swatch rectangle 96x96 + token name + hex), Type (each size with name, size/weight, sample line), Spacing (bars at true widths), Radius, Components (every variant with a label under it). Grid with gap 48 between groups, 24 inside. Document styling uses the system's own tokens.
 
 ## Sizes
 Button height 40 (sm 32, lg 48), padding 16, text 14/500. Input height 40, 1px border. Row height 48. Icon 16 or 20. Touch targets 44 on mobile.

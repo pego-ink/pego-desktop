@@ -44,7 +44,7 @@ const OP_ERROR_HINTS: Record<string, string> = {
   node_not_found:
     "Call get_document to see the current ids. Ids inside a component instance (like a/b) cannot be edited directly: change the ref node's descendants or edit the component itself.",
   parent_not_found:
-    "Call get_document to find a valid parent id, or pass null for the document root.",
+    "Call get_document to find a valid parent id, or pass null for the top level of the active page.",
   parent_not_container:
     "Only frame and group nodes can have children. Insert into a frame instead.",
   duplicate_id: "Omit id on new nodes to get generated ones, or pick an id that is not used yet.",

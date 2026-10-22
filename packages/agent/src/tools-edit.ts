@@ -81,7 +81,8 @@ const operationJsonSchema = (
 
 const batchParent: JsonSchema = {
   anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
-  description: "Id or @alias of the frame/group to put the node in, or null for the document root.",
+  description:
+    "Id or @alias of the frame/group to put the node in, or null for the top level of the active page.",
 };
 
 const batchOperationsJsonSchema: JsonSchema = {
@@ -441,7 +442,7 @@ const copyNodes = defineTool({
       parentId: {
         anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
         description:
-          "Frame/group to put the copies in (null = document root). Omit to place each copy next to its original.",
+          "Frame/group to put the copies in (null = top level of the active page). Omit to place each copy next to its original.",
       },
       offset: {
         type: "object",

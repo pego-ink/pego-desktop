@@ -183,7 +183,8 @@ export const idJsonSchema = (description: string): JsonSchema => ({
 
 export const parentIdJsonSchema: JsonSchema = {
   anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
-  description: "Id of the frame or group to insert into, or null for the document root.",
+  description:
+    "Id of the frame or group to insert into, or null for the top level of the active page.",
 };
 
 export const indexJsonSchema: JsonSchema = {
