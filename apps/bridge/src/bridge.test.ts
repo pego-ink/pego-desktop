@@ -2,7 +2,8 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import {
   agentTools,
   BRIDGE_PROTOCOL_VERSION,
-  guides,
+  skills,
+  skillToMarkdown,
   type BridgeToEditor,
   type EditorToBridge,
   type RunEvent,
@@ -98,20 +99,23 @@ const mcpPost = (bridge: Bridge, body: unknown, headers: Record<string, string> 
     body: JSON.stringify(body),
   });
 
-const TEST_GUIDE = {
-  id: "test-guide",
-  title: "Test guide",
-  description: "A guide for tests",
-  content: "# Test guide\n\nBody.",
+const TEST_SKILL = {
+  id: "test-skill",
+  title: "Test skill",
+  description: "A skill for tests",
+  keywords: ["test"],
+  content: "Body.",
+  checklist: ["Check one"],
+  styles: [],
 };
 
 beforeAll(() => {
   agentTools.push(ECHO_TOOL);
-  guides.push(TEST_GUIDE);
+  skills.push(TEST_SKILL);
 });
 afterAll(() => {
-  const guideIndex = guides.indexOf(TEST_GUIDE);
-  if (guideIndex >= 0) guides.splice(guideIndex, 1);
+  const skillIndex = skills.indexOf(TEST_SKILL);
+  if (skillIndex >= 0) skills.splice(skillIndex, 1);
   const index = agentTools.indexOf(ECHO_TOOL);
   if (index >= 0) agentTools.splice(index, 1);
 });
@@ -559,22 +563,26 @@ describe("MCP surface (images, resources, prompts)", () => {
     expect((await editor.closed).code).toBe(1008);
   });
 
-  test("resources/list and resources/read serve guides", async () => {
+  test("resources/list and resources/read serve skills", async () => {
     const bridge = start();
     const list = (await rpc(bridge, "resources/list")).result.resources;
     expect(list).toContainEqual({
-      uri: "pego://guides/test-guide",
-      name: "test-guide",
-      title: "Test guide",
-      description: "A guide for tests",
+      uri: "pego://skills/test-skill",
+      name: "test-skill",
+      title: "Test skill",
+      description: "A skill for tests",
       mimeType: "text/markdown",
     });
     expect(list.some((r: { uri: string }) => r.uri === "pego://document")).toBe(true);
-    const read = await rpc(bridge, "resources/read", { uri: "pego://guides/test-guide" });
-    expect(read.result.contents).toEqual([
-      { uri: "pego://guides/test-guide", mimeType: "text/markdown", text: TEST_GUIDE.content },
-    ]);
-    const missing = await rpc(bridge, "resources/read", { uri: "pego://guides/nope" });
+    const read = await rpc(bridge, "resources/read", { uri: "pego://skills/test-skill" });
+    const [content] = read.result.contents;
+    expect(content).toEqual({
+      uri: "pego://skills/test-skill",
+      mimeType: "text/markdown",
+      text: skillToMarkdown(TEST_SKILL),
+    });
+    expect(content.text).toContain("- Check one");
+    const missing = await rpc(bridge, "resources/read", { uri: "pego://skills/nope" });
     expect(missing.error).toBeDefined();
   });
 
@@ -609,7 +617,7 @@ describe("MCP surface (images, resources, prompts)", () => {
     const text = design.result.messages[0].content.text as string;
     expect(design.result.messages[0].role).toBe("user");
     expect(text).toContain("sales overview");
-    for (const tool of ["get_guidelines", "batch_design", "get_screenshot", "check_layout"]) {
+    for (const tool of ["get_skill", "batch_design", "get_screenshot", "check_layout"]) {
       expect(text).toContain(tool);
     }
     const polish = await rpc(bridge, "prompts/get", { name: "polish_selection" });

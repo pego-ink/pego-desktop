@@ -66,6 +66,11 @@ type AgentState = {
   modelsByAgent: Partial<Record<LocalAgentId, ModelsEntry>>;
   /** An `agents_refresh` is in flight. */
   agentsRefreshing: boolean;
+  /**
+   * Skill for the next run only: undefined = auto-detect from the prompt, null = none (core
+   * only), string = that skill id. Cleared when a run starts; never persisted.
+   */
+  selectedSkillId: string | null | undefined;
   /** Who runs the current/last run, e.g. "Codex · gpt-5" (shown in the run header). */
   runLabel: string | null;
   status: RunStatus;
@@ -86,6 +91,7 @@ type AgentActions = {
   set: (patch: Partial<AgentState>) => void;
   setBackend: (backend: AgentBackend) => void;
   setLocalAgent: (agentId: LocalAgentId) => void;
+  setSelectedSkill: (skillId: string | null | undefined) => void;
   /** Select a model for an agent; undefined/empty restores the CLI default. */
   setModel: (agentId: LocalAgentId, model: string | undefined) => void;
   /** Re-read persisted preferences (done once at store creation). */
@@ -129,12 +135,14 @@ const createAgentStore = () =>
       modelsByAgent: {},
       agentsRefreshing: false,
       bridge: emptyBridge(),
+      selectedSkillId: undefined,
 
       set: (patch) => set(patch),
       setBackend: (backend) => {
         set({ backend, explicit: true });
         persist();
       },
+      setSelectedSkill: (selectedSkillId) => set({ selectedSkillId }),
       setLocalAgent: (localAgentId) => {
         set({ localAgentId, explicit: true });
         persist();

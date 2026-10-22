@@ -17,7 +17,8 @@ describe("prompts", () => {
   });
 
   test("Claude Code prompt names only real tools", () => {
-    const names = agentTools.map((t) => t.name);
+    // get_guidelines is a deprecated alias of the skills tools; prompts teach get_skill.
+    const names = agentTools.map((t) => t.name).filter((name) => name !== "get_guidelines");
     for (const name of names) expect(CLAUDE_CODE_SYSTEM).toContain(name);
     const mentioned = [...CLAUDE_CODE_SYSTEM.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map(
       (m) => m[1],
@@ -36,7 +37,7 @@ describe("prompts", () => {
 describe("prompts teach the workflow", () => {
   test("every prompt mentions the verify loop and placement", () => {
     for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
-      for (const name of ["get_screenshot", "check_layout", "get_guidelines"]) {
+      for (const name of ["get_screenshot", "check_layout", "get_skill"]) {
         expect(prompt).toContain(name);
       }
     }
@@ -44,6 +45,13 @@ describe("prompts teach the workflow", () => {
       for (const name of ["get_selection", "batch_design", "find_empty_space", "focus_nodes"]) {
         expect(prompt).toContain(name);
       }
+    }
+  });
+
+  test("every prompt carries the match-the-user's-language rule", () => {
+    for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
+      expect(prompt).toContain("Detect the language of the user's request");
+      expect(prompt).toContain("Tool names, node ids, variable names and code stay in English");
     }
   });
 

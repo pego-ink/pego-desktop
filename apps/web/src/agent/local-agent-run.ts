@@ -2,6 +2,7 @@ import type { EditorToBridge } from "@pego/agent";
 import { sendToBridge } from "./bridge-client";
 import { setActiveRun, setRunTail } from "./active-run";
 import { findAgentInfo, LOCAL_AGENT_NAMES } from "./local-agents";
+import { resolveRunSkills, skillLogLines, skillPromptPrefix } from "./run-skills";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
 
@@ -18,6 +19,8 @@ export const startLocalAgentRun = (
   runId: string,
   prompt: string,
   send: (message: EditorToBridge) => boolean = sendToBridge,
+  /** Explicit skill for this run: undefined = auto-detect from the prompt, null = core only. */
+  skillId?: string | null,
 ): void => {
   const agent = useAgentStore.getState();
   const { localAgentId: agentId, bridge } = agent;
@@ -29,6 +32,12 @@ export const startLocalAgentRun = (
   agent.set({ runLabel: describeRunAgent(name, model) });
   agent.appendLog({ kind: "user", text: prompt });
   setRunTail(null);
+
+  // The CLI loads the skills itself through get_skill; the panel and log keep the user's text.
+  const skills = resolveRunSkills(prompt, skillId);
+  for (const text of skillLogLines(skills)) agent.appendLog({ kind: "info", text });
+  const prefix = skillPromptPrefix(skills);
+  const agentPrompt = prefix ? `${prefix}\n\n${prompt}` : prompt;
 
   const fail = (text: string) => {
     agent.appendLog({ kind: "error", text });
@@ -48,7 +57,9 @@ export const startLocalAgentRun = (
     controller: new AbortController(),
     host: createToolHost({ onTransaction: setRunTail }),
   });
-  if (!send({ type: "run_start", runId, prompt, agentId, ...(model ? { model } : {}) })) {
+  if (
+    !send({ type: "run_start", runId, prompt: agentPrompt, agentId, ...(model ? { model } : {}) })
+  ) {
     setActiveRun(null);
     fail("Could not reach the local bridge.");
   }

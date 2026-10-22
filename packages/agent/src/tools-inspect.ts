@@ -3,8 +3,8 @@ import { findLocation, type Layout, type PegoDocument } from "@pego/doc";
 import { checkLayout } from "./inspect/check-layout";
 import { findEmptySpace } from "./inspect/empty-space";
 import { findNodes, searchIcons } from "./inspect/search";
-import { findGuide, guides } from "./guides/index";
 import { serializeDocument } from "./serialize";
+import { coreSkill, findSkill, skills, type Skill } from "./skills/index";
 import { findStyle, stylePresets } from "./styles/index";
 import { defineTool, ok, ToolError } from "./tool-kit";
 import type { ToolHost, ToolResult, ToolSpec } from "./types";
@@ -346,42 +346,93 @@ const searchIconsTool = defineTool({
   },
 });
 
-// --- guides and styles -------------------------------------------------------------
+// --- skills and styles -------------------------------------------------------------
+
+const skillIds = (): string => skills.map((skill) => skill.id).join(", ") || "none yet";
+
+const skillSummary = (skill: Skill) => ({
+  id: skill.id,
+  title: skill.title,
+  description: skill.description,
+  styles: skill.styles,
+  ...(skill.core ? { core: true } : {}),
+});
+
+const skillDetail = (skill: Skill) => ({
+  ...skillSummary(skill),
+  content: skill.content,
+  checklist: skill.checklist,
+});
+
+const unknownSkill = (what: string, name: string): ToolError =>
+  new ToolError(
+    what,
+    `no skill named "${name}"`,
+    `Available: ${skillIds()}. Call list_skills to see them.`,
+  );
+
+const listSkills = defineTool({
+  name: "list_skills",
+  description:
+    "List the Pego design skills (id, title, description, suggested style ids). The core skill applies to every design; pick the skill that matches the kind of design, then call get_skill for it before building.",
+  inputSchema: { type: "object", properties: {}, additionalProperties: false },
+  schema: z.strictObject({}),
+  inputHint: "No input.",
+  run: () => ok({ skills: skills.map(skillSummary) }),
+});
+
+const getSkill = defineTool({
+  name: "get_skill",
+  description:
+    "Get one design skill: its full guidance, the checklist to verify before reporting done, and suggested style ids. " +
+    `Skills: ${skillIds()}. ` +
+    "The core skill applies to every design: read it once per task, plus the skill for the kind of design, before building.",
+  inputSchema: {
+    type: "object",
+    properties: { id: { type: "string", minLength: 1, description: "Skill id from list_skills." } },
+    required: ["id"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({ id: z.string().min(1) }),
+  inputHint: "Pass {id: string}, a skill id from list_skills.",
+  run: (input) => {
+    const skill = findSkill(input.id);
+    if (!skill) throw unknownSkill("unknown_skill", input.id);
+    return ok(skillDetail(skill));
+  },
+});
+
+/** Topics of the retired guides mapped to the skill that now covers them. */
+const LEGACY_TOPICS: Record<string, string> = {
+  overview: "core",
+  "typography-and-color": "core",
+  "components-and-tokens": "design-system",
+};
+
+const resolveLegacyTopic = (topic: string): Skill | undefined => {
+  const key = topic.trim().toLowerCase();
+  if (key === "core" || key === "overview" || key === "typography-and-color") {
+    return coreSkill() ?? findSkill(LEGACY_TOPICS[key] ?? key);
+  }
+  return findSkill(LEGACY_TOPICS[key] ?? key);
+};
 
 const getGuidelines = defineTool({
   name: "get_guidelines",
   description:
-    "Design guidance written for Pego. Without topic it lists the guides; with a topic it returns the full guide. " +
-    `Topics: ${guides.map((guide) => guide.id).join(", ")}. ` +
-    "Read overview once per task, plus the guide for the kind of design (web-app, mobile-app, landing-page, dashboard), before building.",
+    "Deprecated alias of the skills: without topic it lists the skills (same as list_skills); with a topic (a skill id; overview means core) it returns that skill (same as get_skill). Prefer list_skills and get_skill.",
   inputSchema: {
     type: "object",
-    properties: {
-      topic: { type: "string", enum: guides.map((guide) => guide.id), description: "Guide id." },
-    },
+    properties: { topic: { type: "string", description: "Skill id, or the legacy topic name." } },
     additionalProperties: false,
   },
   schema: z.strictObject({ topic: z.string().min(1).optional() }),
-  inputHint: `Optional {topic}: one of ${guides.map((guide) => guide.id).join(", ")}.`,
+  inputHint: "Optional {topic}: a skill id. Prefer get_skill.",
   run: (input) => {
-    if (input.topic === undefined) {
-      return ok({
-        guides: guides.map(({ id: guideId, title, description }) => ({
-          id: guideId,
-          title,
-          description,
-        })),
-      });
-    }
-    const guide = findGuide(input.topic);
-    if (!guide) {
-      throw new ToolError(
-        "unknown_topic",
-        `no guide named "${input.topic}"`,
-        `Available: ${guides.map((g) => g.id).join(", ")}.`,
-      );
-    }
-    return ok({ id: guide.id, title: guide.title, content: guide.content });
+    if (input.topic === undefined) return ok({ skills: skills.map(skillSummary) });
+    const skill = resolveLegacyTopic(input.topic);
+    if (!skill) throw unknownSkill("unknown_topic", input.topic);
+    return ok(skillDetail(skill));
   },
 });
 
@@ -436,7 +487,7 @@ const getStyle = defineTool({
   },
 });
 
-/** Eyes and context: screenshots, layout checks, search, selection, viewport, icons, guides, styles. */
+/** Eyes and context: screenshots, layout checks, search, selection, viewport, icons, skills, styles. */
 export const inspectTools: ToolSpec[] = [
   getScreenshot,
   checkLayoutTool,
@@ -446,6 +497,8 @@ export const inspectTools: ToolSpec[] = [
   setSelectionTool,
   focusNodesTool,
   searchIconsTool,
+  listSkills,
+  getSkill,
   getGuidelines,
   listStyles,
   getStyle,

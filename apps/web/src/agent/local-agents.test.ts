@@ -238,7 +238,13 @@ describe("local agent runs", () => {
     const sent: EditorToBridge[] = [];
     startLocalAgentRun("r1", "make a card", (m) => (sent.push(m), true));
     expect(sent).toEqual([
-      { type: "run_start", runId: "r1", prompt: "make a card", agentId: "codex", model: "gpt-5" },
+      {
+        type: "run_start",
+        runId: "r1",
+        prompt: expect.stringMatching(/make a card$/),
+        agentId: "codex",
+        model: "gpt-5",
+      },
     ]);
     expect(getActiveRun()).toMatchObject({ id: "r1", backend: "local" });
     expect(state().runLabel).toBe("Codex · gpt-5");
@@ -252,7 +258,7 @@ describe("local agent runs", () => {
     expect(sent[0]).toEqual({
       type: "run_start",
       runId: "r2",
-      prompt: "p",
+      prompt: expect.stringMatching(/p$/),
       agentId: "claude-code",
     });
     expect(state().runLabel).toBe("Claude Code");

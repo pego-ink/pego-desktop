@@ -5,6 +5,7 @@ import { cancelRun, startRun } from "@/agent/run";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { AgentSelector } from "@/panels/agent/AgentSelector";
+import { SkillChip } from "@/panels/agent/SkillChip";
 import { isRunActive, selectionHint } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 
@@ -61,8 +62,9 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         placeholder={active ? "Agent is working…" : "Describe what to design…"}
         className="max-h-40 min-h-12 w-full resize-none bg-transparent px-1 text-xs leading-5 text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground disabled:cursor-not-allowed"
       />
-      <div className="mt-1 flex items-center gap-2">
+      <div className="mt-1 flex items-center gap-1">
         <AgentSelector restoreFocusRef={textareaRef} />
+        <SkillChip prompt={value} restoreFocusRef={textareaRef} />
         {hint ? (
           <span className="min-w-0 flex-1 truncate rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground">
             {hint}

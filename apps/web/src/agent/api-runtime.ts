@@ -14,6 +14,7 @@ import { AgentRunError, describeApiError, isAbortError } from "./api-errors";
 import { RunCancelledError } from "./decisions";
 import type { AgentToolHost } from "./tool-host";
 import { toUsageDelta } from "./usage";
+import { resolveRunSkills, skillLogLines, skillsBlock } from "./run-skills";
 import { useAgentStore } from "./use-agent-store";
 
 type BetaMessage = Anthropic.Beta.BetaMessage;
@@ -67,6 +68,10 @@ type RuntimeContext = {
   client: MessagesClient;
   host: AgentToolHost;
   signal: AbortSignal;
+  /** Skill text for the user turns (set by `runApiAgent`). */
+  skillsText?: string;
+  /** Explicit skill for this run: undefined = auto-detect, null = core only. */
+  skillId?: string | null;
 };
 
 const agent = () => useAgentStore.getState();
@@ -118,7 +123,12 @@ const requestPlan = async (ctx: RuntimeContext, prompt: string): Promise<PlanSte
         messages: [
           {
             role: "user",
-            content: `Current document (JSON):\n${documentJson}\n\nUser request:\n${prompt}`,
+            content: [
+              ctx.skillsText,
+              `Current document (JSON):\n${documentJson}\n\nUser request:\n${prompt}`,
+            ]
+              .filter(Boolean)
+              .join("\n\n"),
           },
         ],
       },
@@ -221,12 +231,14 @@ const planText = (steps: PlanStep[]) =>
     )
     .join("\n");
 
-const stepPrompt = (prompt: string, steps: PlanStep[], step: PlanStep): string => {
+const stepPrompt = (prompt: string, steps: PlanStep[], step: PlanStep, skillsText = ""): string => {
   const done = agent()
     .steps.filter((s) => s.status === "done" && s.summary)
     .map((s) => `- [${s.id}] ${s.summary}`)
     .join("\n");
   return [
+    // Skills first: identical across steps, so the cached prefix keeps covering them.
+    skillsText,
     `User request:\n${prompt}`,
     `Plan:\n${planText(steps)}`,
     done ? `Already completed:\n${done}` : "",
@@ -247,7 +259,9 @@ const executeStep = async (
   step: PlanStep,
 ): Promise<StepOutcome> => {
   ctx.host.reportStep(step.id, "running");
-  const messages: BetaMessageParam[] = [{ role: "user", content: stepPrompt(prompt, steps, step) }];
+  const messages: BetaMessageParam[] = [
+    { role: "user", content: stepPrompt(prompt, steps, step, ctx.skillsText) },
+  ];
   let lastText = "";
 
   for (let turn = 0; turn < MAX_TURNS_PER_STEP; turn++) {
@@ -342,9 +356,13 @@ const finishCancelled = () => {
 };
 
 /** Plan with Opus, then execute each step with Sonnet. Never throws: ends in the store. */
-export const runApiAgent = async (prompt: string, ctx: RuntimeContext): Promise<void> => {
+export const runApiAgent = async (prompt: string, base: RuntimeContext): Promise<void> => {
+  const ctx: RuntimeContext = { ...base }; // private copy: skill text is filled in below
   const state = agent();
   try {
+    const skills = resolveRunSkills(prompt, ctx.skillId);
+    ctx.skillsText = skillsBlock(skills);
+    for (const text of skillLogLines(skills)) state.appendLog({ kind: "info", text });
     state.appendLog({ kind: "info", text: "Planning with Claude Opus 5.5" });
     const steps = await requestPlan(ctx, prompt);
     ctx.host.reportPlan(steps);

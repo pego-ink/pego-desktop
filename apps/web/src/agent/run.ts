@@ -18,9 +18,12 @@ export const startRun = async (prompt: string): Promise<void> => {
 
   const agent = useAgentStore.getState();
   const runId = crypto.randomUUID();
+  // A manual skill choice applies to this run only; the next one goes back to auto.
+  const skillId = agent.selectedSkillId;
+  if (skillId !== undefined) agent.setSelectedSkill(undefined);
 
   if (agent.backend === "local") {
-    startLocalAgentRun(runId, text);
+    startLocalAgentRun(runId, text, undefined, skillId);
     return;
   }
 
@@ -47,6 +50,7 @@ export const startRun = async (prompt: string): Promise<void> => {
       client: createAnthropicClient(apiKey),
       host,
       signal: controller.signal,
+      skillId,
     });
   } finally {
     if (getActiveRun()?.id === runId) setActiveRun(null);

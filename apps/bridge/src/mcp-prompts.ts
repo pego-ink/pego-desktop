@@ -12,7 +12,7 @@ export const pegoPrompts: Prompt[] = [
     name: "design_screen",
     title: "Design a screen",
     description:
-      "Design a complete screen in Pego from a short brief, following the design guides.",
+      "Design a complete screen in Pego from a short brief, following the Pego design skills.",
     arguments: [
       {
         name: "kind",
@@ -49,17 +49,17 @@ const designScreen = (kind: Kind, brief: string): string =>
 Brief: ${brief}
 
 Work in this order:
-1. Call get_guidelines for the "${kind}" guidance (and any general layout and typography guides it points to).
+1. Call get_skill for "core" (it applies to every design) and for "${kind}", and follow their rules. Note their checklists.
 2. Call list_styles, pick the style that fits the brief, then call get_style for its tokens. Apply them as variables, not hard-coded values.
 3. Call find_empty_space to choose a spot on the canvas that overlaps nothing, then build the screen with batch_design: one frame per screen, auto-layout everywhere, real copy instead of lorem ipsum.
 4. When a part repeats (cards, list rows, nav items), call create_component once and create_instance for each use.
-5. Call get_screenshot of the finished frame, then check_layout. Fix every problem you find with batch_design and look again until it is clean.
+5. Call get_screenshot of the finished frame, then check_layout. Fix every problem you find with batch_design and look again until it is clean, then go through the skills' checklists and fix what fails.
 6. Call focus_nodes on the result so the user sees it.`;
 
 const POLISH = `Polish the user's current selection in Pego.
 
 1. Call get_selection to see what is selected. If nothing is selected, say so and stop.
-2. Call get_guidelines for the guidance that matches the selected design.
+2. Call get_skill for "core" and for the skill that matches the selected design (list_skills shows them).
 3. Call check_layout on the selection and note every overflow, overlap, misalignment and inconsistent spacing.
 4. Call get_screenshot of the selection and judge hierarchy, contrast, spacing rhythm and alignment by eye.
 5. Fix what you found with batch_design, touching only the selection and its children. Keep the existing style and variables.
@@ -68,7 +68,7 @@ Report briefly what you changed.`;
 
 const EXTRACT = `Find repeated UI in the open Pego document and turn it into components.
 
-1. Call get_guidelines for component guidance.
+1. Call get_skill for "core" and, if it exists, "design-system" (list_skills shows what is available).
 2. Read the document structure and look for subtrees that repeat with the same shape (cards, list rows, buttons, nav items, form fields), including near-duplicates that differ only in text, image or color.
 3. For each repeated pattern, call create_component from the best instance, then replace the other occurrences with create_instance, overriding only what differs (text, images, fills).
 4. Do not change how anything looks. Call get_screenshot and check_layout before and after to confirm nothing moved.
