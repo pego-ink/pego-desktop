@@ -1,4 +1,12 @@
-import type { Box, Layout, PegoDocument, PegoNode, PegoNodeType } from "@pego/doc";
+import {
+  resolveInstance,
+  resolveNumber,
+  type Box,
+  type Layout,
+  type PegoDocument,
+  type PegoNode,
+  type PegoNodeType,
+} from "@pego/doc";
 
 export const pointInBox = (box: Box, x: number, y: number): boolean =>
   x >= box.x && x <= box.x + box.width && y >= box.y && y <= box.y + box.height;
@@ -6,11 +14,39 @@ export const pointInBox = (box: Box, x: number, y: number): boolean =>
 export const boxesIntersect = (a: Box, b: Box): boolean =>
   a.x <= b.x + b.width && a.x + a.width >= b.x && a.y <= b.y + b.height && a.y + a.height >= b.y;
 
+type Point = { x: number; y: number };
+
+const ORIGIN: Box = { x: 0, y: 0, width: 0, height: 0 };
+
+/** Rotation (degrees, counter-clockwise) the renderer applies to a node. Refs use their resolved instance root. */
+const rotationOf = (doc: PegoDocument, node: PegoNode): number => {
+  const resolved = node.type === "ref" ? resolveInstance(doc, node) : node;
+  return resolveNumber(resolved?.rotation, doc.variables, 0);
+};
+
+/**
+ * Map a point from the parent's local space (origin at the parent's top-left, already rotated by
+ * the parent chain) into the node's local space: undo the translate, then undo `rotate(-rotation)`.
+ */
+const toLocal = (p: Point, box: Box, parent: Box, rotation: number): Point => {
+  const dx = p.x - (box.x - parent.x);
+  const dy = p.y - (box.y - parent.y);
+  if (rotation === 0) return { x: dx, y: dy };
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+};
+
+const inLocalBox = (box: Box, p: Point): boolean =>
+  p.x >= 0 && p.x <= box.width && p.y >= 0 && p.y <= box.height;
+
 const hitNodes = (
+  doc: PegoDocument,
   nodes: readonly PegoNode[],
   layout: Layout,
-  x: number,
-  y: number,
+  p: Point,
+  parent: Box,
   trail: string[],
 ): string[] | null => {
   // Later siblings paint on top, so test them first.
@@ -19,17 +55,18 @@ const hitNodes = (
     if (!node) continue;
     const box = layout.get(node.id);
     if (!box) continue;
-    const inside = pointInBox(box, x, y);
+    const local = toLocal(p, box, parent, rotationOf(doc, node));
+    const inside = inLocalBox(box, local);
 
     if (node.type === "group") {
       // A group has no paint of its own: only its children are hit targets.
-      const found = hitNodes(node.children, layout, x, y, [...trail, node.id]);
+      const found = hitNodes(doc, node.children, layout, local, box, [...trail, node.id]);
       if (found) return found;
       continue;
     }
     if (node.type === "frame") {
       if (node.clip && !inside) continue;
-      const found = hitNodes(node.children, layout, x, y, [...trail, node.id]);
+      const found = hitNodes(doc, node.children, layout, local, box, [...trail, node.id]);
       if (found) return found;
     }
     // Refs are leaves here: any hit inside an instance selects the instance root.
@@ -40,10 +77,12 @@ const hitNodes = (
 
 /**
  * Ancestor chain `[topLevelId, ..., deepestId]` of the topmost rendered node under a document
- * point, or null. Rotation is ignored in v0. Frames with `clip` hide children outside their box.
+ * point, or null. Mirrors the renderer: each node is translated to its box relative to its parent
+ * and rotated by `-rotation` degrees around its top-left, so the point is mapped into every node's
+ * local space. Frames with `clip` hide children outside their (rotated) box.
  */
 export const hitPath = (doc: PegoDocument, layout: Layout, x: number, y: number): string[] | null =>
-  hitNodes(doc.children, layout, x, y, []);
+  hitNodes(doc, doc.children, layout, { x, y }, ORIGIN, []);
 
 export type NodeIndexEntry = { parentId: string | null; type: PegoNodeType };
 export type NodeIndex = Map<string, NodeIndexEntry>;

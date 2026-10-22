@@ -1,4 +1,4 @@
-import { isContainer, type PegoDocument, type PegoNode } from "@pego/doc";
+import { findNode, isContainer, type PegoDocument, type PegoNode } from "@pego/doc";
 
 export type LayerRowData = {
   node: PegoNode;
@@ -38,4 +38,11 @@ export const ancestorIds = (doc: PegoDocument, id: string): string[] => {
     return null;
   };
   return walk(doc.children, []) ?? [];
+};
+
+/** Row label: own name, else the referenced component's name for refs ("Instance" if missing), else the type. */
+export const layerLabel = (doc: PegoDocument, node: PegoNode): string => {
+  if (node.name) return node.name;
+  if (node.type !== "ref") return node.type;
+  return findNode(doc, node.ref)?.name || "Instance";
 };

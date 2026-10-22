@@ -4,7 +4,7 @@ import { PanelHeader } from "@pego/ui/components/panel-header";
 import { useDocumentStore } from "@/store/use-document-store";
 import { LayerRow } from "@/panels/LayerRow";
 import { buildMoveOp, dropZoneAt, type DropZone } from "@/panels/drop-position";
-import { ancestorIds, flattenLayers } from "@/panels/layer-rows";
+import { ancestorIds, flattenLayers, layerLabel } from "@/panels/layer-rows";
 
 type DropTarget = { id: string; zone: DropZone };
 
@@ -68,7 +68,7 @@ export const LayersPanel = () => {
     if (!trimmed) return;
     const { doc: current, commit } = useDocumentStore.getState();
     const node = findNode(current, id);
-    if (!node || trimmed === (node.name ?? node.type)) return;
+    if (!node || trimmed === layerLabel(current, node)) return;
     commit([{ op: "update", id, props: { name: trimmed } }], { label: "Rename layer" });
   }, []);
 
@@ -138,6 +138,7 @@ export const LayersPanel = () => {
           <LayerRow
             key={row.node.id}
             node={row.node}
+            label={layerLabel(doc, row.node)}
             depth={row.depth}
             hasChildren={row.hasChildren}
             expanded={row.expanded}

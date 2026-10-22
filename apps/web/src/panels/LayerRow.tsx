@@ -10,6 +10,8 @@ const BASE_PAD_PX = 8;
 
 export type LayerRowProps = {
   node: PegoNode;
+  /** Display name from `layerLabel`. */
+  label: string;
   depth: number;
   hasChildren: boolean;
   expanded: boolean;
@@ -33,6 +35,7 @@ export type LayerRowProps = {
 
 const LayerRowImpl = ({
   node,
+  label,
   depth,
   hasChildren,
   expanded,
@@ -52,7 +55,6 @@ const LayerRowImpl = ({
   onDragEndRow,
 }: LayerRowProps) => {
   const cancelled = useRef(false);
-  const label = node.name ?? node.type;
   const indent = BASE_PAD_PX + depth * INDENT_PX;
 
   const handleClick = (event: MouseEvent) =>
