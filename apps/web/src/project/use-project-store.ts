@@ -7,6 +7,7 @@ import { openDocumentText } from "@/persistence/bridge-documents";
 import { saveFile } from "@/persistence/file-actions";
 import { FILE_EXTENSION, createEmptyDocument } from "@/persistence/file-format";
 import { findTabByPath, openTab, switchTab } from "@/tabs/use-tabs-store";
+import { liveProject } from "@/workspace/use-workspace-store";
 
 /** The design folder of the project, as listed by the local bridge. */
 type ProjectState = {
@@ -37,7 +38,8 @@ export const refreshProject = async (): Promise<void> => {
   }
   useProjectStore.setState({ status: "loading" });
   try {
-    const response = await requestProject("list");
+    // The open project's folder, or the whole design folder for scratch documents.
+    const response = await requestProject("list", liveProject()?.dir ?? undefined);
     useProjectStore.setState({
       status: "ready",
       root: response.root ?? projectDir,
@@ -80,7 +82,8 @@ export const designFileName = (input: string): string | null => {
 
 /** Create design/<name>.pego with an empty document, open it in a tab and save it to disk. */
 export const createProjectFile = async (input: string): Promise<void> => {
-  const { root, files } = useProjectStore.getState();
+  const { files } = useProjectStore.getState();
+  const root = liveProject()?.dir ?? useProjectStore.getState().root;
   const name = designFileName(input);
   if (!root || !name) {
     toast.error("Use a name made of letters, digits and dashes.");
@@ -88,7 +91,7 @@ export const createProjectFile = async (input: string): Promise<void> => {
   }
   const path = `${root}/${name}`;
   if (files.some((file) => file.path === path)) {
-    toast.error(`design/${name} already exists.`);
+    toast.error(`${name} already exists.`);
     return;
   }
   if (

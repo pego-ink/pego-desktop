@@ -13,6 +13,7 @@ import {
   tabTitle,
   useTabsStore,
 } from "@/tabs/use-tabs-store";
+import { liveProject, openProjectWorkspace, showEditor } from "@/workspace/use-workspace-store";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
 /**
@@ -128,6 +129,8 @@ export const loadDocumentFromBridge = (input: unknown): OpOutcome => {
   if (!isObject(input) || typeof input.text !== "string" || typeof input.path !== "string") {
     return { content: "Invalid load request.", isError: true };
   }
+  // Show what Claude Code opened, even when the user is on the dashboard.
+  showEditor();
   return openDocumentText(input.text, input.path, {
     discardUnsaved: input.discardUnsaved === true,
   });
@@ -169,8 +172,10 @@ export const markSavedFromBridge = (input: unknown): OpOutcome => {
 /** Editor side of list_documents: the open tabs. */
 export const listTabsForBridge = (): OpOutcome => {
   const { tabs, activeId } = useTabsStore.getState();
+  const project = liveProject();
   return {
     content: JSON.stringify({
+      project: project ? { id: project.id, name: project.name, dir: project.dir } : null,
       tabs: tabs.map((tab) => ({
         title: tabTitle(tab),
         path: tabState(tab).file.bridgePath,
@@ -196,4 +201,23 @@ export const switchTabForBridge = (input: unknown): OpOutcome => {
     };
   }
   return { content: `Showing ${input.path}.`, isError: false };
+};
+
+/** Editor side of open_project / create_project: open (or show) the project's workspace. */
+export const openProjectForBridge = (input: unknown): OpOutcome => {
+  if (
+    !isObject(input) ||
+    typeof input.id !== "string" ||
+    typeof input.name !== "string" ||
+    typeof input.dir !== "string"
+  ) {
+    return { content: "Invalid project.", isError: true };
+  }
+  if (!openProjectWorkspace({ id: input.id, name: input.name, dir: input.dir })) {
+    return {
+      content: "The editor is busy with an agent run; try again when it finishes.",
+      isError: true,
+    };
+  }
+  return { content: `Project ${input.name} is open.`, isError: false };
 };

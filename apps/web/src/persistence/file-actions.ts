@@ -2,6 +2,7 @@ import { toast } from "sonner";
 import { importPen, type PegoDocument } from "@pego/doc";
 import { saveFileViaBridge } from "@/agent/bridge-client";
 import { newTab, openTab } from "@/tabs/use-tabs-store";
+import { showEditor } from "@/workspace/use-workspace-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import {
   DEFAULT_FILE_NAME,
@@ -28,8 +29,10 @@ const MAX_LISTED_WARNINGS = 4;
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /** Opened files go to a tab of their own (or the untouched untitled tab). */
-const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) =>
-  openTab(doc, { fileName, handle });
+const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => {
+  showEditor();
+  return openTab(doc, { fileName, handle });
+};
 
 export const newDocument = () => {
   newTab();

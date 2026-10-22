@@ -61,7 +61,7 @@ export const captureLive = (): TabSnapshot => {
   };
 };
 
-const restore = (snapshot: TabSnapshot) => {
+export const restoreLive = (snapshot: TabSnapshot) => {
   const { doc, history, selection, pageId, camera, file } = snapshot;
   useDocumentStore.setState({ doc, history, selection, pageId, hoveredId: null });
   useFileStore.setState(file);
@@ -79,7 +79,7 @@ export const tabIsDirty = (tab: Tab): boolean => {
 };
 
 /** A run of the panel agent edits the live document: switching away mid-run is not allowed. */
-const blockedByRun = (): boolean => {
+export const blockedByRun = (): boolean => {
   if (!isRunActive(useAgentStore.getState().status)) return false;
   toast.info("Wait for the agent run to finish (or stop it) before switching tabs.");
   return true;
@@ -91,7 +91,7 @@ export const switchTab = (id: string): boolean => {
   const target = tabs.find((tab) => tab.id === id);
   if (!target?.snapshot || blockedByRun()) return false;
   const live = captureLive();
-  restore(target.snapshot);
+  restoreLive(target.snapshot);
   useTabsStore.setState({
     activeId: id,
     tabs: tabs.map((tab) =>
@@ -143,7 +143,7 @@ export const openTab = (
 };
 
 /** Put a document into the live stores (the active tab), fitted to the view. */
-const loadIntoActive = (
+export const loadIntoActive = (
   doc: PegoDocument,
   file: Partial<Omit<TabFile, "savedDoc">>,
   saved: boolean,
@@ -198,6 +198,6 @@ export const restoreTabs = (snapshots: TabSnapshot[], activeIndex: number): void
     id: createId(),
     snapshot: i === index ? null : snapshot,
   }));
-  restore(snapshots[index]!);
+  restoreLive(snapshots[index]!);
   useTabsStore.setState({ tabs, activeId: tabs[index]!.id });
 };

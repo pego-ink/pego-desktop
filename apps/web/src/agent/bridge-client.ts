@@ -35,7 +35,14 @@ export type BridgeClientOptions = {
   clearTimer?: (handle: unknown) => void;
 };
 
-export const bridgeUrl = (port = BRIDGE_DEFAULT_PORT) => `ws://127.0.0.1:${port}/editor`;
+/** `?bridge=4599` in the page URL connects to a bridge on another port (tests, a second checkout). */
+const bridgePortFromLocation = (): number => {
+  if (typeof location === "undefined") return BRIDGE_DEFAULT_PORT;
+  const port = Number(new URLSearchParams(location.search).get("bridge"));
+  return Number.isInteger(port) && port > 0 && port < 65536 ? port : BRIDGE_DEFAULT_PORT;
+};
+
+export const bridgeUrl = (port = bridgePortFromLocation()) => `ws://127.0.0.1:${port}/editor`;
 
 const defaultBackoff = (attempt: number) => Math.min(1_000 * 2 ** attempt, 30_000);
 
@@ -241,7 +248,11 @@ type ProjectResponse = Extract<BridgeToEditor, { type: "project_response" }>;
 const pendingProject = new Map<string, (response: ProjectResponse) => void>();
 
 /** Ask the bridge for the design folder listing, or one file's text. Rejects when offline. */
-export const requestProject = (action: "list" | "read", path?: string): Promise<ProjectResponse> =>
+export const requestProject = (
+  action: "list" | "read" | "projects" | "create_project",
+  path?: string,
+  name?: string,
+): Promise<ProjectResponse> =>
   new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
     const timer = setTimeout(() => {
@@ -259,6 +270,7 @@ export const requestProject = (action: "list" | "read", path?: string): Promise<
       requestId,
       action,
       ...(path === undefined ? {} : { path }),
+      ...(name === undefined ? {} : { name }),
     });
     if (!sent) {
       clearTimeout(timer);
