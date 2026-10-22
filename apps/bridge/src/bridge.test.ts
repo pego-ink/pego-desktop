@@ -979,3 +979,120 @@ describe("run-scoped MCP endpoint", () => {
     }
   });
 });
+
+describe("parallel runs and steer (real run manager)", () => {
+  /** Adapter that parks every run until released; records contexts and steer messages. */
+  const parkedAdapter = (steer?: AgentAdapter["steer"]) => {
+    const ctxs = new Map<string, import("./agents/types").AgentRunContext>();
+    const steered: string[] = [];
+    const releases = new Map<string, () => void>();
+    const adapter: AgentAdapter = {
+      ...fakeAdapter("codex"),
+      ...(steer ? { steer } : {}),
+      run: async (ctx) => {
+        ctxs.set(ctx.runId, ctx);
+        ctx.onSteer?.((message) => {
+          steered.push(`${ctx.runId}:${message.text}`);
+          return true;
+        });
+        await new Promise<void>((resolve) => {
+          releases.set(ctx.runId, resolve);
+          ctx.signal.addEventListener("abort", () => resolve());
+        });
+        if (!ctx.signal.aborted) ctx.emit({ kind: "done" });
+      },
+    };
+    return { adapter, ctxs, steered, releases };
+  };
+  const waitUntil = async (check: () => boolean) => {
+    for (let i = 0; i < 200 && !check(); i++) await Bun.sleep(10);
+  };
+
+  test("two runs from one editor and one from another: tool calls carry their own run id and owner", async () => {
+    const { adapter, ctxs } = parkedAdapter();
+    const bridge = start({}, { adapters: [adapter] });
+    const a = (await greet(bridge, "a")).editor;
+    const b = (await greet(bridge, "b")).editor;
+    a.send({ type: "run_start", runId: "a1", prompt: "go", agentId: "codex" });
+    a.send({ type: "run_start", runId: "a2", prompt: "go", agentId: "codex" });
+    b.send({ type: "run_start", runId: "b1", prompt: "go", agentId: "codex" });
+    await waitUntil(() => ctxs.size === 3);
+
+    const expectCall = async (
+      editor: FakeEditor,
+      runId: string,
+      other: FakeEditor[],
+    ): Promise<void> => {
+      const pending = fetch(ctxs.get(runId)?.mcpUrl as string, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          accept: "application/json, text/event-stream",
+        },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          id: 1,
+          method: "tools/call",
+          params: { name: "get_document", arguments: {} },
+        }),
+      });
+      const call = (await editor.next("tool_call")) as Extract<
+        BridgeToEditor,
+        { type: "tool_call" }
+      >;
+      expect(call.source).toEqual({ kind: "run", runId });
+      editor.send({ type: "tool_result", callId: call.callId, content: "doc", isError: false });
+      expect((await pending).status).toBe(200);
+      expect(other.every((o) => !o.inbox.some((m) => m.type === "tool_call"))).toBe(true);
+    };
+    await expectCall(a, "a1", [b]);
+    await expectCall(a, "a2", [b]);
+    // b's own run goes to b, not to a (a was not the active editor).
+    a.inbox.length = 0;
+    await expectCall(b, "b1", [a]);
+
+    // A fourth run is refused for that run id only.
+    a.send({ type: "run_start", runId: "a4", prompt: "go", agentId: "codex" });
+    const rejected = (await a.next("run_event")) as Extract<BridgeToEditor, { type: "run_event" }>;
+    expect(rejected.runId).toBe("a4");
+    expect(rejected.event.kind).toBe("error");
+    a.ws.close();
+    b.ws.close();
+  });
+
+  test("run_steer: owner delivers to a native adapter and gets `steered`; others are ignored", async () => {
+    const { adapter, ctxs, steered } = parkedAdapter("native");
+    const bridge = start({}, { adapters: [adapter] });
+    const owner = (await greet(bridge, "owner")).editor;
+    const other = (await greet(bridge, "other")).editor;
+    owner.send({ type: "run_start", runId: "r1", prompt: "go", agentId: "codex" });
+    await waitUntil(() => ctxs.size === 1);
+
+    other.send({ type: "run_steer", runId: "r1", text: "hijack" });
+    owner.send({ type: "run_steer", runId: "ghost", text: "nobody" });
+    owner.send({ type: "run_steer", runId: "r1", text: "turn left" });
+    const event = (await owner.next("run_event")) as Extract<BridgeToEditor, { type: "run_event" }>;
+    expect(event).toEqual({
+      type: "run_event",
+      runId: "r1",
+      event: { kind: "steered", text: "turn left" },
+    });
+    expect(steered).toEqual(["r1:turn left"]);
+    expect(other.inbox.some((m) => m.type === "run_event")).toBe(false);
+    owner.ws.close();
+    other.ws.close();
+  });
+
+  test("run_steer: a non-native adapter ignores it (no run_event); invalid text closes the socket", async () => {
+    const { adapter, ctxs } = parkedAdapter();
+    const bridge = start({}, { adapters: [adapter] });
+    const editor = (await greet(bridge)).editor;
+    editor.send({ type: "run_start", runId: "r1", prompt: "go", agentId: "codex" });
+    await waitUntil(() => ctxs.size === 1);
+    editor.send({ type: "run_steer", runId: "r1", text: "hi" });
+    await Bun.sleep(50);
+    expect(editor.inbox.filter((m) => m.type === "run_event")).toEqual([]);
+    editor.send({ type: "run_steer", runId: "r1", text: "" });
+    expect((await editor.closed).code).toBe(1008);
+  });
+});

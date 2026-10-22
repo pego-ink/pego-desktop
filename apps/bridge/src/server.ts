@@ -158,6 +158,29 @@ export const startBridge = (options: BridgeOptions) => {
             ...(message.model ? { model: message.model } : {}),
             ...(message.attachments?.length ? { attachments: message.attachments } : {}),
           });
+        } else if (message.type === "run_steer") {
+          const { runId } = message;
+          // Only the owner may steer; a finished or foreign run is ignored.
+          if (hub.getRunOwner(runId) !== socket) {
+            console.debug(`run_steer ignored: no run ${runId} owned by this editor`);
+            return;
+          }
+          void runs
+            .steer(runId, {
+              text: message.text,
+              ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+            })
+            .then((result) => {
+              if (result === "unknown") {
+                console.debug(`run_steer ignored: run ${runId} is not live`);
+                return;
+              }
+              // The editor restarts non-native agents itself and never sends them run_steer. No
+              // run_event here: the editor treats an "error" event as the end of the run.
+              if (result === "unsupported") {
+                console.debug(`run_steer ignored: agent of run ${runId} has no native steer`);
+              }
+            });
         } else if (message.type === "agents_refresh") {
           void detector.detectAll(true).then((agents) => sendTo(ws, { type: "agents", agents }));
         } else if (message.type === "models_request") {

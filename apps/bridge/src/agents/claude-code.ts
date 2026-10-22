@@ -49,33 +49,70 @@ export const buildQueryOptions = (input: {
   ...(input.executable ? { pathToClaudeCodeExecutable: input.executable } : {}),
 });
 
-/**
- * The query prompt: a plain string, or - with attachments - one streaming-input user message
- * whose content is the images (base64 blocks, as the Messages API takes them) followed by the text.
- */
-export const buildClaudePrompt = (
-  prompt: string,
+/** One streaming-input user message: the images (base64 blocks) first, then the text. */
+export const buildUserMessage = (
+  text: string,
   attachments: readonly Pick<AgentAttachment, "mediaType" | "data">[] = [],
-): string | AsyncIterable<SDKUserMessage> => {
-  if (attachments.length === 0) return prompt;
-  const message: SDKUserMessage = {
-    type: "user",
-    parent_tool_use_id: null,
-    message: {
-      role: "user",
-      content: [
-        ...attachments.map((item) => ({
-          type: "image" as const,
-          source: { type: "base64" as const, media_type: item.mediaType, data: item.data },
-        })),
-        { type: "text" as const, text: prompt },
-      ],
-    },
+): SDKUserMessage => ({
+  type: "user",
+  parent_tool_use_id: null,
+  message: {
+    role: "user",
+    content:
+      attachments.length === 0
+        ? text
+        : [
+            ...attachments.map((item) => ({
+              type: "image" as const,
+              source: { type: "base64" as const, media_type: item.mediaType, data: item.data },
+            })),
+            { type: "text" as const, text },
+          ],
+  },
+});
+
+/**
+ * A long-lived async iterable the SDK reads user messages from. Messages pushed before or while
+ * the SDK waits are delivered in order; after `close()` the buffered messages are still drained
+ * and then the iterable ends (which lets the CLI finish the run).
+ */
+export const createUserMessageQueue = () => {
+  const buffer: SDKUserMessage[] = [];
+  let closed = false;
+  let wake: (() => void) | undefined;
+  const notify = () => {
+    wake?.();
+    wake = undefined;
   };
-  return (async function* () {
-    yield message;
+  const iterable: AsyncIterable<SDKUserMessage> = (async function* () {
+    while (true) {
+      const next = buffer.shift();
+      if (next) {
+        yield next;
+        continue;
+      }
+      if (closed) return;
+      await new Promise<void>((resolve) => (wake = resolve));
+    }
   })();
+  return {
+    iterable,
+    push: (message: SDKUserMessage): boolean => {
+      if (closed) return false;
+      buffer.push(message);
+      notify();
+      return true;
+    },
+    close: () => {
+      closed = true;
+      notify();
+    },
+    isClosed: () => closed,
+  };
 };
+
+/** After a result with steer messages still unanswered, wait this long for more before ending. */
+const STEER_GRACE_MS = 15_000;
 
 export type ClaudeCodeDeps = {
   /** Injectable for tests; defaults to the real Agent SDK. */
@@ -86,6 +123,7 @@ export const createClaudeCodeAdapter = (deps: ClaudeCodeDeps = {}): AgentAdapter
   id: "claude-code",
   name: "Claude Code",
   supportsModels: true,
+  steer: "native",
 
   detect: async (env) => {
     const path = resolveClaudeExecutable();
@@ -131,9 +169,22 @@ export const createClaudeCodeAdapter = (deps: ClaudeCodeDeps = {}): AgentAdapter
     ctx.signal.addEventListener("abort", onAbort, { once: true });
     if (ctx.signal.aborted) abort.abort();
     const state = createMapState();
+    const queue = createUserMessageQueue();
+    // Messages handed to the CLI vs. results seen: the run ends once every one is answered.
+    let sent = 1;
+    let results = 0;
+    let sawSuccess = false;
+    let graceTimer: ReturnType<typeof setTimeout> | undefined;
+    queue.push(buildUserMessage(ctx.prompt, ctx.attachments));
+    ctx.onSteer?.((steer) => {
+      if (queue.isClosed()) return false;
+      clearTimeout(graceTimer);
+      sent += 1;
+      return queue.push(buildUserMessage(steer.text, steer.attachments));
+    });
     try {
       const stream = (deps.runQuery ?? query)({
-        prompt: buildClaudePrompt(ctx.prompt, ctx.attachments),
+        prompt: queue.iterable,
         options: buildQueryOptions({
           cwd: ctx.workdir,
           abortController: abort,
@@ -146,16 +197,30 @@ export const createClaudeCodeAdapter = (deps: ClaudeCodeDeps = {}): AgentAdapter
       });
       let ended = false;
       for await (const message of stream as AsyncIterable<SDKMessage>) {
+        const isResult = message.type === "result";
+        if (isResult) results += 1;
+        const failed = isResult && (message.subtype !== "success" || message.is_error);
+        // A result with steer messages still unanswered is not the end of the run.
+        const more = isResult && !failed && results < sent;
         for (const event of mapSdkMessage(message, state)) {
+          if (event.kind === "done" && more) continue;
           if (event.kind === "done" || event.kind === "error") ended = true;
           ctx.emit(event);
         }
+        if (isResult && !failed) sawSuccess = true;
+        if (!isResult) continue;
+        if (!more) queue.close();
+        // Queued messages may be merged into one turn (one result for several); do not hang.
+        else graceTimer = setTimeout(() => queue.close(), STEER_GRACE_MS);
       }
       if (!ended) {
-        ctx.emit({
-          kind: "error",
-          message: ctx.signal.aborted ? "Run cancelled." : "Claude Code ended without a result.",
-        });
+        if (sawSuccess && !ctx.signal.aborted) ctx.emit({ kind: "done" });
+        else {
+          ctx.emit({
+            kind: "error",
+            message: ctx.signal.aborted ? "Run cancelled." : "Claude Code ended without a result.",
+          });
+        }
       }
     } catch (error) {
       ctx.emit({
@@ -163,6 +228,8 @@ export const createClaudeCodeAdapter = (deps: ClaudeCodeDeps = {}): AgentAdapter
         message: ctx.signal.aborted ? "Run cancelled." : describeRunFailure(error),
       });
     } finally {
+      clearTimeout(graceTimer);
+      queue.close();
       ctx.signal.removeEventListener("abort", onAbort);
     }
   },

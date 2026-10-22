@@ -154,4 +154,85 @@ describe("claude-code adapter", () => {
     await claudeCodeAdapter.run(ctx);
     expect(events[0]).toMatchObject({ kind: "error" });
   });
+
+  test("declares native steer", () => {
+    expect(claudeCodeAdapter.steer).toBe("native");
+  });
+
+  const result = { type: "result", subtype: "success", is_error: false, result: "ok", usage: {} };
+
+  /** A fake SDK: drains the prompt iterable, answering each user message with one result. */
+  const echoQuery = (seen: string[], onMessage?: (index: number) => Promise<void>) =>
+    ((params: { prompt: AsyncIterable<{ message: { content: unknown } }> }) =>
+      (async function* () {
+        let index = 0;
+        for await (const message of params.prompt) {
+          seen.push(
+            typeof message.message.content === "string" ? message.message.content : "[blocks]",
+          );
+          await onMessage?.(index++);
+          yield result;
+        }
+      })()) as never;
+
+  test("the first prompt streams in, and the run ends after its result when nothing is steered", async () => {
+    const seen: string[] = [];
+    const adapter = createClaudeCodeAdapter({ runQuery: echoQuery(seen) });
+    const { ctx, events } = makeCtx();
+    await adapter.run(ctx);
+    expect(seen).toEqual(["go"]);
+    expect(events.map((e) => e.kind)).toEqual(["usage", "done"]);
+  });
+
+  test("a steer message is yielded after the first prompt; done only after the last result", async () => {
+    const seen: string[] = [];
+    let steer: ((s: { text: string }) => boolean) | undefined;
+    const adapter = createClaudeCodeAdapter({
+      runQuery: echoQuery(seen, async (index) => {
+        // While the first turn is "running", the user steers.
+        if (index === 0) expect(steer?.({ text: "turn left" })).toBe(true);
+      }),
+    });
+    const { ctx, events } = makeCtx({
+      onSteer: (handler) => {
+        steer = handler;
+      },
+    });
+    await adapter.run(ctx);
+    expect(seen).toEqual(["go", "turn left"]);
+    // Two results, but a single terminal done (the first result is not the end of the run).
+    expect(events.map((e) => e.kind)).toEqual(["usage", "usage", "done"]);
+  });
+
+  test("a steer after the run ended is refused", async () => {
+    let steer: ((s: { text: string }) => boolean) | undefined;
+    const adapter = createClaudeCodeAdapter({ runQuery: echoQuery([]) });
+    const { ctx } = makeCtx({
+      onSteer: (handler) => {
+        steer = handler;
+      },
+    });
+    await adapter.run(ctx);
+    expect(steer?.({ text: "too late" })).toBe(false);
+  });
+
+  test("an error result ends the run without waiting for steer messages", async () => {
+    const adapter = createClaudeCodeAdapter({
+      runQuery: ((params: { prompt: AsyncIterable<unknown> }) =>
+        (async function* () {
+          for await (const message of params.prompt) {
+            void message;
+            yield {
+              type: "result",
+              subtype: "error_during_execution",
+              is_error: true,
+              errors: ["boom"],
+            };
+          }
+        })()) as never,
+    });
+    const { ctx, events } = makeCtx();
+    await adapter.run(ctx);
+    expect(events.at(-1)).toEqual({ kind: "error", message: "boom" });
+  });
 });

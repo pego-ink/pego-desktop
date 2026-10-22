@@ -52,6 +52,7 @@ const imagesSchema = z
 
 const MAX_ATTACHMENT_BASE64_LENGTH = Math.ceil((RUN_ATTACHMENT_LIMITS.maxBytes * 4) / 3) + 4;
 const MAX_PROMPT_CHARS = 100_000;
+const MAX_STEER_CHARS = 20_000;
 
 const attachmentSchema = z
   .object({
@@ -103,6 +104,12 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("agents_refresh") }),
   z.object({ type: z.literal("models_request"), agentId }),
   z.object({ type: z.literal("run_cancel"), runId: id }),
+  z.object({
+    type: z.literal("run_steer"),
+    runId: id,
+    text: z.string().min(1).max(MAX_STEER_CHARS),
+    attachments: attachmentsSchema.optional(),
+  }),
 ]) satisfies z.ZodType<EditorToBridge>;
 
 export type ParseResult = { ok: true; message: EditorToBridge } | { ok: false; error: string };

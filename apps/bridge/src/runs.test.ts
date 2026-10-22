@@ -5,7 +5,7 @@ import { existsSync } from "node:fs";
 import { mkdtemp, readFile, readdir, realpath, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RunEvent } from "@pego/agent";
+import { MAX_CONCURRENT_RUNS, type RunEvent } from "@pego/agent";
 import { isAlive, makeFakeBin, waitFor } from "./agents/fake-cli";
 import { runCli } from "./agents/process";
 import type { AgentAdapter, AgentRunContext } from "./agents/types";
@@ -149,29 +149,189 @@ describe("createRunManager", () => {
     expect(await readdir(root)).toEqual([]);
   });
 
-  test("rejects a second concurrent run (one at a time) and allows a new one afterwards", async () => {
-    let release: () => void = () => undefined;
-    let started = 0;
+  test("runs up to MAX_CONCURRENT_RUNS at once, rejects the next, and frees a slot when one ends", async () => {
+    const releases = new Map<string, () => void>();
     const { runs, events } = await setup(
       adapterOf(async (ctx) => {
-        started++;
-        await new Promise<void>((resolve) => (release = resolve));
+        await new Promise<void>((resolve) => releases.set(ctx.runId, resolve));
         ctx.emit({ kind: "done" });
       }),
     );
+    for (const id of ["a", "b", "c"]) start(runs, id);
+    await waitFor(() => releases.size === 3);
+    expect(runs.activeCount()).toBe(MAX_CONCURRENT_RUNS);
+    start(runs, "d");
+    expect(events).toHaveLength(1);
+    expect(events[0]?.[0]).toBe("d");
+    expect(events[0]?.[1]).toMatchObject({ kind: "error" });
+    expect((events[0]?.[1] as { message: string }).message).toContain("max 3");
+    // A duplicate id is refused too.
+    start(runs, "a");
+    expect(events[1]).toEqual([
+      "a",
+      { kind: "error", message: "A run with this id is already in progress." },
+    ]);
+    releases.get("a")?.();
+    await waitFor(() => runs.activeCount() === 2);
+    start(runs, "e");
+    await waitFor(() => releases.has("e"));
+    for (const id of ["b", "c", "e"]) releases.get(id)?.();
+    await finished(runs);
+    expect(
+      events
+        .filter(([, e]) => e.kind === "done")
+        .map(([id]) => id)
+        .sort(),
+    ).toEqual(["a", "b", "c", "e"]);
+  });
+
+  test("cancel ends one run and leaves the others running", async () => {
+    const releases = new Map<string, () => void>();
+    const aborted: string[] = [];
+    const { runs, events } = await setup(
+      adapterOf(async (ctx) => {
+        ctx.signal.addEventListener("abort", () => aborted.push(ctx.runId));
+        await new Promise<void>((resolve) => {
+          releases.set(ctx.runId, resolve);
+          ctx.signal.addEventListener("abort", () => resolve());
+        });
+        if (!ctx.signal.aborted) ctx.emit({ kind: "done" });
+      }),
+    );
+    for (const id of ["a", "b", "c"]) start(runs, id);
+    await waitFor(() => releases.size === 3);
+    runs.cancel("b");
+    await waitFor(() => runs.activeCount() === 2);
+    expect(aborted).toEqual(["b"]);
+    expect(events).toEqual([["b", { kind: "error", message: "Run cancelled." }]]);
+    releases.get("a")?.();
+    releases.get("c")?.();
+    await finished(runs);
+    expect(events.filter(([, e]) => e.kind === "done").map(([id]) => id)).toEqual(["a", "c"]);
+  });
+
+  test("each concurrent run gets its own workdir and token, and the MCP server is bound to its run id", async () => {
+    const seen = new Map<string, AgentRunContext>();
+    const sources: unknown[] = [];
+    let release: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => (release = resolve));
+    const { runs } = await setup(
+      adapterOf(async (ctx) => {
+        seen.set(ctx.runId, ctx);
+        await gate;
+        ctx.emit({ kind: "done" });
+      }),
+      {
+        callTool: async (_tool, _input, source) => {
+          sources.push(source);
+          return { content: "", isError: false };
+        },
+      },
+    );
     start(runs, "a");
     start(runs, "b");
-    await waitFor(() => started === 1);
-    expect(events).toEqual([
-      ["b", { kind: "error", message: "Another run is already in progress." }],
+    await waitFor(() => seen.size === 2);
+    expect(seen.get("a")?.workdir).not.toBe(seen.get("b")?.workdir);
+    expect(seen.get("a")?.mcpUrl).not.toBe(seen.get("b")?.mcpUrl);
+    for (const id of ["a", "b"]) {
+      const server = seen.get(id)?.createMcpServer?.();
+      const [clientSide, serverSide] = InMemoryTransport.createLinkedPair();
+      const client = new Client({ name: "t", version: "0" });
+      await Promise.all([server?.connect(serverSide), client.connect(clientSide)]);
+      await client.callTool({ name: "get_document", arguments: {} });
+      await client.close();
+    }
+    expect(sources).toEqual([
+      { kind: "run", runId: "a" },
+      { kind: "run", runId: "b" },
     ]);
     release();
     await finished(runs);
-    start(runs, "c");
-    await waitFor(() => started === 2);
-    release();
-    await finished(runs);
-    expect(events.at(-1)).toEqual(["c", { kind: "done" }]);
+  });
+
+  describe("steer", () => {
+    const nativeAdapter = (
+      onCtx: (ctx: AgentRunContext, received: string[]) => Promise<void>,
+      received: string[] = [],
+    ): AgentAdapter => ({
+      ...adapterOf(async (ctx) => onCtx(ctx, received)),
+      steer: "native",
+    });
+
+    test("delivers to a native adapter (also when sent before it registers) and emits steered", async () => {
+      const received: string[] = [];
+      let release: () => void = () => undefined;
+      let registered = false;
+      const { runs, events } = await setup(
+        nativeAdapter(async (ctx) => {
+          await Bun.sleep(30);
+          ctx.onSteer?.((steer) => {
+            received.push(steer.text);
+            return true;
+          });
+          registered = true;
+          await new Promise<void>((resolve) => (release = resolve));
+          ctx.emit({ kind: "done" });
+        }),
+      );
+      start(runs, "a");
+      await waitFor(() => runs.isRunning());
+      await waitFor(async () => (await runs.steer("a", { text: "early" })) === "delivered");
+      await waitFor(() => registered);
+      expect(await runs.steer("a", { text: "later" })).toBe("delivered");
+      expect(received).toEqual(["early", "later"]);
+      expect(events.filter(([, e]) => e.kind === "steered").map(([, e]) => e)).toEqual([
+        { kind: "steered", text: "early" },
+        { kind: "steered", text: "later" },
+      ]);
+      release();
+      await finished(runs);
+      expect(await runs.steer("a", { text: "late" })).toBe("unknown");
+    });
+
+    test("attachments are written under a per-steer folder and keep their ids", async () => {
+      const got: AgentRunContext["attachments"][] = [];
+      let release: () => void = () => undefined;
+      const { runs } = await setup(
+        nativeAdapter(async (ctx) => {
+          ctx.onSteer?.((steer) => {
+            got.push(steer.attachments);
+            return true;
+          });
+          await new Promise<void>((resolve) => (release = resolve));
+          ctx.emit({ kind: "done" });
+        }),
+      );
+      start(runs, "a");
+      await waitFor(() => runs.isRunning());
+      await Bun.sleep(20);
+      const attachment = makeAttachment("att-1", "image/png");
+      expect(await runs.steer("a", { text: "see", attachments: [attachment] })).toBe("delivered");
+      expect(await runs.steer("a", { text: "again", attachments: [attachment] })).toBe("delivered");
+      expect(got.map((list) => list?.[0]?.id)).toEqual(["att-1", "att-1"]);
+      expect(got[0]?.[0]?.relativePath).toBe("steer-1/attachments/att-1.png");
+      expect(got[1]?.[0]?.relativePath).toBe("steer-2/attachments/att-1.png");
+      expect(existsSync(got[0]?.[0]?.path ?? "")).toBe(true);
+      release();
+      await finished(runs);
+    });
+
+    test("a restart adapter reports unsupported; an unknown run id is unknown", async () => {
+      let release: () => void = () => undefined;
+      const { runs } = await setup(
+        adapterOf(async (ctx) => {
+          await new Promise<void>((resolve) => (release = resolve));
+          ctx.emit({ kind: "done" });
+        }),
+      );
+      start(runs, "a");
+      await waitFor(() => runs.isRunning());
+      await Bun.sleep(20);
+      expect(await runs.steer("a", { text: "x" })).toBe("unsupported");
+      expect(await runs.steer("nope", { text: "x" })).toBe("unknown");
+      release();
+      await finished(runs);
+    });
   });
 
   test("unknown agent id is an error and starts nothing", async () => {
