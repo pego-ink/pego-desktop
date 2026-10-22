@@ -9,6 +9,7 @@ import type { RunEvent } from "@pego/agent";
 import { isAlive, makeFakeBin, waitFor } from "./agents/fake-cli";
 import { runCli } from "./agents/process";
 import type { AgentAdapter, AgentRunContext } from "./agents/types";
+import { makeAttachment } from "./agents/fixtures/images";
 import { createRunManager, parseRunMcpPath, type RunManagerDeps } from "./runs";
 
 const roots: string[] = [];
@@ -77,6 +78,75 @@ describe("createRunManager", () => {
     expect(seen?.model).toBe("provider/model(high)");
     expect(seen?.mcpUrl).toMatch(/^http:\/\/127\.0\.0\.1:4519\/mcp\/run\/[A-Za-z0-9_-]{43}$/);
     expect(seen?.systemPrompt.length).toBeGreaterThan(10);
+  });
+
+  test("attachments are written to the workdir before the adapter starts, noted in the prompt and removed with the workdir", async () => {
+    let seen: AgentRunContext | undefined;
+    let onDisk: string[] = [];
+    let bytes: Buffer | undefined;
+    const { runs, events, root } = await setup(
+      adapterOf(async (ctx) => {
+        seen = ctx;
+        onDisk = (await readdir(join(ctx.workdir, "attachments"))).sort();
+        bytes = await readFile(ctx.attachments?.[0]?.path ?? "");
+        ctx.emit({ kind: "done" });
+      }),
+    );
+    const first = makeAttachment("att-1", "image/png", { name: "../../evil.png" });
+    runs.start({
+      runId: "r1",
+      prompt: "go",
+      agentId: "codex",
+      attachments: [first, makeAttachment("att-2", "image/webp")],
+    });
+    await finished(runs);
+    expect(events.map(([, e]) => e.kind)).toEqual(["done"]);
+    expect(onDisk).toEqual(["att-1.png", "att-2.webp"]);
+    expect(bytes).toEqual(Buffer.from(first.data, "base64"));
+    expect(seen?.attachments?.map((item) => item.relativePath)).toEqual([
+      "attachments/att-1.png",
+      "attachments/att-2.webp",
+    ]);
+    expect(seen?.prompt.startsWith("go")).toBe(true);
+    expect(seen?.prompt).toContain("att-1 (");
+    expect(seen?.prompt).toContain("att-2 (");
+    expect(seen?.prompt).toContain('src "attachment:<id>"');
+    expect(existsSync(seen?.workdir ?? "")).toBe(false);
+    expect(await readdir(root)).toEqual([]);
+  });
+
+  test("no attachments: prompt untouched and ctx.attachments absent", async () => {
+    let seen: AgentRunContext | undefined;
+    const { runs } = await setup(
+      adapterOf(async (ctx) => {
+        seen = ctx;
+        ctx.emit({ kind: "done" });
+      }),
+    );
+    start(runs);
+    await finished(runs);
+    expect(seen?.prompt).toBe("go");
+    expect(seen && "attachments" in seen).toBe(false);
+  });
+
+  test("an unsafe attachment id fails the run without starting the adapter and still cleans up", async () => {
+    let started = false;
+    const { runs, events, root } = await setup(
+      adapterOf(async () => {
+        started = true;
+      }),
+    );
+    runs.start({
+      runId: "r1",
+      prompt: "go",
+      agentId: "codex",
+      attachments: [makeAttachment("../escape")],
+    });
+    await finished(runs);
+    expect(started).toBe(false);
+    expect(events).toHaveLength(1);
+    expect(events[0]?.[1].kind).toBe("error");
+    expect(await readdir(root)).toEqual([]);
   });
 
   test("rejects a second concurrent run (one at a time) and allows a new one afterwards", async () => {

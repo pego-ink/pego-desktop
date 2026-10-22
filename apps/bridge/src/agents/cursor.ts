@@ -1,4 +1,4 @@
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { RunEvent } from "@pego/agent";
 import {
   asRecord,
@@ -11,6 +11,7 @@ import {
   type StreamParser,
 } from "./gemini-family";
 import { extractVersion, findExecutables, probeVersion, runCapture, stripAnsi } from "./process";
+import { ATTACHMENTS_DIR, type AgentAttachment } from "../attachments";
 import type { AgentAdapter, AgentDetection } from "./types";
 
 const LOGIN_HINT = "Cursor Agent is not logged in. Run `cursor-agent login` once in a terminal.";
@@ -28,12 +29,40 @@ export const buildCursorMcpConfig = (mcpUrl: string) => ({
  * `<workdir>/.cursor/cli.json`: only Pego's MCP tools may run. Deny rules win over allow rules,
  * so shell, file access and web fetches are denied even if a mode would otherwise allow them.
  */
-export const buildCursorCliConfig = () => ({
-  permissions: {
-    allow: [`Mcp(${PEGO_SERVER}:*)`],
-    deny: ["Shell(*)", "Read(**)", "Write(**)", "WebFetch(*)"],
-  },
+export const buildCursorCliConfig = (options: { attachments?: boolean } = {}) => ({
+  permissions: options.attachments
+    ? {
+        // Cursor Agent has no image flag: the model views attachments through its read tool.
+        // Deny rules win over allow rules, so a blanket `Read(**)` deny cannot coexist with the
+        // attachments allow. Every other read stays unapproved (no `--force`) and the parser
+        // stops the run on any read outside `attachments/`.
+        allow: [`Mcp(${PEGO_SERVER}:*)`, `Read(${ATTACHMENTS_DIR}/**)`],
+        deny: ["Shell(*)", "Write(**)", "WebFetch(*)"],
+      }
+    : {
+        allow: [`Mcp(${PEGO_SERVER}:*)`],
+        deny: ["Shell(*)", "Read(**)", "Write(**)", "WebFetch(*)"],
+      },
 });
+
+const ATTACHMENT_FILE = /^att-\d{1,6}\.(png|jpg|webp|gif)$/;
+
+/** True when a read tool call targets one of this run's attachment files and nothing else. */
+export const isAttachmentRead = (toolCall: Record<string, unknown>, workdir: string): boolean => {
+  const path = asString(asRecord(asRecord(toolCall.readToolCall).args).path);
+  if (path === "") return false;
+  const resolved = resolve(workdir, path);
+  const dir = join(workdir, ATTACHMENTS_DIR);
+  return resolved.startsWith(`${dir}/`) && ATTACHMENT_FILE.test(resolved.slice(dir.length + 1));
+};
+
+/** Prompt addition telling the agent where the images are (Cursor Agent has no image flag). */
+export const cursorAttachmentNote = (attachments: readonly AgentAttachment[]): string =>
+  attachments.length === 0
+    ? ""
+    : `\nThe images are files in the workspace; open them with your read tool to look at them: ${attachments
+        .map((item) => item.relativePath)
+        .join(", ")}.`;
 
 export const buildCursorArgs = (input: { workdir: string; model?: string; prompt: string }) => [
   "--print",
@@ -74,7 +103,7 @@ const describeToolCall = (
 };
 
 /** Cursor Agent `--output-format stream-json` (system / user / assistant / tool_call / result). */
-export const createCursorParser = (): StreamParser => {
+export const createCursorParser = (options: { workdir?: string } = {}): StreamParser => {
   const started = new Set<string>();
   return {
     push: (line) => {
@@ -91,7 +120,10 @@ export const createCursorParser = (): StreamParser => {
         return { events };
       }
       if (event.type === "tool_call") {
-        const call = describeToolCall(asRecord(event.tool_call));
+        const toolCall = asRecord(event.tool_call);
+        // Reading an attached image is the one non-Pego tool a run may use.
+        if (options.workdir && isAttachmentRead(toolCall, options.workdir)) return { events };
+        const call = describeToolCall(toolCall);
         if (!call.mcp) {
           return {
             events,
@@ -180,20 +212,27 @@ export const cursorAdapter: AgentAdapter = {
       return;
     }
     await writeJsonFile(join(ctx.workdir, ".cursor", "mcp.json"), buildCursorMcpConfig(ctx.mcpUrl));
-    await writeJsonFile(join(ctx.workdir, ".cursor", "cli.json"), buildCursorCliConfig());
+    const attachments = ctx.attachments ?? [];
+    await writeJsonFile(
+      join(ctx.workdir, ".cursor", "cli.json"),
+      buildCursorCliConfig({ attachments: attachments.length > 0 }),
+    );
     await runFamilyCli({
       label: "Cursor Agent",
       command,
       args: buildCursorArgs({
         workdir: ctx.workdir,
         ...(ctx.model ? { model: ctx.model } : {}),
-        prompt: withSystemPrompt(ctx.systemPrompt, ctx.prompt),
+        prompt: withSystemPrompt(
+          ctx.systemPrompt,
+          `${ctx.prompt}${cursorAttachmentNote(attachments)}`,
+        ),
       }),
       env: ctx.env,
       cwd: ctx.workdir,
       signal: ctx.signal,
       emit: ctx.emit,
-      parser: createCursorParser(),
+      parser: createCursorParser({ workdir: ctx.workdir }),
       loginHint: LOGIN_HINT,
     });
   },

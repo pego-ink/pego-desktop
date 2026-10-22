@@ -39,12 +39,15 @@ export const buildOpencodeConfig = (input: {
 });
 
 /** Arguments for `opencode run`. `--standalone` so our config env applies to a private server. */
-export const buildOpencodeArgs = (input: Pick<AgentRunContext, "model" | "prompt">): string[] => [
+export const buildOpencodeArgs = (
+  input: Pick<AgentRunContext, "model" | "prompt" | "attachments">,
+): string[] => [
   "run",
   "--standalone",
   "--format",
   "json",
   ...(input.model ? ["-m", input.model] : []),
+  ...(input.attachments ?? []).flatMap((item) => ["-f", item.path]),
 ];
 
 /** Env: keys the user's providers may need are kept; project-level config and updates are off. */

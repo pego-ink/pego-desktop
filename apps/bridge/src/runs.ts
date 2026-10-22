@@ -2,7 +2,13 @@ import { randomBytes } from "node:crypto";
 import { mkdtemp, realpath, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, sep } from "node:path";
-import { CLAUDE_CODE_SYSTEM, type LocalAgentId, type RunEvent } from "@pego/agent";
+import {
+  CLAUDE_CODE_SYSTEM,
+  type LocalAgentId,
+  type RunAttachment,
+  type RunEvent,
+} from "@pego/agent";
+import { attachmentPromptNote, writeAttachments } from "./attachments";
 import { agentAdapters } from "./agents/registry";
 import { buildChildEnv } from "./agents/env";
 import type { AgentAdapter } from "./agents/types";
@@ -17,6 +23,8 @@ export type RunRequest = {
   prompt: string;
   agentId: LocalAgentId;
   model?: string;
+  /** Validated composer images; written to the run's workdir before the adapter starts. */
+  attachments?: RunAttachment[];
 };
 
 export type RunManagerDeps = {
@@ -82,10 +90,12 @@ export const createRunManager = (deps: RunManagerDeps) => {
     try {
       root = await realpath(deps.tmpRoot ?? tmpdir());
       workdir = await mkdtemp(join(root, WORKDIR_PREFIX));
+      const attachments = await writeAttachments(workdir, request.attachments ?? []);
       tokens.set(token, runId);
       await adapter.run({
         runId,
-        prompt: request.prompt,
+        prompt: `${request.prompt}${attachmentPromptNote(attachments)}`,
+        ...(attachments.length > 0 ? { attachments } : {}),
         ...(request.model ? { model: request.model } : {}),
         mcpUrl: `${deps.mcpOrigin()}/mcp/run/${token}`,
         systemPrompt: CLAUDE_CODE_SYSTEM,

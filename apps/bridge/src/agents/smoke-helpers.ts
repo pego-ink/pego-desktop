@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { join } from "node:path";
-import type { RunEvent } from "@pego/agent";
+import type { RunAttachment, RunEvent } from "@pego/agent";
+import { attachmentPromptNote, writeAttachments } from "../attachments";
 import { buildChildEnv } from "./env";
 import type { AgentAdapter, AgentRunContext } from "./types";
 
@@ -45,14 +46,17 @@ export const runAdapter = async (
     model?: string;
     systemPrompt?: string;
     signal?: AbortSignal;
+    attachments?: RunAttachment[];
   },
 ): Promise<SmokeResult> => {
   const workdir = await makeTempDir("run");
   const events: RunEvent[] = [];
   try {
+    const attachments = await writeAttachments(workdir, input.attachments ?? []);
     await adapter.run({
       runId: "test-run",
-      prompt: input.prompt,
+      prompt: `${input.prompt}${attachmentPromptNote(attachments)}`,
+      ...(attachments.length > 0 ? { attachments } : {}),
       ...(input.model ? { model: input.model } : {}),
       mcpUrl: input.mcpUrl,
       systemPrompt: input.systemPrompt ?? "You are a design agent.",

@@ -1,4 +1,5 @@
 import { join } from "node:path";
+import { withAtFileReferences } from "../attachments";
 import type { RunEvent } from "@pego/agent";
 import {
   asNumber,
@@ -245,7 +246,7 @@ export const qwenAdapter: AgentAdapter = {
         ...(ctx.model ? { model: ctx.model } : {}),
         systemPrompt: ctx.systemPrompt,
       }),
-      stdin: ctx.prompt,
+      stdin: withAtFileReferences(ctx.prompt, ctx.attachments),
       env: { ...ctx.env, QWEN_CODE_SUPPRESS_YOLO_WARNING: "1" },
       cwd: ctx.workdir,
       signal: ctx.signal,

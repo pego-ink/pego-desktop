@@ -8,7 +8,8 @@ import {
   type EditorToBridge,
   type RunEvent,
 } from "@pego/agent";
-import type { BridgeConfig } from "./config";
+import { makeAttachment } from "./agents/fixtures/images";
+import { MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
 import type { AgentAdapter } from "./agents/types";
 import { MAX_EDITOR_SOCKETS, NO_EDITOR_MESSAGE } from "./editor-hub";
 import type { RunRequest } from "./runs";
@@ -215,7 +216,7 @@ describe("editor socket security", () => {
   test("closes frames over the size cap", async () => {
     const bridge = start();
     const { editor } = await greet(bridge);
-    editor.ws.send("x".repeat(13 * 1024 * 1024));
+    editor.ws.send("x".repeat(MAX_WS_MESSAGE_BYTES + 1024));
     expect([1006, 1009]).toContain((await editor.closed).code);
   });
 });
@@ -736,6 +737,97 @@ describe("agent runs", () => {
     editor.send({ type: "run_cancel", runId: "r1" });
     await Bun.sleep(30);
     expect(cancelled).toEqual(["r1"]);
+  });
+
+  test("run_start forwards validated attachments (sanitized names) to the run manager", async () => {
+    const seen: RunRequest[] = [];
+    const bridge = start(
+      {},
+      {
+        runManagerFactory: () => ({
+          start: (request: RunRequest) => void seen.push(request),
+          resolveRunToken: () => undefined,
+          cancel: () => undefined,
+          cancelAll: () => undefined,
+          isRunning: () => false,
+        }),
+      },
+    );
+    const { editor } = await greet(bridge);
+    const attachment = makeAttachment("att-1", "image/png", { name: "../x/shot.png" });
+    editor.send({
+      type: "run_start",
+      runId: "r1",
+      prompt: "look",
+      agentId: "claude-code",
+      attachments: [attachment],
+    });
+    await Bun.sleep(50);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.attachments).toEqual([{ ...attachment, name: "shot.png" }]);
+  });
+
+  test("a frame with the maximum attachments (6 x 5 MB) is accepted", async () => {
+    const seen: RunRequest[] = [];
+    const bridge = start(
+      {},
+      {
+        runManagerFactory: () => ({
+          start: (request: RunRequest) => void seen.push(request),
+          resolveRunToken: () => undefined,
+          cancel: () => undefined,
+          cancelAll: () => undefined,
+          isRunning: () => false,
+        }),
+      },
+    );
+    const { editor } = await greet(bridge);
+    const big = makeAttachment("att-1", "image/png");
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(5 * 1024 * 1024 - 8),
+    ]).toString("base64");
+    const attachments = Array.from({ length: 6 }, (_, index) => ({
+      ...big,
+      id: `att-${index + 1}`,
+      data: png,
+    }));
+    editor.send({
+      type: "run_start",
+      runId: "r1",
+      prompt: "x".repeat(100_000),
+      agentId: "claude-code",
+      attachments,
+    });
+    await Bun.sleep(1500);
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.attachments).toHaveLength(6);
+  });
+
+  test("an invalid attachment closes nothing but never reaches the run manager", async () => {
+    const seen: RunRequest[] = [];
+    const bridge = start(
+      {},
+      {
+        runManagerFactory: () => ({
+          start: (request: RunRequest) => void seen.push(request),
+          resolveRunToken: () => undefined,
+          cancel: () => undefined,
+          cancelAll: () => undefined,
+          isRunning: () => false,
+        }),
+      },
+    );
+    const { editor } = await greet(bridge);
+    editor.send({
+      type: "run_start",
+      runId: "r1",
+      prompt: "x",
+      agentId: "claude-code",
+      attachments: [makeAttachment("att-1", "image/png", { mediaType: "image/svg+xml" as never })],
+    });
+    await Bun.sleep(100);
+    expect(seen).toEqual([]);
   });
 });
 

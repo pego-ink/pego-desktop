@@ -1,4 +1,5 @@
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
+import type { AgentAttachment } from "../attachments";
 import type { LocalAgentId, LocalAgentInfo, RunEvent } from "@pego/agent";
 
 /** What an adapter gets to run one prompt against the open document. */
@@ -6,6 +7,12 @@ export type AgentRunContext = {
   runId: string;
   prompt: string;
   model?: string;
+  /**
+   * Images the user attached, already validated and written to `workdir/attachments/`. The
+   * prompt already ends with a line listing their ids (for `place_image`); adapters only add the
+   * CLI-specific way of showing the images to the model.
+   */
+  attachments?: AgentAttachment[];
   /**
    * Run-scoped MCP endpoint on this bridge (Streamable HTTP). Tool calls made through it are
    * attributed to this run, so plan/step reporting and undo grouping work like panel runs.

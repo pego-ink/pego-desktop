@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { LOCAL_AGENT_IDS, type EditorToBridge } from "@pego/agent";
+import {
+  LOCAL_AGENT_IDS,
+  RUN_ATTACHMENT_LIMITS,
+  RUN_ATTACHMENT_TYPES,
+  type EditorToBridge,
+} from "@pego/agent";
+import { hasImageSignature, sanitizeAttachmentName } from "./attachments";
 
 const id = z.string().min(1).max(128);
 const agentId = z.enum(LOCAL_AGENT_IDS);
@@ -44,6 +50,33 @@ const imagesSchema = z
     "images too large",
   );
 
+const MAX_ATTACHMENT_BASE64_LENGTH = Math.ceil((RUN_ATTACHMENT_LIMITS.maxBytes * 4) / 3) + 4;
+const MAX_PROMPT_CHARS = 100_000;
+
+const attachmentSchema = z
+  .object({
+    id: z.string().regex(/^att-\d{1,6}$/),
+    name: z.string().max(1024).transform(sanitizeAttachmentName),
+    mediaType: z.enum(RUN_ATTACHMENT_TYPES),
+    data: z
+      .string()
+      .min(4)
+      .max(MAX_ATTACHMENT_BASE64_LENGTH)
+      .refine((data) => data.length % 4 === 0 && BASE64.test(data), "invalid base64")
+      .refine((data) => decodedBytes(data) <= RUN_ATTACHMENT_LIMITS.maxBytes, "image too large"),
+    width: z.number().int().positive().max(MAX_IMAGE_DIMENSION).optional(),
+    height: z.number().int().positive().max(MAX_IMAGE_DIMENSION).optional(),
+  })
+  // The bytes must be the image type the editor claims (CLIs sniff content, not our label).
+  .refine((attachment) => hasImageSignature(attachment.mediaType, attachment.data), {
+    message: "image data does not match its type",
+  });
+
+const attachmentsSchema = z
+  .array(attachmentSchema)
+  .max(RUN_ATTACHMENT_LIMITS.maxCount)
+  .refine((items) => new Set(items.map((item) => item.id)).size === items.length, "duplicate id");
+
 /** Runtime validation of every frame the editor sends. Mirrors `EditorToBridge`. */
 export const editorMessageSchema = z.discriminatedUnion("type", [
   z.object({
@@ -61,9 +94,10 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("run_start"),
     runId: id,
-    prompt: z.string().min(1).max(100_000),
+    prompt: z.string().min(1).max(MAX_PROMPT_CHARS),
     agentId,
     model: modelId.optional(),
+    attachments: attachmentsSchema.optional(),
   }),
   z.object({ type: z.literal("focus") }),
   z.object({ type: z.literal("agents_refresh") }),

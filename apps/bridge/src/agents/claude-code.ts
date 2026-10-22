@@ -1,10 +1,16 @@
-import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
+import {
+  query,
+  type Options,
+  type SDKMessage,
+  type SDKUserMessage,
+} from "@anthropic-ai/claude-agent-sdk";
 import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { agentTools } from "@pego/agent";
 import { resolveClaudeExecutable } from "../claude-code";
 import { SDK_SERVER_NAME } from "../config";
 import { createMapState, describeRunFailure, mapSdkMessage } from "../run-events";
 import { extractVersion, runCapture } from "./process";
+import type { AgentAttachment } from "../attachments";
 import type { AgentAdapter } from "./types";
 
 const MAX_TURNS = 60;
@@ -42,6 +48,34 @@ export const buildQueryOptions = (input: {
   ...(input.model && input.model !== CLAUDE_DEFAULT_MODEL ? { model: input.model } : {}),
   ...(input.executable ? { pathToClaudeCodeExecutable: input.executable } : {}),
 });
+
+/**
+ * The query prompt: a plain string, or - with attachments - one streaming-input user message
+ * whose content is the images (base64 blocks, as the Messages API takes them) followed by the text.
+ */
+export const buildClaudePrompt = (
+  prompt: string,
+  attachments: readonly Pick<AgentAttachment, "mediaType" | "data">[] = [],
+): string | AsyncIterable<SDKUserMessage> => {
+  if (attachments.length === 0) return prompt;
+  const message: SDKUserMessage = {
+    type: "user",
+    parent_tool_use_id: null,
+    message: {
+      role: "user",
+      content: [
+        ...attachments.map((item) => ({
+          type: "image" as const,
+          source: { type: "base64" as const, media_type: item.mediaType, data: item.data },
+        })),
+        { type: "text" as const, text: prompt },
+      ],
+    },
+  };
+  return (async function* () {
+    yield message;
+  })();
+};
 
 export type ClaudeCodeDeps = {
   /** Injectable for tests; defaults to the real Agent SDK. */
@@ -99,7 +133,7 @@ export const createClaudeCodeAdapter = (deps: ClaudeCodeDeps = {}): AgentAdapter
     const state = createMapState();
     try {
       const stream = (deps.runQuery ?? query)({
-        prompt: ctx.prompt,
+        prompt: buildClaudePrompt(ctx.prompt, ctx.attachments),
         options: buildQueryOptions({
           cwd: ctx.workdir,
           abortController: abort,

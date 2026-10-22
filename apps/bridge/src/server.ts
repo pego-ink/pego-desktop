@@ -156,6 +156,7 @@ export const startBridge = (options: BridgeOptions) => {
             prompt: message.prompt,
             agentId: message.agentId,
             ...(message.model ? { model: message.model } : {}),
+            ...(message.attachments?.length ? { attachments: message.attachments } : {}),
           });
         } else if (message.type === "agents_refresh") {
           void detector.detectAll(true).then((agents) => sendTo(ws, { type: "agents", agents }));

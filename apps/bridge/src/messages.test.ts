@@ -1,4 +1,7 @@
 import { describe, expect, test } from "bun:test";
+import { RUN_ATTACHMENT_LIMITS, type RunAttachmentType } from "@pego/agent";
+import { imageBytes, makeAttachment } from "./agents/fixtures/images";
+import { MAX_WS_MESSAGE_BYTES } from "./config";
 import { parseEditorMessage } from "./messages";
 
 const ok = (value: unknown) => parseEditorMessage(JSON.stringify(value));
@@ -69,5 +72,112 @@ describe("parseEditorMessage", () => {
       expect(result([big]).ok).toBe(true);
       expect(result([big, big]).ok).toBe(false);
     });
+  });
+});
+
+describe("run_start attachments", () => {
+  const start = (attachments: unknown) =>
+    ok({ type: "run_start", runId: "r", prompt: "hi", agentId: "claude-code", attachments });
+  const parsed = (attachments: unknown) => {
+    const result = start(attachments);
+    return result.ok && result.message.type === "run_start"
+      ? result.message.attachments
+      : undefined;
+  };
+
+  test("accepts every allowed type, with and without dimensions", () => {
+    const types: RunAttachmentType[] = ["image/png", "image/jpeg", "image/webp", "image/gif"];
+    const items = types.map((type, index) =>
+      makeAttachment(`att-${index + 1}`, type, index === 0 ? { width: 64, height: 32 } : {}),
+    );
+    expect(start(items).ok).toBe(true);
+    expect(start([]).ok).toBe(true);
+    expect(ok({ type: "run_start", runId: "r", prompt: "hi", agentId: "codex" }).ok).toBe(true);
+  });
+
+  test("rejects other media types", () => {
+    for (const mediaType of ["image/svg+xml", "text/html", "application/pdf", "image/bmp", ""]) {
+      expect(
+        start([makeAttachment("att-1", "image/png", { mediaType: mediaType as never })]).ok,
+      ).toBe(false);
+    }
+  });
+
+  test("rejects bad base64 (data: prefix, wrong padding, junk, whitespace)", () => {
+    const good = makeAttachment().data;
+    for (const data of [
+      `data:image/png;base64,${good}`,
+      good.slice(0, -1),
+      `${good.slice(0, 8)}!!${good.slice(10)}`,
+      `${good.slice(0, 8)}\n${good.slice(9)}`,
+      "====",
+      "",
+    ]) {
+      expect(start([makeAttachment("att-1", "image/png", { data })]).ok).toBe(false);
+    }
+  });
+
+  test("rejects bytes that are not the declared image type", () => {
+    const jpegAsPng = imageBytes("image/jpeg", 16).toString("base64");
+    expect(start([makeAttachment("att-1", "image/png", { data: jpegAsPng })]).ok).toBe(false);
+    const text = Buffer.from("<script>alert(1)</script>").toString("base64");
+    expect(start([makeAttachment("att-1", "image/png", { data: text })]).ok).toBe(false);
+    const riffNotWebp = Buffer.from("RIFF....WAVEfmt ").toString("base64");
+    expect(start([makeAttachment("att-1", "image/webp", { data: riffNotWebp })]).ok).toBe(false);
+  });
+
+  test("decoded size is capped at maxBytes", () => {
+    const atLimit = imageBytes("image/png", RUN_ATTACHMENT_LIMITS.maxBytes - 12);
+    expect(atLimit.length).toBe(RUN_ATTACHMENT_LIMITS.maxBytes);
+    expect(
+      start([makeAttachment("att-1", "image/png", { data: atLimit.toString("base64") })]).ok,
+    ).toBe(true);
+    const over = imageBytes("image/png", RUN_ATTACHMENT_LIMITS.maxBytes - 11);
+    expect(
+      start([makeAttachment("att-1", "image/png", { data: over.toString("base64") })]).ok,
+    ).toBe(false);
+  });
+
+  test("count is capped at maxCount and ids must be unique", () => {
+    const many = (n: number) =>
+      Array.from({ length: n }, (_, index) => makeAttachment(`att-${index + 1}`));
+    expect(start(many(RUN_ATTACHMENT_LIMITS.maxCount)).ok).toBe(true);
+    expect(start(many(RUN_ATTACHMENT_LIMITS.maxCount + 1)).ok).toBe(false);
+    expect(start([makeAttachment("att-1"), makeAttachment("att-1")]).ok).toBe(false);
+  });
+
+  test("ids must look like att-<n>", () => {
+    for (const id of [
+      "att-",
+      "att-x",
+      "att-1/../x",
+      "../att-1",
+      "ATT-1",
+      "att-1 ",
+      "x".repeat(40),
+      "",
+    ]) {
+      expect(start([makeAttachment(id)]).ok).toBe(false);
+    }
+  });
+
+  test("names are reduced to a safe display name", () => {
+    const name = (raw: string) =>
+      parsed([makeAttachment("att-1", "image/png", { name: raw })])?.[0]?.name;
+    expect(name("../../etc/passwd")).toBe("passwd");
+    expect(name("C:\\Users\\me\\shot.png")).toBe("shot.png");
+    expect(name("a/b/")).toBe("image");
+    expect(name("@secret.png")).toBe("secret.png");
+    expect(name("evil\u0000\n<b>x.png")).toBe("evilbx.png");
+    expect(name("")).toBe("image");
+    expect(name("...")).toBe("image");
+    expect(name(`${"n".repeat(300)}.png`)?.length).toBe(80);
+  });
+
+  test("the websocket frame cap fits the maximum attachments", () => {
+    const base64PerImage = Math.ceil((RUN_ATTACHMENT_LIMITS.maxBytes * 4) / 3);
+    const worst = base64PerImage * RUN_ATTACHMENT_LIMITS.maxCount + 100_000 + 4096;
+    expect(MAX_WS_MESSAGE_BYTES).toBeGreaterThanOrEqual(worst);
+    expect(MAX_WS_MESSAGE_BYTES).toBeLessThanOrEqual(64 * 1024 * 1024);
   });
 });

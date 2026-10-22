@@ -28,7 +28,7 @@ const DISABLED_FEATURES = [
  * The prompt is read from stdin (`-`).
  */
 export const buildCodexArgs = (
-  input: Pick<AgentRunContext, "mcpUrl" | "systemPrompt" | "workdir" | "model">,
+  input: Pick<AgentRunContext, "mcpUrl" | "systemPrompt" | "workdir" | "model" | "attachments">,
 ): string[] => {
   const server = `mcp_servers.${SDK_SERVER_NAME}`;
   return [
@@ -38,6 +38,9 @@ export const buildCodexArgs = (
     "--ignore-user-config",
     "--ignore-rules",
     "--skip-git-repo-check",
+    // `-i` takes a variadic list: one flag per file, always followed by another option so the
+    // trailing `-` (prompt on stdin) is never swallowed as an image path.
+    ...(input.attachments ?? []).flatMap((item) => ["-i", item.path]),
     "-s",
     "read-only",
     "-C",

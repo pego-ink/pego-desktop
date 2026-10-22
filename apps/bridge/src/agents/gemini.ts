@@ -18,6 +18,7 @@ import {
   type StreamParser,
 } from "./gemini-family";
 import { extractVersion, findExecutables, probeVersion } from "./process";
+import { withAtFileReferences, type AgentAttachment } from "../attachments";
 import type { AgentAdapter, AgentDetection } from "./types";
 
 const LOGIN_HINT =
@@ -77,7 +78,11 @@ export const buildGeminiSettings = (mcpUrl: string) => ({
   tools: { exclude: GEMINI_EXCLUDED_TOOLS },
 });
 
-export const buildGeminiArgs = (input: { model?: string; prompt: string }): string[] => [
+export const buildGeminiArgs = (input: {
+  model?: string;
+  prompt: string;
+  attachments?: AgentAttachment[];
+}): string[] => [
   "-o",
   "stream-json",
   "--skip-trust",
@@ -85,7 +90,7 @@ export const buildGeminiArgs = (input: { model?: string; prompt: string }): stri
   "yolo",
   ...(input.model ? ["-m", input.model] : []),
   // `--flag=value` so a prompt starting with "-" is never parsed as an option.
-  `--prompt=${input.prompt}`,
+  `--prompt=${withAtFileReferences(input.prompt, input.attachments)}`,
   "--allowed-mcp-server-names",
   PEGO_SERVER,
 ];
@@ -207,6 +212,7 @@ export const geminiAdapter: AgentAdapter = {
       args: buildGeminiArgs({
         ...(ctx.model ? { model: ctx.model } : {}),
         prompt: ctx.prompt,
+        ...(ctx.attachments ? { attachments: ctx.attachments } : {}),
       }),
       env: {
         ...ctx.env,
