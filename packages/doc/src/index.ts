@@ -12,6 +12,8 @@ export {
   findLocation,
   findNode,
   isContainer,
+  pageOf,
+  pageOrFirst,
   type ContainerNode,
   type NodeLocation,
 } from "./tree";

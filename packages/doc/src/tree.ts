@@ -1,6 +1,6 @@
-import type { FrameNode, GroupNode, PegoDocument, PegoNode } from "./schema";
+import type { FrameNode, GroupNode, PageNode, PegoDocument, PegoNode } from "./schema";
 
-export type ContainerNode = FrameNode | GroupNode;
+export type ContainerNode = FrameNode | GroupNode | PageNode;
 
 /** Where a node sits: `path` is the index chain from `doc.children` down to the node. */
 export type NodeLocation = {
@@ -11,7 +11,7 @@ export type NodeLocation = {
 };
 
 export const isContainer = (node: PegoNode): node is ContainerNode =>
-  node.type === "frame" || node.type === "group";
+  node.type === "frame" || node.type === "group" || node.type === "page";
 
 export const findLocation = (doc: PegoDocument, id: string): NodeLocation | null => {
   const walk = (
@@ -80,7 +80,22 @@ export const updateChildrenAt = (
   doc: PegoDocument,
   path: number[],
   fn: (children: PegoNode[]) => PegoNode[],
-): PegoDocument => ({ ...doc, children: rebuildAt(doc.children, path, fn) });
+): PegoDocument => ({
+  ...doc,
+  // Ops keep pages (and only pages) at the root.
+  children: rebuildAt(doc.children, path, fn) as PageNode[],
+});
+
+/** The page a node lives on (a page is its own page); null for unknown ids. */
+export const pageOf = (doc: PegoDocument, id: string): PageNode | null => {
+  const loc = findLocation(doc, id);
+  if (!loc) return null;
+  return doc.children[loc.path[0]!] ?? null;
+};
+
+/** The page with this id, or the first page when the id is unknown or omitted. */
+export const pageOrFirst = (doc: PegoDocument, pageId?: string | null): PageNode =>
+  (pageId ? doc.children.find((page) => page.id === pageId) : undefined) ?? doc.children[0]!;
 
 /** True when `id` is `ancestorId` itself or sits anywhere below it. */
 export const isSelfOrDescendant = (doc: PegoDocument, ancestorId: string, id: string): boolean => {

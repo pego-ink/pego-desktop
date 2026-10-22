@@ -396,7 +396,10 @@ export const importPen = (raw: unknown, name = "Imported"): PenImportResult => {
     id: createId(),
     name,
     variables: importer.variables(raw.variables),
-    children: importer.nodes(raw.children),
+    // .pen has no pages: everything lands on one.
+    children: [
+      { type: "page", id: createId(), name: "Page 1", children: importer.nodes(raw.children) },
+    ],
   });
   if (raw.themes !== undefined)
     importer.warn("Themes are not supported; the default theme was used");
