@@ -28,7 +28,7 @@ const SR_TEXT = {
   paused: "Auto save paused",
 } as const;
 
-/** Compact save state shown next to the file name. */
+/** Save state, shown as the muted subtitle under the file name. */
 export const AutosaveStatus = () => {
   const status = useAutosaveStore((s) => s.status);
   const enabled = useAutosaveStore((s) => s.enabled);
@@ -43,7 +43,7 @@ export const AutosaveStatus = () => {
   const showDot = dirty && !(fileAutosave && status !== "paused");
 
   return (
-    <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+    <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
       <span role="status" aria-live="polite" className="sr-only">
         {showDot && status === "idle" ? "Unsaved changes" : SR_TEXT[status]}
       </span>
@@ -81,7 +81,7 @@ export const AutosaveStatus = () => {
         </>
       ) : null}
       {untitled ? (
-        <span aria-hidden className="hidden md:inline">
+        <span aria-hidden className="truncate">
           Not saved to a file — ⌘S to save
         </span>
       ) : null}

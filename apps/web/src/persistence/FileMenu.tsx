@@ -1,6 +1,5 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import { Button } from "@pego/ui/components/button";
 import { newDocument, openFile, saveFile, saveFileAs } from "./file-actions";
 import { DEFAULT_FILE_NAME } from "./file-format";
 import { useFileStore } from "./use-file-store";
@@ -23,53 +22,96 @@ const ITEMS = [
 export const FileMenu = () => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+  const triggerRef = useRef<HTMLButtonElement>(null);
   const fileName = useFileStore((s) => s.fileName) ?? DEFAULT_FILE_NAME;
   const autosaveEnabled = useAutosaveStore((s) => s.enabled);
   const supported = isFileAutosaveSupported();
+
+  useEffect(() => {
+    if (open)
+      menuRef.current?.querySelector<HTMLElement>("[role^='menuitem']:not(:disabled)")?.focus();
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
     const onPointerDown = (event: PointerEvent) => {
       if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape") setOpen(false);
-    };
     document.addEventListener("pointerdown", onPointerDown);
-    document.addEventListener("keydown", onKeyDown);
     return () => {
       document.removeEventListener("pointerdown", onPointerDown);
-      document.removeEventListener("keydown", onKeyDown);
     };
   }, [open]);
 
+  const focusItem = (index: number) => {
+    const items = menuRef.current?.querySelectorAll<HTMLElement>(
+      "[role^='menuitem']:not(:disabled)",
+    );
+    if (!items?.length) return;
+    items[(index + items.length) % items.length]?.focus();
+  };
+
+  const closeMenu = (restoreFocus: boolean) => {
+    setOpen(false);
+    if (restoreFocus) triggerRef.current?.focus();
+  };
+
+  const onMenuKeyDown = (event: React.KeyboardEvent) => {
+    const items = Array.from(
+      menuRef.current?.querySelectorAll<HTMLElement>("[role^='menuitem']:not(:disabled)") ?? [],
+    );
+    const current = items.indexOf(document.activeElement as HTMLElement);
+    if (event.key === "ArrowDown") focusItem(current + 1);
+    else if (event.key === "ArrowUp") focusItem(current - 1);
+    else if (event.key === "Home") focusItem(0);
+    else if (event.key === "End") focusItem(-1);
+    else if (event.key === "Escape") closeMenu(true);
+    else if (event.key === "Tab") setOpen(false);
+    else return;
+    if (event.key !== "Tab") event.preventDefault();
+  };
+
   return (
-    <div ref={rootRef} className="relative flex items-center gap-2">
-      <Button
-        variant="ghost"
-        size="sm"
+    <div
+      ref={rootRef}
+      className="relative flex h-11 shrink-0 flex-col justify-center border-b border-border px-2"
+    >
+      <button
+        ref={triggerRef}
+        type="button"
         aria-haspopup="menu"
         aria-expanded={open}
+        aria-label={`File menu, ${fileName}`}
+        title={fileName}
         onClick={() => setOpen((v) => !v)}
+        onKeyDown={(event) => {
+          if (event.key !== "ArrowDown") return;
+          event.preventDefault();
+          setOpen(true);
+        }}
+        className="-mx-1 flex h-5 min-w-0 items-center gap-1 self-start rounded-sm px-1 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-accent"
       >
-        File
-        <ChevronDownIcon />
-      </Button>
-      <span className="flex items-center gap-1.5 text-sm text-muted-foreground" title={fileName}>
-        <span className="max-w-56 truncate">{fileName}</span>
-      </span>
-      <AutosaveStatus />
+        <span className="max-w-full truncate">{fileName}</span>
+        <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+      </button>
+      <div className="flex h-4 items-center">
+        <AutosaveStatus />
+      </div>
       {open ? (
         <div
+          ref={menuRef}
           role="menu"
-          className="absolute top-full left-0 z-50 mt-1 w-52 rounded-md border border-border bg-card p-1 shadow-md"
+          aria-label="File"
+          onKeyDown={onMenuKeyDown}
+          className="absolute top-full right-2 left-2 z-50 mt-1 rounded-lg border border-border bg-card p-1 shadow-lg"
         >
           {ITEMS.map((item) => (
             <button
               key={item.label}
               type="button"
               role="menuitem"
-              className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent"
               onClick={() => {
                 setOpen(false);
                 void item.run();
@@ -94,7 +136,7 @@ export const FileMenu = () => {
               role="menuitemcheckbox"
               aria-checked={supported && autosaveEnabled}
               disabled={!supported}
-              className="flex w-full items-center justify-between rounded-sm px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:pointer-events-none disabled:opacity-50"
+              className="flex w-full items-center justify-between rounded-md px-2 py-1.5 text-left text-sm outline-none hover:bg-accent focus-visible:bg-accent disabled:pointer-events-none disabled:opacity-50"
               onClick={() => {
                 setOpen(false);
                 toggleAutoSave();

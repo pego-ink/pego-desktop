@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { PanelRightIcon, Redo2Icon, SparklesIcon, Undo2Icon } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { PanelRightIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
@@ -13,6 +13,15 @@ import { ResizeHandle } from "@pego/ui/components/resize-handle";
 import { usePanelWidth } from "@/hooks/use-panel-width";
 import { cn } from "@pego/ui/lib/utils";
 import { FileMenu } from "@/persistence/FileMenu";
+import { IconRail, railPanelId, railTabId } from "@/components/IconRail";
+import {
+  RAIL_TABS,
+  pressTab,
+  readRailState,
+  writeRailState,
+  type RailState,
+  type RailTab,
+} from "@/components/rail-state";
 
 const HistoryButtons = () => {
   const canUndo = useDocumentStore((s) => s.history.past.length > 0);
@@ -45,31 +54,6 @@ const HistoryButtons = () => {
   );
 };
 
-type LeftTab = "layers" | "agent";
-
-const TabButton = ({
-  active,
-  onClick,
-  children,
-}: {
-  active: boolean;
-  onClick: () => void;
-  children: React.ReactNode;
-}) => (
-  <button
-    type="button"
-    role="tab"
-    aria-selected={active}
-    onClick={onClick}
-    className={cn(
-      "flex h-7 flex-1 items-center justify-center gap-1.5 rounded-sm text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3.5",
-      active && "bg-secondary text-foreground shadow-xs",
-    )}
-  >
-    {children}
-  </button>
-);
-
 const LEFT_PANEL = {
   storageKey: "pego:left-panel-width",
   defaultWidth: 300,
@@ -78,39 +62,30 @@ const LEFT_PANEL = {
   maxViewportRatio: 0.4,
 } as const;
 
-/** Left column: layer tree or agent panel, one shared, user-resizable width. */
-const LeftColumn = () => {
+/** Side panel: file header, then the agent or layer panel. Width is user-resizable. */
+const LeftColumn = ({ rail }: { rail: RailState }) => {
   const { attachElement, ...panel } = usePanelWidth(LEFT_PANEL);
-  const [tab, setTab] = useState<LeftTab>("layers");
-  const working = useAgentStore((s) => isRunActive(s.status));
   return (
     <aside
       ref={attachElement}
+      aria-label="Side panel"
+      hidden={!rail.open}
       style={{ width: panel.width }}
-      className="relative flex shrink-0 flex-col border-r border-border bg-card"
+      className="relative shrink-0 flex-col border-r border-border bg-card not-hidden:flex"
     >
-      <div
-        role="tablist"
-        aria-label="Left panel"
-        className="flex shrink-0 gap-0.5 border-b border-border p-1.5"
-      >
-        <TabButton active={tab === "layers"} onClick={() => setTab("layers")}>
-          Layers
-        </TabButton>
-        <TabButton active={tab === "agent"} onClick={() => setTab("agent")}>
-          <SparklesIcon />
-          Agent
-          {working && tab !== "agent" ? (
-            <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-[#B79CFF]" />
-          ) : null}
-        </TabButton>
-      </div>
-      <div className={cn("min-h-0 flex-1 flex-col", tab === "layers" ? "flex" : "hidden")}>
-        <LayersPanel />
-      </div>
-      <div className={cn("min-h-0 flex-1 flex-col", tab === "agent" ? "flex" : "hidden")}>
-        <AgentPanel />
-      </div>
+      <FileMenu />
+      {RAIL_TABS.map(({ id }) => (
+        <div
+          key={id}
+          id={railPanelId(id)}
+          role="tabpanel"
+          aria-labelledby={railTabId(id)}
+          hidden={rail.tab !== id}
+          className="min-h-0 flex-1 flex-col not-hidden:flex"
+        >
+          {id === "agent" ? <AgentPanel /> : <LayersPanel />}
+        </div>
+      ))}
       <ResizeHandle
         label="Resize left panel"
         value={panel.width}
@@ -155,27 +130,32 @@ const RightColumn = () => {
   );
 };
 
-export const EditorShell = () => (
-  <div className="flex h-full flex-col bg-background text-foreground">
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-semibold">Pego</span>
-        <FileMenu />
+export const EditorShell = () => {
+  const [rail, setRail] = useState(readRailState);
+  const working = useAgentStore((s) => isRunActive(s.status));
+  const press = useCallback((tab: RailTab) => setRail((prev) => pressTab(prev, tab)), []);
+  useEffect(() => writeRailState(rail), [rail]);
+  return (
+    <div className="flex h-full bg-background text-foreground">
+      <IconRail state={rail} agentWorking={working} onPress={press} />
+      <LeftColumn rail={rail} />
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-11 shrink-0 items-center justify-between border-b border-border bg-card px-3">
+          <HistoryButtons />
+          <div className="flex items-center gap-2">
+            <PropertiesToggle />
+            <Button size="sm" variant="secondary">
+              Share
+            </Button>
+          </div>
+        </header>
+        <div className="flex min-h-0 flex-1">
+          <main className="min-w-0 flex-1">
+            <Canvas />
+          </main>
+          <RightColumn />
+        </div>
       </div>
-      <div className="flex items-center gap-2">
-        <HistoryButtons />
-        <PropertiesToggle />
-        <Button size="sm" variant="secondary">
-          Share
-        </Button>
-      </div>
-    </header>
-    <div className="flex min-h-0 flex-1">
-      <LeftColumn />
-      <main className="min-w-0 flex-1">
-        <Canvas />
-      </main>
-      <RightColumn />
     </div>
-  </div>
-);
+  );
+};
