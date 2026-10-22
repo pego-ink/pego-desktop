@@ -16,6 +16,7 @@ const info = (id: LocalAgentInfo["id"], over: Partial<LocalAgentInfo> = {}): Loc
   name: id,
   installed: true,
   supportsModels: true,
+  steer: "restart",
   ...over,
 });
 

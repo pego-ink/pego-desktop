@@ -7,7 +7,10 @@ import type { DecisionRequest, PlanStep, StepStatus } from "./types";
  * document the same way.
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
-export const BRIDGE_PROTOCOL_VERSION = 3;
+export const BRIDGE_PROTOCOL_VERSION = 4;
+
+/** Local agent runs the bridge executes at the same time (one per chat session). */
+export const MAX_CONCURRENT_RUNS = 3;
 
 /** Messages the editor sends to the bridge. */
 export type EditorToBridge =
@@ -37,7 +40,12 @@ export type EditorToBridge =
   | { type: "agents_refresh" }
   /** List models an agent can use; answered with `models`. */
   | { type: "models_request"; agentId: LocalAgentId }
-  | { type: "run_cancel"; runId: string };
+  | { type: "run_cancel"; runId: string }
+  /**
+   * Steer a running run: hand it a new user message without waiting for it to finish. Only for
+   * agents whose `steer` is "native"; the editor restarts the others itself.
+   */
+  | { type: "run_steer"; runId: string; text: string; attachments?: RunAttachment[] };
 
 /** Messages the bridge sends to the editor. */
 export type BridgeToEditor =
@@ -66,6 +74,8 @@ export type RunEvent =
   | { kind: "text"; text: string }
   | { kind: "tool"; tool: string; status: "started" | "finished"; isError?: boolean }
   | { kind: "usage"; inputTokens: number; outputTokens: number; costUsd?: number }
+  /** A `run_steer` message reached the agent (it reads it at its next turn). */
+  | { kind: "steered"; text: string }
   | { kind: "done" }
   | { kind: "error"; message: string };
 
@@ -94,6 +104,11 @@ export type LocalAgentInfo = {
   supportsModels: boolean;
   /** Why it is unavailable or what to do (e.g. "Run `codex login` once"). */
   note?: string;
+  /**
+   * How a running run takes a steer message: "native" accepts `run_steer` mid-run (Claude Code),
+   * "restart" means the editor cancels and starts a new run with the message plus session history.
+   */
+  steer: "native" | "restart";
 };
 
 /** Image types a run attachment may have. */

@@ -27,6 +27,7 @@ class FakeSocket implements SocketLike {
 const CODEX: LocalAgentInfo = {
   id: "codex",
   name: "Codex",
+  steer: "restart",
   installed: true,
   version: "0.9.0",
   supportsModels: true,
@@ -78,7 +79,7 @@ describe("bridge client", () => {
     sockets[0]!.onopen?.();
     expect(JSON.parse(sockets[0]!.sent[0]!)).toMatchObject({
       type: "hello",
-      protocol: 3,
+      protocol: 4,
       documentName: "doc.pego",
     });
     expect(client.isOpen()).toBe(true);

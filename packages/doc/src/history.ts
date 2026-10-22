@@ -9,6 +9,8 @@ export type Transaction = {
   inverse: Op[];
   label?: string;
   source: TransactionSource;
+  /** Agent run that made this change; lets "Undo all" revert one run among parallel runs. */
+  runId?: string;
 };
 
 export type History = {
@@ -25,7 +27,7 @@ export const commit = (
   doc: PegoDocument,
   history: History,
   ops: readonly Op[],
-  meta: { source: TransactionSource; label?: string },
+  meta: { source: TransactionSource; label?: string; runId?: string },
 ): { doc: PegoDocument; history: History; transaction: Transaction } => {
   const result = applyOps(doc, ops);
   const transaction: Transaction = { ops: [...ops], inverse: result.inverse, ...meta };

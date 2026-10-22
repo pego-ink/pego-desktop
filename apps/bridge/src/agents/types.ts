@@ -33,7 +33,7 @@ export type AgentRunContext = {
   emit: (event: RunEvent) => void;
 };
 
-export type AgentDetection = Omit<LocalAgentInfo, "id" | "name" | "supportsModels">;
+export type AgentDetection = Omit<LocalAgentInfo, "id" | "name" | "supportsModels" | "steer">;
 
 /**
  * One local agent CLI. Adapters must: never modify the user's global CLI config (write any
@@ -45,6 +45,8 @@ export type AgentAdapter = {
   id: LocalAgentId;
   name: string;
   supportsModels: boolean;
+  /** "native" when the adapter accepts `steer` mid-run; defaults to "restart". */
+  steer?: LocalAgentInfo["steer"];
   detect: (env: Record<string, string>) => Promise<AgentDetection>;
   listModels?: (env: Record<string, string>) => Promise<string[]>;
   /** Resolves when the run ends (emit `done` or `error` before resolving). */
