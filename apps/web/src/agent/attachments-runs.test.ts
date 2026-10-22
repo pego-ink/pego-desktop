@@ -261,7 +261,13 @@ describe("OpenAI-compatible runs", () => {
 describe("local agent runs", () => {
   test("run_start carries the attachments and the prompt names them", async () => {
     useAgentStore.setState({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents: [] },
+      bridge: {
+        connected: true,
+        claudeCodeAvailable: true,
+        mcpUrl: "u",
+        agents: [],
+        projectDir: null,
+      },
     });
     const sent: EditorToBridge[] = [];
     await startLocalAgentRun("r1", "use my photo", (m) => (sent.push(m), true), null, {
@@ -278,7 +284,13 @@ describe("local agent runs", () => {
 
   test("no attachments key without attachments", async () => {
     useAgentStore.setState({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents: [] },
+      bridge: {
+        connected: true,
+        claudeCodeAvailable: true,
+        mcpUrl: "u",
+        agents: [],
+        projectDir: null,
+      },
     });
     const sent: EditorToBridge[] = [];
     await startLocalAgentRun("r2", "p", (m) => (sent.push(m), true), null);

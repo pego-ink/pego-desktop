@@ -1,5 +1,12 @@
 import { describe, expect, test } from "bun:test";
-import { applyOp, computeLayout, findLocation, type PegoDocument } from "@pego/doc";
+import {
+  applyOp,
+  computeLayout,
+  findLocation,
+  type PageNode,
+  type PegoDocument,
+  type PegoNode,
+} from "@pego/doc";
 import {
   childrenAmong,
   insertionLine,
@@ -13,12 +20,25 @@ import {
 const rect = (id: string, x = 0, y = 0) =>
   ({ type: "rectangle", id, x, y, width: 50, height: 50 }) as const;
 
-const makeDoc = (): PegoDocument => ({
-  version: 0,
+const PAGE = "page";
+
+/** A one-page document holding `children` at its top level. */
+const onPage = (children: PegoNode[]): PegoDocument => ({
+  version: 3,
   id: "d",
   name: "d",
   variables: {},
-  children: [
+  children: [{ type: "page", id: PAGE, name: "Page 1", x: 0, y: 0, children }],
+});
+
+const top = (doc: PegoDocument): PegoNode[] => doc.children[0]!.children;
+const withTop = (doc: PegoDocument, children: PegoNode[]): PegoDocument => ({
+  ...doc,
+  children: [{ ...(doc.children[0] as PageNode), children }],
+});
+
+const makeDoc = (): PegoDocument =>
+  onPage([
     {
       type: "frame",
       id: "stage",
@@ -52,13 +72,12 @@ const makeDoc = (): PegoDocument => ({
       children: [],
     },
     rect("loose", 800, 0),
-  ],
-});
+  ]);
 
 const measure = () => ({ width: 10, height: 10 });
 const layoutOf = (doc: PegoDocument) => computeLayout(doc, measure);
 const order = (doc: PegoDocument, parentId: string) => {
-  const parent = doc.children.find((n) => n.id === parentId);
+  const parent = top(doc).find((n) => n.id === parentId);
   return parent && "children" in parent ? parent.children.map((c) => c.id) : [];
 };
 
@@ -128,33 +147,30 @@ describe("resolveDropParent", () => {
   test("ignores the dragged node itself", () =>
     expect(resolveDropParent(doc, layout, { x: 520, y: 40 }, ["inner"], "free")).toBe("free"));
   test("deepest frame wins", () => {
-    const nested: PegoDocument = {
-      ...doc,
-      children: [
-        {
-          type: "frame",
-          id: "outer",
-          x: 0,
-          y: 0,
-          width: 400,
-          height: 400,
-          layout: "none",
-          children: [
-            {
-              type: "frame",
-              id: "innerFrame",
-              x: 50,
-              y: 50,
-              width: 100,
-              height: 100,
-              layout: "none",
-              children: [],
-            },
-          ],
-        },
-        rect("loose", 900, 900),
-      ],
-    };
+    const nested: PegoDocument = withTop(doc, [
+      {
+        type: "frame",
+        id: "outer",
+        x: 0,
+        y: 0,
+        width: 400,
+        height: 400,
+        layout: "none",
+        children: [
+          {
+            type: "frame",
+            id: "innerFrame",
+            x: 50,
+            y: 50,
+            width: 100,
+            height: 100,
+            layout: "none",
+            children: [],
+          },
+        ],
+      },
+      rect("loose", 900, 900),
+    ]);
     expect(resolveDropParent(nested, layoutOf(nested), { x: 80, y: 80 }, ["loose"], null)).toBe(
       "innerFrame",
     );
@@ -162,13 +178,10 @@ describe("resolveDropParent", () => {
 });
 
 describe("wouldNestComponent", () => {
-  const doc: PegoDocument = {
-    ...makeDoc(),
-    children: [
-      { type: "frame", id: "comp", reusable: true, x: 0, y: 0, layout: "none", children: [] },
-      { type: "ref", id: "inst", ref: "comp", x: 0, y: 0 },
-    ],
-  };
+  const doc: PegoDocument = withTop(makeDoc(), [
+    { type: "frame", id: "comp", reusable: true, x: 0, y: 0, layout: "none", children: [] },
+    { type: "ref", id: "inst", ref: "comp", x: 0, y: 0 },
+  ]);
   test("instance into its own component is rejected", () =>
     expect(wouldNestComponent(doc, ["inst"], "comp")).toBe(true));
   test("instance to the root is fine", () =>
@@ -192,12 +205,12 @@ describe("planDrag", () => {
 
   test("vertical stage uses y midpoints", () => {
     const doc = makeDoc();
-    const vertical: PegoDocument = {
-      ...doc,
-      children: doc.children.map((n) =>
+    const vertical: PegoDocument = withTop(
+      doc,
+      top(doc).map((n) =>
         n.id === "stage" && n.type === "frame" ? { ...n, layout: "vertical", height: 300 } : n,
       ),
-    };
+    );
     // children at y 100, 160, 220
     const { next } = run(vertical, ["a"], { x: 120, y: 400 - 80 }, 0, 200);
     expect(order(next, "stage")).toEqual(["b", "c", "a"]);
@@ -223,7 +236,8 @@ describe("planDrag", () => {
     const doc = makeDoc();
     // inner is at doc (510,40); move by (+100,+1000) onto empty canvas
     const { next } = run(doc, ["inner"], { x: 620, y: 1050 }, 100, 1000);
-    expect(findLocation(next, "inner")?.parentId).toBeNull();
+    // The top level of the page the node is on.
+    expect(findLocation(next, "inner")?.parentId).toBe(PAGE);
     const inner = findLocation(next, "inner")?.node;
     expect([inner?.x, inner?.y]).toEqual([610, 1040]);
   });

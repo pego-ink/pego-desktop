@@ -1,4 +1,4 @@
-import { createId, type Box, type Op, type PegoDocument } from "@pego/doc";
+import { createId, pageOrFirst, type Box, type Op, type PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { focusCamera } from "@/agent/focus-camera";
 import { freeFrameSpot, type FramePreset } from "@/interaction/frame-presets";
@@ -13,13 +13,15 @@ export const presetFrameOp = (
   box: Box,
   preset: FramePreset,
   id: string,
+  /** Page the frame goes on (null = the first); `parentId: null` lands on the shown page. */
+  pageId: string | null = null,
 ): Op => ({
   op: "insert",
   parentId: null,
   node: {
     type: "frame",
     id,
-    name: uniqueName(preset.name, doc.children),
+    name: uniqueName(preset.name, pageOrFirst(doc, pageId).children),
     x: box.x,
     y: box.y,
     width: box.width,
@@ -37,12 +39,12 @@ export const presetFrameOp = (
  */
 export const insertPresetFrame = (preset: FramePreset): string | null => {
   const store = useDocumentStore.getState();
-  const { doc } = store;
+  const { doc, pageId } = store;
   const layout = getLayout(doc);
-  const occupied = doc.children.flatMap((node) => layout.get(node.id) ?? []);
+  const occupied = pageOrFirst(doc, pageId).children.flatMap((node) => layout.get(node.id) ?? []);
   const box = freeFrameSpot(occupied, preset);
   const id = createId();
-  const ok = store.commit([presetFrameOp(doc, box, preset, id)], {
+  const ok = store.commit([presetFrameOp(doc, box, preset, id, pageId)], {
     label: `Create ${preset.name} frame`,
   });
   if (!ok) return null;

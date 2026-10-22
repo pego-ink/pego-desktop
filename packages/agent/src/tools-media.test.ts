@@ -80,7 +80,7 @@ describe("insert_svg", () => {
 
   test("inserts into a parent frame", async () => {
     const host = createFakeHost();
-    const parent = host.getDoc().children.find((n) => n.type === "frame");
+    const parent = host.getDoc().children[0]?.children.find((n) => n.type === "frame");
     if (!parent) throw new Error("sample doc has no frame");
     const { isError, data } = await call("insert_svg", { svg: SVG, parentId: parent.id }, host);
     expect(isError).toBe(false);

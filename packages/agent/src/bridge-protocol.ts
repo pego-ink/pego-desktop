@@ -7,10 +7,65 @@ import type { DecisionRequest, PlanStep, StepStatus } from "./types";
  * document the same way.
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
-export const BRIDGE_PROTOCOL_VERSION = 4;
+/**
+ * v6 = v4 (local agents, several editors, parallel runs, run_steer) + v5 (projects, file tools).
+ * Several editors connect at once; MCP calls go to the focused one (see apps/bridge editor-hub).
+ */
+export const BRIDGE_PROTOCOL_VERSION = 6;
 
 /** Local agent runs the bridge executes at the same time (one per chat session). */
 export const MAX_CONCURRENT_RUNS = 3;
+
+/**
+ * A project: a folder in the design folder with a project.json (id, name) and its design,
+ * project.pego (one document; screens are its pages).
+ */
+export type ProjectInfo = {
+  id: string;
+  name: string;
+  /** Absolute folder path. */
+  dir: string;
+  /** Absolute path of the project's design, `<dir>/project.pego`. */
+  mainFile: string;
+  /** False until project.pego exists (it is created when the project is opened). */
+  hasMainFile: boolean;
+  /** Folder inside the design folder, e.g. "checkout". */
+  relativeDir: string;
+  fileCount: number;
+  /** Latest file change (ms since epoch), 0 when the project has no files. */
+  modifiedAt: number;
+  createdAt: string;
+};
+
+/** A design file in the project folder (the bridge lists `design/` of the repo it runs in). */
+export type ProjectFile = {
+  /** Absolute path on disk. */
+  path: string;
+  /** Path inside the design folder with "/" separators, e.g. "app/checkout.pego". */
+  relativePath: string;
+  size: number;
+  modifiedAt: number;
+};
+
+/**
+ * Editor-side operations the bridge invokes through `tool_call` for its file tools
+ * (`open_document`, `save_document`). They are not agent tools: no model ever sees them. They go
+ * to the focused editor, like MCP tool calls.
+ */
+export const EDITOR_OPS = {
+  /** Input `{ text, path, discardUnsaved? }`: parse a .pego/.pen file and make it the open document. */
+  loadDocument: "pego.load_document",
+  /** Result JSON `{ text, path, name, snapshotId }`: the open document serialized for saving. */
+  snapshotDocument: "pego.snapshot_document",
+  /** Input `{ snapshotId, path }`: the snapshot was written to `path`; mark it saved. */
+  markSaved: "pego.mark_saved",
+  /** Result JSON `{ tabs: [{ title, path, dirty, active }] }`: the open documents. */
+  listTabs: "pego.list_tabs",
+  /** Input `{ path }`: show the tab of that file; an error when it is not open. */
+  switchTab: "pego.switch_tab",
+  /** Input a ProjectInfo: open (or show) that project's tab in the editor. */
+  openProject: "pego.open_project",
+} as const;
 
 /** Messages the editor sends to the bridge. */
 export type EditorToBridge =
@@ -45,7 +100,20 @@ export type EditorToBridge =
    * Steer a running run: hand it a new user message without waiting for it to finish. Only for
    * agents whose `steer` is "native"; the editor restarts the others itself.
    */
-  | { type: "run_steer"; runId: string; text: string; attachments?: RunAttachment[] };
+  | { type: "run_steer"; runId: string; text: string; attachments?: RunAttachment[] }
+  /** Save the open document to a file the bridge opened it from (File → Save in the editor). */
+  | { type: "save_file"; requestId: string; path: string; text: string }
+  /**
+   * The dashboard and project panel: list projects, create one (`name`), list the files of a
+   * folder (`path`, default the whole design folder) or read one file (`path`).
+   */
+  | {
+      type: "project_request";
+      requestId: string;
+      action: "list" | "read" | "projects" | "create_project";
+      path?: string;
+      name?: string;
+    };
 
 /** Messages the bridge sends to the editor. */
 export type BridgeToEditor =
@@ -55,6 +123,8 @@ export type BridgeToEditor =
       claudeCodeAvailable: boolean;
       mcpUrl: string;
       agents: LocalAgentInfo[];
+      /** The project's design folder, or null when the bridge found none. */
+      projectDir: string | null;
     }
   | { type: "agents"; agents: LocalAgentInfo[] }
   | { type: "models"; agentId: LocalAgentId; models: string[]; error?: string }
@@ -68,7 +138,19 @@ export type BridgeToEditor =
       source: { kind: "run"; runId: string } | { kind: "mcp"; clientName?: string };
     }
   /** Progress of an Agent SDK run (assistant text, tool activity, completion). */
-  | { type: "run_event"; runId: string; event: RunEvent };
+  | { type: "run_event"; runId: string; event: RunEvent }
+  | { type: "save_file_result"; requestId: string; ok: boolean; error?: string }
+  | {
+      type: "project_response";
+      requestId: string;
+      ok: boolean;
+      error?: string;
+      root?: string | null;
+      files?: ProjectFile[];
+      text?: string;
+      projects?: ProjectInfo[];
+      project?: ProjectInfo;
+    };
 
 export type RunEvent =
   | { kind: "text"; text: string }

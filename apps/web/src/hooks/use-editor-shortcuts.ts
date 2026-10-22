@@ -7,7 +7,7 @@ import { useInteractionState } from "@/interaction/interaction-state";
 import { duplicateOps } from "@/interaction/duplicate";
 import { escapeSelection } from "@/interaction/selection";
 import { nudgeOps, topmostSelected } from "@/interaction/transform";
-import { useDocumentStore } from "@/store/use-document-store";
+import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { getToolHandler } from "@/interaction/tool-handlers";
@@ -22,10 +22,10 @@ const isEditable = (target: EventTarget | null): boolean => {
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
 };
 
-/** Select every top-level node on the canvas (never the surrounding UI text). */
+/** Select every top-level node of the shown page (never the surrounding UI text). */
 const selectAllNodes = () => {
-  const doc = useDocumentStore.getState();
-  doc.select(doc.doc.children.map((n) => n.id));
+  const state = useDocumentStore.getState();
+  state.select(activePage(state).children.map((n) => n.id));
 };
 
 /**
@@ -88,12 +88,12 @@ export const useEditorShortcuts = () => {
       }
       if (e.code === "Digit1" && e.shiftKey && !mod) {
         e.preventDefault();
-        viewport.zoomToFit(contentBounds(doc.doc, getLayout(doc.doc)));
+        viewport.zoomToFit(contentBounds(doc.doc, getLayout(doc.doc), doc.pageId));
         return;
       }
       if (e.code === "Digit2" && e.shiftKey && !mod) {
         e.preventDefault();
-        viewport.zoomToFit(selectionBounds(getLayout(doc.doc), doc.selection));
+        viewport.zoomToFit(selectionBounds(getLayout(doc.doc), doc.selection, doc.doc));
         return;
       }
       if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {

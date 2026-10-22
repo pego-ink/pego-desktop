@@ -258,18 +258,18 @@ export const editBegin = (p: ToolPointer): ToolSession | null => {
   }
 
   // Empty canvas ends edit mode; another node under the click is selected instead.
-  const { doc, selection } = useDocumentStore.getState();
+  const { doc, selection, pageId } = useDocumentStore.getState();
   const layout = getLayout(doc);
-  const tolerance = screenTol(HIT_TOLERANCE_PX);
+  const hit = { tolerance: screenTol(HIT_TOLERANCE_PX), pageId };
   // A click on the path's own body just drops the anchor selection.
-  if (hitPath(doc, layout, p.doc.x, p.doc.y, tolerance)?.includes(s.id)) {
+  if (hitPath(doc, layout, p.doc.x, p.doc.y, hit)?.includes(s.id)) {
     state = { ...s, sel: null };
     invalidate();
     return null;
   }
-  const hit = pickAt(doc, layout, p.doc.x, p.doc.y, selection, p.metaKey, tolerance);
+  const picked = pickAt(doc, layout, p.doc.x, p.doc.y, selection, p.metaKey, hit);
   exitEdit();
-  useDocumentStore.getState().select(hit ? [hit] : []);
+  useDocumentStore.getState().select(picked ? [picked] : []);
   return null;
 };
 

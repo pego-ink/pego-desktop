@@ -1,3 +1,4 @@
+import { toolAnnotations } from "./annotations";
 import { describe, expect, test } from "bun:test";
 import { findNode, type PegoDocument } from "@pego/doc";
 import { agentTools, coreTools, toolByName } from "./tools";
@@ -13,7 +14,13 @@ const call = async (name: string, input: unknown, host = createFakeHost()) => {
   const tool = toolByName(name);
   if (!tool) throw new Error(`no tool ${name}`);
   const result = await tool.run(input, host);
-  return { host, isError: result.isError, data: JSON.parse(result.content) as Json };
+  let data: Json;
+  try {
+    data = JSON.parse(result.content) as Json;
+  } catch {
+    data = {};
+  }
+  return { host, isError: result.isError, data, text: result.content };
 };
 
 describe("tool registry", () => {
@@ -51,15 +58,16 @@ describe("tool registry", () => {
 
 describe("get_document / get_node", () => {
   test("get_document returns serialized text", async () => {
-    const { data, isError } = await call("get_document", {});
+    const { text, isError } = await call("get_document", {});
     expect(isError).toBe(false);
-    expect(data.document).toContain("rectangle#rect-1");
+    expect(text).toStartWith("document ");
+    expect(text).toContain("rectangle#rect-1");
   });
 
   test("get_document supports rootId and maxDepth", async () => {
-    const { data } = await call("get_document", { rootId: "frame-1", maxDepth: 0 });
-    expect(data.document).toContain("(2 children not shown)");
-    expect(data.document).not.toContain("rect-1");
+    const { text } = await call("get_document", { rootId: "frame-1", maxDepth: 0 });
+    expect(text).toContain("(2 children not shown)");
+    expect(text).not.toContain("rect-1");
   });
 
   test("get_document unknown rootId errors with hint", async () => {
@@ -132,9 +140,10 @@ describe("insert_nodes", () => {
     expect(frame.children[2]?.id).toBe("rect-1");
   });
 
-  test("inserts at document root with null parent", async () => {
+  test("null parent inserts at the top of the active page", async () => {
     const { host } = await call("insert_nodes", { parentId: null, nodes: [{ type: "frame" }] });
-    expect(host.doc().children).toHaveLength(2);
+    expect(host.doc().children).toHaveLength(1);
+    expect(host.doc().children[0]!.children).toHaveLength(2);
   });
 
   test("invalid node reports path and hint, and changes nothing", async () => {
@@ -273,7 +282,7 @@ describe("update_node / replace_node / move_node / delete_nodes", () => {
     );
     expect(isError).toBe(false);
     expect(data.deleted).toEqual(["frame-1"]);
-    expect(host.doc().children).toHaveLength(0);
+    expect(host.doc().children[0]!.children).toHaveLength(0);
   });
 
   test("delete with a missing id is atomic", async () => {
@@ -444,5 +453,75 @@ describe("report_plan / report_step / ask_user", () => {
     expect(one.data.error.code).toBe("invalid_input");
     const five = await call("ask_user", { question: "q", options: ["a", "b", "c", "d", "e"] });
     expect(five.data.error.code).toBe("invalid_input");
+  });
+});
+
+describe("tool annotations", () => {
+  test("every tool has a title and an explicit read-only/destructive classification", () => {
+    for (const tool of agentTools) {
+      const annotations = toolAnnotations(tool.name);
+      expect(annotations.title).not.toBe(tool.name);
+      expect(annotations.openWorldHint).toBe(false);
+    }
+    expect(toolAnnotations("get_document")).toMatchObject({ readOnlyHint: true });
+    expect(toolAnnotations("insert_nodes")).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: false,
+    });
+    expect(toolAnnotations("delete_nodes")).toMatchObject({
+      readOnlyHint: false,
+      destructiveHint: true,
+    });
+  });
+});
+
+describe("pages", () => {
+  const pageHost = () => {
+    const host = createFakeHost();
+    let active: string | null = null;
+    host.getActivePageId = () => active;
+    host.setActivePage = (id) => {
+      active = id;
+    };
+    return host;
+  };
+
+  test("create_page adds a page, switches to it, and null parents land there", async () => {
+    const host = pageHost();
+    const created = await call("create_page", { name: "Components" }, host);
+    expect(created.isError).toBe(false);
+    const pageId = created.data.id as string;
+    expect(host.getActivePageId?.()).toBe(pageId);
+    await call(
+      "insert_nodes",
+      { parentId: null, nodes: [{ type: "rectangle", id: "on-p2" }] },
+      host,
+    );
+    const page = host.doc().children.find((p) => p.id === pageId);
+    expect(page?.children.map((n) => n.id)).toEqual(["on-p2"]);
+    const text = (await call("get_document", {}, host)).text;
+    expect(text).toContain(`pages: page-1 "Page 1" (`);
+    expect(text).toContain(`${pageId} "Components" (active, 1 node)`);
+    expect(text).toContain(`tree of page ${pageId}:`);
+    expect(text).not.toContain("frame-1");
+  });
+
+  test("go_to_page switches and rejects unknown pages", async () => {
+    const host = pageHost();
+    const created = await call("create_page", { name: "Two", activate: false }, host);
+    expect(host.getActivePageId?.()).toBeNull();
+    expect((await call("go_to_page", { pageId: created.data.id }, host)).isError).toBe(false);
+    expect(host.getActivePageId?.()).toBe(created.data.id);
+    const missing = await call("go_to_page", { pageId: "nope" }, host);
+    expect(missing.data.error.code).toBe("page_not_found");
+  });
+
+  test("instances resolve components from another page", async () => {
+    const host = pageHost();
+    const created = await call("create_page", { name: "Screens" }, host);
+    const result = await call("create_instance", { componentId: "frame-1", parentId: null }, host);
+    // frame-1 is not reusable in the sample doc: the error proves the lookup crossed pages.
+    expect(result.data.error.message).toContain("frame-1");
+    expect(created.isError).toBe(false);
   });
 });

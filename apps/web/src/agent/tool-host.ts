@@ -8,7 +8,8 @@ import {
 } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
 import { listIconNames, loadIconData } from "@/canvas/icons";
-import { useDocumentStore } from "@/store/use-document-store";
+import { activePage, useDocumentStore } from "@/store/use-document-store";
+import { showPage, showPageOf } from "@/pages/page-actions";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
@@ -146,11 +147,30 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
 
   const focusViewport = (ids: string[]) => {
     if (!inView()) return;
+    // Nodes on another page: show that page first.
+    if (ids[0] !== undefined) showPageOf(ids[0]);
     const layout = getLayout(useDocumentStore.getState().doc);
     const boxes = ids.flatMap((id) => layout.get(id) ?? []);
     const viewport = useViewportStore.getState();
     const camera = focusCamera(boxes, viewport.size);
     if (camera) viewport.animateTo(camera);
+  };
+
+  /**
+   * The page this host's agent chose with a page tool. Pinned so the agent keeps working there
+   * even when the user switches pages, and so a background run can work on a page without
+   * showing it. Null = follow the page shown in the editor.
+   */
+  let pinnedPageId: string | null = null;
+  const getActivePageId = (): string => {
+    const state = useDocumentStore.getState();
+    const pinned = pinnedPageId;
+    if (pinned !== null && state.doc.children.some((page) => page.id === pinned)) return pinned;
+    return activePage(state).id;
+  };
+  const setActivePage = (pageId: string) => {
+    pinnedPageId = pageId;
+    if (inView()) showPage(pageId);
   };
 
   const renderImage: NonNullable<ToolHost["renderImage"]> = async (nodeId, imageOptions) => {
@@ -159,7 +179,12 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
       import("@/canvas/load-canvaskit"),
       import("@/canvas/render-image"),
     ]);
-    const res = await loadCanvasKit();
+    const [res, { loadDocumentFonts }] = await Promise.all([
+      loadCanvasKit(),
+      import("@/fonts/use-document-fonts"),
+    ]);
+    // Wait for the document's fonts so the agent judges the real typography.
+    await loadDocumentFonts(useDocumentStore.getState().doc);
     const doc = useDocumentStore.getState().doc;
     return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
   };
@@ -167,6 +192,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
   return {
     getDoc: () => useDocumentStore.getState().doc,
     getLayout: () => getLayout(useDocumentStore.getState().doc),
+    getActivePageId,
+    setActivePage,
     getSelection: () => useDocumentStore.getState().selection,
     setSelection,
     focusViewport,

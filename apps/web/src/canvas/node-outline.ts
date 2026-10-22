@@ -12,7 +12,7 @@ const localOutline = (
   h: number,
 ): PathBuilder | null => {
   if (node.type === "path") {
-    const source = getSvgPath(ck, node.geometry);
+    const source = getSvgPath(ck, node, { width: w, height: h });
     return source ? new ck.PathBuilder(source) : null;
   }
   const path = new ck.PathBuilder();

@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ComponentType, type KeyboardEvent, type SVGProps } from "react";
-import { LayersIcon, SettingsIcon, SparklesIcon } from "lucide-react";
+import { ComponentIcon, LayersIcon, SettingsIcon, SparklesIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import { Tooltip } from "@pego/ui/components/tooltip";
 import {
@@ -18,6 +18,7 @@ const ALT = isMac ? "⌥" : "Alt+";
 const TAB_ICONS: Record<RailTab, ComponentType<SVGProps<SVGSVGElement>>> = {
   agent: SparklesIcon,
   layers: LayersIcon,
+  assets: ComponentIcon,
 };
 
 export const railPanelId = (tab: RailTab) => `left-panel-${tab}`;
@@ -28,10 +29,14 @@ type Props = {
   /** Shows the pulsing dot on the Agent icon (a run is active). */
   agentWorking: boolean;
   onPress: (tab: RailTab) => void;
+  /** When set (bridge projects are available), the logo opens the projects dashboard. */
+  onHome?: () => void;
+  /** The dashboard is shown: the logo is the current page and no tab is selected. */
+  homeActive?: boolean;
 };
 
-/** Narrow vertical tab rail: Agent and Layers. The active tab toggles the side panel. */
-export const IconRail = ({ state, agentWorking, onPress }: Props) => {
+/** Narrow vertical tab rail: Agent, Layers and Assets. The active tab toggles the side panel. */
+export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = false }: Props) => {
   const listRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -64,9 +69,26 @@ export const IconRail = ({ state, agentWorking, onPress }: Props) => {
       aria-label="Editor sidebar"
       className="flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5"
     >
-      <div className="flex h-7 items-center justify-center text-foreground" title="Pego">
-        <PegoMark />
-      </div>
+      {onHome ? (
+        <Tooltip content="Projects">
+          <button
+            type="button"
+            aria-label="Projects dashboard"
+            aria-current={homeActive ? "page" : undefined}
+            onClick={onHome}
+            className={cn(
+              "flex size-8 items-center justify-center rounded-md outline-none transition-[background-color,scale] duration-(--duration-fast) ease-out hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]",
+              homeActive && "bg-secondary",
+            )}
+          >
+            <PegoMark />
+          </button>
+        </Tooltip>
+      ) : (
+        <div className="flex h-7 items-center justify-center text-foreground" title="Pego">
+          <PegoMark />
+        </div>
+      )}
       <div
         ref={listRef}
         role="tablist"
@@ -77,7 +99,7 @@ export const IconRail = ({ state, agentWorking, onPress }: Props) => {
       >
         {RAIL_TABS.map((item, index) => {
           const Icon = TAB_ICONS[item.id];
-          const selected = state.open && state.tab === item.id;
+          const selected = !homeActive && state.open && state.tab === item.id;
           const focusable = state.tab === item.id;
           const shortcut = `${ALT}${index + 1}`;
           return (
@@ -101,7 +123,7 @@ export const IconRail = ({ state, agentWorking, onPress }: Props) => {
                 {item.id === "agent" && agentWorking && !selected ? (
                   <span
                     aria-hidden
-                    className="absolute top-1 right-1 size-1.5 rounded-full bg-[#B79CFF] motion-safe:animate-pulse"
+                    className="absolute top-1 right-1 size-1.5 rounded-full bg-violet motion-safe:animate-pulse"
                   />
                 ) : null}
               </button>

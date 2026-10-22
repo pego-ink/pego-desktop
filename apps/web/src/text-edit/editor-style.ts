@@ -70,7 +70,11 @@ export const buildPlacement = (
     }
     return null;
   };
-  return walk(doc.children, null);
+  // Pages have no box: start at their content, which uses canvas coordinates.
+  return walk(
+    doc.children.flatMap((page) => page.children),
+    null,
+  );
 };
 
 export const deriveEditorStyle = (

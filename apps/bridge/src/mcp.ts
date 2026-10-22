@@ -11,12 +11,15 @@ import {
   ReadResourceRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { agentTools, CLAUDE_CODE_SYSTEM } from "@pego/agent";
+import { agentTools, CLAUDE_CODE_SYSTEM, toolAnnotations } from "@pego/agent";
 import type { CallTool, ToolOutcome, ToolSource } from "./editor-hub";
 import { getPegoPrompt, pegoPrompts } from "./mcp-prompts";
 import { listPegoResources, readPegoResource } from "./mcp-resources";
+import { FILE_TOOLS, FILE_TOOLS_INSTRUCTIONS, isFileTool, runFileTool } from "./file-tools";
 
 const MAX_TOOL_INPUT_BYTES = 1024 * 1024;
+/** Reported to MCP clients; bump with user-visible changes to the tool surface. */
+export const PEGO_MCP_VERSION = "0.2.0";
 
 /** Images (screenshots) come first so a client that truncates still sees them, then the text. */
 export const toCallToolResult = (outcome: ToolOutcome): CallToolResult => ({
@@ -40,24 +43,50 @@ export const createPegoMcpServer = (options: {
   callTool: CallTool;
   source: (extra: { clientName?: string }) => ToolSource;
   clientName?: string;
+  /** Also serve the file tools (read and write design files on this machine). */
+  fileTools?: boolean;
+  /** The project's design folder for list_documents. */
+  designDir?: string | null;
 }): McpServer => {
+  const fileTools = options.fileTools ? FILE_TOOLS : [];
+  const instructions = options.fileTools
+    ? `${CLAUDE_CODE_SYSTEM}\n\n${FILE_TOOLS_INSTRUCTIONS}`
+    : CLAUDE_CODE_SYSTEM;
   const server = new McpServer(
-    { name: "pego", version: "0.0.0" },
-    { instructions: CLAUDE_CODE_SYSTEM || undefined },
+    { name: "pego", version: PEGO_MCP_VERSION },
+    { instructions: instructions || undefined },
   );
   server.server.registerCapabilities({ tools: {}, resources: {}, prompts: {} });
   const sourceOf = () => options.source({ clientName: options.clientName });
 
   server.server.setRequestHandler(ListToolsRequestSchema, () => ({
-    tools: agentTools.map((tool) => ({
-      name: tool.name,
-      description: tool.description,
-      inputSchema: { type: "object" as const, ...tool.inputSchema },
-    })),
+    tools: agentTools
+      .map((tool) => {
+        const annotations = toolAnnotations(tool.name);
+        return {
+          name: tool.name,
+          title: annotations.title,
+          description: tool.description,
+          inputSchema: { type: "object" as const, ...tool.inputSchema },
+          annotations,
+        };
+      })
+      .concat(fileTools),
   }));
 
   server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: input } = request.params;
+    if (options.fileTools && isFileTool(name)) {
+      return toCallToolResult(
+        await runFileTool(
+          name,
+          input ?? {},
+          options.callTool,
+          sourceOf(),
+          options.designDir ?? null,
+        ),
+      );
+    }
     if (!agentTools.some((tool) => tool.name === name)) {
       return toCallToolResult({ content: `Unknown Pego tool "${name}".`, isError: true });
     }
@@ -112,14 +141,20 @@ const clientNameOf = (request: Request): string | undefined => {
 export const handleMcpRequest = async (
   request: Request,
   callTool: CallTool,
-  /** Fixed attribution for run-scoped endpoints; defaults to the calling MCP client. */
-  fixedSource?: ToolSource,
+  options: {
+    /** Fixed attribution for run-scoped endpoints (no file tools); defaults to the MCP client. */
+    fixedSource?: ToolSource;
+    /** The project's design folder for the file tools; they are served only without fixedSource. */
+    designDir?: string | null;
+  } = {},
 ): Promise<Response> => {
   const clientName = clientNameOf(request);
   const server = createPegoMcpServer({
     callTool,
     clientName,
-    source: ({ clientName: name }) => fixedSource ?? { kind: "mcp", clientName: name },
+    source: ({ clientName: name }) => options.fixedSource ?? { kind: "mcp", clientName: name },
+    fileTools: options.fixedSource === undefined,
+    designDir: options.designDir ?? null,
   });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

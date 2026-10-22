@@ -17,12 +17,18 @@ const doc = {
   variables: {},
   children: [
     {
-      id: "g",
-      type: "group",
-      rotation: 90,
-      children: [{ id: "r", type: "rectangle", rotation: 90 }],
+      id: "page",
+      type: "page",
+      children: [
+        {
+          id: "g",
+          type: "group",
+          rotation: 90,
+          children: [{ id: "r", type: "rectangle", rotation: 90 }],
+        },
+        { id: "plain", type: "rectangle" },
+      ],
     },
-    { id: "plain", type: "rectangle" },
   ],
 } as unknown as PegoDocument;
 const layout: Layout = new Map([

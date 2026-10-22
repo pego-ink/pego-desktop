@@ -16,7 +16,8 @@ const always = () => true;
 describe("parentMap / claimTargets", () => {
   test("maps every node to its parent", () => {
     const parents = parentMap(sampleDoc);
-    expect(parents.get("frame-1")).toBeNull();
+    expect(parents.get("page-1")).toBeNull();
+    expect(parents.get("frame-1")).toBe("page-1");
     expect(parents.get("rect-1")).toBe("frame-1");
   });
 
@@ -27,6 +28,12 @@ describe("parentMap / claimTargets", () => {
   test("a move claims the node, not its old or new parent", () => {
     const move: Op = { op: "move", id: "rect-1", parentId: null, index: 0 };
     expect(claimTargets(move, sampleDoc)).toEqual(["rect-1"]);
+  });
+
+  test("pages are never claimed", () => {
+    const rename: Op = { op: "update", id: "page-1", props: { name: "Home" } } as Op;
+    expect(claimTargets(rename, sampleDoc)).toEqual([]);
+    expect(claimTargets(rect("top", "page-1"), sampleDoc)).toEqual(["top"]);
   });
 
   test("a delete claims the whole subtree", () => {

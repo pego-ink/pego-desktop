@@ -24,10 +24,11 @@ export const parentMap = (doc: PegoDocument): Map<string, string | null> => {
 /**
  * Ids an op takes ownership of: everything it modifies except the containers it only adds to or
  * moves out of / into. Claiming those "weak" parents would let one run lock a whole page frame
- * just by adding a child to it.
+ * just by adding a child to it. Pages are never claimed either: renaming or adding a page must
+ * not lock every layer on it for the other runs.
  */
 export const claimTargets = (op: Op, doc: PegoDocument, parents = parentMap(doc)): string[] => {
-  const weak = new Set<string>();
+  const weak = new Set<string>(doc.children.map((page) => page.id));
   if ((op.op === "insert" || op.op === "move") && op.parentId) weak.add(op.parentId);
   if (op.op === "move") {
     const oldParent = parents.get(op.id);

@@ -50,7 +50,7 @@ registerToolHandler("image", {
     if (!asset) return null;
     const store = useDocumentStore.getState();
     const layout = getLayout(store.doc);
-    const placement = placementAt(store.doc, layout, p.doc);
+    const placement = placementAt(store.doc, layout, p.doc, store.pageId);
     const start = p.doc;
     const natural = placementSize(asset);
     const node = buildImageNode(store.doc, asset, placement, {

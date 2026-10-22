@@ -7,7 +7,10 @@ const frame = nodeSchema.parse({ type: "frame", id: "root", children: [] });
 
 beforeEach(() => {
   const s = useDocumentStore.getState();
-  s.load({ ...s.doc, children: [frame] });
+  s.load({
+    ...s.doc,
+    children: [{ type: "page", id: "page", name: "Page 1", x: 0, y: 0, children: [frame] }],
+  });
 });
 
 describe("undoRun", () => {

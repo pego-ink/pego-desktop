@@ -2,6 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { newDocument, openFile, saveFile, saveFileAs } from "./file-actions";
 import { DEFAULT_FILE_NAME } from "./file-format";
+import { useDocumentStore } from "@/store/use-document-store";
+import { isProjectDesign } from "@/workspace/live-document";
 import { useFileStore } from "./use-file-store";
 import { AutosaveStatus } from "./AutosaveStatus";
 import { toggleAutoSave } from "./autosave-actions";
@@ -24,7 +26,11 @@ export const FileMenu = () => {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const fileName = useFileStore((s) => s.fileName) ?? DEFAULT_FILE_NAME;
+  // A bridge project's design shows the project name (its document name), like its tab.
+  const docName = useDocumentStore((s) => s.doc.name);
+  const fileName = useFileStore((s) =>
+    isProjectDesign(s.bridgePath) ? docName : (s.fileName ?? DEFAULT_FILE_NAME),
+  );
   const autosaveEnabled = useAutosaveStore((s) => s.enabled);
   const supported = isFileAutosaveSupported();
 

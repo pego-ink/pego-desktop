@@ -3,30 +3,39 @@ import type { PegoDocument } from "@pego/doc";
 import { layerLabel } from "./layer-rows";
 
 const doc: PegoDocument = {
-  version: 0,
+  version: 3,
   id: "d",
   name: "d",
   variables: {},
   children: [
     {
-      type: "rectangle",
-      id: "comp",
-      name: "Button",
-      reusable: true,
+      type: "page",
+      id: "page-1",
+      name: "Page 1",
       x: 0,
       y: 0,
-      width: 10,
-      height: 10,
+      children: [
+        {
+          type: "rectangle",
+          id: "comp",
+          name: "Button",
+          reusable: true,
+          x: 0,
+          y: 0,
+          width: 10,
+          height: 10,
+        },
+        { type: "rectangle", id: "plain", x: 0, y: 0, width: 10, height: 10 },
+        { type: "ref", id: "i1", ref: "comp", x: 0, y: 0 },
+        { type: "ref", id: "i2", ref: "comp", name: "Primary", x: 0, y: 0 },
+        { type: "ref", id: "i3", ref: "gone", x: 0, y: 0 },
+      ],
     },
-    { type: "rectangle", id: "plain", x: 0, y: 0, width: 10, height: 10 },
-    { type: "ref", id: "i1", ref: "comp", x: 0, y: 0 },
-    { type: "ref", id: "i2", ref: "comp", name: "Primary", x: 0, y: 0 },
-    { type: "ref", id: "i3", ref: "gone", x: 0, y: 0 },
   ],
 };
 
 const label = (id: string) => {
-  const node = doc.children.find((n) => n.id === id);
+  const node = doc.children[0]!.children.find((n) => n.id === id);
   if (!node) throw new Error(id);
   return layerLabel(doc, node);
 };

@@ -25,7 +25,7 @@ const newState = (): FileState => ({
   constNames: new Set(),
 });
 
-const SVG_COLOR_ATTRS = new Set(["fill", "stroke"]);
+const SVG_COLOR_ATTRS = new Set(["fill", "stroke", "stop-color"]);
 
 /** Tailwind format defines color variables as `--color-<name>`. */
 const tailwindVar = (value: string): string =>
@@ -131,8 +131,12 @@ const renderEl = (
   const attrs = [
     ...classAttrs(el.decls, el.placement, options),
     ...el.attrs.map(([name, value]) => {
-      if (name === "src" && value.startsWith("data:") && value.length > LONG_URL) {
-        return `src={${hoistConst(state, el.label, value)}}`;
+      if (
+        (name === "src" || name === "href") &&
+        value.startsWith("data:") &&
+        value.length > LONG_URL
+      ) {
+        return `${name}={${hoistConst(state, el.label, value)}}`;
       }
       const converted = SVG_COLOR_ATTRS.has(name) ? tailwindVar(value) : value;
       return attrString(attrName(name), converted);

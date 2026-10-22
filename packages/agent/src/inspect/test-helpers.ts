@@ -24,7 +24,13 @@ export const makeDoc = (
   children: unknown[],
   variables: Record<string, unknown> = {},
 ): PegoDocument =>
-  documentSchema.parse({ version: 0, id: "doc", name: "Test", variables, children });
+  documentSchema.parse({
+    version: 3,
+    id: "doc",
+    name: "Test",
+    variables,
+    children: [{ type: "page", id: "page-1", name: "Page 1", x: 0, y: 0, children }],
+  });
 
 export const layoutOf = (doc: PegoDocument): Layout => computeLayout(doc, measureText);
 

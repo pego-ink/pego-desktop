@@ -60,6 +60,8 @@ export type BridgeStatus = {
   mcpUrl: string | null;
   /** Local agent CLIs the bridge detected (empty until `welcome`). */
   agents: LocalAgentInfo[];
+  /** The design folder the bridge serves (bridge projects and the dashboard), or null. */
+  projectDir: string | null;
 };
 
 /** Cached model list for one local agent (`models_request` / `models`). */
@@ -76,6 +78,7 @@ export const emptyBridge = (): BridgeStatus => ({
   claudeCodeAvailable: false,
   mcpUrl: null,
   agents: [],
+  projectDir: null,
 });
 
 /** One run's live fields: the latest turn of a session (the earlier ones are in `turns`). */

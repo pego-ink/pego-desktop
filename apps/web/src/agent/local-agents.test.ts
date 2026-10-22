@@ -36,9 +36,11 @@ beforeEach(() => {
   storage = memoryStorage();
   Object.defineProperty(globalThis, "localStorage", { value: storage, configurable: true });
   resetStores();
+  // Other suites pick a custom provider; start every test without one.
   useAgentStore.setState({
     backend: "api",
     localAgentId: "claude-code",
+    customProviderId: null,
     modelByAgent: {},
     modelsByAgent: {},
   });
@@ -145,6 +147,7 @@ describe("default agent", () => {
       protocol: 3,
       claudeCodeAvailable: false,
       mcpUrl: "http://m",
+      projectDir: null,
       agents,
     });
     useAgentStore.setState({ backend: "api", localAgentId: "claude-code", explicit: false });
@@ -173,6 +176,7 @@ describe("protocol v3 handling", () => {
       protocol: 3,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
+      projectDir: null,
       agents: [info("claude-code"), info("codex", { installed: false })],
     };
     await handlers.handleMessage(welcome);
@@ -236,7 +240,7 @@ describe("protocol v3 handling", () => {
 describe("local agent runs", () => {
   const connect = (agents: LocalAgentInfo[]) =>
     useAgentStore.setState({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents },
+      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents, projectDir: null },
     });
 
   test("run_start carries agentId and the selected model", () => {

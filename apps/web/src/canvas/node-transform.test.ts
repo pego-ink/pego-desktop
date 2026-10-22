@@ -24,10 +24,16 @@ describe("nodeToDocAffine", () => {
     variables: {},
     children: [
       {
-        id: "g",
-        type: "group",
-        rotation: 90,
-        children: [{ id: "r", type: "rectangle", children: undefined }],
+        id: "page",
+        type: "page",
+        children: [
+          {
+            id: "g",
+            type: "group",
+            rotation: 90,
+            children: [{ id: "r", type: "rectangle", children: undefined }],
+          },
+        ],
       },
     ],
   } as unknown as PegoDocument;

@@ -183,3 +183,31 @@ describe("decisions per run", () => {
     await expect(fgAnswer).rejects.toBeInstanceOf(RunCancelledError);
   });
 });
+
+describe("pages and background runs", () => {
+  const addPage = (id: string) =>
+    useDocumentStore.getState().commit([
+      {
+        op: "insert",
+        parentId: null,
+        node: { type: "page", id, name: id, x: 0, y: 0, children: [] },
+      },
+    ]);
+
+  test("a background run switches its own page, not the one the user sees", () => {
+    const { bgHost, fgHost } = twoSessions();
+    addPage("page-2");
+    bgHost.setActivePage?.("page-2");
+    expect(useDocumentStore.getState().pageId).not.toBe("page-2");
+    expect(bgHost.getActivePageId?.()).toBe("page-2");
+    expect(fgHost.getActivePageId?.()).toBe("page-1");
+  });
+
+  test("the run in the panel shows the page it switches to", () => {
+    const { fgHost } = twoSessions();
+    addPage("page-2");
+    fgHost.setActivePage?.("page-2");
+    expect(useDocumentStore.getState().pageId).toBe("page-2");
+    expect(fgHost.getActivePageId?.()).toBe("page-2");
+  });
+});

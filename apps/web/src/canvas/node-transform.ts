@@ -56,7 +56,11 @@ export const findNodePath = (doc: PegoDocument, id: string): PegoNode[] | null =
     }
     return null;
   };
-  return search(doc.children, 0);
+  // Pages have no box (their content uses canvas coordinates): paths start below them.
+  return search(
+    doc.children.flatMap((page) => page.children),
+    0,
+  );
 };
 
 /**

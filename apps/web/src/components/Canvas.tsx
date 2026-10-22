@@ -1,22 +1,24 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { Layout, PegoDocument } from "@pego/doc";
+import { pageOrFirst, type Layout, type PegoDocument } from "@pego/doc";
 import { prefersReducedMotion } from "@pego/ui/lib/motion";
 import type { GrDirectContext, Image as SkImage, Surface } from "canvaskit-wasm";
 import { loadCanvasKit } from "@/canvas/load-canvaskit";
+import { CANVAS_BACKGROUND, useThemeStore } from "@/theme/theme";
 import { getLayout } from "@/canvas/layout";
 import { useLayerEvents } from "@/canvas/layer-events";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
 import { timeFrame } from "@/canvas/frame-perf";
-import { createFocusGroupsSelector, type AgentFocusGroup } from "@/agent/focus-groups";
+import { createFocusGroupsSelector, focusOnPage, type AgentFocusGroup } from "@/agent/focus-groups";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
-import { useImageDrop } from "@/interaction/use-image-drop";
+import { useImagePaste } from "@/interaction/use-image-paste";
 import { AgentCursors } from "@/components/AgentCursor";
+import { dropFiles } from "@/interaction/drop-files";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { SelectionPrompt } from "@/components/SelectionPrompt";
 import { Toolbar } from "@/components/Toolbar";
@@ -37,6 +39,8 @@ type LayerKey = {
   width: number;
   height: number;
   hiddenId: string | null;
+  pageId: string | null;
+  background: string;
   fonts: number;
   layers: number;
 };
@@ -51,15 +55,18 @@ const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
   a.width === b.width &&
   a.height === b.height &&
   a.hiddenId === b.hiddenId &&
+  a.pageId === b.pageId &&
+  a.background === b.background &&
   a.fonts === b.fonts &&
   a.layers === b.layers;
 
 export const Canvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [dropping, setDropping] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useCanvasPointer(canvasRef);
-  useImageDrop(canvasRef);
+  useImagePaste();
   useEditorShortcuts();
 
   // Cursor follows interaction state without re-rendering React. The active tool's own cursor
@@ -141,7 +148,7 @@ export const Canvas = () => {
             key.doc,
             key.layout,
             { panX: key.panX, panY: key.panY, zoom: key.zoom },
-            { hiddenIds },
+            { hiddenIds, pageId: key.pageId, background: key.background },
           );
           canvas.restore();
         };
@@ -150,7 +157,7 @@ export const Canvas = () => {
           if (!surface) return;
           const dpr = window.devicePixelRatio || 1;
           const canvas = surface.getCanvas();
-          const { doc, selection, hoveredId } = useDocumentStore.getState();
+          const { doc, selection, hoveredId, pageId } = useDocumentStore.getState();
           const { camera } = useViewportStore.getState();
           const { marquee, dropLine } = useInteractionState.getState();
           const layout = getLayout(doc);
@@ -166,6 +173,8 @@ export const Canvas = () => {
             width: pixelWidth,
             height: pixelHeight,
             hiddenId,
+            pageId,
+            background: CANVAS_BACKGROUND[useThemeStore.getState().resolved],
             fonts: useFontEvents.getState().version,
             layers: useLayerEvents.getState().version,
           };
@@ -186,7 +195,11 @@ export const Canvas = () => {
 
           canvas.save();
           canvas.scale(dpr, dpr);
-          const agentFocus = selectFocusGroups(useAgentStore.getState());
+          // Runs may work on another page: only boxes on the shown page are drawn.
+          const agentFocus = focusOnPage(
+            selectFocusGroups(useAgentStore.getState()),
+            pageOrFirst(doc, pageId),
+          );
           const focusAnimated = agentFocus.length > 0 && !prefersReducedMotion();
           const toolHandler = getToolHandler(useToolStore.getState().tool);
           renderOverlay(res, canvas, {
@@ -248,8 +261,8 @@ export const Canvas = () => {
             const viewport = useViewportStore.getState();
             viewport.setSize(nextCssW, nextCssH);
             if (!viewport.fitted) {
-              const { doc } = useDocumentStore.getState();
-              viewport.zoomToFit(contentBounds(doc, getLayout(doc)));
+              const { doc, pageId } = useDocumentStore.getState();
+              viewport.zoomToFit(contentBounds(doc, getLayout(doc), pageId));
             }
           }
           return changed;
@@ -267,6 +280,7 @@ export const Canvas = () => {
         observer.observe(container);
         const unsubscribers = [
           useDocumentStore.subscribe(schedule),
+          useThemeStore.subscribe(schedule),
           useViewportStore.subscribe(schedule),
           useInteractionState.subscribe(schedule),
           useTextEditStore.subscribe(schedule),
@@ -306,12 +320,42 @@ export const Canvas = () => {
   }, []);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden">
+    <div
+      ref={containerRef}
+      className="relative h-full w-full overflow-hidden"
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setDropping(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDropping(false);
+        const rect = event.currentTarget.getBoundingClientRect();
+        void dropFiles(
+          Array.from(event.dataTransfer.files),
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+        );
+      }}
+    >
       <canvas
         ref={canvasRef}
         tabIndex={-1}
         className="absolute inset-0 h-full w-full touch-none outline-none"
       />
+      {dropping ? (
+        <div className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/5">
+          <span className="rounded-md bg-card px-3 py-1.5 text-xs text-foreground shadow-sm">
+            Drop a .pego or .pen file to open it, or images to add them
+          </span>
+        </div>
+      ) : null}
       <TextEditorOverlay />
       <AgentCursors />
       <SelectionPrompt canvasRef={canvasRef} />

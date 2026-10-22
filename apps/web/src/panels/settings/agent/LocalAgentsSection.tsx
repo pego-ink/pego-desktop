@@ -14,7 +14,11 @@ const NoteText = ({ note }: { note: string }) => (
   <>
     {note.split(/(`[^`]+`)/).map((part, index) =>
       part.startsWith("`") && part.endsWith("`") ? (
-        <code key={index} className="rounded-sm bg-muted px-1 font-mono text-foreground">
+        <code
+          key={index}
+          data-selectable
+          className="rounded-sm bg-muted px-1 font-mono text-foreground"
+        >
           {part.slice(1, -1)}
         </code>
       ) : (
@@ -70,7 +74,7 @@ const LocalAgentCard = ({ id }: { id: LocalAgentId }) => {
           <p
             className={cn(
               "text-[11px] leading-4",
-              installed ? "text-amber-400" : "text-muted-foreground",
+              installed ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
             )}
           >
             <NoteText note={info.note} />

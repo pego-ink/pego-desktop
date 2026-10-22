@@ -15,11 +15,19 @@ const MAX_IMAGE_SIZE = 2048;
 const DATA_URL = /data:[^"')\s]{200,}/g;
 
 const requireNode = (host: ToolHost, nodeId: string): void => {
-  if (!findLocation(host.getDoc(), nodeId)) {
+  const location = findLocation(host.getDoc(), nodeId);
+  if (!location) {
     throw new ToolError(
       "node_not_found",
       `node not found: ${nodeId}`,
       "Call get_document or find_nodes to see the current ids.",
+    );
+  }
+  if (location.node.type === "page") {
+    throw new ToolError(
+      "invalid_node",
+      `${nodeId} is a page, which cannot be exported`,
+      "Export a frame or group on the page instead.",
     );
   }
 };

@@ -58,9 +58,10 @@ describe("railTabForShortcut", () => {
   test("alt+1 / alt+2", () => {
     expect(railTabForShortcut(key("Digit1"))).toBe("agent");
     expect(railTabForShortcut(key("Digit2"))).toBe("layers");
+    expect(railTabForShortcut(key("Digit3"))).toBe("assets");
   });
   test("ignores other combos", () => {
-    expect(railTabForShortcut(key("Digit3"))).toBeNull();
+    expect(railTabForShortcut(key("Digit4"))).toBeNull();
     expect(railTabForShortcut(key("Digit1", { shiftKey: true }))).toBeNull();
     expect(railTabForShortcut(key("Digit1", { metaKey: true }))).toBeNull();
     expect(railTabForShortcut(key("Digit1", { altKey: false }))).toBeNull();

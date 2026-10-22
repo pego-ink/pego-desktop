@@ -112,7 +112,7 @@ const checkLayoutTool = defineTool({
   name: "check_layout",
   description:
     "Analyze the document layout for problems and return a compact list of issues {severity, nodeId, name, issue, hint}, errors first, at most 50, plus a one-line summary. " +
-    "Detects: children overflowing their parent (and whether it clips), text that needs more height than its fixed height, zero-size nodes, partially overlapping siblings in layout none frames, x/y set on flex children (ignored), text contrast below WCAG AA against the nearest ancestor fill, fill_container inside a parent that hugs on the same axis, and empty frames. " +
+    "Detects: children overflowing their parent (and whether it clips), text that needs more height than its fixed height, zero-size nodes, partially overlapping siblings in layout none frames, x/y set on flex children (ignored), text contrast below WCAG AA against what is painted below it (ancestor fills and shapes it sits on), fill_container inside a parent that hugs on the same axis, and empty frames. " +
     "Run it after building each section (pass the section's nodeId) and once on the whole document at the end. Fix issues with update_node and run it again.",
   inputSchema: {
     type: "object",
@@ -169,7 +169,7 @@ const findEmptySpaceTool = defineTool({
     const layout = requireLayout(host);
     const doc = host.getDoc();
     if (input.nearNodeId) requireIds(doc, [input.nearNodeId]);
-    const placement = findEmptySpace(doc, layout, input);
+    const placement = findEmptySpace(doc, layout, input, host.getActivePageId?.());
     return ok({
       x: round(placement.x),
       y: round(placement.y),

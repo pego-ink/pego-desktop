@@ -1,8 +1,9 @@
 import { z } from "zod";
-import { collectDocIds, type Op, type PegoNode } from "@pego/doc";
+import { collectDocIds, pageOrFirst, type Op, type PegoNode } from "@pego/doc";
 import { ImageSrcError, validateImageSrc } from "./media/image-src";
 import { convertSvg, MAX_SVG_BYTES, MAX_SVG_NODES, SvgError } from "./media/svg";
 import {
+  activePageId,
   assignIds,
   commitOps,
   defineTool,
@@ -24,7 +25,7 @@ const size = z.number().finite().positive().max(10000);
 const parentIdSchema = {
   anyOf: [{ type: "string", minLength: 1 }, { type: "null" }],
   description:
-    "Id of the frame/group to insert into, or null (default) for the document root. Without x/y, root insertions land to the right of existing content.",
+    "Id of the frame/group to insert into, or null (default) for the top level of the active page. Without x/y, top-level insertions land to the right of the page's content.",
 };
 const xSchema = { type: "number", description: "X inside the parent (pixels)." };
 const ySchema = { type: "number", description: "Y inside the parent (pixels)." };
@@ -39,7 +40,8 @@ const defaultPosition = (
   if (x !== undefined || y !== undefined) return { x: x ?? 0, y: y ?? 0 };
   if (parent !== null || !host.getLayout) return { x: 0, y: 0 };
   const layout = host.getLayout();
-  const roots = host.getDoc().children;
+  // Top level of the active page (parentId null lands there, see commitOps).
+  const roots = pageOrFirst(host.getDoc(), activePageId(host)).children;
   const right = roots.reduce((max, node) => {
     const box = layout.get(node.id);
     return box ? Math.max(max, box.x + box.width) : max;

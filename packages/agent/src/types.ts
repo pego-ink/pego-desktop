@@ -26,6 +26,10 @@ export type ToolHost = {
   // Editor capabilities. Optional so pure/test hosts can omit them; tools that need one
   // return an `unsupported` error when it is missing.
 
+  /** The page the user is looking at; `parentId: null` in tools means this page. */
+  getActivePageId?: () => string | null;
+  /** Show this page in the editor. */
+  setActivePage?: (pageId: string) => void;
   /** Computed absolute boxes of the current document (same as the renderer uses). */
   getLayout?: () => Layout;
   /** Node ids the user has selected in the editor. */

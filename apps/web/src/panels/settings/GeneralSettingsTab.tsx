@@ -8,6 +8,7 @@ import { Button } from "@pego/ui/components/button";
 import { NumberField } from "@pego/ui/components/number-field";
 import { SegmentedControl } from "@pego/ui/components/segmented-control";
 import { Switch } from "@pego/ui/components/switch";
+import { setThemeMode, useThemeStore, type ThemeMode } from "@/theme/theme";
 import { toggleAutoSave } from "@/persistence/autosave-actions";
 import { isFileAutosaveSupported } from "@/persistence/file-autosave";
 import { useAutosaveStore } from "@/persistence/use-autosave-store";
@@ -22,6 +23,12 @@ const WHEEL_OPTIONS = [
   label: string;
   title: string;
 }[];
+
+const THEME_OPTIONS = [
+  { value: "system", label: "System", title: "Follow the operating system setting" },
+  { value: "light", label: "Light", title: "Always use the light theme" },
+  { value: "dark", label: "Dark", title: "Always use the dark theme" },
+] as const satisfies readonly { value: ThemeMode; label: string; title: string }[];
 
 const NUDGE_LIMITS = { min: 0.1, max: 1000 } as const;
 
@@ -57,11 +64,26 @@ export const GeneralSettingsTab = () => {
   const nudgeLarge = useSettingsStore((s) => s.nudgeLarge);
   const wheelBehavior = useSettingsStore((s) => s.wheelBehavior);
   const snapToPixel = useSettingsStore((s) => s.snapToPixel);
+  const themeMode = useThemeStore((s) => s.mode);
   const update = useSettingsStore((s) => s.update);
   const reset = useSettingsStore((s) => s.reset);
 
   return (
     <div>
+      <SettingsSection title="Appearance">
+        <SettingRow title="Theme" description="Choose light or dark, or follow your system.">
+          {() => (
+            <SegmentedControl
+              aria-label="Theme"
+              value={themeMode}
+              options={THEME_OPTIONS}
+              onChange={setThemeMode}
+              className="w-56"
+            />
+          )}
+        </SettingRow>
+      </SettingsSection>
+
       <SettingsSection title="Saving">
         <SettingRow
           title="Auto save"

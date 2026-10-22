@@ -37,3 +37,9 @@ export const insertRect = (): Op => ({
     height: 10,
   } as Extract<Op, { op: "insert" }>["node"],
 });
+
+/** Set the status of the session shown in the panel (e.g. "running" to block document swaps). */
+export const setVisibleStatus = (status: SessionLive["status"]) => {
+  const agent = useAgentStore.getState();
+  agent.patchSession(agent.visibleSessionId, { status });
+};

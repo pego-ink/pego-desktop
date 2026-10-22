@@ -1,5 +1,5 @@
-import type { Layout, PegoDocument } from "@pego/doc";
-import { getNodeIndex, hitPath, rotationOf, type Point } from "./hit-test";
+import { type Layout, pageOrFirst, type PegoDocument } from "@pego/doc";
+import { getNodeIndex, hitPath, rotationOf, type HitOptions, type Point } from "./hit-test";
 import type { Box } from "@pego/doc";
 
 /**
@@ -44,9 +44,9 @@ export const pickAt = (
   y: number,
   selection: readonly string[],
   deep: boolean,
-  tolerance = 0,
+  options: HitOptions = {},
 ): string | null => {
-  const path = hitPath(doc, layout, x, y, tolerance);
+  const path = hitPath(doc, layout, x, y, options);
   return path ? pickFromPath(doc, path, selection, deep) : null;
 };
 
@@ -57,8 +57,9 @@ export const drillTarget = (
   x: number,
   y: number,
   selection: readonly string[],
+  options: HitOptions = {},
 ): string | null => {
-  const path = hitPath(doc, layout, x, y);
+  const path = hitPath(doc, layout, x, y, options);
   if (!path) return null;
   for (let k = path.length - 2; k >= 0; k--) {
     const id = path[k];
@@ -109,9 +110,14 @@ const convexIntersect = (a: readonly Point[], b: readonly Point[]): boolean => {
   });
 };
 
-/** Top-level nodes whose drawn (rotated) shape intersects the marquee. */
-export const marqueeSelect = (doc: PegoDocument, layout: Layout, rect: Box): string[] =>
-  doc.children.flatMap((node) => {
+/** Top-level nodes of the page whose drawn (rotated) shape intersects the marquee. */
+export const marqueeSelect = (
+  doc: PegoDocument,
+  layout: Layout,
+  rect: Box,
+  pageId: string | null = null,
+): string[] =>
+  pageOrFirst(doc, pageId).children.flatMap((node) => {
     const box = layout.get(node.id);
     if (!box) return [];
     const shape = rotatedCorners(box, rotationOf(doc, node));
