@@ -161,6 +161,7 @@ const Editor = ({ target }: { target: TextEditTarget }) => {
         fontFamily: `${style.fontFamily}, Inter, sans-serif`,
         fontSize: style.fontSize,
         fontWeight: style.fontWeight,
+        fontStyle: style.fontStyle,
         lineHeight: "normal",
         color: style.color,
         caretColor: style.color,

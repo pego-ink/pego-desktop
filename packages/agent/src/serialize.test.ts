@@ -29,7 +29,13 @@ const doc: PegoDocument = documentSchema.parse({
           fill: "$accent",
           x: 99,
           children: [
-            { type: "text", id: "label", content: "Buy now", fontSize: 14 },
+            {
+              type: "text",
+              id: "label",
+              content: "Buy now",
+              fontSize: 14,
+              fontStyle: "italic",
+            },
             { type: "icon", id: "ic", iconSet: "lucide", iconName: "arrow-right" },
           ],
         },
@@ -66,7 +72,7 @@ describe("serializeDocument", () => {
   });
 
   test("text, icon, ref and truncated path", () => {
-    expect(text).toContain('text#label content="Buy now" fontSize=14');
+    expect(text).toContain('text#label content="Buy now" fontSize=14 fontStyle=italic');
     expect(text).toContain("icon#ic iconName=arrow-right");
     expect(text).toContain('ref=btn descendants={"label":{"content":"Go"}}');
     expect(text).toMatch(/geometry=".{48}\.\.\."\(\d+ chars\)/);

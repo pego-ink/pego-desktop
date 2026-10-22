@@ -11,6 +11,7 @@ import { AgentEmptyState } from "@/panels/agent/AgentEmptyState";
 import { ChangesBar } from "@/panels/agent/ChangesBar";
 import { DecisionCard } from "@/panels/agent/DecisionCard";
 import { PlanList } from "@/panels/agent/PlanList";
+import { WorkingIndicator } from "@/panels/agent/WorkingIndicator";
 import {
   countDoneSteps,
   formatUsage,
@@ -97,6 +98,7 @@ const RunView = () => {
         </section>
       ) : null}
       <ActivityLog log={log} />
+      <WorkingIndicator />
       {showUsage ? (
         <p className="px-1 text-[11px] text-muted-foreground tabular-nums">{formatUsage(usage)}</p>
       ) : null}

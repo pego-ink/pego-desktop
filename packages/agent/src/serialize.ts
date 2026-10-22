@@ -65,6 +65,7 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
     push("fontFamily", n.fontFamily);
     push("fontSize", n.fontSize);
     push("fontWeight", n.fontWeight);
+    push("fontStyle", n.fontStyle);
     push("textAlign", n.textAlign);
   }
   if (n.type === "icon") {

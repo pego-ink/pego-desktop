@@ -9,8 +9,22 @@ const NO_WRAP_WIDTH = 100_000;
 
 const paragraphs = createLruCache<Paragraph>(512);
 
-const nearestWeight = (weight: number) =>
+export const nearestWeight = (weight: number) =>
   FONT_WEIGHTS.reduce((best, w) => (Math.abs(w - weight) < Math.abs(best - weight) ? w : best));
+
+/** Cache key of a paragraph: every input that changes its shape, including italic. */
+export const paragraphKey = (
+  parts: readonly [
+    content: string,
+    color: string,
+    size: number,
+    weight: number,
+    italic: boolean,
+    align: string,
+    family: string,
+    wrapWidth: number | undefined,
+  ],
+): string => JSON.stringify(parts);
 
 /**
  * Shared paragraph setup for drawing and measuring. `wrapWidth` wraps the text at that width;
@@ -23,14 +37,15 @@ export const getParagraph = (
   variables: Variables,
   wrapWidth: number | undefined,
 ): Paragraph => {
-  const { ck, fontMgr, fontFamily } = res;
+  const { ck, fontProvider, fontFamily } = res;
   const content = resolveString(node.content, variables);
   const color = resolveColor(node.fill, variables) ?? "#000000";
   const size = resolveNumber(node.fontSize, variables, 14);
   const weight = nearestWeight(resolveNumber(node.fontWeight, variables, 400));
   const align = node.textAlign ?? "left";
   const family = node.fontFamily ?? fontFamily;
-  const key = JSON.stringify([content, color, size, weight, align, family, wrapWidth]);
+  const italic = node.fontStyle === "italic";
+  const key = paragraphKey([content, color, size, weight, italic, align, family, wrapWidth]);
   const cached = paragraphs.get(key);
   if (cached) return cached;
 
@@ -39,11 +54,14 @@ export const getParagraph = (
       color: ck.parseColorString(color),
       fontFamilies: family === fontFamily ? [family] : [family, fontFamily],
       fontSize: size,
-      fontStyle: { weight: { value: weight } },
+      fontStyle: {
+        weight: { value: weight },
+        slant: italic ? ck.FontSlant.Italic : ck.FontSlant.Upright,
+      },
     },
     textAlign: ck.TextAlign[align === "center" ? "Center" : align === "right" ? "Right" : "Left"],
   });
-  const builder = ck.ParagraphBuilder.Make(style, fontMgr);
+  const builder = ck.ParagraphBuilder.MakeFromFontProvider(style, fontProvider);
   builder.addText(content);
   const paragraph = builder.build();
   builder.delete();

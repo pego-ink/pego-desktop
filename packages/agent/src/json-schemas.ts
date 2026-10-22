@@ -60,6 +60,7 @@ const nodePropSchemas: Record<string, JsonSchema> = {
   fontFamily: { type: "string", description: "Text only." },
   fontSize: numberValue,
   fontWeight: numberValue,
+  fontStyle: { type: "string", enum: ["normal", "italic"], description: "Text only." },
   textAlign: { type: "string", enum: ["left", "center", "right"], description: "Text only." },
   iconSet: { type: "string", description: "Icon only. Defaults to lucide." },
   iconName: { type: "string", description: "Icon only. Icon name in the set, e.g. arrow-right." },
@@ -77,7 +78,7 @@ export const NODE_FORMAT_DESCRIPTION =
   "`id` is optional (assigned when omitted). Only frame and group take `children` (same node format, nested). " +
   "Other fields apply per type: frame (layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke), " +
   "rectangle (cornerRadius, fill, stroke), ellipse (fill, stroke), path (geometry, fill, stroke), " +
-  "text (content, fontFamily, fontSize, fontWeight, textAlign, fill), icon (iconName, iconSet, fill), " +
+  "text (content, fontFamily, fontSize, fontWeight, fontStyle, textAlign, fill), icon (iconName, iconSet, fill), " +
   "ref (ref, descendants). Colors are hex or $variable; sizes are pixels, fill_container or fit_content.";
 
 export const nodeJsonSchema: JsonSchema = {

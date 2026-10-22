@@ -18,6 +18,7 @@ export type EditorStyle = {
   fontFamily: string;
   fontSize: number;
   fontWeight: number;
+  fontStyle: "normal" | "italic";
   color: string;
   textAlign: "left" | "center" | "right";
   wraps: boolean;
@@ -28,7 +29,7 @@ export type EditorStyle = {
 /** The text-relevant subset of a node; create mode passes defaults for the pending node. */
 export type EditorTextProps = Pick<
   TextNode,
-  "fontFamily" | "fontSize" | "fontWeight" | "textAlign" | "fill" | "width"
+  "fontFamily" | "fontSize" | "fontWeight" | "fontStyle" | "textAlign" | "fill" | "width"
 >;
 
 /**
@@ -90,6 +91,7 @@ export const deriveEditorStyle = (
     fontFamily: props.fontFamily ?? "Inter",
     fontSize: resolveNumber(props.fontSize, variables, 14),
     fontWeight: nearestWeight(resolveNumber(props.fontWeight, variables, 400)),
+    fontStyle: props.fontStyle === "italic" ? "italic" : "normal",
     color: resolveColor(props.fill, variables) ?? fallbackColor,
     textAlign: props.textAlign ?? "left",
     wraps,
