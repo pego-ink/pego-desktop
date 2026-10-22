@@ -5,7 +5,18 @@ import { buildNodeOutline } from "@/canvas/node-outline";
 import { createLruCache } from "@/canvas/render-cache";
 import { docToScreen, type Camera } from "@/canvas/types";
 import type { Segment } from "@/interaction/drag-target";
-import { HANDLES, handlePoint } from "@/interaction/transform";
+import type { Affine } from "@/canvas/node-transform";
+import {
+  frameAxes,
+  frameCorners,
+  frameHandlePoint,
+  getSelectionFrame,
+  labelAnchor,
+  toScreenMatrix,
+  topmostCorner,
+  type SelectionFrame,
+} from "@/interaction/selection-frame";
+import { HANDLES } from "@/interaction/transform";
 
 export const ACCENT = "#B79CFF";
 const LABEL_TEXT = "#141418";
@@ -176,17 +187,52 @@ const fillRect = (res: CanvasKitResources, canvas: SkCanvas, box: Box, color: st
   canvas.drawRect(res.ck.XYWHRect(box.x, box.y, box.width, box.height), fill);
 };
 
-const drawHandles = (res: CanvasKitResources, canvas: SkCanvas, box: Box) => {
+/** Run `draw` with the canvas transformed by `m` (local -> screen), then restore. */
+const withMatrix = (canvas: SkCanvas, m: Affine, draw: () => void) => {
+  canvas.save();
+  canvas.concat([m.a, m.c, m.e, m.b, m.d, m.f, 0, 0, 1]);
+  draw();
+  canvas.restore();
+};
+
+/** The node's box as a rotated rectangle: drawn in local space, so the stroke is divided by zoom. */
+const drawFrameOutline = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  frame: SelectionFrame,
+  screen: Affine,
+  zoom: number,
+) =>
+  withMatrix(canvas, screen, () =>
+    strokeRect(
+      res,
+      canvas,
+      { x: 0, y: 0, width: frame.box.width, height: frame.box.height },
+      ACCENT,
+      1.5 / zoom,
+    ),
+  );
+
+/** Handles sit on the rotated corners/edges and are squares aligned to the node's axes. */
+const drawHandles = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  frame: SelectionFrame,
+  screen: Affine,
+) => {
+  const { ux, uy } = frameAxes(screen);
+  const rect = {
+    x: -HANDLE_SIZE / 2,
+    y: -HANDLE_SIZE / 2,
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+  };
   for (const handle of HANDLES) {
-    const c = handlePoint(box, handle);
-    const rect = {
-      x: c.x - HANDLE_SIZE / 2,
-      y: c.y - HANDLE_SIZE / 2,
-      width: HANDLE_SIZE,
-      height: HANDLE_SIZE,
-    };
-    fillRect(res, canvas, rect, "#FFFFFF");
-    strokeRect(res, canvas, rect, ACCENT, 1.5);
+    const c = frameHandlePoint(screen, frame.box.width, frame.box.height, handle);
+    withMatrix(canvas, { a: ux.x, b: ux.y, c: uy.x, d: uy.y, e: c.x, f: c.y }, () => {
+      fillRect(res, canvas, rect, "#FFFFFF");
+      strokeRect(res, canvas, rect, ACCENT, 1.5);
+    });
   }
 };
 
@@ -209,23 +255,37 @@ const drawPill = (
   canvas.drawParagraph(paragraph, x + pad.x, y + pad.y);
 };
 
-const drawSizeLabel = (res: CanvasKitResources, canvas: SkCanvas, box: Box, docBox: Box) =>
+/** Horizontal size label (the node's own, unrotated size) below the lowest point of the box. */
+const drawSizeLabel = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  anchor: { x: number; y: number },
+  docBox: Box,
+) =>
   drawPill(
     res,
     canvas,
     `${Math.round(docBox.width)} × ${Math.round(docBox.height)}`,
     11,
     { x: 6, y: 3 },
-    (w) => ({ x: box.x + box.width / 2 - w / 2, y: box.y + box.height + HANDLE_SIZE + 4 }),
+    (w) => ({ x: anchor.x - w / 2, y: anchor.y + HANDLE_SIZE + 4 }),
   );
 
-/** Small "Agent" pill sitting on the top-left edge of a focused box. */
-const drawAgentTag = (res: CanvasKitResources, canvas: SkCanvas, box: Box) =>
-  drawPill(res, canvas, "Agent", 10, { x: 6, y: 2 }, (_w, h) => ({ x: box.x, y: box.y - h - 3 }));
+/** Small "Agent" pill sitting above a focused box's topmost corner. */
+const drawAgentTag = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  corner: { x: number; y: number },
+) =>
+  drawPill(res, canvas, "Agent", 10, { x: 6, y: 2 }, (_w, h) => ({
+    x: corner.x,
+    y: corner.y - h - 3,
+  }));
 
 const drawAgentFocus = (
   res: CanvasKitResources,
   canvas: SkCanvas,
+  doc: PegoDocument,
   layout: Layout,
   camera: Camera,
   ids: readonly string[],
@@ -233,24 +293,35 @@ const drawAgentFocus = (
 ) => {
   const { ck } = res;
   const { fill, stroke } = getKit(res);
+  const { zoom } = camera;
   const animated = time !== undefined;
   const pulse = animated ? 0.5 + 0.5 * Math.sin((time * 2 * Math.PI) / PULSE_PERIOD_MS) : 0.5;
-  const dash = ck.PathEffect.MakeDash(DASH, animated ? (time / DASH_MS_PER_PX) % DASH_PERIOD : 0);
+  // The box is drawn in node-local space (scaled by zoom), so dashes are specified in local units.
+  const dash = ck.PathEffect.MakeDash(
+    DASH.map((v) => v / zoom),
+    (animated ? (time / DASH_MS_PER_PX) % DASH_PERIOD : 0) / zoom,
+  );
   try {
     for (const id of ids) {
-      const box = layout.get(id);
-      if (!box) continue;
-      const screen = toScreenBox(camera, box);
-      const rect = ck.XYWHRect(screen.x, screen.y, screen.width, screen.height);
-      fill.setColor(colorOf(res, AGENT_FOCUS_FILL));
-      fill.setAlphaf(FOCUS_FILL_ALPHA + (pulse - 0.5) * FOCUS_FILL_PULSE);
-      canvas.drawRect(rect, fill);
-      stroke.setStrokeWidth(1.5);
-      stroke.setColor(colorOf(res, ACCENT));
-      stroke.setPathEffect(dash);
-      canvas.drawRect(rect, stroke);
-      stroke.setPathEffect(null);
-      drawAgentTag(res, canvas, screen);
+      const frame = getSelectionFrame(doc, layout, id);
+      if (!frame) continue;
+      const screen = toScreenMatrix(camera, frame.matrix);
+      const rect = ck.XYWHRect(0, 0, frame.box.width, frame.box.height);
+      withMatrix(canvas, screen, () => {
+        fill.setColor(colorOf(res, AGENT_FOCUS_FILL));
+        fill.setAlphaf(FOCUS_FILL_ALPHA + (pulse - 0.5) * FOCUS_FILL_PULSE);
+        canvas.drawRect(rect, fill);
+        stroke.setStrokeWidth(1.5 / zoom);
+        stroke.setColor(colorOf(res, ACCENT));
+        stroke.setPathEffect(dash);
+        canvas.drawRect(rect, stroke);
+        stroke.setPathEffect(null);
+      });
+      drawAgentTag(
+        res,
+        canvas,
+        topmostCorner(frameCorners(screen, frame.box.width, frame.box.height)),
+      );
     }
   } finally {
     stroke.setPathEffect(null);
@@ -286,23 +357,25 @@ export const renderOverlay = (
   }: OverlayState,
 ) => {
   if (agentFocusIds && agentFocusIds.length > 0)
-    drawAgentFocus(res, canvas, layout, camera, agentFocusIds, time);
+    drawAgentFocus(res, canvas, doc, layout, camera, agentFocusIds, time);
 
   if (!suppressSelection) {
     if (hoveredId && !selection.includes(hoveredId))
       drawHover(res, canvas, doc, layout, camera, hoveredId);
 
     for (const id of selection) {
-      const box = layout.get(id);
-      if (box) strokeRect(res, canvas, toScreenBox(camera, box), ACCENT, 1.5);
+      const frame = getSelectionFrame(doc, layout, id);
+      if (frame)
+        drawFrameOutline(res, canvas, frame, toScreenMatrix(camera, frame.matrix), camera.zoom);
     }
 
     const [only] = selection;
-    const single = selection.length === 1 && only ? layout.get(only) : undefined;
+    const single = selection.length === 1 && only ? getSelectionFrame(doc, layout, only) : null;
     if (single) {
-      const screen = toScreenBox(camera, single);
-      drawHandles(res, canvas, screen);
-      drawSizeLabel(res, canvas, screen, single);
+      const screen = toScreenMatrix(camera, single.matrix);
+      drawHandles(res, canvas, single, screen);
+      const corners = frameCorners(screen, single.box.width, single.box.height);
+      drawSizeLabel(res, canvas, labelAnchor(corners), single.box);
     }
   }
 

@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from "react";
-import { createId, findNode, type Box, type Op, type PegoDocument } from "@pego/doc";
+import { createId, findNode, type Op, type PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { screenToDoc } from "@/canvas/types";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -40,15 +40,15 @@ import {
   pickAt,
   toggleSelection,
 } from "@/interaction/selection";
+import { constrainAxis, resizeOps, type Handle } from "@/interaction/transform";
 import {
-  constrainAxis,
-  HANDLE_CURSORS,
-  hitHandle,
-  resizeBox,
-  resizeOps,
-  type Handle,
-} from "@/interaction/transform";
-import { docToScreen } from "@/canvas/types";
+  frameHandleCursor,
+  getSelectionFrame,
+  hitFrameHandle,
+  resizeFrame,
+  toScreenMatrix,
+  type SelectionFrame,
+} from "@/interaction/selection-frame";
 import { enterPathEdit } from "@/interaction/tools/pen";
 
 const DRAG_THRESHOLD = 3;
@@ -75,7 +75,8 @@ type Gesture =
       startY: number;
       startDoc: PegoDocument;
       id: string;
-      startBox: Box;
+      /** Start-state placement of the node (rotation of the node and its ancestors included). */
+      frame: SelectionFrame;
       started: boolean;
       committed: boolean;
     }
@@ -95,20 +96,24 @@ type Gesture =
 
 const setTool = (tool: Tool) => useToolStore.getState().setTool(tool);
 
-/** The single selected node's screen box, for handle hit-testing. */
-const selectedScreenBox = (): { id: string; box: Box } | null => {
+/** The handle under the screen point on the single selected node (rotation-aware), if any. */
+const handleAt = (
+  x: number,
+  y: number,
+): { id: string; frame: SelectionFrame; handle: Handle } | null => {
   const { doc, selection } = useDocumentStore.getState();
   const [id] = selection;
   if (selection.length !== 1 || !id) return null;
-  const box = getLayout(doc).get(id);
-  if (!box) return null;
-  const { camera } = useViewportStore.getState();
-  const topLeft = docToScreen(camera, box.x, box.y);
-  return {
-    id,
-    box: { ...topLeft, width: box.width * camera.zoom, height: box.height * camera.zoom },
-  };
+  const frame = getSelectionFrame(doc, getLayout(doc), id);
+  if (!frame) return null;
+  const screen = toScreenMatrix(useViewportStore.getState().camera, frame.matrix);
+  const handle = hitFrameHandle(screen, frame.box.width, frame.box.height, x, y, HANDLE_HIT_RADIUS);
+  return handle ? { id, frame, handle } : null;
 };
+
+/** Resize cursor for a handle, rotated with the node. */
+const cursorFor = (frame: SelectionFrame, handle: Handle): string =>
+  frameHandleCursor(toScreenMatrix(useViewportStore.getState().camera, frame.matrix), handle);
 
 /** Wire pointer + wheel interaction (pan, zoom, select, move, resize, marquee) to the canvas element. */
 export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>) => {
@@ -207,25 +212,21 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         return;
       }
 
-      const sel = selectedScreenBox();
-      const handle = sel ? hitHandle(sel.box, p.x, p.y, HANDLE_HIT_RADIUS) : null;
-      if (sel && handle) {
-        const startBox = getLayout(state.doc).get(sel.id);
-        if (startBox) {
-          gesture = {
-            kind: "resize",
-            handle,
-            startX: p.x,
-            startY: p.y,
-            startDoc: state.doc,
-            id: sel.id,
-            startBox,
-            started: false,
-            committed: false,
-          };
-          ui.set({ handleCursor: HANDLE_CURSORS[handle] });
-          return;
-        }
+      const grabbed = handleAt(p.x, p.y);
+      if (grabbed) {
+        gesture = {
+          kind: "resize",
+          handle: grabbed.handle,
+          startX: p.x,
+          startY: p.y,
+          startDoc: state.doc,
+          id: grabbed.id,
+          frame: grabbed.frame,
+          started: false,
+          committed: false,
+        };
+        ui.set({ handleCursor: cursorFor(grabbed.frame, grabbed.handle) });
+        return;
       }
 
       const d = toDoc(p.x, p.y);
@@ -268,9 +269,9 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       }
       const p = local(e);
       const state = useDocumentStore.getState();
-      const sel = selectedScreenBox();
-      const handle = sel ? hitHandle(sel.box, p.x, p.y, HANDLE_HIT_RADIUS) : null;
-      const cursor = handle ? HANDLE_CURSORS[handle] : null;
+      const grabbed = handleAt(p.x, p.y);
+      const handle = grabbed?.handle ?? null;
+      const cursor = grabbed ? cursorFor(grabbed.frame, grabbed.handle) : null;
       if (useInteractionState.getState().handleCursor !== cursor) ui.set({ handleCursor: cursor });
       const d = toDoc(p.x, p.y);
       const hit = handle
@@ -400,13 +401,13 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         if (ok) showDropLine(plan.flexParentId, gesture.ids);
         if (ok && copyOps.length > 0) store.select(gesture.ids);
       } else {
-        const next = resizeBox(gesture.startBox, gesture.handle, screenDx / zoom, screenDy / zoom, {
+        const next = resizeFrame(gesture.frame, gesture.handle, screenDx / zoom, screenDy / zoom, {
           shift: e.shiftKey,
           alt: e.altKey,
           snap: snapEnabled(),
         });
         ok = apply(
-          resizeOps(gesture.startDoc, gesture.id, gesture.startBox, next, snapEnabled()),
+          resizeOps(gesture.startDoc, gesture.id, gesture.frame.box, next, snapEnabled()),
           "Resize",
         );
       }
