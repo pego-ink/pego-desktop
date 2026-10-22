@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import Anthropic from "@anthropic-ai/sdk";
 import { describeApiError } from "./api-errors";
-import { checkToolInput, runApiAgent, type MessagesClient } from "./api-runtime";
+import { checkToolInput, runApiAgent, toToolResultBlock, type MessagesClient } from "./api-runtime";
 import { resetStores } from "./test-utils";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
@@ -303,5 +303,37 @@ describe("checkToolInput", () => {
     expect(checkToolInput(spec, "x")).toContain("object");
     expect(checkToolInput(spec, { id: "a" })).toContain("props");
     expect(checkToolInput(spec, { id: "a", props: {} })).toBeNull();
+  });
+});
+
+describe("toToolResultBlock", () => {
+  const image = { mediaType: "image/png" as const, data: "AAAA", width: 4, height: 3 };
+
+  test("images become base64 image blocks before the text block", () => {
+    const block = toToolResultBlock("toolu_1", {
+      content: "done",
+      isError: false,
+      images: [image],
+    });
+    expect(block).toEqual({
+      type: "tool_result",
+      tool_use_id: "toolu_1",
+      content: [
+        { type: "image", source: { type: "base64", media_type: "image/png", data: "AAAA" } },
+        { type: "text", text: "done" },
+      ],
+    });
+  });
+
+  test("without images the content stays a plain string; errors set is_error", () => {
+    expect(toToolResultBlock("t", { content: "x", isError: false })).toEqual({
+      type: "tool_result",
+      tool_use_id: "t",
+      content: "x",
+    });
+    expect(toToolResultBlock("t", { content: "x", isError: true, images: [] })).toMatchObject({
+      content: "x",
+      is_error: true,
+    });
   });
 });

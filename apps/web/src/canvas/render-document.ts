@@ -8,6 +8,7 @@ import {
   type Layout,
   type PegoDocument,
   type PegoNode,
+  walkRendered,
 } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { getIconPath } from "@/canvas/icons";
@@ -167,6 +168,18 @@ const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth:
   }
 };
 
+/** The expanded (refs resolved) node with this id, including instance descendants. */
+export const findRenderedNode = (doc: PegoDocument, id: string): PegoNode | null => {
+  let found: PegoNode | null = null;
+  walkRendered(doc, doc.children, (node) => {
+    if (found) return false;
+    if (node.id !== id) return;
+    found = node;
+    return false;
+  });
+  return found;
+};
+
 /**
  * Draw the document through `camera`. The canvas is expected to already be scaled by
  * devicePixelRatio by the caller. `layout` holds the absolute box of every rendered node.
@@ -177,26 +190,38 @@ export const renderDocument = (
   doc: PegoDocument,
   layout: Layout,
   camera: Camera,
-  /** `hiddenIds`: nodes not drawn, e.g. the text node being edited in the DOM overlay. */
-  options: { hiddenIds?: ReadonlySet<string> } = {},
+  options: {
+    /** Nodes not drawn, e.g. the text node being edited in the DOM overlay. */
+    hiddenIds?: ReadonlySet<string>;
+    /**
+     * Draw only this node's subtree, upright with its top-left at the document origin (so the
+     * camera pan places it). Ancestors' transforms, clips and opacity are NOT applied: the
+     * result is the node itself, independent of where its parents sit or crop it. The node's own
+     * opacity, clip and corner radius still apply. Draws nothing for an unknown id.
+     */
+    rootId?: string;
+  } = {},
 ) => {
   canvas.clear(res.ck.parseColorString(BACKGROUND));
   canvas.save();
   canvas.translate(camera.panX, camera.panY);
   canvas.scale(camera.zoom, camera.zoom);
-  drawNodes(
-    {
-      res,
-      canvas,
-      doc,
-      layout,
-      paints: getPaints(res.ck),
-      hiddenIds: options.hiddenIds ?? NO_HIDDEN_IDS,
-    },
-    doc.children,
-    ORIGIN,
-    0,
-  );
+  const scene: Scene = {
+    res,
+    canvas,
+    doc,
+    layout,
+    paints: getPaints(res.ck),
+    hiddenIds: options.hiddenIds ?? NO_HIDDEN_IDS,
+  };
+  if (options.rootId === undefined) {
+    drawNodes(scene, doc.children, ORIGIN, 0);
+  } else {
+    const root = findRenderedNode(doc, options.rootId);
+    const box = root && layout.get(root.id);
+    // The node is already expanded (not a ref); rotation is dropped so it stays on the surface.
+    if (root && box) drawNodes(scene, [{ ...root, rotation: 0 } as PegoNode], box, 0);
+  }
   canvas.restore();
 };
 

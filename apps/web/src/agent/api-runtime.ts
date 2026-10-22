@@ -7,6 +7,7 @@ import {
   planOutputSchema,
   toolByName,
   type PlanStep,
+  type ToolResult,
   type ToolSpec,
 } from "@pego/agent";
 import { AgentRunError, describeApiError, isAbortError } from "./api-errors";
@@ -164,6 +165,29 @@ const truncate = (text: string) =>
     ? `${text.slice(0, MAX_TOOL_RESULT_CHARS)}\n[truncated ${text.length - MAX_TOOL_RESULT_CHARS} characters]`
     : text;
 
+/**
+ * `tool_result` for a finished tool. Images (screenshots) go first as base64 image blocks,
+ * followed by the text block; a result without images keeps the plain string content.
+ */
+export const toToolResultBlock = (
+  toolUseId: string,
+  result: ToolResult,
+): Anthropic.Beta.BetaToolResultBlockParam => ({
+  type: "tool_result",
+  tool_use_id: toolUseId,
+  content:
+    result.images && result.images.length > 0
+      ? [
+          ...result.images.map((image) => ({
+            type: "image" as const,
+            source: { type: "base64" as const, media_type: image.mediaType, data: image.data },
+          })),
+          { type: "text" as const, text: truncate(result.content) },
+        ]
+      : truncate(result.content),
+  ...(result.isError ? { is_error: true } : {}),
+});
+
 const runToolUse = async (
   block: Anthropic.Beta.BetaToolUseBlock,
   host: AgentToolHost,
@@ -182,12 +206,7 @@ const runToolUse = async (
   }
   try {
     const result = await spec.run(block.input, host);
-    return {
-      type: "tool_result",
-      tool_use_id: block.id,
-      content: truncate(result.content),
-      ...(result.isError ? { is_error: true } : {}),
-    };
+    return toToolResultBlock(block.id, result);
   } catch (error) {
     if (error instanceof RunCancelledError) throw error;
     return fail(error instanceof Error ? error.message : "tool failed");

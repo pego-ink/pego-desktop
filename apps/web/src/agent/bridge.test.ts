@@ -171,6 +171,41 @@ describe("bridge handlers", () => {
     expect(state().transactionCount).toBe(0);
   });
 
+  test("tool_result carries images from the tool result", async () => {
+    const image = { mediaType: "image/png" as const, data: "AAAA", width: 2, height: 1 };
+    const sent: EditorToBridge[] = [];
+    const handlers = createBridgeHandlers({
+      send: (m) => (sent.push(m), true),
+      findTool: () => ({
+        name: "shot",
+        description: "",
+        inputSchema: {},
+        run: async () => ({ content: "ok", isError: false, images: [image] }),
+      }),
+    });
+    await handlers.handleMessage({
+      type: "tool_call",
+      callId: "img",
+      tool: "shot",
+      input: {},
+      source: { kind: "mcp" },
+    });
+    await handlers.handleMessage({
+      type: "tool_call",
+      callId: "plain",
+      tool: "shot",
+      input: {},
+      source: { kind: "mcp" },
+    });
+    expect(sent[0]).toEqual({
+      type: "tool_result",
+      callId: "img",
+      content: "ok",
+      isError: false,
+      images: [image],
+    });
+  });
+
   test("tool errors and unknown tools reply with isError", async () => {
     const { handlers, sent } = setup();
     await handlers.handleMessage({ ...insertCall("1", { kind: "mcp" }), tool: "nope" });

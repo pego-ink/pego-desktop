@@ -1,6 +1,10 @@
-import { applyOps as applyDocOps, type Op, type Transaction } from "@pego/doc";
+import { applyOps as applyDocOps, collectDocIds, type Op, type Transaction } from "@pego/doc";
 import type { PlanStep, StepStatus, ToolHost } from "@pego/agent";
+import { getLayout } from "@/canvas/layout";
+import { listIconNames, loadIconData } from "@/canvas/icons";
 import { useDocumentStore } from "@/store/use-document-store";
+import { useViewportStore } from "@/store/use-viewport-store";
+import { focusCamera } from "./focus-camera";
 import { requestDecision } from "./decisions";
 import { useAgentStore } from "./use-agent-store";
 
@@ -83,8 +87,41 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     lastSeen = null;
   };
 
+  // The icon list is read synchronously; make sure the (lazy) lucide data is on its way.
+  void loadIconData().catch(() => {});
+
+  const setSelection = (ids: string[]) => {
+    const known = collectDocIds(useDocumentStore.getState().doc);
+    useDocumentStore.getState().select([...new Set(ids)].filter((id) => known.has(id)));
+  };
+
+  const focusViewport = (ids: string[]) => {
+    const layout = getLayout(useDocumentStore.getState().doc);
+    const boxes = ids.flatMap((id) => layout.get(id) ?? []);
+    const viewport = useViewportStore.getState();
+    const camera = focusCamera(boxes, viewport.size);
+    if (camera) viewport.setCamera(camera);
+  };
+
+  const renderImage: NonNullable<ToolHost["renderImage"]> = async (nodeId, imageOptions) => {
+    // Loaded on demand: CanvasKit (and its wasm) only matter once a screenshot is requested.
+    const [{ loadCanvasKit }, { renderNodeImage }] = await Promise.all([
+      import("@/canvas/load-canvaskit"),
+      import("@/canvas/render-image"),
+    ]);
+    const res = await loadCanvasKit();
+    const doc = useDocumentStore.getState().doc;
+    return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
+  };
+
   return {
     getDoc: () => useDocumentStore.getState().doc,
+    getLayout: () => getLayout(useDocumentStore.getState().doc),
+    getSelection: () => useDocumentStore.getState().selection,
+    setSelection,
+    focusViewport,
+    listIcons: listIconNames,
+    renderImage,
     applyOps,
     setFocus: (ids) => useAgentStore.getState().set({ focusIds: ids }),
     reportPlan,

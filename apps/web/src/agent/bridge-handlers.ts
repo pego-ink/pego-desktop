@@ -1,4 +1,11 @@
-import { toolByName, type BridgeToEditor, type EditorToBridge, type RunEvent } from "@pego/agent";
+import {
+  toolByName,
+  type BridgeToEditor,
+  type EditorToBridge,
+  type RunEvent,
+  type ToolImage,
+  type ToolSpec,
+} from "@pego/agent";
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
 import { createToolHost } from "./tool-host";
@@ -11,6 +18,8 @@ export const MCP_LABEL = "Claude Code";
 export type BridgeHandlerDeps = {
   send: (message: EditorToBridge) => boolean;
   now?: () => number;
+  /** Tool lookup (defaults to the shared tool specs; tests inject their own). */
+  findTool?: (name: string) => ToolSpec | undefined;
 };
 
 const agent = () => useAgentStore.getState();
@@ -30,7 +39,11 @@ const endRun = (status: "done" | "failed" | "cancelled") => {
   setActiveRun(null);
 };
 
-export const createBridgeHandlers = ({ send, now = Date.now }: BridgeHandlerDeps) => {
+export const createBridgeHandlers = ({
+  send,
+  now = Date.now,
+  findTool = toolByName,
+}: BridgeHandlerDeps) => {
   // Claude Code in a terminal edits through its own host: no run, no "Undo all" range, but the
   // user still sees focus + log activity.
   const mcpHost = createToolHost({
@@ -41,10 +54,16 @@ export const createBridgeHandlers = ({ send, now = Date.now }: BridgeHandlerDeps
   let lastMcpCallAt = Number.NEGATIVE_INFINITY;
 
   const handleToolCall = async (message: Extract<BridgeToEditor, { type: "tool_call" }>) => {
-    const reply = (content: string, isError: boolean) =>
-      send({ type: "tool_result", callId: message.callId, content, isError });
+    const reply = (content: string, isError: boolean, images?: ToolImage[]) =>
+      send({
+        type: "tool_result",
+        callId: message.callId,
+        content,
+        isError,
+        ...(images && images.length > 0 ? { images } : {}),
+      });
 
-    const spec = toolByName(message.tool);
+    const spec = findTool(message.tool);
     if (!spec) return void reply(`Unknown tool: ${message.tool}`, true);
 
     const { source } = message;
@@ -72,7 +91,7 @@ export const createBridgeHandlers = ({ send, now = Date.now }: BridgeHandlerDeps
           tool: { name: message.tool, isError: result.isError },
         });
       }
-      reply(result.content, result.isError);
+      reply(result.content, result.isError, result.images);
     } catch (error) {
       reply(error instanceof Error ? error.message : "tool failed", true);
     }

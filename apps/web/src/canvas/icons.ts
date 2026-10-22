@@ -15,6 +15,30 @@ const toPascalCase = (name: string) =>
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join("");
 
+const toKebabCase = (pascal: string) =>
+  pascal
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .replace(/([A-Za-z])(\d)/g, "$1-$2")
+    .toLowerCase();
+
+let iconNames: string[] | null = null;
+
+/**
+ * Every renderable lucide icon name in kebab-case, sorted (aliases included). Empty until
+ * `loadIconData` has resolved. Only names that round-trip through `getIconPath` are listed.
+ */
+export const listIconNames = (): string[] => {
+  if (!iconData) return [];
+  iconNames ??= [
+    ...new Set(
+      Object.keys(iconData)
+        .map(toKebabCase)
+        .filter((name) => iconData?.[toPascalCase(name)] !== undefined),
+    ),
+  ].sort();
+  return iconNames;
+};
+
 const num = (props: SVGProps, key: string, fallback = 0) => {
   const value = Number(props[key]);
   return Number.isFinite(value) ? value : fallback;
