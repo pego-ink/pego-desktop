@@ -1,10 +1,16 @@
 import { sampleDoc } from "@pego/doc";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
+import { useViewportStore } from "@/store/use-viewport-store";
 import { SCRATCH_ID, useWorkspaceStore } from "./use-workspace-store";
 
-/** The sample document, untitled and untouched, as the live document of the scratch workspace. */
+/**
+ * The sample document, untitled and untouched, as the live document of the scratch workspace.
+ * The viewport has no size, so fits are skipped (another suite's size would make them animate,
+ * which needs a real `window.matchMedia`).
+ */
 export const resetLiveDocument = () => {
+  useViewportStore.setState({ size: { width: 0, height: 0 } });
   useWorkspaceStore.setState({
     workspaces: [{ id: SCRATCH_ID, name: "Scratch", dir: null, kind: "scratch", saved: null }],
     liveId: SCRATCH_ID,
