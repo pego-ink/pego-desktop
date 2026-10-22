@@ -108,7 +108,7 @@ function ResizeHandle({
     >
       <span
         aria-hidden
-        className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors duration-150 group-hover:bg-ring group-focus-visible:bg-ring group-data-[dragging]:bg-ring"
+        className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-transparent transition-colors duration-150 group-hover:bg-ring group-hover:delay-100 group-focus-visible:bg-ring group-focus-visible:delay-0 group-data-[dragging]:bg-ring group-data-[dragging]:transition-none"
       />
     </div>
   );

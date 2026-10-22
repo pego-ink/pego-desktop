@@ -9,6 +9,9 @@ import { SkillChip } from "@/panels/agent/SkillChip";
 import { isRunActive, selectionHint } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 
+const ACTION_BUTTON =
+  "flex size-7 items-center justify-center rounded-full bg-foreground text-background outline-none transition-[background-color,opacity,scale] duration-120 ease-out focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]";
+
 type AgentComposerProps = {
   /** Text to place in the box (e.g. an example prompt); applied whenever `key` changes. */
   seed: { text: string; key: number };
@@ -47,7 +50,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   return (
     <div
       className={cn(
-        "rounded-lg border border-border bg-muted/40 p-2 transition-colors focus-within:border-ring",
+        "rounded-lg border border-border bg-muted/40 p-2 transition-[border-color,opacity] duration-(--duration-fast) ease-out focus-within:border-ring",
         active && "opacity-70",
       )}
     >
@@ -74,28 +77,37 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
             Enter to send
           </span>
         )}
-        {active ? (
+        <div className="relative size-7 shrink-0">
           <button
             type="button"
             aria-label="Cancel run"
             title="Cancel run"
+            inert={!active}
             onClick={() => void safely(cancelRun)}
-            className="flex size-7 items-center justify-center rounded-full bg-foreground text-background outline-none hover:bg-foreground/90 focus-visible:ring-2 focus-visible:ring-ring/50"
+            className={cn(
+              ACTION_BUTTON,
+              "absolute inset-0 hover:bg-foreground/90",
+              !active && "pointer-events-none opacity-0",
+            )}
           >
             <SquareIcon className="size-3 fill-current" />
           </button>
-        ) : (
           <button
             type="button"
             aria-label="Send"
             title="Send (Enter)"
             disabled={!canSend}
+            inert={active}
             onClick={send}
-            className="flex size-7 items-center justify-center rounded-full bg-foreground text-background outline-none hover:bg-foreground/90 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:opacity-30"
+            className={cn(
+              ACTION_BUTTON,
+              "absolute inset-0 hover:bg-foreground/90",
+              active ? "pointer-events-none opacity-0" : "disabled:opacity-30",
+            )}
           >
             <ArrowUpIcon className="size-4" />
           </button>
-        )}
+        </div>
       </div>
     </div>
   );

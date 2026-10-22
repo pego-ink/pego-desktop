@@ -90,7 +90,7 @@ export const FileMenu = () => {
           event.preventDefault();
           setOpen(true);
         }}
-        className="-mx-1 flex h-5 min-w-0 items-center gap-1 self-start rounded-sm px-1 text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-accent"
+        className="-mx-1 flex h-5 min-w-0 items-center gap-1 self-start rounded-sm px-1 text-[13px] font-medium text-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-accent"
       >
         <span className="max-w-full truncate">{fileName}</span>
         <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
@@ -104,7 +104,7 @@ export const FileMenu = () => {
           role="menu"
           aria-label="File"
           onKeyDown={onMenuKeyDown}
-          className="absolute top-full right-2 left-2 z-50 mt-1 rounded-lg border border-border bg-card p-1 shadow-lg"
+          className="absolute top-full right-2 left-2 z-50 mt-1 origin-top-left animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] rounded-lg border border-border bg-card p-1 shadow-lg"
         >
           {ITEMS.map((item) => (
             <button

@@ -318,7 +318,10 @@ export const ModelSettingsDialog = ({
                 disabled={!connected || refreshing}
                 onClick={() => refreshAgents()}
               >
-                <RefreshCwIcon aria-hidden className={cn(refreshing && "animate-spin")} />
+                <RefreshCwIcon
+                  aria-hidden
+                  className={cn(refreshing && "motion-safe:animate-spin")}
+                />
                 Refresh detection
               </Button>
             </div>

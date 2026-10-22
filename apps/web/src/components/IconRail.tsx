@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ComponentType, type KeyboardEvent, type SVGProps } from "react";
 import { LayersIcon, SparklesIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
+import { Tooltip } from "@pego/ui/components/tooltip";
 import {
   RAIL_TABS,
   moveRailFocus,
@@ -88,7 +89,7 @@ export const IconRail = ({ state, agentWorking, onPress }: Props) => {
           const focusable = state.tab === item.id;
           const shortcut = `${ALT}${index + 1}`;
           return (
-            <div key={item.id} className="group relative">
+            <Tooltip key={item.id} content={item.label} shortcut={shortcut}>
               <button
                 type="button"
                 role="tab"
@@ -100,7 +101,7 @@ export const IconRail = ({ state, agentWorking, onPress }: Props) => {
                 tabIndex={focusable ? 0 : -1}
                 onClick={() => onPress(item.id)}
                 className={cn(
-                  "relative flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4",
+                  "relative flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4",
                   selected && "bg-secondary text-foreground",
                 )}
               >
@@ -108,18 +109,11 @@ export const IconRail = ({ state, agentWorking, onPress }: Props) => {
                 {item.id === "agent" && agentWorking && !selected ? (
                   <span
                     aria-hidden
-                    className="absolute top-1 right-1 size-1.5 animate-pulse rounded-full bg-[#B79CFF]"
+                    className="absolute top-1 right-1 size-1.5 rounded-full bg-[#B79CFF] motion-safe:animate-pulse"
                   />
                 ) : null}
               </button>
-              <span
-                aria-hidden
-                className="pointer-events-none absolute top-1/2 left-full z-50 ml-2 flex -translate-y-1/2 items-center gap-2 rounded-md bg-foreground px-2 py-1 text-xs whitespace-nowrap text-background opacity-0 shadow-md transition-opacity duration-100 group-focus-within:opacity-100 group-hover:opacity-100"
-              >
-                {item.label}
-                <kbd className="font-sans opacity-60">{shortcut}</kbd>
-              </span>
-            </div>
+            </Tooltip>
           );
         })}
       </div>

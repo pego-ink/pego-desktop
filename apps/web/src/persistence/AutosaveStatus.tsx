@@ -6,7 +6,7 @@ import { isFileAutosaveSupported } from "./file-autosave";
 import { useAutosaveStore } from "./use-autosave-store";
 import { useFileStore, useIsDirty } from "./use-file-store";
 
-const FADE_MS = 300;
+const FADE_MS = 200;
 
 /** Keeps "Saved" mounted just long enough to fade out. */
 const useFadeOut = (visible: boolean) => {
@@ -47,15 +47,25 @@ export const AutosaveStatus = () => {
       <span role="status" aria-live="polite" className="sr-only">
         {showDot && status === "idle" ? "Unsaved changes" : SR_TEXT[status]}
       </span>
-      {showDot ? (
-        <span aria-hidden title="Unsaved changes" className="size-1.5 rounded-full bg-foreground" />
+      {/* Always mounted so it can fade; the negative margin cancels its width and the flex gap while hidden. */}
+      <span
+        aria-hidden
+        title={showDot ? "Unsaved changes" : undefined}
+        className={cn(
+          "size-1.5 shrink-0 rounded-full bg-foreground transition-[opacity,scale] duration-200 ease-out",
+          showDot ? "opacity-100" : "-mr-3 scale-50 opacity-0",
+        )}
+      />
+      {status === "saving" ? (
+        <span aria-hidden className="animate-[pego-fade-in_var(--duration-base)_var(--ease-out)]">
+          Saving…
+        </span>
       ) : null}
-      {status === "saving" ? <span aria-hidden>Saving…</span> : null}
       {savedMounted ? (
         <span
           aria-hidden
           className={cn(
-            "transition-opacity duration-300 ease-out",
+            "animate-[pego-fade-in_var(--duration-base)_var(--ease-out)] transition-opacity duration-200 ease-out",
             status === "saved" ? "opacity-100" : "opacity-0",
           )}
         >

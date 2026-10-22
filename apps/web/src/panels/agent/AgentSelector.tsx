@@ -341,6 +341,10 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
   const [modelsFor, setModelsFor] = useState<ModelsTarget | null>(null);
   const [section, setSection] = useState<SettingsSection | null>(null);
   const opensSettings = useRef(false);
+  // View swap: the outgoing menu height becomes the model list's min-height (no shrink-snap), and
+  // swapped views fade in over 100ms. The first view of an open popover does not animate.
+  const viewRef = useRef<HTMLDivElement>(null);
+  const [swap, setSwap] = useState({ animate: false, minHeight: 0 });
 
   const status = agentStatus(info, connected);
   const isApi = backend === "api";
@@ -386,7 +390,14 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
 
   const onOpenChange = (next: boolean) => {
     setOpen(next);
-    if (next) setModelsFor(null);
+    if (!next) return;
+    setSwap({ animate: false, minHeight: 0 });
+    setModelsFor(null);
+  };
+
+  const showModels = (target: ModelsTarget | null) => {
+    setSwap({ animate: true, minHeight: target ? (viewRef.current?.offsetHeight ?? 0) : 0 });
+    setModelsFor(target);
   };
 
   const openSettings = (target: SettingsSection) => {
@@ -407,7 +418,7 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
           disabled={locked}
           aria-label={accessibleName}
           title={locked ? "Agent can't change while a run is active" : fullTitle}
-          className="flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[11px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-foreground"
+          className="flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[11px] text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-foreground"
         >
           {isCustom ? (
             <ServerIcon aria-hidden className="size-3.5 shrink-0" />
@@ -430,7 +441,7 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
           onEscapeKeyDown={(event) => {
             if (modelsFor === null) return;
             event.preventDefault();
-            setModelsFor(null);
+            showModels(null);
           }}
           onCloseAutoFocus={(event) => {
             if (opensSettings.current) {
@@ -444,30 +455,41 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
             if (modelsFor === null || event.key !== "ArrowLeft") return;
             if (event.target instanceof HTMLInputElement) return;
             event.preventDefault();
-            setModelsFor(null);
+            showModels(null);
           }}
           className="max-h-[min(30rem,var(--radix-popover-content-available-height))] w-[280px] max-w-[calc(100vw-1rem)] p-1 overflow-y-auto"
         >
-          {modelsFor?.kind === "local" ? (
-            <ModelsView
-              agentId={modelsFor.id}
-              onBack={() => setModelsFor(null)}
-              onDone={() => setOpen(false)}
-            />
-          ) : modelsFor?.kind === "custom" ? (
-            <CustomModelsView
-              providerId={modelsFor.id}
-              onBack={() => setModelsFor(null)}
-              onDone={() => setOpen(false)}
-            />
-          ) : (
-            <AgentMenu
-              hasKey={hasKey}
-              onClose={() => setOpen(false)}
-              onModels={setModelsFor}
-              onSettings={openSettings}
-            />
-          )}
+          <div
+            key={modelsFor ? `${modelsFor.kind}:${modelsFor.id}` : "menu"}
+            ref={viewRef}
+            style={modelsFor ? { minHeight: swap.minHeight } : undefined}
+            className={
+              swap.animate
+                ? "animate-[pego-fade-in_var(--duration-instant)_var(--ease-out)]"
+                : undefined
+            }
+          >
+            {modelsFor?.kind === "local" ? (
+              <ModelsView
+                agentId={modelsFor.id}
+                onBack={() => showModels(null)}
+                onDone={() => setOpen(false)}
+              />
+            ) : modelsFor?.kind === "custom" ? (
+              <CustomModelsView
+                providerId={modelsFor.id}
+                onBack={() => showModels(null)}
+                onDone={() => setOpen(false)}
+              />
+            ) : (
+              <AgentMenu
+                hasKey={hasKey}
+                onClose={() => setOpen(false)}
+                onModels={showModels}
+                onSettings={openSettings}
+              />
+            )}
+          </div>
         </PopoverContent>
       </Popover>
       <ModelSettingsDialog

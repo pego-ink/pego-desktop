@@ -11,7 +11,7 @@ import { STEP_ICON_LABEL, stepIconKind, type StepIconKind } from "@/panels/agent
 
 const ICON_CLASS: Record<StepIconKind, string> = {
   pending: "text-muted-foreground/60",
-  running: "animate-spin text-foreground",
+  running: "motion-safe:animate-spin text-foreground",
   done: "text-foreground",
   failed: "text-destructive",
   skipped: "text-muted-foreground/60",

@@ -70,7 +70,7 @@ export const PlanPill = () => {
     <div
       ref={rootRef}
       onKeyDown={onKeyDown}
-      className="pointer-events-none absolute top-2 right-3 left-3 z-10 flex flex-col items-end gap-1.5"
+      className="pointer-events-none absolute top-2 right-3 left-3 z-10 flex animate-[pego-fade-in_var(--duration-base)_var(--ease-out)] flex-col items-end gap-1.5"
     >
       <button
         ref={buttonRef}
@@ -81,7 +81,7 @@ export const PlanPill = () => {
         onClick={() => setOpen((value) => !value)}
         className={cn(
           "pointer-events-auto flex h-7 max-w-[min(13rem,70%)] items-center gap-1.5 rounded-full border bg-popover pr-2 pl-2.5 text-xs shadow-sm outline-none",
-          "transition-colors duration-150 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50",
+          "transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]",
           TONE_CLASS[tone],
         )}
       >
@@ -91,7 +91,7 @@ export const PlanPill = () => {
         <ChevronDownIcon
           aria-hidden
           className={cn(
-            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-150 ease-out",
+            "size-3.5 shrink-0 text-muted-foreground transition-transform duration-(--duration-fast) ease-out",
             open && "rotate-180",
           )}
         />
@@ -99,7 +99,7 @@ export const PlanPill = () => {
       {open ? (
         <div
           id={panelId}
-          className="pointer-events-auto max-h-72 w-72 max-w-full overflow-y-auto overscroll-contain rounded-xl border bg-popover p-1 shadow-md"
+          className="pointer-events-auto max-h-72 w-72 origin-top-right animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] max-w-full overflow-y-auto overscroll-contain rounded-xl border bg-popover p-1 shadow-md"
         >
           <PlanList steps={steps} />
         </div>
