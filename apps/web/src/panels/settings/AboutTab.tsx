@@ -5,8 +5,8 @@ import { useUpdateStatus } from "@/desktop/use-update-status";
 import { WEB_VERSION } from "./app-version";
 import { describeUpdate } from "./update-view";
 
-const RELEASES_URL = "https://github.com/yolkmonday/pego/releases";
-const ISSUES_URL = "https://github.com/yolkmonday/pego/issues";
+const RELEASES_URL = "https://github.com/pego-ink/pego-desktop/releases";
+const ISSUES_URL = "https://github.com/pego-ink/pego-desktop/issues";
 
 /** Pego mark (design/logo/pego-mark.svg) without its background tile. */
 const PegoMark = () => (

@@ -6,10 +6,10 @@ review loop short.
 ## Before you start
 
 - **Small fix** (typo, obvious bug, missing test): open a pull request directly.
-- **Feature or behaviour change**: open an [issue](https://github.com/yolkmonday/pego/issues) first and describe the
+- **Feature or behaviour change**: open an [issue](https://github.com/pego-ink/pego-desktop/issues) first and describe the
   problem, not only the solution. Wait for a maintainer to agree on the direction before writing a lot of code.
 - **Security issue**: do not open a public issue. Report it privately through
-  [GitHub security advisories](https://github.com/yolkmonday/pego/security/advisories/new).
+  [GitHub security advisories](https://github.com/pego-ink/pego-desktop/security/advisories/new).
 
 ## Setup
 

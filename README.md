@@ -82,7 +82,7 @@ CI runs the same on every push to `main`.
 1. Bump `version` in `apps/desktop/package.json` in a pull request and merge it into `main`.
 2. Tag the merged commit on `main` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The `release` workflow builds arm64 + x64 dmg/zip, signs with Developer ID, notarizes, verifies, and creates a
-   **draft** release on [yolkmonday/pego](https://github.com/yolkmonday/pego/releases) with the dmg, zip, blockmaps and
+   **draft** release on [pego-ink/pego-desktop](https://github.com/pego-ink/pego-desktop/releases) with the dmg, zip, blockmaps and
    `latest-mac.yml`. Review it, then **publish it to ship the update**: `gh release edit vX.Y.Z --draft=false`.
 
 Installed apps check the published releases of this public repo (launch + 10s, then every 6h), download in the

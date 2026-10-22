@@ -15,8 +15,8 @@ asar: true
 # Publishing itself is done by .github/workflows/release.yml (`--publish never` + gh release).
 publish:
   provider: github
-  owner: yolkmonday
-  repo: pego
+  owner: pego-ink
+  repo: pego-desktop
   releaseType: release
   channel: latest
 extraResources:

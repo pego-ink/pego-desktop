@@ -61,7 +61,7 @@ their blockmaps and `latest-mac.yml` using the built-in `GITHUB_TOKEN` (`content
 
 ## Auto-update
 
-- Feed: published releases of the public repo `yolkmonday/pego` (GitHub provider, no token in the app; `src/constants.ts`
+- Feed: published releases of the public repo `pego-ink/pego-desktop` (GitHub provider, no token in the app; `src/constants.ts`
   and `publish` in `electron-builder.yml`). Drafts are invisible, so **publishing the draft release ships the update**.
 - `electron-builder` is run with `--publish never` in CI; it still writes `latest-mac.yml` (one file listing the arm64 and
   x64 zip + dmg; `channel: latest` keeps that name even for `-beta` versions). macOS updates need the zip target and a
