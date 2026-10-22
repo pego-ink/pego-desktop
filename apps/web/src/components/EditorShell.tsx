@@ -6,6 +6,8 @@ import { AgentPanel } from "@/panels/agent/AgentPanel";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { PropertiesPanel } from "@/panels/PropertiesPanel";
+import { FramePresetsPanel } from "@/panels/frame-presets/FramePresetsPanel";
+import { useToolStore } from "@/store/use-tool-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { showProperties, useLayoutStore } from "@/store/use-layout-store";
 import { Button } from "@pego/ui/components/button";
@@ -71,7 +73,7 @@ const LeftColumn = ({ rail }: { rail: RailState }) => {
       aria-label="Side panel"
       hidden={!rail.open}
       style={{ width: panel.width }}
-      className="relative shrink-0 flex-col border-r border-border bg-card not-hidden:flex"
+      className="relative shrink-0 flex-col border-r border-border bg-card [&:not([hidden])]:flex"
     >
       <FileMenu />
       {RAIL_TABS.map(({ id }) => (
@@ -81,7 +83,7 @@ const LeftColumn = ({ rail }: { rail: RailState }) => {
           role="tabpanel"
           aria-labelledby={railTabId(id)}
           hidden={rail.tab !== id}
-          className="min-h-0 flex-1 flex-col not-hidden:flex"
+          className="min-h-0 flex-1 flex-col [&:not([hidden])]:flex"
         >
           {id === "agent" ? <AgentPanel /> : <LayersPanel />}
         </div>
@@ -118,14 +120,15 @@ const PropertiesToggle = () => {
   );
 };
 
-/** Properties column: hidden while nothing is selected unless the user pinned it open. */
+/** Properties column: hidden while nothing is selected unless pinned or the Frame tool is active. */
 const RightColumn = () => {
   const hasSelection = useDocumentStore((s) => s.selection.length > 0);
   const pinned = useLayoutStore((s) => s.propertiesPinned);
-  if (!showProperties(hasSelection ? 1 : 0, pinned)) return null;
+  const frameTool = useToolStore((s) => s.tool === "frame");
+  if (!showProperties(hasSelection ? 1 : 0, pinned, frameTool)) return null;
   return (
     <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
-      <PropertiesPanel />
+      {frameTool ? <FramePresetsPanel /> : <PropertiesPanel />}
     </aside>
   );
 };

@@ -29,6 +29,12 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   },
 }));
 
-/** The Properties panel shows while something is selected, or always when pinned. */
-export const showProperties = (selectionCount: number, pinned: boolean): boolean =>
-  pinned || selectionCount > 0;
+/**
+ * The right column shows while something is selected, when pinned, or while the Frame tool is
+ * active (it then holds the frame size presets).
+ */
+export const showProperties = (
+  selectionCount: number,
+  pinned: boolean,
+  frameToolActive = false,
+): boolean => pinned || selectionCount > 0 || frameToolActive;

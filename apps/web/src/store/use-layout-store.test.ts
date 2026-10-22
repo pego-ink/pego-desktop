@@ -7,4 +7,9 @@ describe("showProperties", () => {
     expect(showProperties(0, true)).toBe(true);
     expect(showProperties(2, false)).toBe(true);
   });
+
+  test("shown while the frame tool is active", () => {
+    expect(showProperties(0, false, true)).toBe(true);
+    expect(showProperties(0, false, false)).toBe(false);
+  });
 });
