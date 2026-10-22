@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { useVisibleRun } from "@/agent/use-agent-store";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { formatElapsed, runStartedAt, workingLabel } from "@/panels/agent/working-indicator";
 
@@ -55,10 +55,10 @@ const Elapsed = ({ since }: { since: number }) => {
 };
 
 const ActiveIndicator = () => {
-  const status = useAgentStore((s) => s.status);
-  const steps = useAgentStore((s) => s.steps);
-  const runLabel = useAgentStore((s) => s.runLabel);
-  const firstLogAt = useAgentStore((s) => s.log[0]?.at);
+  const status = useVisibleRun((s) => s.status);
+  const steps = useVisibleRun((s) => s.steps);
+  const runLabel = useVisibleRun((s) => s.runLabel);
+  const firstLogAt = useVisibleRun((s) => s.log[0]?.at);
   const [mountedAt] = useState(() => Date.now());
   const label = workingLabel(status, steps);
 
@@ -81,7 +81,7 @@ const ActiveIndicator = () => {
 };
 
 export const WorkingIndicator = () => {
-  const runId = useAgentStore((s) => s.runId);
-  const active = useAgentStore((s) => isRunActive(s.status));
+  const runId = useVisibleRun((s) => s.runId);
+  const active = useVisibleRun((s) => isRunActive(s.status));
   return active ? <ActiveIndicator key={runId ?? "run"} /> : null;
 };

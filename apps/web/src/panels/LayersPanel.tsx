@@ -38,7 +38,8 @@ export const LayersPanel = () => {
       ?.scrollIntoView({ block: "nearest" });
   }, [selection, collapsed]);
 
-  const rows = useMemo(() => flattenLayers(doc, collapsed), [doc, collapsed]);
+  const pageId = useDocumentStore((s) => s.pageId);
+  const rows = useMemo(() => flattenLayers(doc, collapsed, pageId), [doc, collapsed, pageId]);
   const selected = useMemo(() => new Set(selection), [selection]);
 
   const onToggle = useCallback(

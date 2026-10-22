@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { exportCode } from "./code";
-import { exportDoc } from "./test-docs";
+import { docWith, exportDoc } from "./test-docs";
 import { setIconProvider } from "./icons";
 
 const files = (format: "react-tailwind" | "html-css", id = "page") =>
@@ -133,20 +133,15 @@ describe("edge cases", () => {
 
   test("a hugging absolute frame is sized from the layout when given", () => {
     const layout = new Map([["overlay", { x: 0, y: 0, width: 160, height: 60 }]]);
-    const doc = {
-      ...exportDoc,
-      children: [
-        {
-          type: "frame" as const,
-          id: "overlay",
-          x: 0,
-          y: 0,
-          layout: "none" as const,
-          fill: "#000000",
-          children: [],
-        },
-      ],
-    };
+    const doc = docWith({
+      type: "frame" as const,
+      id: "overlay",
+      x: 0,
+      y: 0,
+      layout: "none" as const,
+      fill: "#000000",
+      children: [],
+    });
     const css = exportCode(doc, "overlay", { format: "html-css", layout }).find(
       (f) => f.path === "styles.css",
     )?.contents;
@@ -154,19 +149,14 @@ describe("edge cases", () => {
   });
 
   test("a path with a 0x0 layout box is sized from its geometry", () => {
-    const doc = {
-      ...exportDoc,
-      children: [
-        {
-          type: "path" as const,
-          id: "star",
-          x: 0,
-          y: 0,
-          geometry: "M0 0 L60 40 L10 80 Z",
-          fill: "#ffffff",
-        },
-      ],
-    };
+    const doc = docWith({
+      type: "path" as const,
+      id: "star",
+      x: 0,
+      y: 0,
+      geometry: "M0 0 L60 40 L10 80 Z",
+      fill: "#ffffff",
+    });
     const layout = new Map([["star", { x: 0, y: 0, width: 0, height: 0 }]]);
     const tsx = exportCode(doc, "star", { format: "react-tailwind", layout }).find((f) =>
       f.path.endsWith(".tsx"),

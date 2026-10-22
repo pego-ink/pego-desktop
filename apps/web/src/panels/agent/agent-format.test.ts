@@ -74,6 +74,7 @@ describe("agent-format", () => {
   const codex: LocalAgentInfo = {
     id: "codex",
     name: "Codex",
+    steer: "restart",
     installed: true,
     supportsModels: true,
   };

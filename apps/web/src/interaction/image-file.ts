@@ -184,9 +184,13 @@ const siblingsOf = (doc: PegoDocument, parentId: string | null): readonly PegoNo
 
 export type ImagePlacement = ReturnType<typeof resolvePlacement>;
 
-/** Placement of a new node under the doc point (deepest frame there, or the root). */
-export const placementAt = (doc: PegoDocument, layout: Layout, point: { x: number; y: number }) =>
-  resolvePlacement(doc, layout, hitPath(doc, layout, point.x, point.y));
+/** Placement of a new node under the doc point (deepest frame there, or the shown page). */
+export const placementAt = (
+  doc: PegoDocument,
+  layout: Layout,
+  point: { x: number; y: number },
+  pageId: string | null = null,
+) => resolvePlacement(doc, layout, hitPath(doc, layout, point.x, point.y, { pageId }), pageId);
 
 /** Image node for `data`, top-left at doc box `box` (relative to the placement's parent). */
 export const buildImageNode = (
@@ -213,7 +217,7 @@ export const insertImageCentered = (data: ImageAsset, center: { x: number; y: nu
   const store = useDocumentStore.getState();
   const layout = getLayout(store.doc);
   const size = placementSize(data);
-  const placement = placementAt(store.doc, layout, center);
+  const placement = placementAt(store.doc, layout, center, store.pageId);
   const node = buildImageNode(store.doc, data, placement, {
     x: Math.round(center.x - size.width / 2),
     y: Math.round(center.y - size.height / 2),

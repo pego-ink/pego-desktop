@@ -31,7 +31,7 @@ describe("createUpdateController", () => {
     const { updater, feed } = setup();
     expect(updater.autoDownload).toBe(true);
     expect(updater.autoInstallOnAppQuit).toBe(true);
-    expect(feed).toEqual([{ provider: "github", owner: "yolkmonday", repo: "pego" }]);
+    expect(feed).toEqual([{ provider: "github", owner: "pego-ink", repo: "pego-desktop" }]);
   });
 
   test("maps electron-updater events to published statuses", () => {

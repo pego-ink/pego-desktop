@@ -3,6 +3,7 @@ import type { Paragraph } from "canvaskit-wasm";
 import { resolveColor, resolveNumber, resolveString } from "@pego/doc";
 import type { TextMeasurer, TextNode, Variables } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
+import { useFontEvents } from "@/fonts/font-events";
 import { createLruCache } from "@/canvas/render-cache";
 
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
@@ -26,6 +27,8 @@ export const paragraphKey = (
     wrapWidth: number | undefined,
     /** "var" when the face is drawn through a variable-font `wght` axis, else "static". */
     axes?: "var" | "static",
+    lineHeight?: number,
+    letterSpacing?: number,
   ],
 ): string => JSON.stringify(parts);
 
@@ -46,10 +49,14 @@ export const getParagraph = (
   const size = resolveNumber(node.fontSize, variables, 14);
   const weight = nearestWeight(resolveNumber(node.fontWeight, variables, 400));
   const align = node.textAlign ?? "left";
-  const family = node.fontFamily ?? fontFamily;
+  const family =
+    node.fontFamily === undefined ? fontFamily : resolveString(node.fontFamily, variables);
   const italic = node.fontStyle === "italic";
   const variations = fontVariationsFor(family, weight);
-  const key = paragraphKey([
+  const lineHeight = resolveNumber(node.lineHeight, variables, 0);
+  const letterSpacing = resolveNumber(node.letterSpacing, variables, 0);
+  // A face that finished loading changes the shape: the font version is part of the key.
+  const key = `${useFontEvents.getState().version}|${paragraphKey([
     content,
     color,
     size,
@@ -59,7 +66,9 @@ export const getParagraph = (
     family,
     wrapWidth,
     variations ? ("var" as const) : ("static" as const),
-  ]);
+    lineHeight,
+    letterSpacing,
+  ])}`;
   const cached = paragraphs.get(key);
   if (cached) return cached;
 
@@ -73,6 +82,9 @@ export const getParagraph = (
         slant: italic ? ck.FontSlant.Italic : ck.FontSlant.Upright,
       },
       ...(variations ? { fontVariations: variations } : {}),
+      // CSS-like line height: the extra leading is split above and below each line.
+      ...(lineHeight > 0 ? { heightMultiplier: lineHeight, halfLeading: true } : {}),
+      ...(letterSpacing !== 0 ? { letterSpacing } : {}),
     },
     textAlign: ck.TextAlign[align === "center" ? "Center" : align === "right" ? "Right" : "Left"],
   });

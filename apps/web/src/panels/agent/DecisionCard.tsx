@@ -2,7 +2,7 @@ import { useEffect, useId, useRef, useState, type KeyboardEvent, type ReactNode 
 import { CheckIcon, CircleHelpIcon, CornerDownLeftIcon, PencilIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import { answerDecision } from "@/agent/run";
-import { useAgentStore, type PendingDecision } from "@/agent/use-agent-store";
+import { useVisibleRun, type PendingDecision } from "@/agent/use-agent-store";
 import {
   isTypingTarget,
   nextRowIndex,
@@ -78,7 +78,7 @@ export const DecisionCard = ({ decision }: { decision: PendingDecision }) => {
   const otherRow = options.length;
   const questionId = useId();
   const headingId = useId();
-  const stepTitle = useAgentStore((s) =>
+  const stepTitle = useVisibleRun((s) =>
     decision.stepId ? s.steps.find((step) => step.id === decision.stepId)?.title : undefined,
   );
 

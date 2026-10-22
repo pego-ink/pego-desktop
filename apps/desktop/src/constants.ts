@@ -47,5 +47,5 @@ export const CONTENT_SECURITY_POLICY = [
 ].join("; ");
 
 /** Public GitHub repo whose published releases are the update feed (no token needed). */
-export const UPDATE_OWNER = "yolkmonday";
-export const UPDATE_REPO = "pego";
+export const UPDATE_OWNER = "pego-ink";
+export const UPDATE_REPO = "pego-desktop";

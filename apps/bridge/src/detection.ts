@@ -34,7 +34,12 @@ export const createAgentDetector = (options: DetectorOptions = {}) => {
   let inflight: Promise<LocalAgentInfo[]> | undefined;
 
   const detectOne = async (adapter: AgentAdapter): Promise<LocalAgentInfo> => {
-    const base = { id: adapter.id, name: adapter.name, supportsModels: adapter.supportsModels };
+    const base = {
+      id: adapter.id,
+      name: adapter.name,
+      supportsModels: adapter.supportsModels,
+      steer: adapter.steer ?? "restart",
+    };
     let timer: ReturnType<typeof setTimeout> | undefined;
     const timeout = new Promise<AgentDetection>((resolve) => {
       timer = setTimeout(

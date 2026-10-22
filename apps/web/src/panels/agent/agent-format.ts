@@ -19,6 +19,13 @@ export const isRunActive = (status: RunStatus): boolean =>
 export const isRunFinished = (status: RunStatus): boolean =>
   status === "done" || status === "failed" || status === "cancelled";
 
+/** "512 B", "48 KB", "1.2 MB". */
+export const formatBytes = (bytes: number): string => {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+};
+
 export const formatCost = (usd: number): string => `$${usd.toFixed(2)}`;
 
 export const formatTokens = (count: number): string => {

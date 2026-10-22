@@ -7,29 +7,38 @@ const node = (input: Record<string, unknown>): PegoNode => nodeSchema.parse(inpu
 
 const makeDoc = (): PegoDocument =>
   documentSchema.parse({
-    version: 0,
+    version: 3,
     id: "doc",
     name: "Test",
     variables: { accent: { type: "color", value: "#0E7C5A" } },
     children: [
       {
-        type: "frame",
-        id: "f1",
+        type: "page",
+        id: "page-1",
+        name: "Page 1",
+        x: 0,
+        y: 0,
         children: [
-          { type: "rectangle", id: "r1", x: 10, y: 20, fill: "#112233" },
-          { type: "ellipse", id: "e1" },
           {
-            type: "group",
-            id: "g1",
+            type: "frame",
+            id: "f1",
             children: [
-              { type: "text", id: "t1", content: "hi" },
-              { type: "rectangle", id: "r2" },
+              { type: "rectangle", id: "r1", x: 10, y: 20, fill: "#112233" },
+              { type: "ellipse", id: "e1" },
+              {
+                type: "group",
+                id: "g1",
+                children: [
+                  { type: "text", id: "t1", content: "hi" },
+                  { type: "rectangle", id: "r2" },
+                ],
+              },
             ],
           },
+          { type: "frame", id: "f2", children: [] },
+          { type: "rectangle", id: "r3" },
         ],
       },
-      { type: "frame", id: "f2", children: [] },
-      { type: "rectangle", id: "r3" },
     ],
   });
 
@@ -76,14 +85,14 @@ describe("applyOp: insert", () => {
     expect(ids(next, "f1")).toEqual(["r1", "e1", "g1", "n"]);
   });
 
-  test("inserts at root with parentId null", () => {
+  test("inserts at the top of a page", () => {
     const next = applyOp(makeDoc(), {
       op: "insert",
-      parentId: null,
+      parentId: "page-1",
       index: 0,
       node: node({ type: "ellipse", id: "n" }),
     });
-    expect(ids(next, null)).toEqual(["n", "f1", "f2", "r3"]);
+    expect(ids(next, "page-1")).toEqual(["n", "f1", "f2", "r3"]);
   });
 
   test("inserts at a specific index", () => {
@@ -327,9 +336,9 @@ describe("applyOp: move", () => {
     expect(ids(next, "f2")).toEqual(["r1"]);
   });
 
-  test("moves to the document root at an index", () => {
-    const next = applyOp(makeDoc(), { op: "move", id: "r1", parentId: null, index: 1 });
-    expect(ids(next, null)).toEqual(["f1", "r1", "f2", "r3"]);
+  test("moves to the top of a page at an index", () => {
+    const next = applyOp(makeDoc(), { op: "move", id: "r1", parentId: "page-1", index: 1 });
+    expect(ids(next, "page-1")).toEqual(["f1", "r1", "f2", "r3"]);
   });
 
   test("index is the final position within the same parent, moving forward", () => {
@@ -402,7 +411,7 @@ describe("applyOp: move", () => {
 
   test("round-trips across parents", () => {
     roundTrip(makeDoc(), { op: "move", id: "r1", parentId: "f2" });
-    roundTrip(makeDoc(), { op: "move", id: "t1", parentId: null, index: 1 });
+    roundTrip(makeDoc(), { op: "move", id: "t1", parentId: "page-1", index: 1 });
     roundTrip(makeDoc(), { op: "move", id: "r3", parentId: "g1", index: 1 });
   });
 });
@@ -565,5 +574,54 @@ describe("applyOps", () => {
     const result = applyOps(doc, []);
     expect(result.doc).toStrictEqual(doc);
     expect(result.inverse).toEqual([]);
+  });
+});
+
+describe("pages", () => {
+  const page = (id: string) => node({ type: "page", id, name: id, children: [] });
+
+  test("pages go only at the root, and only pages go there", () => {
+    const withPage = applyOp(makeDoc(), { op: "insert", parentId: null, node: page("p2") });
+    expect(withPage.children.map((p) => p.id)).toEqual(["page-1", "p2"]);
+    const codes = [
+      () =>
+        applyOp(makeDoc(), {
+          op: "insert",
+          parentId: null,
+          node: node({ type: "ellipse", id: "e" }),
+        }),
+      () => applyOp(makeDoc(), { op: "insert", parentId: "f1", node: page("p3") }),
+      () => applyOp(makeDoc(), { op: "move", id: "r1", parentId: null }),
+      () => applyOp(withPage, { op: "move", id: "p2", parentId: "f1" }),
+      () => applyOp(makeDoc(), { op: "replace", id: "f1", node: page("p4") }),
+    ].map((run) => {
+      try {
+        run();
+        return "ok";
+      } catch (error) {
+        return (error as OpError).code;
+      }
+    });
+    expect(codes).toEqual(Array(5).fill("invalid_parent"));
+  });
+
+  test("nodes move between pages and undo restores them", () => {
+    const doc = applyOp(makeDoc(), { op: "insert", parentId: null, node: page("p2") });
+    roundTrip(doc, { op: "move", id: "f2", parentId: "p2" });
+    const moved = applyOp(doc, { op: "move", id: "f2", parentId: "p2" });
+    expect(ids(moved, "p2")).toEqual(["f2"]);
+  });
+
+  test("the last page cannot be deleted, others can", () => {
+    expect(() => applyOp(makeDoc(), { op: "delete", id: "page-1" })).toThrow(
+      expect.objectContaining({ code: "last_page" }),
+    );
+    const doc = applyOp(makeDoc(), { op: "insert", parentId: null, node: page("p2") });
+    roundTrip(doc, { op: "delete", id: "page-1" });
+  });
+
+  test("pages are renamed with update", () => {
+    const next = applyOp(makeDoc(), { op: "update", id: "page-1", props: { name: "Main flow" } });
+    expect(next.children[0]?.name).toBe("Main flow");
   });
 });

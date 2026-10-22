@@ -21,7 +21,18 @@ export type PegoDesktopApi = {
   installUpdate: () => void;
   /** Subscribe to update status changes; returns an unsubscribe function. */
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
+  /** Native menu commands the page handles itself (absent in older shells). */
+  onMenuCommand?: (listener: (command: DesktopMenuCommand) => void) => () => void;
+  /**
+   * Subscribe to full screen changes (replays the current state); returns an unsubscribe
+   * function. Missing in desktop builds that still draw the native title bar.
+   */
+  onFullScreenChange?: (listener: (fullScreen: boolean) => void) => () => void;
+  /** Point the native theme (traffic lights, dialogs, menus) at the editor's theme mode. */
+  setThemeSource?: (mode: "light" | "dark" | "system") => void;
 };
+
+export type DesktopMenuCommand = "select-all" | "close-tab";
 
 export const desktopApi = (): PegoDesktopApi | undefined => {
   const api = (globalThis as { pegoDesktop?: Partial<PegoDesktopApi> }).pegoDesktop;

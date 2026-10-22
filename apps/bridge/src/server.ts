@@ -1,4 +1,9 @@
-import { BRIDGE_PROTOCOL_VERSION, type BridgeToEditor, type RunEvent } from "@pego/agent";
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  type BridgeToEditor,
+  type EditorToBridge,
+  type RunEvent,
+} from "@pego/agent";
 import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
 import { createEditorHub, MAX_EDITOR_SOCKETS, type EditorSocket } from "./editor-hub";
 import { createAgentDetector, type AgentDetector } from "./detection";
@@ -7,6 +12,10 @@ import { handleMcpRequest } from "./mcp";
 import { parseEditorMessage } from "./messages";
 import { createRunManager, parseRunMcpPath, type RunManager } from "./runs";
 import { isHostAllowed, isOriginAllowed } from "./security";
+import { writeDocumentFile } from "./files";
+import { resolve, sep } from "node:path";
+import { listDesignFiles, readProjectFile } from "./project";
+import { createProject, listProjects } from "./projects";
 
 type SocketData = { greeted: boolean };
 
@@ -32,6 +41,41 @@ const sendTo = (ws: { send: (data: string) => unknown }, message: BridgeToEditor
 
 const text = (status: number, body: string): Response =>
   new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+
+type ProjectRequest = Extract<EditorToBridge, { type: "project_request" }>;
+
+/** List the design folder or read one file from it; failures become `ok: false` replies. */
+export const answerProjectRequest = async (
+  root: string | null,
+  request: ProjectRequest,
+): Promise<BridgeToEditor> => {
+  const base = { type: "project_response" as const, requestId: request.requestId };
+  if (!root) return { ...base, ok: false, error: "No design folder in this project.", root };
+  try {
+    if (request.action === "projects") {
+      return { ...base, ok: true, root, projects: await listProjects(root) };
+    }
+    if (request.action === "create_project") {
+      return { ...base, ok: true, root, project: await createProject(root, request.name ?? "") };
+    }
+    if (request.action === "list") {
+      const dir = request.path ? resolve(request.path) : root;
+      if (dir !== root && !dir.startsWith(root + sep)) {
+        return { ...base, ok: false, root, error: "Not in the project's design folder." };
+      }
+      return { ...base, ok: true, root, files: await listDesignFiles(dir) };
+    }
+    if (!request.path) return { ...base, ok: false, root, error: "Missing path." };
+    return { ...base, ok: true, root, text: await readProjectFile(root, request.path) };
+  } catch (error) {
+    return {
+      ...base,
+      ok: false,
+      root,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
 
 export const startBridge = (options: BridgeOptions) => {
   const hub = createEditorHub({ toolTimeoutMs: options.toolTimeoutMs });
@@ -83,11 +127,15 @@ export const startBridge = (options: BridgeOptions) => {
         }
         const length = Number(request.headers.get("content-length") ?? 0);
         if (length > MAX_MCP_BODY_BYTES) return text(413, "Payload too large");
-        if (pathname === "/mcp") return handleMcpRequest(request, hub.callTool);
-        // Run-scoped endpoint: the token is the credential and dies with the run.
+        const designDir = options.designDir ?? null;
+        if (pathname === "/mcp") return handleMcpRequest(request, hub.callTool, { designDir });
+        // Run-scoped endpoint: the token is the credential and dies with the run. No file tools
+        // there: a run edits the document of the editor that started it and must not swap it.
         const run = runToken ? runs.resolveRunToken(runToken) : undefined;
         if (!run) return text(404, "Not found");
-        return handleMcpRequest(request, hub.callTool, { kind: "run", runId: run.runId });
+        return handleMcpRequest(request, hub.callTool, {
+          fixedSource: { kind: "run", runId: run.runId },
+        });
       }
 
       return text(404, "Not found");
@@ -124,6 +172,7 @@ export const startBridge = (options: BridgeOptions) => {
               claudeCodeAvailable: agents.some((a) => a.id === "claude-code" && a.installed),
               mcpUrl: `http://127.0.0.1:${server.port}/mcp`,
               agents,
+              projectDir: options.designDir ?? null,
             };
             sendTo(ws, welcome);
           });
@@ -158,6 +207,29 @@ export const startBridge = (options: BridgeOptions) => {
             ...(message.model ? { model: message.model } : {}),
             ...(message.attachments?.length ? { attachments: message.attachments } : {}),
           });
+        } else if (message.type === "run_steer") {
+          const { runId } = message;
+          // Only the owner may steer; a finished or foreign run is ignored.
+          if (hub.getRunOwner(runId) !== socket) {
+            console.debug(`run_steer ignored: no run ${runId} owned by this editor`);
+            return;
+          }
+          void runs
+            .steer(runId, {
+              text: message.text,
+              ...(message.attachments?.length ? { attachments: message.attachments } : {}),
+            })
+            .then((result) => {
+              if (result === "unknown") {
+                console.debug(`run_steer ignored: run ${runId} is not live`);
+                return;
+              }
+              // The editor restarts non-native agents itself and never sends them run_steer. No
+              // run_event here: the editor treats an "error" event as the end of the run.
+              if (result === "unsupported") {
+                console.debug(`run_steer ignored: agent of run ${runId} has no native steer`);
+              }
+            });
         } else if (message.type === "agents_refresh") {
           void detector.detectAll(true).then((agents) => sendTo(ws, { type: "agents", agents }));
         } else if (message.type === "models_request") {
@@ -167,8 +239,28 @@ export const startBridge = (options: BridgeOptions) => {
             .then(({ models, error }) =>
               sendTo(ws, { type: "models", agentId, models, ...(error ? { error } : {}) }),
             );
-        } else if (hub.getRunOwner(message.runId) === socket) {
+        } else if (message.type === "run_cancel") {
+          if (hub.getRunOwner(message.runId) !== socket) return;
           runs.cancel(message.runId);
+        } else if (message.type === "project_request") {
+          void answerProjectRequest(options.designDir ?? null, message).then((reply) =>
+            sendTo(ws, reply),
+          );
+        } else if (message.type === "save_file") {
+          const { requestId, path, text: content } = message;
+          const fail = (error: string) =>
+            sendTo(ws, { type: "save_file_result", requestId, ok: false, error });
+          if (!hub.claimFile(resolve(path), socket)) {
+            fail(
+              "This file is open in another Pego window that was used more recently; " +
+                "focus this window to save from it.",
+            );
+            return;
+          }
+          void writeDocumentFile(path, content).then(
+            () => sendTo(ws, { type: "save_file_result", requestId, ok: true }),
+            (error: unknown) => fail(error instanceof Error ? error.message : String(error)),
+          );
         }
       },
       open() {

@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import type { Layout } from "@pego/doc";
 import { exportSvg } from "./svg";
-import { exportDoc } from "./test-docs";
+import { docWith, exportDoc } from "./test-docs";
 
 const layout: Layout = new Map([
   ["page", { x: 100, y: 0, width: 400, height: 300 }],
@@ -56,34 +56,29 @@ describe("exportSvg", () => {
   });
 
   test("clip frames wrap their children in a clip group", () => {
-    const doc = {
-      ...exportDoc,
+    const doc = docWith({
+      type: "frame" as const,
+      id: "f",
+      x: 0,
+      y: 0,
+      width: 100,
+      height: 50,
+      layout: "none" as const,
+      clip: true,
+      cornerRadius: 10,
+      fill: "#112233",
       children: [
         {
-          type: "frame" as const,
-          id: "f",
-          x: 0,
+          type: "rectangle" as const,
+          id: "r",
+          x: 90,
           y: 0,
-          width: 100,
+          width: 40,
           height: 50,
-          layout: "none" as const,
-          clip: true,
-          cornerRadius: 10,
-          fill: "#112233",
-          children: [
-            {
-              type: "rectangle" as const,
-              id: "r",
-              x: 90,
-              y: 0,
-              width: 40,
-              height: 50,
-              fill: "#ffffff80",
-            },
-          ],
+          fill: "#ffffff80",
         },
       ],
-    };
+    });
     const out = exportSvg(doc, "f", {
       layout: new Map([
         ["f", { x: 0, y: 0, width: 100, height: 50 }],

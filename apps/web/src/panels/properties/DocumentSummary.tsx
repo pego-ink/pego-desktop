@@ -6,7 +6,7 @@ const VariableValue = ({ variable }: { variable: PegoDocument["variables"][strin
     <span className="flex items-center gap-1.5 font-mono">
       <span
         aria-hidden
-        className="size-3 rounded-[3px] border border-white/15"
+        className="size-3 rounded-[3px] border border-border"
         style={{ background: variable.value }}
       />
       {variable.value.toUpperCase()}

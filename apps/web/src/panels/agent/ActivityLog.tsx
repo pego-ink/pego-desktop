@@ -1,13 +1,19 @@
 import { useId, useState } from "react";
-import { AlertCircleIcon, ChevronRightIcon, InfoIcon, WrenchIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  ChevronRightIcon,
+  CornerDownRightIcon,
+  ImageIcon,
+  InfoIcon,
+  WrenchIcon,
+} from "lucide-react";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
-import { useAgentStore, type AgentLogEntry } from "@/agent/use-agent-store";
+import type { AgentLogEntry } from "@/agent/use-agent-store";
 import { AssistantText } from "@/panels/agent/AssistantText";
 import { AttachmentStrip } from "@/panels/agent/attachments/AttachmentStrip";
+import { formatBytes } from "@/panels/agent/agent-format";
 import { collapseRuns, countFailed, groupLog, type ToolGroup } from "@/panels/agent/tool-groups";
-
-const ACTIVE_STATUSES = new Set(["planning", "running", "awaiting_decision"]);
 
 const ENTER_CLASS = "animate-[pego-slide-up-in_160ms_var(--ease-out)]";
 
@@ -84,6 +90,25 @@ const ToolGroupRow = ({
   );
 };
 
+const STEERED_LABELS = {
+  pending: "Sending…",
+  delivered: "Steered",
+  failed: "Not delivered",
+} as const;
+
+/** Small tag on a user bubble that was sent into the running agent. */
+const SteeredLabel = ({ state }: { state: keyof typeof STEERED_LABELS }) => (
+  <span
+    className={cn(
+      "flex items-center gap-1 self-end text-[11px] leading-none text-muted-foreground",
+      state === "failed" && "text-destructive",
+    )}
+  >
+    <CornerDownRightIcon aria-hidden className="size-3" />
+    {STEERED_LABELS[state]}
+  </span>
+);
+
 const Entry = ({
   entry,
   className,
@@ -109,6 +134,21 @@ const Entry = ({
               className="flex flex-wrap justify-end gap-1"
             />
           ) : null}
+          {entry.attachmentsMeta?.length ? (
+            <span className="flex flex-wrap justify-end gap-1">
+              {entry.attachmentsMeta.map((file, index) => (
+                <span
+                  key={`${file.name}-${index}`}
+                  title={`${file.name} · ${formatBytes(file.size)}`}
+                  className="flex max-w-40 items-center gap-1 rounded-sm bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                >
+                  <ImageIcon aria-hidden className="size-3 shrink-0" />
+                  <span className="truncate">{file.name}</span>
+                </span>
+              ))}
+            </span>
+          ) : null}
+          {entry.steered ? <SteeredLabel state={entry.steered} /> : null}
           <span className="whitespace-pre-wrap">{entry.text}</span>
         </li>
       );
@@ -145,9 +185,18 @@ const Entry = ({
   }
 };
 
-export const ActivityLog = ({ log }: { log: readonly AgentLogEntry[] }) => {
+/**
+ * One turn's activity. `active` marks the turn that is running right now (its last tool group
+ * spins); earlier turns of the session are never live.
+ */
+export const ActivityLog = ({
+  log,
+  active = false,
+}: {
+  log: readonly AgentLogEntry[];
+  active?: boolean;
+}) => {
   const count = log.length;
-  const active = useAgentStore((s) => ACTIVE_STATUSES.has(s.status));
   const items = groupLog(log);
   // Items present on first render do not animate in; only entries that arrive afterwards do.
   const [initialIds] = useState(

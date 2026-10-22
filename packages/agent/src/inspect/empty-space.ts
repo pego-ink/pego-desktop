@@ -1,4 +1,4 @@
-import type { Box, Layout, PegoDocument } from "@pego/doc";
+import { pageOrFirst, type Box, type Layout, type PegoDocument } from "@pego/doc";
 
 export type Direction = "right" | "below" | "left" | "above";
 
@@ -62,11 +62,13 @@ export const findEmptySpace = (
   doc: PegoDocument,
   layout: Layout,
   request: PlacementRequest,
+  /** Page to place on (default: the first page). Other pages do not block. */
+  pageId?: string | null,
 ): Placement => {
   const direction = request.direction ?? "right";
   const padding = request.padding ?? 80;
-  const occupied = doc.children
-    .map((node) => layout.get(node.id))
+  const occupied = pageOrFirst(doc, pageId)
+    .children.map((node) => layout.get(node.id))
     .filter((box): box is Box => box !== undefined);
   const size: Box = { x: 0, y: 0, width: request.width, height: request.height };
 

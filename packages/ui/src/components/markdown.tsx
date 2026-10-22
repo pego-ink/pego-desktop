@@ -171,7 +171,10 @@ const BlockView = ({ block }: { block: Block }) => {
 export const Markdown = memo(({ text, className }: { text: string; className?: string }) => {
   const blocks = useMemo(() => parseMarkdown(text), [text]);
   return (
-    <div className={cn("min-w-0 space-y-1.5 text-sm leading-5 break-words", className)}>
+    <div
+      data-selectable
+      className={cn("min-w-0 space-y-1.5 text-sm leading-5 break-words", className)}
+    >
       {renderBlocks(blocks)}
     </div>
   );

@@ -46,3 +46,37 @@ describe("opSchema", () => {
     expect(opSchema.safeParse({ op: "explode" }).success).toBe(false);
   });
 });
+
+describe("v1 props", () => {
+  test("parses effects, per-side stroke, text spacing and path viewBox", () => {
+    const frame = nodeSchema.parse({
+      type: "frame",
+      id: "f",
+      stroke: { color: "#000", width: [0, 0, 1, 0] },
+      effects: [
+        { type: "shadow", color: "#00000033", y: 4, blur: 8 },
+        { type: "blur", radius: 2 },
+      ],
+      children: [
+        { type: "text", id: "t", content: "x", lineHeight: 1.4, letterSpacing: "$tight" },
+        { type: "path", id: "p", geometry: "M0 0L1 1", viewBox: [0, 0, 24, 24] },
+      ],
+    });
+    expect(frame).toMatchObject({
+      effects: [
+        { type: "shadow", x: 0, y: 4, blur: 8 },
+        { type: "blur", radius: 2 },
+      ],
+    });
+  });
+
+  test("rejects malformed effects and strokes", () => {
+    const bad = [
+      { type: "rectangle", id: "r", effects: [{ type: "glow" }] },
+      { type: "rectangle", id: "r", effects: [{ type: "shadow" }] },
+      { type: "rectangle", id: "r", stroke: { color: "#000", width: [1, 2] } },
+      { type: "path", id: "p", geometry: "M0 0", viewBox: [0, 0, 24] },
+    ];
+    for (const node of bad) expect(nodeSchema.safeParse(node).success).toBe(false);
+  });
+});

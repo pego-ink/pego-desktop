@@ -1,8 +1,8 @@
 import { toast } from "sonner";
-import type { PegoDocument } from "@pego/doc";
+import { importPen, type PegoDocument } from "@pego/doc";
+import { newDocumentTab, openDocument } from "@/workspace/use-workspace-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import {
-  createEmptyDocument,
   DEFAULT_FILE_NAME,
   FILE_EXTENSION,
   FILE_MIME,
@@ -15,54 +15,93 @@ import {
   getSaveFilePicker,
   type PegoFileHandle,
 } from "./fs-access";
+import { savedFields, sourceOf, writeToSource, type DocumentSource } from "./document-source";
 import { noteManualSave, runExclusiveSave } from "./file-autosave";
-import { ensureWritePermission, writeToHandle } from "./file-permission";
-import { getIsDirty, useFileStore } from "./use-file-store";
+import { ensureWritePermission } from "./file-permission";
+import { useFileStore } from "./use-file-store";
 
+const PEN_EXTENSION = ".pen";
 const PICKER_TYPES = [{ description: "Pego file", accept: { [FILE_MIME]: [FILE_EXTENSION] } }];
+const OPEN_PICKER_TYPES = [
+  { description: "Pego or Pencil file", accept: { [FILE_MIME]: [FILE_EXTENSION, PEN_EXTENSION] } },
+];
+const MAX_LISTED_WARNINGS = 4;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-const confirmDiscard = (action: string) =>
-  !getIsDirty() || window.confirm(`You have unsaved changes. ${action} anyway?`);
-
+/** An opened local file gets its own tab. */
 const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => {
-  useDocumentStore.getState().load(doc);
-  useFileStore.getState().markSaved(useDocumentStore.getState().doc, fileName, handle);
+  openDocument(doc, { fileName, handle });
 };
 
+/** A new untitled document in a new tab. */
 export const newDocument = () => {
-  if (!confirmDiscard("Create a new document")) return;
-  adopt(createEmptyDocument(), null, null);
+  newDocumentTab();
 };
 
 const readTextViaInput = () =>
   new Promise<File | null>((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
-    input.accept = `${FILE_EXTENSION},${FILE_MIME}`;
+    input.accept = `${FILE_EXTENSION},${PEN_EXTENSION},${FILE_MIME}`;
     input.onchange = () => resolve(input.files?.[0] ?? null);
     input.oncancel = () => resolve(null);
     input.click();
   });
 
 export const openFile = async () => {
-  if (!confirmDiscard("Open another file")) return;
   try {
     let file: File | null;
     let handle: PegoFileHandle | null = null;
     const showOpenFilePicker = getOpenFilePicker();
     if (showOpenFilePicker) {
-      [handle = null] = await showOpenFilePicker({ types: PICKER_TYPES, multiple: false });
+      [handle = null] = await showOpenFilePicker({ types: OPEN_PICKER_TYPES, multiple: false });
       file = handle ? await handle.getFile() : null;
     } else {
       file = await readTextViaInput();
     }
     if (!file) return;
+    if (file.name.toLowerCase().endsWith(PEN_EXTENSION)) return importPenFile(file);
     adopt(parseDocumentFile(await file.text()), file.name, handle);
   } catch (error) {
     if (isAbortError(error)) return;
     toast.error(`Could not open file: ${errorMessage(error)}`);
+  }
+};
+
+/** Opens a Pencil file as a new, unsaved `.pego` document; the `.pen` file is never written. */
+const importPenFile = async (file: File) => {
+  const base = file.name.slice(0, -PEN_EXTENSION.length) || "Imported";
+  let raw: unknown;
+  try {
+    raw = JSON.parse(await file.text());
+  } catch {
+    throw new Error("Not a valid .pen file: the content is not valid JSON.");
+  }
+  const { doc, warnings } = importPen(raw, base);
+  const opened = openDocument(doc, { fileName: `${base}${FILE_EXTENSION}` }, { saved: false });
+  if (opened !== "opened") return;
+  if (warnings.length === 0) {
+    toast.success(`Imported ${file.name}`);
+    return;
+  }
+  const listed = warnings
+    .slice(0, MAX_LISTED_WARNINGS)
+    .map((w) => (w.count > 1 ? `${w.message} (${w.count}×)` : w.message));
+  const more = warnings.length - listed.length;
+  toast.warning(`Imported ${file.name} with changes`, {
+    description: [...listed, ...(more > 0 ? [`and ${more} more`] : [])].join("\n"),
+    duration: 10_000,
+  });
+};
+
+/** Open a `.pego` or `.pen` file dropped on the canvas (no handle: Save asks where to save). */
+export const openDroppedFile = async (file: File) => {
+  try {
+    if (file.name.toLowerCase().endsWith(PEN_EXTENSION)) return await importPenFile(file);
+    adopt(parseDocumentFile(await file.text()), file.name, null);
+  } catch (error) {
+    toast.error(`Could not open ${file.name}: ${errorMessage(error)}`);
   }
 };
 
@@ -75,14 +114,18 @@ const downloadFile = (name: string, text: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-/** Writes the current doc to a handle inside the autosave queue, then marks it clean. */
-export const writeDocToHandle = (handle: PegoFileHandle, fileName: string) =>
+/** Writes the current doc to `source` inside the autosave queue, then marks it clean. */
+const writeDocTo = (source: DocumentSource) =>
   runExclusiveSave(async () => {
     const { doc } = useDocumentStore.getState();
-    await writeToHandle(handle, serializeDocument(doc));
-    useFileStore.getState().markSaved(doc, fileName, handle);
+    await writeToSource(source, serializeDocument(doc));
+    const { fileName, handle, bridgePath } = savedFields(source);
+    useFileStore.getState().markSaved(doc, fileName, handle, bridgePath);
     noteManualSave();
   });
+
+export const writeDocToHandle = (handle: PegoFileHandle, fileName: string) =>
+  writeDocTo({ kind: "file", handle, fileName });
 
 export const saveFileAs = async () => {
   const { doc } = useDocumentStore.getState();
@@ -104,16 +147,18 @@ export const saveFileAs = async () => {
   }
 };
 
+/** Save to the document's source: its local file, or the file the bridge opened it from. */
 export const saveFile = async () => {
-  const { handle, fileName } = useFileStore.getState();
-  if (!handle) return saveFileAs();
+  const source = sourceOf(useFileStore.getState());
+  if (source.kind === "none") return saveFileAs();
   try {
-    if (!(await ensureWritePermission(handle))) {
+    if (source.kind === "file" && !(await ensureWritePermission(source.handle))) {
       toast.error("Write permission was denied. Choose where to save.");
       return saveFileAs();
     }
-    await writeDocToHandle(handle, fileName ?? handle.name);
+    await writeDocTo(source);
   } catch (error) {
-    toast.error(`Could not save file: ${errorMessage(error)}`);
+    const where = source.kind === "bridge" ? ` to ${source.path}` : "";
+    toast.error(`Could not save file${where}: ${errorMessage(error)}`);
   }
 };

@@ -1,4 +1,4 @@
-export type RailTab = "agent" | "layers";
+export type RailTab = "agent" | "layers" | "assets";
 
 export type RailState = { tab: RailTab; open: boolean };
 
@@ -6,10 +6,11 @@ export const RAIL_STORAGE_KEY = "pego:left-rail";
 
 export const DEFAULT_RAIL_STATE: RailState = { tab: "agent", open: true };
 
-/** Tab order, top to bottom. Alt+1 / Alt+2 follow it. */
+/** Tab order, top to bottom. Alt+1 / Alt+2 / Alt+3 follow it. */
 export const RAIL_TABS: readonly { id: RailTab; label: string }[] = [
   { id: "agent", label: "Agent" },
   { id: "layers", label: "Layers" },
+  { id: "assets", label: "Assets" },
 ];
 
 const isRailTab = (value: unknown): value is RailTab => RAIL_TABS.some((tab) => tab.id === value);
@@ -43,7 +44,7 @@ export const moveRailFocus = (current: number, key: string, count: number): numb
   return null;
 };
 
-/** Alt+1 / Alt+2 (no other modifiers) map to the tab at that position. */
+/** Alt+1 / Alt+2 / Alt+3 (no other modifiers) map to the tab at that position. */
 export const railTabForShortcut = (
   e: Pick<KeyboardEvent, "code" | "altKey" | "shiftKey" | "metaKey" | "ctrlKey">,
 ): RailTab | null => {

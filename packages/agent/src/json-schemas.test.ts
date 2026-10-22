@@ -25,32 +25,44 @@ describe("node json schema", () => {
 describe("doc schema", () => {
   test("accepts an image node", () => {
     const doc = documentSchema.parse({
-      version: 0,
+      version: 3,
       id: "d",
       name: "x",
       variables: {},
       children: [
         {
-          type: "image",
-          id: "i",
-          src: "https://e.com/a.png",
-          fit: "tile",
-          cornerRadius: 8,
-          width: 10,
-          height: 10,
+          type: "page",
+          id: "p",
+          children: [
+            {
+              type: "image",
+              id: "i",
+              src: "https://e.com/a.png",
+              fit: "tile",
+              cornerRadius: 8,
+              width: 10,
+              height: 10,
+            },
+          ],
         },
       ],
     });
-    expect(doc.children[0]?.type).toBe("image");
+    expect(doc.children[0]?.children[0]?.type).toBe("image");
   });
   test("rejects an unknown fit", () => {
     expect(() =>
       documentSchema.parse({
-        version: 0,
+        version: 3,
         id: "d",
         name: "x",
         variables: {},
-        children: [{ type: "image", id: "i", src: "x", fit: "stretch" }],
+        children: [
+          {
+            type: "page",
+            id: "p",
+            children: [{ type: "image", id: "i", src: "x", fit: "stretch" }],
+          },
+        ],
       }),
     ).toThrow();
   });

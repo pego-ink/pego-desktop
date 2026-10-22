@@ -7,15 +7,6 @@ import {
   type Skill,
 } from "@pego/agent";
 
-/**
- * Explicit style choice of the run being started (undefined = auto, null = none). `startRun`
- * sets it right after clearing the store, so runtimes that only receive `skillId` still honor it.
- */
-let runStyleId: string | null | undefined;
-export const setRunStyleId = (styleId: string | null | undefined): void => {
-  runStyleId = styleId;
-};
-
 const pickById = (id: string, category: "design" | "style"): Skill | undefined => {
   const skill = findSkill(id);
   return skill && !skill.core && (skill.category ?? "design") === category ? skill : undefined;
@@ -29,7 +20,7 @@ const pickById = (id: string, category: "design" | "style"): Skill | undefined =
 export const resolveRunSkills = (
   prompt: string,
   selectedId?: string | null,
-  selectedStyleId: string | null | undefined = runStyleId,
+  selectedStyleId?: string | null,
 ): Skill[] => {
   const core = coreSkill();
   const design =

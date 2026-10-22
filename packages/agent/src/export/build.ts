@@ -6,6 +6,8 @@ import {
   resolveNumber,
   resolveString,
   type Box,
+  type Effect,
+  type Fill,
   type FrameNode,
   type GroupNode,
   type ImageNode,
@@ -13,10 +15,12 @@ import {
   type PegoDocument,
   type PegoNode,
   type RefNode,
+  type Stroke,
   type TextNode,
 } from "@pego/doc";
 import type { BuildCtx, Decl, IrComponent, IrEl, IrIcon, IrNode, Parent, Scope } from "./ir";
 import { camelCase, cssVarName, pascalCase, uniqueName } from "./naming";
+import { paintDef, type SvgDef } from "./svg-paint";
 
 export const DEFAULT_FONT = "Inter";
 
@@ -193,15 +197,22 @@ const boxParts = (node: PegoNode, parent: Parent, ctx: BuildCtx, box: Box | unde
 
 // --- appearance ----------------------------------------------------------------------
 
-const strokeDecl = (
-  stroke: { color: string; width?: number | string } | undefined,
-  ctx: BuildCtx,
-): Decl[] => {
+const SIDE_PROPS = ["border-top", "border-right", "border-bottom", "border-left"] as const;
+
+const strokeDecl = (stroke: Stroke | undefined, ctx: BuildCtx): Decl[] => {
   if (!stroke) return [];
   const color = colorOf(stroke.color, ctx);
   if (!color) return [];
-  const width = lenOf(stroke.width, ctx, 1);
-  return isZero(width) ? [] : [["border", `${width} solid ${color}`]];
+  if (!Array.isArray(stroke.width)) {
+    const width = lenOf(stroke.width, ctx, 1);
+    return isZero(width) ? [] : [["border", `${width} solid ${color}`]];
+  }
+  // Per-side widths: one border-<side> per visible side (0 hides it).
+  const widths = stroke.width;
+  return SIDE_PROPS.flatMap((prop, i): Decl[] => {
+    const width = lenOf(widths[i], ctx, 0);
+    return isZero(width) ? [] : [[prop, `${width} solid ${color}`]];
+  });
 };
 
 const radiusDecl = (value: number | string | undefined, ctx: BuildCtx): Decl[] => {
@@ -210,9 +221,90 @@ const radiusDecl = (value: number | string | undefined, ctx: BuildCtx): Decl[] =
   return isZero(len) ? [] : [["border-radius", len]];
 };
 
-const fillDecl = (value: string | undefined, ctx: BuildCtx): Decl[] => {
-  const color = colorOf(value, ctx);
-  return color ? [["background-color", color]] : [];
+const percent = (fraction: number): string => `${round2(fraction * 100)}%`;
+
+const gradientCss = (
+  fill: Exclude<Fill, string> & { type: "linear" | "radial" },
+  ctx: BuildCtx,
+) => {
+  const stops = fill.stops
+    .map((s) => `${colorOf(s.color, ctx) ?? "transparent"} ${percent(s.position)}`)
+    .join(", ");
+  if (fill.type === "linear") {
+    return `linear-gradient(${round2(numOf(fill.angle, ctx, 180))}deg, ${stops})`;
+  }
+  const [cx, cy] = fill.center;
+  const [rx, ry] = fill.radius;
+  return `radial-gradient(${percent(rx)} ${percent(ry)} at ${percent(cx)} ${percent(cy)}, ${stops})`;
+};
+
+const fillDecl = (fill: Fill | undefined, ctx: BuildCtx): Decl[] => {
+  if (fill === undefined) return [];
+  if (typeof fill === "string") {
+    const color = colorOf(fill, ctx);
+    return color ? [["background-color", color]] : [];
+  }
+  if (fill.type === "image") {
+    return [
+      ["background-image", `url("${fill.src}")`],
+      ["background-position", "center"],
+      ["background-repeat", "no-repeat"],
+      ["background-size", fill.fit === "stretch" ? "100% 100%" : fill.fit],
+    ];
+  }
+  return [["background-image", gradientCss(fill, ctx)]];
+};
+
+/** One shadow as CSS (`inset` prefix for inner shadows); lengths are resolved to px. */
+const shadowCss = (
+  effect: Extract<Effect, { type: "shadow" }>,
+  ctx: BuildCtx,
+  withSpread: boolean,
+): string | undefined => {
+  const color = colorOf(effect.color, ctx);
+  if (!color) return undefined;
+  const spread = numOf(effect.spread, ctx, 0);
+  const parts = [
+    effect.inner ? "inset" : "",
+    px(numOf(effect.x, ctx, 0)),
+    px(numOf(effect.y, ctx, 0)),
+    px(numOf(effect.blur, ctx, 0)),
+    withSpread && spread !== 0 ? px(spread) : "",
+    color,
+  ];
+  return parts.filter(Boolean).join(" ");
+};
+
+/**
+ * Shadows and blur as CSS. `box`: box-shadow (inner shadows become inset) + filter blur.
+ * `text`: text-shadow + blur. `filter`: drop-shadow() + blur for icons and paths; they have no
+ * spread or inset form, so inner shadows are skipped there and in `text`.
+ */
+const effectDecls = (
+  effects: Effect[] | undefined,
+  ctx: BuildCtx,
+  kind: "box" | "text" | "filter",
+): Decl[] => {
+  if (!effects?.length) return [];
+  const shadows = effects.flatMap((effect) => {
+    if (effect.type !== "shadow") return [];
+    if (kind !== "box" && effect.inner) return [];
+    const css = shadowCss(effect, ctx, kind === "box");
+    return css ? [css] : [];
+  });
+  const blurs = effects.flatMap((effect) => {
+    if (effect.type !== "blur") return [];
+    const radius = numOf(effect.radius, ctx, 0);
+    return radius > 0 ? [`blur(${px(radius)})`] : [];
+  });
+  const decls: Decl[] = [];
+  if (shadows.length > 0) {
+    if (kind === "box") decls.push(["box-shadow", shadows.join(", ")]);
+    else if (kind === "text") decls.push(["text-shadow", shadows.join(", ")]);
+  }
+  const filters = [...(kind === "filter" ? shadows.map((s) => `drop-shadow(${s})`) : []), ...blurs];
+  if (filters.length > 0) decls.push(["filter", filters.join(" ")]);
+  return decls;
 };
 
 const paddingValue = (node: FrameNode, ctx: BuildCtx): string | undefined => {
@@ -300,6 +392,8 @@ const buildText = (
   const hasNewline = content.includes("\n");
   const whiteSpace = hasNewline ? (wraps ? "pre-wrap" : "pre") : wraps ? undefined : "nowrap";
   const color = colorOf(node.fill, ctx) ?? "#000000";
+  const lineHeight = numOf(node.lineHeight, ctx, 0);
+  const letterSpacing = numOf(node.letterSpacing, ctx, 0);
 
   const decls: Decl[] = [
     ...parts.decls,
@@ -307,10 +401,12 @@ const buildText = (
     ["font-size", fontSize],
     ...(weight !== 400 ? ([["font-weight", String(weight)]] as Decl[]) : []),
     ...(italic ? ([["font-style", "italic"]] as Decl[]) : []),
-    ["line-height", "normal"],
+    ["line-height", node.lineHeight === undefined ? "normal" : String(round2(lineHeight))],
+    ...(letterSpacing !== 0 ? ([["letter-spacing", px(letterSpacing)]] as Decl[]) : []),
     ...(align !== "left" ? ([["text-align", align]] as Decl[]) : []),
     ["color", color],
     ...(whiteSpace ? ([["white-space", whiteSpace]] as Decl[]) : []),
+    ...effectDecls(node.effects, ctx, "text"),
   ];
   const propName = scope?.propOf.get(node.id);
   return {
@@ -377,23 +473,51 @@ const geometryExtent = (geometry: string): { width: number; height: number } => 
   return { width: Math.ceil(width) || 24, height: Math.ceil(height) || 24 };
 };
 
+const toIr = (def: SvgDef): IrEl => ({
+  kind: "el",
+  tag: def.tag,
+  label: def.tag,
+  decls: [],
+  placement: [],
+  attrs: def.attrs,
+  children: def.children.map(toIr),
+});
+
 const buildPath = (node: PathNode, parent: Parent, ctx: BuildCtx, box: Box | undefined): IrEl => {
   const extent = geometryExtent(node.geometry);
   // A path without its own size has a 0x0 layout box: fall back to its geometry.
   const width = typeof node.width === "number" ? node.width : box?.width || extent.width;
   const height = typeof node.height === "number" ? node.height : box?.height || extent.height;
   const parts = boxParts(node, parent, ctx, box);
-  const fill = colorOf(node.fill, ctx);
-  const stroke = node.stroke ? colorOf(node.stroke.color, ctx) : undefined;
+  // With a viewBox the geometry is scaled to the node size; paints live in viewBox coordinates.
+  const [minX, minY, vbWidth, vbHeight] = node.viewBox ?? [0, 0, width, height];
+  const scaled = node.viewBox !== undefined;
+
+  const defs: IrEl[] = [];
+  const fill = node.fill;
+  const fillAttr = ((): string => {
+    if (fill === undefined) return "none";
+    if (typeof fill === "string") return colorOf(fill, ctx) ?? "none";
+    const id = `paint${++ctx.paintCount}`;
+    const angle = fill.type === "linear" ? numOf(fill.angle, ctx, 180) : 0;
+    const area = { x: minX, y: minY, width: vbWidth, height: vbHeight };
+    defs.push(toIr(paintDef(fill, id, area, angle, (c) => colorOf(c, ctx))));
+    return `url(#${id})`;
+  })();
+
+  const strokeColor = node.stroke ? colorOf(node.stroke.color, ctx) : undefined;
   const pathAttrs: [string, string][] = [["d", node.geometry]];
-  pathAttrs.push(["fill", fill ?? "none"]);
-  if (stroke && node.stroke) {
+  pathAttrs.push(["fill", fillAttr]);
+  // Per-side widths have no meaning on a path outline: such a stroke is left out.
+  if (strokeColor && node.stroke && !Array.isArray(node.stroke.width)) {
     pathAttrs.push(
-      ["stroke", stroke],
+      ["stroke", strokeColor],
       ["stroke-width", lenOf(node.stroke.width, ctx, 1).replace("px", "")],
     );
     if (node.strokeCap) pathAttrs.push(["stroke-linecap", node.strokeCap]);
     if (node.strokeJoin) pathAttrs.push(["stroke-linejoin", node.strokeJoin]);
+    // Keep the stroke width in node units when the geometry is scaled.
+    if (scaled) pathAttrs.push(["vector-effect", "non-scaling-stroke"]);
   }
   return {
     kind: "el",
@@ -403,15 +527,30 @@ const buildPath = (node: PathNode, parent: Parent, ctx: BuildCtx, box: Box | und
     decls: [
       ...parts.decls.filter(([p]) => p !== "width" && p !== "height"),
       ["overflow", "visible"],
+      ...effectDecls(node.effects, ctx, "filter"),
     ],
     placement: parts.placement,
     attrs: [
       ["width", String(round2(width))],
       ["height", String(round2(height))],
-      ["viewBox", `0 0 ${round2(width)} ${round2(height)}`],
+      ["viewBox", `${round2(minX)} ${round2(minY)} ${round2(vbWidth)} ${round2(vbHeight)}`],
+      ...(scaled ? ([["preserveAspectRatio", "none"]] as [string, string][]) : []),
       ["aria-hidden", "true"],
     ],
     children: [
+      ...(defs.length > 0
+        ? [
+            {
+              kind: "el" as const,
+              tag: "defs",
+              label: "defs",
+              decls: [],
+              placement: [],
+              attrs: [],
+              children: defs,
+            },
+          ]
+        : []),
       {
         kind: "el",
         tag: "path",
@@ -439,7 +578,11 @@ const buildIcon = (
     kind: "icon",
     icon: node.iconName,
     label: node.name ?? node.iconName,
-    decls: [...parts.decls.filter(([p]) => p !== "width" && p !== "height"), ["color", color]],
+    decls: [
+      ...parts.decls.filter(([p]) => p !== "width" && p !== "height"),
+      ["color", color],
+      ...effectDecls(node.effects, ctx, "filter"),
+    ],
     placement: parts.placement,
     width,
     height,
@@ -480,6 +623,7 @@ const buildContainer = (
           ...fillDecl(node.fill, ctx),
           ...strokeDecl(node.stroke, ctx),
           ...radiusDecl(node.cornerRadius, ctx),
+          ...effectDecls(node.effects, ctx, "box"),
         ]
       : [["position", "relative"]];
   const label = node.name ?? node.type;
@@ -666,6 +810,8 @@ export const buildNode = (
   depth: number,
 ): IrNode | null => {
   if (raw.type === "ref") return buildRef(raw, parent, ctx, scope, depth);
+  // Pages have no box or markup of their own; exportCode rejects them as roots.
+  if (raw.type === "page") return null;
   const box = ctx.layout?.get(raw.id);
   switch (raw.type) {
     case "frame":
@@ -693,6 +839,7 @@ export const buildNode = (
           ...(raw.type === "ellipse"
             ? ([["border-radius", "50%"]] as Decl[])
             : radiusDecl(raw.cornerRadius, ctx)),
+          ...effectDecls(raw.effects, ctx, "box"),
         ],
         placement: parts.placement,
         attrs: [],
@@ -719,5 +866,6 @@ export const createBuildCtx = (
   names: new Set([reservedName]),
   propNames: inlineRefs ? new Map() : collectPropNames(doc, root),
   h1Used: false,
+  paintCount: 0,
   hasIcon,
 });

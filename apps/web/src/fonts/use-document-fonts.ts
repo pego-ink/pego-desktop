@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { isContainer, resolveInstance, resolveNumber } from "@pego/doc";
+import { isContainer, resolveInstance, resolveNumber, resolveString } from "@pego/doc";
 import type { PegoDocument, PegoNode } from "@pego/doc";
 import { nearestWeight } from "@/canvas/measure-text";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -21,7 +21,8 @@ export const collectFontFaces = (doc: PegoDocument): FontFaceSpec[] => {
 
   const visit = (node: PegoNode, depth: number): void => {
     if (node.type === "text") {
-      const family = node.fontFamily;
+      const family =
+        node.fontFamily === undefined ? undefined : resolveString(node.fontFamily, doc.variables);
       if (!family || family === BUNDLED_FAMILY) return;
       const face: FontFaceSpec = {
         family,
@@ -58,6 +59,15 @@ export const requestNewFaces = (
     seen.add(key);
     ensure(face).catch(() => seen.delete(key));
   }
+};
+
+/**
+ * Load every face the document uses and wait for them, for one-off renders that must show the
+ * real typography (agent screenshots, exports, dashboard previews). Faces that fail fall back
+ * to Inter.
+ */
+export const loadDocumentFonts = async (doc: PegoDocument): Promise<void> => {
+  await Promise.all(collectFontFaces(doc).map((face) => ensureFontFace(face).catch(() => false)));
 };
 
 /** Loads every font the document uses, whenever the document changes. Mount once. */

@@ -5,6 +5,7 @@ import { homedir } from "node:os";
 import { join } from "node:path";
 import { existsSync } from "node:fs";
 import { APP_ORIGIN, BRIDGE_HOST, BRIDGE_PORT, DEV_ORIGINS } from "@/constants";
+import { bridgeBinaryName, bridgeSearchPath, type DesktopPlatform } from "@/platform";
 
 let child: ChildProcess | null = null;
 
@@ -22,17 +23,12 @@ const isPortOpen = (port: number): Promise<boolean> =>
     });
   });
 
-/** Apps launched from Finder get a minimal PATH; add where `claude` and `bun` usually live. */
-const bridgePath = (): string => {
-  const extra = [join(homedir(), ".local", "bin"), "/opt/homebrew/bin", "/usr/local/bin"];
-  const current = (process.env.PATH ?? "/usr/bin:/bin:/usr/sbin:/sbin").split(":");
-  return [...new Set([...extra, ...current])].join(":");
-};
+const platform = process.platform as DesktopPlatform;
 
 /** Packaged: compiled binary in Resources. Dev: run the TypeScript entry with `bun`. */
 const bridgeCommand = (): { command: string; args: string[] } | null => {
   if (app.isPackaged) {
-    const binary = join(process.resourcesPath, "bridge", "pego-bridge");
+    const binary = join(process.resourcesPath, "bridge", bridgeBinaryName(platform));
     return existsSync(binary) ? { command: binary, args: [] } : null;
   }
   const entry = join(app.getAppPath(), "..", "bridge", "src", "index.ts");
@@ -52,7 +48,9 @@ export const startBridge = async (): Promise<void> => {
   const proc = spawn(spec.command, spec.args, {
     env: {
       ...process.env,
-      PATH: bridgePath(),
+      // Windows env lookups are case-insensitive but the copied object is not: set both.
+      PATH: bridgeSearchPath(platform, homedir(), process.env),
+      ...(platform === "win32" ? { Path: bridgeSearchPath(platform, homedir(), process.env) } : {}),
       PEGO_BRIDGE_PORT: String(BRIDGE_PORT),
       PEGO_ALLOWED_ORIGINS: [APP_ORIGIN, ...DEV_ORIGINS].join(","),
     },

@@ -1,8 +1,10 @@
 import {
-  findNode,
   type Box,
+  findNode,
+  isContainer,
   type Layout,
   type Op,
+  pageOrFirst,
   type PegoDocument,
   type PegoNode,
 } from "@pego/doc";
@@ -31,7 +33,7 @@ const DEFAULT_FILLS: Record<DrawTool, string> = {
 const childrenOf = (doc: PegoDocument, parentId: string | null): readonly PegoNode[] => {
   if (parentId === null) return doc.children;
   const node = findNode(doc, parentId);
-  return node && (node.type === "frame" || node.type === "group") ? node.children : [];
+  return node && isContainer(node) ? node.children : [];
 };
 
 export const createLabel = (tool: DrawTool) => `Create ${BASE_NAMES[tool].toLowerCase()}`;
@@ -110,9 +112,13 @@ export const resolvePlacement = (
   doc: PegoDocument,
   layout: Layout,
   path: readonly string[] | null,
+  /** Page the canvas shows (null = the first): outside any frame, nodes go on it. */
+  pageId: string | null = null,
 ): Placement => {
   const parentId = deepestFrameId(doc, path);
-  if (!parentId) return { parentId: null, originX: 0, originY: 0, flex: false };
+  if (!parentId) {
+    return { parentId: pageOrFirst(doc, pageId).id, originX: 0, originY: 0, flex: false };
+  }
   const box = layout.get(parentId);
   const parent = findNode(doc, parentId);
   return {

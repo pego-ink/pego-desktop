@@ -5,6 +5,9 @@ import { resumeAutoSave, retryAutoSave } from "./autosave-actions";
 import { isFileAutosaveSupported } from "./file-autosave";
 import { useAutosaveStore } from "./use-autosave-store";
 import { useFileStore, useIsDirty } from "./use-file-store";
+import { untitledLabel } from "./save-hint";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 const FADE_MS = 200;
 
@@ -26,21 +29,30 @@ const SR_TEXT = {
   saved: "Saved",
   "needs-permission": "Auto save needs permission",
   paused: "Auto save paused",
+  offline: "Bridge offline, changes kept in this browser",
 } as const;
 
-/** Save state, shown as the muted subtitle under the file name. */
-export const AutosaveStatus = () => {
+/**
+ * Save state, shown as the muted subtitle under the file name (`compact`: inline beside it, in the
+ * desktop title row).
+ */
+export const AutosaveStatus = ({ compact = false }: { compact?: boolean }) => {
   const status = useAutosaveStore((s) => s.status);
   const enabled = useAutosaveStore((s) => s.enabled);
   const handle = useFileStore((s) => s.handle);
-  // Without a handle nothing autosaves to disk, unless the browser can only download anyway.
+  const bridgePath = useFileStore((s) => s.bridgePath);
+  // Without a handle or a bridge file nothing autosaves to disk, unless the browser can only
+  // download anyway.
   const supported = isFileAutosaveSupported();
-  const untitled = useFileStore((s) => s.handle === null && (s.fileName === null || supported));
+  const untitled = useFileStore(
+    (s) => s.handle === null && s.bridgePath === null && (s.fileName === null || supported),
+  );
   const dirty = useIsDirty();
   const savedMounted = useFadeOut(status === "saved");
 
-  const fileAutosave = enabled && supported && handle !== null && status !== "needs-permission";
-  const showDot = dirty && !(fileAutosave && status !== "paused");
+  const writable = (supported && handle !== null) || bridgePath !== null;
+  const fileAutosave = enabled && writable && status !== "needs-permission";
+  const showDot = dirty && !(fileAutosave && status !== "paused" && status !== "offline");
 
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
@@ -90,9 +102,18 @@ export const AutosaveStatus = () => {
           </Button>
         </>
       ) : null}
+      {status === "offline" ? (
+        <span
+          aria-hidden
+          className="truncate"
+          title="Saves to the project file once the bridge is back"
+        >
+          Bridge offline
+        </span>
+      ) : null}
       {untitled ? (
         <span aria-hidden className="truncate">
-          Not saved to a file — ⌘S to save
+          {untitledLabel(compact, isMac)}
         </span>
       ) : null}
     </span>

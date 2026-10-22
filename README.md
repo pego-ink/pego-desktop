@@ -1,3 +1,5 @@
+<img src="design/logo/pego-mark.svg" alt="Pego" width="64" height="64">
+
 # Pego
 
 AI-native design editor. Skia (CanvasKit) canvas, local-first `.pego` files, and an agent that edits the
@@ -10,7 +12,7 @@ the architecture.
 - A Chromium-based browser (Chrome, Edge, Arc) for the web app: CanvasKit needs WebGL2, and Save/Open uses the
   File System Access API (other browsers fall back to download/upload).
 - Optional: [Claude Code](https://claude.com/claude-code) CLI, installed and logged in, for the Claude Code backend.
-- Desktop app: macOS.
+- Desktop app: macOS (signed), Linux (AppImage, deb) and Windows (installer), x64; macOS also arm64.
 
 ## Install
 
@@ -28,7 +30,15 @@ Open http://localhost:5173. This starts the editor and the local bridge (`127.0.
 detected automatically. If a bridge is already running (for example the desktop app), the second one exits and the
 editor uses the running one.
 
-Documents autosave in the browser (IndexedDB). Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files on disk.
+Pego opens the editor on a local document. Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files anywhere
+on disk; once saved, changes autosave to the file, and everything is also kept in the browser (IndexedDB), so it
+works offline. When the bridge is running in a repository with a `design/` folder, the Pego logo opens the
+**Dashboard** with that repository's projects (`design/<project>/` with a `project.json` and the design,
+`project.pego`). An open project gets its own tab in the header and autosaves to its `project.pego` through the
+bridge; **Scratch** holds local documents outside any project.
+
+From Claude Code, name the project: "open project Pego Website and add a pricing section" (or use its id); the
+MCP tools `list_projects`, `open_project` and `create_project` do the rest.
 
 ## Use the agent
 
@@ -50,17 +60,19 @@ With the editor open (`bun run dev` or the desktop app), register Pego's MCP ser
 claude mcp add --transport http pego http://127.0.0.1:4519/mcp
 ```
 
-Then ask Claude Code to design; changes appear live in the open Pego tab. The server also exposes design guides as
-resources and the prompts `design_screen`, `polish_selection` and `extract_components`.
+Then ask Claude Code to design; changes appear live in the Pego window you used last (several windows can stay
+connected). The server also exposes design guides as resources and the prompts `design_screen`, `polish_selection` and `extract_components`.
 
 The bridge listens on `127.0.0.1:4519` only and accepts editor connections from localhost origins (and `app://pego`
 for the desktop app).
 
-## Desktop app (macOS)
+## Desktop app
 
 ```bash
 bun run desktop:dev     # Electron on top of the Vite dev server, bridge included
-bun run desktop:build   # signed arm64 .app/.dmg in apps/desktop/release (not notarized locally)
+bun run desktop:build   # build for this machine into apps/desktop/release (macOS: signed, not notarized locally)
+bun run desktop:build -- --linux --x64   # AppImage + deb
+bun run desktop:build -- --win --x64     # NSIS installer (build on Windows)
 ```
 
 The desktop app starts the bridge itself; Claude Code runs need the `claude` CLI on your PATH. Details:
@@ -79,10 +91,10 @@ CI runs the same on every push to `main`.
 
 ## Release
 
-1. Bump `version` in `apps/desktop/package.json`, commit.
-2. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
+1. Bump `version` in `apps/desktop/package.json` in a pull request and merge it into `main`.
+2. Tag the merged commit on `main` and push the tag: `git tag vX.Y.Z && git push origin vX.Y.Z`.
 3. The `release` workflow builds arm64 + x64 dmg/zip, signs with Developer ID, notarizes, verifies, and creates a
-   **draft** release on [yolkmonday/pego](https://github.com/yolkmonday/pego/releases) with the dmg, zip, blockmaps and
+   **draft** release on [pego-ink/pego-desktop](https://github.com/pego-ink/pego-desktop/releases) with the dmg, zip, blockmaps and
    `latest-mac.yml`. Review it, then **publish it to ship the update**: `gh release edit vX.Y.Z --draft=false`.
 
 Installed apps check the published releases of this public repo (launch + 10s, then every 6h), download in the
@@ -100,11 +112,20 @@ Details and local testing (`PEGO_FAKE_UPDATE=1`): [apps/desktop/README.md](apps/
 apps/
   web/       React + Vite editor (canvas, panels, agent runtime)
   bridge/    local Bun server: MCP for Claude Code + Agent SDK runs
-  desktop/   Electron shell (macOS)
+  desktop/   Electron shell (macOS, Linux, Windows)
   api/       Hono on Workers (not used by the editor yet)
 packages/
   doc/       document schema, ops, undo history, flex layout
   agent/     agent tools, prompts, guides, style presets, bridge protocol
+  export/    HTML/CSS and SVG export of a node (pure, shared by the editor and the agent)
   ui/        shared UI components and tokens
 design/      design mocks (.pen, png, html)
 ```
+
+## Contributing
+
+Read [CONTRIBUTING.md](CONTRIBUTING.md) before opening an issue or pull request.
+
+## License
+
+[MIT](LICENSE)

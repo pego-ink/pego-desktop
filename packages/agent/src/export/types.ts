@@ -21,3 +21,7 @@ export type ExportOptions = {
 };
 
 export type CodeExportOptions = ExportOptions & { format: CodeFormat };
+
+/** Pages have no box or markup of their own, so they cannot be an export root. */
+export const PAGE_EXPORT_ERROR =
+  "A page cannot be exported. Export a frame or group on the page instead.";

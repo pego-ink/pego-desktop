@@ -22,11 +22,12 @@ export const insertPathNode = (
   shape: FreehandPath,
   options: { name: string; label: string; endMarker?: PathNode["endMarker"] },
 ): string | null => {
-  const { doc, commit, select } = useDocumentStore.getState();
+  const { doc, commit, select, pageId } = useDocumentStore.getState();
   const placement = resolvePlacement(
     doc,
     getLayout(doc),
-    hitPath(doc, getLayout(doc), anchor.x, anchor.y),
+    hitPath(doc, getLayout(doc), anchor.x, anchor.y, { pageId }),
+    pageId,
   );
   const id = createId();
   const node: PathNode = {

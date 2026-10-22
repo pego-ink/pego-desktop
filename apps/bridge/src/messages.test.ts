@@ -181,3 +181,25 @@ describe("run_start attachments", () => {
     expect(MAX_WS_MESSAGE_BYTES).toBeLessThanOrEqual(64 * 1024 * 1024);
   });
 });
+
+describe("run_steer", () => {
+  test("accepts text of 1..20000 chars", () => {
+    expect(ok({ type: "run_steer", runId: "r", text: "go left" }).ok).toBe(true);
+    expect(ok({ type: "run_steer", runId: "r", text: "x".repeat(20_000) }).ok).toBe(true);
+  });
+
+  test("rejects empty or oversized text, missing run id", () => {
+    expect(ok({ type: "run_steer", runId: "r", text: "" }).ok).toBe(false);
+    expect(ok({ type: "run_steer", runId: "r", text: "x".repeat(20_001) }).ok).toBe(false);
+    expect(ok({ type: "run_steer", text: "hi" }).ok).toBe(false);
+  });
+
+  test("attachments go through the same validation as run_start", () => {
+    const good = makeAttachment("att-1", "image/png");
+    expect(ok({ type: "run_steer", runId: "r", text: "hi", attachments: [good] }).ok).toBe(true);
+    const bad = { ...good, mediaType: "image/jpeg" };
+    expect(ok({ type: "run_steer", runId: "r", text: "hi", attachments: [bad] }).ok).toBe(false);
+    const many = Array.from({ length: 7 }, (_, i) => makeAttachment(`att-${i + 1}`, "image/png"));
+    expect(ok({ type: "run_steer", runId: "r", text: "hi", attachments: many }).ok).toBe(false);
+  });
+});

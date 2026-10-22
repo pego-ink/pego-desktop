@@ -1,4 +1,4 @@
-import type { Box, Layout, PegoDocument } from "@pego/doc";
+import { type Box, type Layout, pageOrFirst, type PegoDocument } from "@pego/doc";
 import type { Camera } from "../canvas/types";
 
 export const MIN_ZOOM = 0.02;
@@ -49,13 +49,17 @@ export const fitCamera = (
   };
 };
 
-/** Union of all top-level node boxes, or null for an empty document. */
-export const contentBounds = (doc: PegoDocument, layout: Layout): Box | null => {
+/** Union of the top-level node boxes of a page (null = the first), or null for an empty page. */
+export const contentBounds = (
+  doc: PegoDocument,
+  layout: Layout,
+  pageId: string | null = null,
+): Box | null => {
   let minX = Infinity;
   let minY = Infinity;
   let maxX = -Infinity;
   let maxY = -Infinity;
-  for (const node of doc.children) {
+  for (const node of pageOrFirst(doc, pageId).children) {
     const box = layout.get(node.id);
     if (!box) continue;
     minX = Math.min(minX, box.x);

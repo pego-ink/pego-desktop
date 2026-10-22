@@ -80,6 +80,11 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
           ["shift", "↓"],
         ],
       },
+      {
+        id: "edit.ask-pego",
+        label: "Ask Pego about the selection",
+        chords: [["mod", "K"]],
+      },
       { id: "edit.select-all", label: "Select all", chords: [["mod", "A"]] },
       { id: "edit.escape", label: "Back to Select, then step out of selection", chords: [["Esc"]] },
       { id: "edit.edit-text", label: "Edit selected text or path", chords: [["Enter"]] },
@@ -100,6 +105,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
         ],
       },
       { id: "view.zoom-fit", label: "Zoom to fit", chords: [["shift", "1"]] },
+      { id: "view.zoom-selection", label: "Zoom to selection", chords: [["shift", "2"]] },
       { id: "view.zoom-wheel", label: "Zoom at cursor", chords: [["mod", "Scroll"]] },
       { id: "view.pan", label: "Pan while held", chords: [["Space", "Drag"]] },
       {
@@ -125,6 +131,25 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
       { id: "panels.agent", label: "Agent panel", chords: [["alt", "1"]] },
       { id: "panels.layers", label: "Layers panel", chords: [["alt", "2"]] },
       { id: "app.settings", label: "Settings", chords: [["mod", ","]] },
+    ],
+  },
+  {
+    id: "tabs",
+    label: "Tabs",
+    entries: [
+      { id: "tabs.new", label: "New tab", chords: [["mod", "T"]] },
+      { id: "tabs.close", label: "Close tab", chords: [["mod", "W"]] },
+      { id: "tabs.next", label: "Next tab", chords: [["ctrl", "Tab"]] },
+      { id: "tabs.prev", label: "Previous tab", chords: [["ctrl", "shift", "Tab"]] },
+      { id: "tabs.goto", label: "Go to tab 1-8 (9 is the last tab)", chords: [["mod", "1–9"]] },
+      {
+        id: "tabs.move",
+        label: "Move the focused tab",
+        chords: [
+          ["alt", "shift", "←"],
+          ["alt", "shift", "→"],
+        ],
+      },
     ],
   },
   {
@@ -157,18 +182,28 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   },
   {
     id: "agent",
-    label: "Agent decisions",
+    label: "Agent",
     entries: [
       { id: "agent.pick", label: "Pick option", chords: [["1"], ["2"], ["3"], ["4"]] },
       { id: "agent.navigate", label: "Move between options", chords: [["↑"], ["↓"]] },
       { id: "agent.custom", label: "Send a custom answer", chords: [["Enter"]] },
+      {
+        id: "agent.queue",
+        label: "Queue a message while the agent works",
+        chords: [["Enter"]],
+      },
+      {
+        id: "agent.steer",
+        label: "Send to the running agent now (steer)",
+        chords: [["mod", "Enter"]],
+      },
     ],
   },
 ];
 
 const MODIFIERS = {
-  mac: { mod: "⌘", shift: "⇧", alt: "⌥" },
-  other: { mod: "Ctrl", shift: "Shift", alt: "Alt" },
+  mac: { mod: "⌘", shift: "⇧", alt: "⌥", ctrl: "⌃" },
+  other: { mod: "Ctrl", shift: "Shift", alt: "Alt", ctrl: "Ctrl" },
 } as const;
 
 /** Display label for one key token on the given platform. */

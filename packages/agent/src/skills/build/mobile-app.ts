@@ -27,7 +27,7 @@ Screens that read in two seconds and work with one thumb. One primary intent per
 
 ## Workflow
 1. get_selection / get_document; reuse variables and components, else list_styles / get_style (prefer this skill's styles).
-2. List the flow's screens (3-5) and each one's single intent before drawing.
+2. List the flow's screens (3-5) and each one's single intent before drawing. A new flow in a document that already has screens gets its own page (create_page).
 3. find_empty_space direction right, padding 80; all screens of a flow share y and size 390 x 844.
 4. Build the chrome (status bar, tab bar) once as components, then fill content. Rows, buttons, chips, list items are components with overrides.
 5. get_screenshot + check_layout per screen; compare screens side by side for identical title size and padding. focus_nodes at the end.

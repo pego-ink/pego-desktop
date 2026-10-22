@@ -98,9 +98,14 @@ const drawOutline = (
 const makeHandler = (kind: ShapeKind): ToolHandler => ({
   cursor: "crosshair",
   begin: (p: ToolPointer) => {
-    const { doc } = useDocumentStore.getState();
+    const { doc, pageId } = useDocumentStore.getState();
     const layout = getLayout(doc);
-    const placement = resolvePlacement(doc, layout, hitPath(doc, layout, p.doc.x, p.doc.y));
+    const placement = resolvePlacement(
+      doc,
+      layout,
+      hitPath(doc, layout, p.doc.x, p.doc.y, { pageId }),
+      pageId,
+    );
     const start = p.doc;
     const startScreen = p.screen;
     let dragged = false;

@@ -114,10 +114,16 @@ export const createFakeController = (publish: (status: UpdateStatus) => void): U
   };
 };
 
-/** Real updater in packaged builds; fake with PEGO_FAKE_UPDATE=1; nothing otherwise. */
+/**
+ * Real updater in packaged macOS builds; fake with PEGO_FAKE_UPDATE=1; nothing otherwise. Linux and
+ * Windows builds have no update feed yet (release.yml only publishes latest-mac.yml).
+ */
 export const createUpdater = async (
   publish: (status: UpdateStatus) => void,
 ): Promise<UpdateController> => {
+  if (app.isPackaged && process.platform !== "darwin") {
+    return { getStatus: () => IDLE_STATUS, check: async () => {}, install: () => {} };
+  }
   if (!app.isPackaged) {
     if (process.env.PEGO_FAKE_UPDATE !== "1") {
       return { getStatus: () => IDLE_STATUS, check: async () => {}, install: () => {} };
