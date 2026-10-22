@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "1.1.0",
-    "@pego/doc": "workspace:*"
+    "@pego/doc": "workspace:*",
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@types/bun": "1.4.3"

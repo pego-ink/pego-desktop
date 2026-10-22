@@ -15,6 +15,8 @@ export type OverlayState = {
   hoveredId: string | null;
   /** Marquee in document coordinates. */
   marquee: Box | null;
+  /** Nodes the agent is working on right now (empty when no run is active). */
+  agentFocusIds?: readonly string[];
 };
 
 const toScreenBox = (camera: Camera, box: Box): Box => ({
@@ -110,13 +112,89 @@ const drawSizeLabel = (res: CanvasKitResources, canvas: SkCanvas, box: Box, docB
   }
 };
 
+const dashedStrokeRect = (ck: CanvasKit, canvas: SkCanvas, box: Box, color: string) =>
+  withPaint(
+    ck,
+    (p) => {
+      p.setStyle(ck.PaintStyle.Stroke);
+      p.setStrokeWidth(1.5);
+      p.setColor(ck.parseColorString(color));
+      p.setPathEffect(ck.PathEffect.MakeDash([5, 4], 0));
+    },
+    (p) => {
+      try {
+        canvas.drawRect(ck.XYWHRect(box.x, box.y, box.width, box.height), p);
+      } finally {
+        p.setPathEffect(null);
+      }
+    },
+  );
+
+/** Small "Agent" pill sitting on the top-left edge of a focused box. */
+const drawAgentTag = (res: CanvasKitResources, canvas: SkCanvas, box: Box) => {
+  const { ck, fontMgr, fontFamily } = res;
+  const style = new ck.ParagraphStyle({
+    textStyle: {
+      color: ck.parseColorString(LABEL_TEXT),
+      fontFamilies: [fontFamily],
+      fontSize: 10,
+      fontStyle: { weight: { value: 600 } },
+    },
+  });
+  const builder = ck.ParagraphBuilder.Make(style, fontMgr);
+  try {
+    builder.addText("Agent");
+    const paragraph = builder.build();
+    try {
+      paragraph.layout(200);
+      const w = paragraph.getLongestLine() + 12;
+      const h = paragraph.getHeight() + 4;
+      const x = box.x;
+      const y = box.y - h - 3;
+      withPaint(
+        ck,
+        (p) => {
+          p.setStyle(ck.PaintStyle.Fill);
+          p.setColor(ck.parseColorString(ACCENT));
+        },
+        (p) => canvas.drawRRect(ck.RRectXY(ck.XYWHRect(x, y, w, h), 4, 4), p),
+      );
+      canvas.drawParagraph(paragraph, x + 6, y + 2);
+    } finally {
+      paragraph.delete();
+    }
+  } finally {
+    builder.delete();
+  }
+};
+
+const drawAgentFocus = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  layout: Layout,
+  camera: Camera,
+  ids: readonly string[],
+) => {
+  for (const id of ids) {
+    const box = layout.get(id);
+    if (!box) continue;
+    const screen = toScreenBox(camera, box);
+    fillRect(res.ck, canvas, screen, "#B79CFF14");
+    dashedStrokeRect(res.ck, canvas, screen, ACCENT);
+    drawAgentTag(res, canvas, screen);
+  }
+};
+
 /** Editor chrome in screen space (CSS px; the caller applies the device pixel ratio). */
 export const renderOverlay = (
   res: CanvasKitResources,
   canvas: SkCanvas,
-  { layout, camera, selection, hoveredId, marquee }: OverlayState,
+  { layout, camera, selection, hoveredId, marquee, agentFocusIds }: OverlayState,
 ) => {
   const { ck } = res;
+
+  if (agentFocusIds && agentFocusIds.length > 0)
+    drawAgentFocus(res, canvas, layout, camera, agentFocusIds);
 
   if (hoveredId && !selection.includes(hoveredId)) {
     const box = layout.get(hoveredId);

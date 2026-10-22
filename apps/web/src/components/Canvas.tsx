@@ -5,6 +5,8 @@ import { loadCanvasKit } from "@/canvas/load-canvaskit";
 import { getLayout } from "@/canvas/layout";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
+import { useAgentStore } from "@/agent/use-agent-store";
+import { isRunActive } from "@/panels/agent/agent-format";
 import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
@@ -74,7 +76,16 @@ export const Canvas = () => {
           const editing = useTextEditStore.getState().target;
           const hiddenIds = editing?.mode === "edit" ? new Set([editing.id]) : undefined;
           renderDocument(res, canvas, doc, layout, camera, { hiddenIds });
-          renderOverlay(res, canvas, { layout, camera, selection, hoveredId, marquee });
+          const agent = useAgentStore.getState();
+          const agentFocusIds = isRunActive(agent.status) ? agent.focusIds : undefined;
+          renderOverlay(res, canvas, {
+            layout,
+            camera,
+            selection,
+            hoveredId,
+            marquee,
+            agentFocusIds,
+          });
           canvas.restore();
           surface.flush();
         };
@@ -108,6 +119,9 @@ export const Canvas = () => {
           useViewportStore.subscribe(schedule),
           useInteractionState.subscribe(schedule),
           useTextEditStore.subscribe(schedule),
+          useAgentStore.subscribe((state, prev) => {
+            if (state.focusIds !== prev.focusIds || state.status !== prev.status) schedule();
+          }),
         ];
 
         cleanup = () => {
