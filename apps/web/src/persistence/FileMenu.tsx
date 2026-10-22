@@ -125,7 +125,7 @@ export const FileMenu = () => {
           windowControls && "min-w-0 flex-1 overflow-hidden whitespace-nowrap",
         )}
       >
-        <AutosaveStatus />
+        <AutosaveStatus compact={windowControls} />
       </div>
       {open ? (
         <div
