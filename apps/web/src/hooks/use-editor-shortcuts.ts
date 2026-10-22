@@ -81,6 +81,11 @@ export const useEditorShortcuts = () => {
         doc.select(doc.doc.children.map((n) => n.id));
         return;
       }
+      if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        useToolStore.getState().setTool("image");
+        return;
+      }
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
         const plan = duplicateOps(doc.doc, doc.selection, DUPLICATE_OFFSET);
