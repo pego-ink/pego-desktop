@@ -43,6 +43,8 @@ export type ToolHandler = {
   deactivate?: () => void;
   /** Screen-space overlay drawn after the selection overlay (previews, anchors, guides). */
   renderOverlay?: (res: CanvasKitResources, canvas: SkCanvas, camera: Camera) => void;
+  /** True while the tool shows its own editing chrome, so the selection box/handles are hidden. */
+  hidesSelection?: () => boolean;
   /** CSS cursor while the tool is active. */
   cursor?: string;
 };

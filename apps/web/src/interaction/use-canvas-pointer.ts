@@ -20,7 +20,8 @@ import {
   type Placement,
 } from "@/interaction/create-node";
 import { applyAll, duplicateOps } from "@/interaction/duplicate";
-import { hitPath } from "@/interaction/hit-test";
+import { hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
+import { isDiscreteWheel, wheelNotchFactor } from "@/interaction/camera";
 import { useInteractionState } from "@/interaction/interaction-state";
 import {
   drillTarget,
@@ -111,6 +112,8 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
     };
     const toDoc = (sx: number, sy: number) =>
       screenToDoc(useViewportStore.getState().camera, sx, sy);
+    /** Screen-space click tolerance in document units. */
+    const hitTolerance = () => HIT_TOLERANCE_PX / useViewportStore.getState().camera.zoom;
     const isDeep = (e: { metaKey: boolean; ctrlKey: boolean }) => e.metaKey || e.ctrlKey;
     const toolPointer = (e: PointerEvent | MouseEvent): ToolPointer => {
       const screen = local(e);
@@ -133,7 +136,9 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const viewport = useViewportStore.getState();
       if (e.ctrlKey || e.metaKey) {
         const p = local(e);
-        viewport.zoomBy(Math.exp(-dy * 0.01), p.x, p.y);
+        // Notched wheels ease toward a clamped step; trackpad pinch stays 1:1.
+        if (isDiscreteWheel(e)) viewport.wheelZoomBy(wheelNotchFactor(dy), p.x, p.y);
+        else viewport.zoomBy(Math.exp(-dy * 0.01), p.x, p.y);
         return;
       }
       viewport.panBy(-dx, -dy);
@@ -209,7 +214,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
 
       const d = toDoc(p.x, p.y);
       const layout = getLayout(state.doc);
-      const hit = pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e));
+      const hit = pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e), hitTolerance());
 
       if (!hit) {
         if (!e.shiftKey) state.select([]);
@@ -253,7 +258,15 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const d = toDoc(p.x, p.y);
       const hit = handle
         ? null
-        : pickAt(state.doc, getLayout(state.doc), d.x, d.y, state.selection, isDeep(e));
+        : pickAt(
+            state.doc,
+            getLayout(state.doc),
+            d.x,
+            d.y,
+            state.selection,
+            isDeep(e),
+            hitTolerance(),
+          );
       if (state.hoveredId !== hit) state.setHovered(hit);
     };
 
@@ -265,7 +278,10 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         return;
       }
       if (gesture.kind === "tool") {
-        gesture.session.move(toolPointer(e));
+        // One move per coalesced sample: freehand strokes keep the hardware's full sample rate.
+        const samples = e.getCoalescedEvents?.() ?? [];
+        if (samples.length === 0) gesture.session.move(toolPointer(e));
+        for (const sample of samples) gesture.session.move(toolPointer(sample));
         return;
       }
       const p = local(e);
@@ -410,7 +426,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const p = local(e);
       const state = useDocumentStore.getState();
       const d = toDoc(p.x, p.y);
-      const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y);
+      const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y, hitTolerance());
       const leafId = path?.[path.length - 1];
       // Pen tool: double-clicking a path enters its vector edit mode (see tools/pen.ts).
       if (leafId && findNode(state.doc, leafId)?.type === "path" && enterPathEdit(leafId)) return;

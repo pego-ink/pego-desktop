@@ -1,6 +1,16 @@
 import { describe, expect, test } from "bun:test";
 import { screenToDoc } from "../canvas/types";
-import { clampZoom, contentBounds, fitCamera, MAX_ZOOM, MIN_ZOOM, zoomAtPoint } from "./camera";
+import {
+  clampZoom,
+  contentBounds,
+  fitCamera,
+  isDiscreteWheel,
+  MAX_ZOOM,
+  MIN_ZOOM,
+  WHEEL_NOTCH_FACTOR,
+  wheelNotchFactor,
+  zoomAtPoint,
+} from "./camera";
 import { fixtureDoc, fixtureLayout } from "./test-doc";
 
 describe("camera", () => {
@@ -35,4 +45,22 @@ describe("camera", () => {
       width: 800,
       height: 400,
     }));
+});
+
+describe("wheel classification", () => {
+  test("line deltas and big pixel jumps are notched wheels", () => {
+    expect(isDiscreteWheel({ deltaMode: 1, deltaY: 3 })).toBe(true);
+    expect(isDiscreteWheel({ deltaMode: 0, deltaY: 100 })).toBe(true);
+    expect(isDiscreteWheel({ deltaMode: 0, deltaY: -120 })).toBe(true);
+  });
+  test("small pixel deltas are trackpad samples", () => {
+    expect(isDiscreteWheel({ deltaMode: 0, deltaY: 4 })).toBe(false);
+    expect(isDiscreteWheel({ deltaMode: 0, deltaY: -49 })).toBe(false);
+  });
+  test("a notch is one clamped step whatever the delta", () => {
+    expect(wheelNotchFactor(-100)).toBe(WHEEL_NOTCH_FACTOR);
+    expect(wheelNotchFactor(-1200)).toBe(WHEEL_NOTCH_FACTOR);
+    expect(wheelNotchFactor(100)).toBeCloseTo(1 / WHEEL_NOTCH_FACTOR, 10);
+    expect(wheelNotchFactor(0)).toBe(1);
+  });
 });

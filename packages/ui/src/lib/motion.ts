@@ -7,5 +7,18 @@ export const DURATION_FAST = 150;
 export const DURATION_BASE = 200;
 export const DURATION_SLOW = 250;
 
-export const prefersReducedMotion = (): boolean =>
-  typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+let reducedQuery: MediaQueryList | null = null;
+let reduced = false;
+
+/** Cached `prefers-reduced-motion: reduce`; a change listener keeps it current (safe per frame). */
+export const prefersReducedMotion = (): boolean => {
+  if (typeof window === "undefined") return false;
+  if (!reducedQuery) {
+    reducedQuery = window.matchMedia("(prefers-reduced-motion: reduce)");
+    reduced = reducedQuery.matches;
+    reducedQuery.addEventListener("change", (event) => {
+      reduced = event.matches;
+    });
+  }
+  return reduced;
+};

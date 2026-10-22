@@ -54,7 +54,6 @@ const openSession = (target: TextEditTarget) => {
 
 const Editor = ({ target }: { target: TextEditTarget }) => {
   const session = useMemo(() => openSession(target), [target]);
-  const camera = useViewportStore((s) => s.camera);
   const ref = useRef<HTMLDivElement>(null);
   const done = useRef(false);
 
@@ -112,13 +111,37 @@ const Editor = ({ target }: { target: TextEditTarget }) => {
     if (!session) useTextEditStore.getState().stop();
   }, [session]);
 
+  // Camera changes (pan, zoom, animation) write transform/outline straight to the element:
+  // React renders the editor once and never again per camera frame.
+  useEffect(() => {
+    if (!session) return;
+    const { props, placement, width, fallbackColor } = session;
+    const apply = () => {
+      const el = ref.current;
+      if (!el) return;
+      const next = deriveEditorStyle(
+        props,
+        placement,
+        width,
+        useViewportStore.getState().camera,
+        useDocumentStore.getState().doc.variables,
+        fallbackColor,
+      );
+      el.style.transform = next.transform;
+      el.style.outlineWidth = `${next.outlineWidth}px`;
+    };
+    return useViewportStore.subscribe((state, prev) => {
+      if (state.camera !== prev.camera) apply();
+    });
+  }, [session]);
+
   if (!session) return null;
   const { props, placement, width, fallbackColor } = session;
   const style = deriveEditorStyle(
     props,
     placement,
     width,
-    camera,
+    useViewportStore.getState().camera,
     useDocumentStore.getState().doc.variables,
     fallbackColor,
   );

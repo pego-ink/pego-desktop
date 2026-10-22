@@ -1,4 +1,6 @@
 import { useEffect, useRef } from "react";
+import { EASE_OUT, prefersReducedMotion } from "@pego/ui/lib/motion";
+import type { Layout, PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import {
   clampToSize,
@@ -16,6 +18,7 @@ import {
   type Fraction,
   type Glide,
   type Point,
+  type Rect,
 } from "@/canvas/agent-cursor-motion";
 import { docToScreen, screenToDoc } from "@/canvas/types";
 import { useAgentStore } from "@/agent/use-agent-store";
@@ -38,7 +41,32 @@ type Session = {
   nextInspectAt: number;
 };
 
-const prefersReducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+const PILL_FLIP_TRANSITION = `transform 120ms ${EASE_OUT}`;
+
+type FocusInfo = {
+  doc: PegoDocument;
+  ids: readonly string[];
+  /** Focused ids that exist in the layout, joined for the session key. */
+  targets: string[];
+  key: string;
+  union: Rect | null;
+};
+
+/** Focus targets and their union box, recomputed only when the document or focus ids change. */
+const createFocusMemo = () => {
+  let memo: FocusInfo | null = null;
+  return (doc: PegoDocument, ids: readonly string[], layout: () => Layout): FocusInfo => {
+    if (memo && memo.doc === doc && memo.ids === ids) return memo;
+    const map = layout();
+    const targets = ids.filter((id) => map.has(id));
+    const boxes = targets.flatMap((id) => {
+      const box = map.get(id);
+      return box ? [box] : [];
+    });
+    memo = { doc, ids, targets, key: targets.join(","), union: unionRect(boxes) };
+    return memo;
+  };
+};
 
 const pillText = (mode: Mode, runLabel: string | null) =>
   mode === "park" ? "Waiting for you" : runLabel ? `Pego · ${runLabel}` : "Pego";
@@ -65,17 +93,13 @@ export const AgentCursor = () => {
     let shownText = "";
     let flipped = false;
     let visible = false;
+    const focusInfo = createFocusMemo();
 
     const resolveAim = (current: Session, size: { width: number; height: number }) => {
       const { camera } = useViewportStore.getState();
       const { doc } = useDocumentStore.getState();
       if (current.mode === "target" && current.aim.kind === "box") {
-        const layout = getLayout(doc);
-        const boxes = useAgentStore.getState().focusIds.flatMap((id) => {
-          const box = layout.get(id);
-          return box ? [box] : [];
-        });
-        const union = unionRect(boxes);
+        const { union } = focusInfo(doc, useAgentStore.getState().focusIds, () => getLayout(doc));
         if (union) {
           const raw = pointInRect(union, current.aim.anchor);
           const screen = clampToSize(docToScreen(camera, raw.x, raw.y), size);
@@ -122,11 +146,15 @@ export const AgentCursor = () => {
       }
       const reduced = prefersReducedMotion();
 
-      const layout = getLayout(useDocumentStore.getState().doc);
-      const targets = agent.focusIds.filter((id) => layout.has(id));
+      const doc = useDocumentStore.getState().doc;
+      const focus = focusInfo(doc, agent.focusIds, () => getLayout(doc));
       const mode: Mode =
-        agent.status === "awaiting_decision" ? "park" : targets.length > 0 ? "target" : "wander";
-      const key = `${mode}:${targets.join(",")}`;
+        agent.status === "awaiting_decision"
+          ? "park"
+          : focus.targets.length > 0
+            ? "target"
+            : "wander";
+      const key = `${mode}:${focus.key}`;
 
       if (!session) {
         const start = screenToDoc(camera, size.width * 0.5, size.height * 0.18);
@@ -184,7 +212,9 @@ export const AgentCursor = () => {
       const shouldFlip = x > size.width - PILL_FLIP_MARGIN;
       if (shouldFlip !== flipped) {
         flipped = shouldFlip;
-        pill.dataset.flip = String(shouldFlip);
+        pill.style.transition = reduced ? "none" : PILL_FLIP_TRANSITION;
+        // Flip to the left of the arrow with a transform so it can transition (left/right cannot).
+        pill.style.transform = shouldFlip ? "translateX(calc(-100% - 4px))" : "translateX(0)";
       }
       if (!visible) {
         visible = true;
@@ -252,7 +282,7 @@ export const AgentCursor = () => {
       />
       <div
         ref={arrowRef}
-        className="absolute top-0 left-0"
+        className="absolute top-0 left-0 will-change-transform"
         style={{
           transformOrigin: "0 0",
           filter:
@@ -271,7 +301,7 @@ export const AgentCursor = () => {
       </div>
       <div
         ref={pillRef}
-        className="absolute top-[18px] left-[14px] rounded-full px-2 py-[3px] text-[11px] leading-4 font-medium whitespace-nowrap data-[flip=true]:right-[10px] data-[flip=true]:left-auto"
+        className="absolute top-[18px] left-[14px] rounded-full px-2 py-[3px] text-[11px] leading-4 font-medium whitespace-nowrap"
         style={{
           background: ACCENT,
           color: "#1B1230",

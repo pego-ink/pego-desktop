@@ -3,7 +3,7 @@ import { resolveColor, resolveNumber, type ImageNode, type Variables } from "@pe
 import { getIconPath } from "@/canvas/icons";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { createLruCache } from "@/canvas/render-cache";
-import { useToolPreview } from "@/interaction/tool-handlers";
+import { useLayerEvents } from "@/canvas/layer-events";
 
 export type Rect = { left: number; top: number; right: number; bottom: number };
 export type ImageFit = NonNullable<ImageNode["fit"]>;
@@ -194,7 +194,7 @@ export const createImageStore = (options: {
   };
 };
 
-const store = createImageStore({ onChange: () => useToolPreview.getState().invalidate() });
+const store = createImageStore({ onChange: () => useLayerEvents.getState().invalidate() });
 
 /** Natural size of a decoded image, or undefined while loading / on error. */
 export const getImageNaturalSize = (src: string) => store.sizeOf(src);

@@ -1,10 +1,14 @@
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import type { GrDirectContext, Surface } from "canvaskit-wasm";
+import type { Layout, PegoDocument } from "@pego/doc";
+import { prefersReducedMotion } from "@pego/ui/lib/motion";
+import type { GrDirectContext, Image as SkImage, Surface } from "canvaskit-wasm";
 import { loadCanvasKit } from "@/canvas/load-canvaskit";
 import { getLayout } from "@/canvas/layout";
+import { useLayerEvents } from "@/canvas/layer-events";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
+import { timeFrame } from "@/canvas/frame-perf";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
@@ -22,6 +26,33 @@ import { useTextEditStore } from "@/store/use-text-edit-store";
 import { useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
+/** Everything the cached document layer depends on; any change forces a re-render of the layer. */
+type LayerKey = {
+  doc: PegoDocument;
+  layout: Layout;
+  panX: number;
+  panY: number;
+  zoom: number;
+  width: number;
+  height: number;
+  hiddenId: string | null;
+  fonts: number;
+  layers: number;
+};
+
+const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
+  a !== null &&
+  a.doc === b.doc &&
+  a.layout === b.layout &&
+  a.panX === b.panX &&
+  a.panY === b.panY &&
+  a.zoom === b.zoom &&
+  a.width === b.width &&
+  a.height === b.height &&
+  a.hiddenId === b.hiddenId &&
+  a.fonts === b.fonts &&
+  a.layers === b.layers;
+
 export const Canvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -30,18 +61,23 @@ export const Canvas = () => {
   useImageDrop(canvasRef);
   useEditorShortcuts();
 
-  // Cursor follows interaction state without re-rendering React.
+  // Cursor follows interaction state without re-rendering React. The active tool's own cursor
+  // wins over the tool table, except while panning (space, hand drag).
   useEffect(() => {
     const apply = () => {
       const element = canvasRef.current;
-      if (element)
-        element.style.cursor = deriveCursor(
-          useInteractionState.getState(),
-          useToolStore.getState().tool,
-        );
+      if (!element) return;
+      const ui = useInteractionState.getState();
+      const tool = useToolStore.getState().tool;
+      const toolCursor = ui.panning || ui.spaceDown ? undefined : getToolHandler(tool)?.cursor;
+      element.style.cursor = toolCursor ?? deriveCursor(ui, tool);
     };
     apply();
-    const unsubscribers = [useInteractionState.subscribe(apply), useToolStore.subscribe(apply)];
+    const unsubscribers = [
+      useInteractionState.subscribe(apply),
+      useToolStore.subscribe(apply),
+      useToolPreview.subscribe(apply),
+    ];
     return () => {
       for (const unsubscribe of unsubscribers) unsubscribe();
     };
@@ -64,11 +100,50 @@ export const Canvas = () => {
         const { ck } = res;
 
         const handle = ck.GetWebGLContext(element, { majorVersion: 2, antialias: 0 });
-        grContext = handle ? ck.MakeGrContext(handle) : null;
-        if (!grContext) throw new Error("WebGL2 is not available");
+        const context = handle ? ck.MakeGrContext(handle) : null;
+        if (!context) throw new Error("WebGL2 is not available");
+        grContext = context;
 
-        const draw = () => {
-          frame = 0;
+        // Cached document layer: an offscreen render target plus its snapshot. Hover, selection,
+        // marquee and tool previews only blit it and redraw the overlay.
+        let layer: Surface | null = null;
+        let layerImage: SkImage | null = null;
+        let layerKey: LayerKey | null = null;
+        let pixelWidth = 0;
+        let pixelHeight = 0;
+        let cssWidth = 0;
+        let cssHeight = 0;
+
+        const dropLayer = () => {
+          layerImage?.delete();
+          layerImage = null;
+          layer?.delete();
+          layer = null;
+          layerKey = null;
+        };
+
+        /** The document drawn into the cache (or straight to the screen when no cache exists). */
+        const paintDocument = (
+          target: Surface,
+          dpr: number,
+          key: LayerKey,
+          hiddenIds: ReadonlySet<string> | undefined,
+        ) => {
+          const canvas = target.getCanvas();
+          canvas.save();
+          canvas.scale(dpr, dpr);
+          renderDocument(
+            res,
+            canvas,
+            key.doc,
+            key.layout,
+            { panX: key.panX, panY: key.panY, zoom: key.zoom },
+            { hiddenIds },
+          );
+          canvas.restore();
+        };
+
+        const drawFrame = () => {
           if (!surface) return;
           const dpr = window.devicePixelRatio || 1;
           const canvas = surface.getCanvas();
@@ -76,13 +151,43 @@ export const Canvas = () => {
           const { camera } = useViewportStore.getState();
           const { marquee } = useInteractionState.getState();
           const layout = getLayout(doc);
+          const editing = useTextEditStore.getState().target;
+          const hiddenId = editing?.mode === "edit" ? editing.id : null;
+          const hiddenIds = hiddenId ? new Set([hiddenId]) : undefined;
+          const key: LayerKey = {
+            doc,
+            layout,
+            panX: camera.panX,
+            panY: camera.panY,
+            zoom: camera.zoom,
+            width: pixelWidth,
+            height: pixelHeight,
+            hiddenId,
+            fonts: useFontEvents.getState().version,
+            layers: useLayerEvents.getState().version,
+          };
+
+          if (!sameKey(layerKey, key)) {
+            layerImage?.delete();
+            layerImage = null;
+            layer ??= ck.MakeRenderTarget(context, pixelWidth, pixelHeight);
+            if (layer) {
+              paintDocument(layer, dpr, key, hiddenIds);
+              layer.flush();
+              layerImage = layer.makeImageSnapshot();
+              layerKey = key;
+            }
+          }
+          if (layerImage) canvas.drawImage(layerImage, 0, 0);
+          else paintDocument(surface, dpr, key, hiddenIds);
+
           canvas.save();
           canvas.scale(dpr, dpr);
-          const editing = useTextEditStore.getState().target;
-          const hiddenIds = editing?.mode === "edit" ? new Set([editing.id]) : undefined;
-          renderDocument(res, canvas, doc, layout, camera, { hiddenIds });
           const agent = useAgentStore.getState();
           const agentFocusIds = isRunActive(agent.status) ? agent.focusIds : undefined;
+          const focusAnimated =
+            agentFocusIds !== undefined && agentFocusIds.length > 0 && !prefersReducedMotion();
+          const toolHandler = getToolHandler(useToolStore.getState().tool);
           renderOverlay(res, canvas, {
             layout,
             camera,
@@ -90,35 +195,72 @@ export const Canvas = () => {
             hoveredId,
             marquee,
             agentFocusIds,
+            suppressSelection: toolHandler?.hidesSelection?.() ?? false,
+            time: focusAnimated ? performance.now() : undefined,
           });
-          getToolHandler(useToolStore.getState().tool)?.renderOverlay?.(res, canvas, camera);
+          toolHandler?.renderOverlay?.(res, canvas, camera);
           canvas.restore();
           surface.flush();
-        };
-        const schedule = () => {
-          if (!frame) frame = requestAnimationFrame(draw);
+          // The agent focus box animates: keep frames coming only while it is on screen.
+          if (focusAnimated) schedule();
         };
 
-        const resize = () => {
-          const dpr = window.devicePixelRatio || 1;
-          const width = Math.max(Math.round(container.clientWidth * dpr), 1);
-          const height = Math.max(Math.round(container.clientHeight * dpr), 1);
-          if (!grContext) return;
-          surface?.delete();
-          element.width = width;
-          element.height = height;
-          surface = ck.MakeOnScreenGLSurface(grContext, width, height, ck.ColorSpace.SRGB);
-          const viewport = useViewportStore.getState();
-          viewport.setSize(container.clientWidth, container.clientHeight);
-          if (!viewport.fitted) {
-            const { doc } = useDocumentStore.getState();
-            viewport.zoomToFit(contentBounds(doc, getLayout(doc)));
-          }
+        const draw = () => {
+          frame = 0;
+          timeFrame(element.getContext("webgl2"), drawFrame);
+        };
+        function schedule() {
+          if (!frame) frame = requestAnimationFrame(draw);
+        }
+        /** Draw now and drop any frame already queued for the same state. */
+        const drawNow = () => {
+          if (frame) cancelAnimationFrame(frame);
           draw();
         };
 
-        resize();
-        const observer = new ResizeObserver(resize);
+        /**
+         * Rebuild the GL surface only when the pixel size really changed. Returns whether it did.
+         * The caller draws straight after, in the same frame, so the bitmap never shows stale.
+         */
+        const syncSurface = (): boolean => {
+          if (!grContext) return false;
+          const dpr = window.devicePixelRatio || 1;
+          const nextCssW = container.clientWidth;
+          const nextCssH = container.clientHeight;
+          const width = Math.max(Math.round(nextCssW * dpr), 1);
+          const height = Math.max(Math.round(nextCssH * dpr), 1);
+          const changed = !surface || width !== pixelWidth || height !== pixelHeight;
+          if (changed) {
+            dropLayer();
+            surface?.delete();
+            element.width = width;
+            element.height = height;
+            surface = ck.MakeOnScreenGLSurface(grContext, width, height, ck.ColorSpace.SRGB);
+            pixelWidth = width;
+            pixelHeight = height;
+          }
+          if (nextCssW !== cssWidth || nextCssH !== cssHeight) {
+            cssWidth = nextCssW;
+            cssHeight = nextCssH;
+            const viewport = useViewportStore.getState();
+            viewport.setSize(nextCssW, nextCssH);
+            if (!viewport.fitted) {
+              const { doc } = useDocumentStore.getState();
+              viewport.zoomToFit(contentBounds(doc, getLayout(doc)));
+            }
+          }
+          return changed;
+        };
+
+        // ResizeObserver delivers at most once per frame, after layout and before paint, so
+        // rebuilding and drawing right here is one rebuild per frame with no stale-bitmap flash.
+        const onResize = () => {
+          if (syncSurface()) drawNow();
+        };
+
+        syncSurface();
+        drawNow();
+        const observer = new ResizeObserver(onResize);
         observer.observe(container);
         const unsubscribers = [
           useDocumentStore.subscribe(schedule),
@@ -126,6 +268,7 @@ export const Canvas = () => {
           useInteractionState.subscribe(schedule),
           useTextEditStore.subscribe(schedule),
           useFontEvents.subscribe(schedule),
+          useLayerEvents.subscribe(schedule),
           useToolPreview.subscribe(schedule),
           useToolStore.subscribe(schedule),
           useAgentStore.subscribe((state, prev) => {
@@ -137,6 +280,7 @@ export const Canvas = () => {
           observer.disconnect();
           for (const unsubscribe of unsubscribers) unsubscribe();
           if (frame) cancelAnimationFrame(frame);
+          dropLayer();
           surface?.delete();
           surface = null;
           grContext?.delete();

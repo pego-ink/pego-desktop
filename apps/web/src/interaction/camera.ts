@@ -5,6 +5,22 @@ export const MIN_ZOOM = 0.02;
 export const MAX_ZOOM = 64;
 export const FIT_PADDING = 48;
 
+/** Zoom change per mouse-wheel notch. */
+export const WHEEL_NOTCH_FACTOR = 1.2;
+/** A wheel event at least this large (px) is a mouse notch, not a trackpad pinch/scroll sample. */
+const DISCRETE_WHEEL_MIN_DELTA = 50;
+
+/**
+ * Notched mouse wheels report line deltas or big pixel jumps; trackpads stream small pixel
+ * deltas (pinch arrives as ctrl+wheel) and must stay 1:1.
+ */
+export const isDiscreteWheel = (e: { deltaMode: number; deltaY: number }): boolean =>
+  e.deltaMode !== 0 || Math.abs(e.deltaY) >= DISCRETE_WHEEL_MIN_DELTA;
+
+/** Zoom factor for one wheel notch, however large the reported delta is. */
+export const wheelNotchFactor = (deltaY: number): number =>
+  deltaY < 0 ? WHEEL_NOTCH_FACTOR : deltaY > 0 ? 1 / WHEEL_NOTCH_FACTOR : 1;
+
 export const clampZoom = (zoom: number): number => Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, zoom));
 
 /** Change zoom while keeping the document point under screen point (sx, sy) fixed. */

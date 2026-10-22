@@ -41,6 +41,7 @@ const penHandler: ToolHandler = {
   },
   renderOverlay: (res, canvas, camera) =>
     isEditing() ? editOverlay(res, canvas, camera) : drawOverlay(res, canvas, camera),
+  hidesSelection: isEditing,
   get cursor() {
     return isEditing() ? "default" : "crosshair";
   },

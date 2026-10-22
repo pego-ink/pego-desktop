@@ -3,7 +3,8 @@ import type { Canvas as SkCanvas } from "canvaskit-wasm";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { getLayout } from "@/canvas/layout";
 import type { Camera } from "@/canvas/types";
-import { getNodeIndex } from "@/interaction/hit-test";
+import { getNodeIndex, hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
+import { pickAt } from "@/interaction/selection";
 import { useToolPreview, type ToolPointer, type ToolSession } from "@/interaction/tool-handlers";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useToolStore } from "@/store/use-tool-store";
@@ -256,8 +257,19 @@ export const editBegin = (p: ToolPointer): ToolSession | null => {
     return null;
   }
 
-  state = { ...s, sel: null };
-  invalidate();
+  // Empty canvas ends edit mode; another node under the click is selected instead.
+  const { doc, selection } = useDocumentStore.getState();
+  const layout = getLayout(doc);
+  const tolerance = screenTol(HIT_TOLERANCE_PX);
+  // A click on the path's own body just drops the anchor selection.
+  if (hitPath(doc, layout, p.doc.x, p.doc.y, tolerance)?.includes(s.id)) {
+    state = { ...s, sel: null };
+    invalidate();
+    return null;
+  }
+  const hit = pickAt(doc, layout, p.doc.x, p.doc.y, selection, p.metaKey, tolerance);
+  exitEdit();
+  useDocumentStore.getState().select(hit ? [hit] : []);
   return null;
 };
 

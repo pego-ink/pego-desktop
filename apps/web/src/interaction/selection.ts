@@ -44,8 +44,9 @@ export const pickAt = (
   y: number,
   selection: readonly string[],
   deep: boolean,
+  tolerance = 0,
 ): string | null => {
-  const path = hitPath(doc, layout, x, y);
+  const path = hitPath(doc, layout, x, y, tolerance);
   return path ? pickFromPath(doc, path, selection, deep) : null;
 };
 
