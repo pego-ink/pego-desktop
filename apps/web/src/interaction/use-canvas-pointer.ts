@@ -20,6 +20,13 @@ import {
   type Placement,
 } from "@/interaction/create-node";
 import { applyAll, duplicateOps } from "@/interaction/duplicate";
+import {
+  childrenAmong,
+  insertionLine,
+  planDrag,
+  sameSegment,
+  type Segment,
+} from "@/interaction/drag-target";
 import { hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
 import { useSettingsStore } from "@/store/use-settings-store";
 import { wheelAction } from "@/interaction/wheel-behavior";
@@ -37,7 +44,6 @@ import {
   constrainAxis,
   HANDLE_CURSORS,
   hitHandle,
-  moveOps,
   resizeBox,
   resizeOps,
   type Handle,
@@ -57,6 +63,8 @@ type Gesture =
       startDoc: PegoDocument;
       ids: string[];
       started: boolean;
+      /** Whether the drag's undo step exists yet (a reorder can start with no ops). */
+      committed: boolean;
       /** Click without drag on a multi-selection collapses it to the clicked node. */
       collapseTo: string | null;
     }
@@ -69,6 +77,7 @@ type Gesture =
       id: string;
       startBox: Box;
       started: boolean;
+      committed: boolean;
     }
   | { kind: "marquee"; startDocX: number; startDocY: number; base: string[] }
   | {
@@ -212,6 +221,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
             id: sel.id,
             startBox,
             started: false,
+            committed: false,
           };
           ui.set({ handleCursor: HANDLE_CURSORS[handle] });
           return;
@@ -246,6 +256,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         startDoc: state.doc,
         ids,
         started: false,
+        committed: false,
         collapseTo: inSelection && ids.length > 1 ? hit : null,
       };
     };
@@ -347,9 +358,13 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       gesture.started = true;
       if (store.hoveredId) store.setHovered(null);
 
+      const active = gesture;
       const apply = (ops: Op[], label: string) => {
-        if (ops.length === 0) return true;
-        return first ? store.commit(ops, { label }) : store.extendLast(ops);
+        if (ops.length === 0 || (active.kind !== "move" && active.kind !== "resize")) return true;
+        // Only the first non-empty change opens the undo step; later ones fold into it.
+        const opened = active.committed;
+        active.committed = true;
+        return opened ? store.extendLast(ops) : store.commit(ops, { label });
       };
 
       let ok: boolean;
@@ -368,13 +383,21 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         const delta = e.shiftKey
           ? constrainAxis(screenDx / zoom, screenDy / zoom)
           : { dx: screenDx / zoom, dy: screenDy / zoom };
-        ok = apply(
-          [
-            ...copyOps,
-            ...moveOps(gesture.startDoc, gesture.ids, delta.dx, delta.dy, snapEnabled()),
-          ],
-          copyOps.length > 0 ? "Duplicate" : "Move",
-        );
+        // On the duplicate frame the copies are not in the store yet; startDoc already has them.
+        const current = copyOps.length > 0 ? gesture.startDoc : store.doc;
+        const plan = planDrag({
+          startDoc: gesture.startDoc,
+          startLayout: getLayout(gesture.startDoc),
+          doc: current,
+          layout: getLayout(current),
+          ids: gesture.ids,
+          point: toDoc(p.x, p.y),
+          dx: delta.dx,
+          dy: delta.dy,
+          snap: snapEnabled(),
+        });
+        ok = apply([...copyOps, ...plan.ops], copyOps.length > 0 ? "Duplicate" : "Move");
+        if (ok) showDropLine(plan.flexParentId, gesture.ids);
         if (ok && copyOps.length > 0) store.select(gesture.ids);
       } else {
         const next = resizeBox(gesture.startBox, gesture.handle, screenDx / zoom, screenDy / zoom, {
@@ -390,10 +413,19 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       if (!ok) endGesture();
     };
 
+    /** Show the auto-layout insertion line for `ids` after the latest drag ops, or clear it. */
+    const showDropLine = (flexParentId: string | null, ids: readonly string[]) => {
+      const { doc } = useDocumentStore.getState();
+      const line: Segment | null = flexParentId
+        ? insertionLine(doc, getLayout(doc), flexParentId, childrenAmong(doc, flexParentId, ids))
+        : null;
+      if (!sameSegment(useInteractionState.getState().dropLine, line)) ui.set({ dropLine: line });
+    };
+
     const endGesture = () => {
       const g = gesture;
       gesture = null;
-      ui.set({ panning: false, marquee: null, handleCursor: null });
+      ui.set({ panning: false, marquee: null, handleCursor: null, dropLine: null });
       if (g?.kind === "move" && !g.started && g.collapseTo) {
         useDocumentStore.getState().select([g.collapseTo]);
       }

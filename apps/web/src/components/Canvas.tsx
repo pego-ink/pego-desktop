@@ -149,7 +149,7 @@ export const Canvas = () => {
           const canvas = surface.getCanvas();
           const { doc, selection, hoveredId } = useDocumentStore.getState();
           const { camera } = useViewportStore.getState();
-          const { marquee } = useInteractionState.getState();
+          const { marquee, dropLine } = useInteractionState.getState();
           const layout = getLayout(doc);
           const editing = useTextEditStore.getState().target;
           const hiddenId = editing?.mode === "edit" ? editing.id : null;
@@ -195,6 +195,7 @@ export const Canvas = () => {
             selection,
             hoveredId,
             marquee,
+            dropLine,
             agentFocusIds,
             suppressSelection: toolHandler?.hidesSelection?.() ?? false,
             time: focusAnimated ? performance.now() : undefined,

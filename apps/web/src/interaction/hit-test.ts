@@ -62,11 +62,12 @@ const hitNodes = (
   parent: Box,
   trail: string[],
   tolerance: number,
+  skip?: ReadonlySet<string>,
 ): string[] | null => {
   // Later siblings paint on top, so test them first.
   for (let i = nodes.length - 1; i >= 0; i--) {
     const node = nodes[i];
-    if (!node) continue;
+    if (!node || skip?.has(node.id)) continue;
     const box = layout.get(node.id);
     if (!box) continue;
     const local = toLocal(p, box, parent, rotationOf(doc, node));
@@ -82,6 +83,7 @@ const hitNodes = (
         box,
         [...trail, node.id],
         tolerance,
+        skip,
       );
       if (found) return found;
       continue;
@@ -96,6 +98,7 @@ const hitNodes = (
         box,
         [...trail, node.id],
         tolerance,
+        skip,
       );
       if (found) return found;
     }
@@ -110,7 +113,8 @@ const hitNodes = (
  * point, or null. Mirrors the renderer: each node is translated to its box relative to its parent
  * and rotated by `-rotation` degrees around its top-left, so the point is mapped into every node's
  * local space. Frames with `clip` hide children outside their (rotated) box. `tolerance` (document
- * units) widens path hits so thin lines stay clickable at any zoom.
+ * units) widens path hits so thin lines stay clickable at any zoom. Ids in `skip` (and their
+ * subtrees) are invisible to the hit test, e.g. the nodes being dragged.
  */
 export const hitPath = (
   doc: PegoDocument,
@@ -118,7 +122,8 @@ export const hitPath = (
   x: number,
   y: number,
   tolerance = 0,
-): string[] | null => hitNodes(doc, doc.children, layout, { x, y }, ORIGIN, [], tolerance);
+  skip?: ReadonlySet<string>,
+): string[] | null => hitNodes(doc, doc.children, layout, { x, y }, ORIGIN, [], tolerance, skip);
 
 export type NodeIndexEntry = { parentId: string | null; type: PegoNodeType };
 export type NodeIndex = Map<string, NodeIndexEntry>;

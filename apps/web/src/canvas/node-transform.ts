@@ -83,3 +83,23 @@ export const nodeToDocAffine = (
   }
   return matrix;
 };
+
+/** Map a point through `m`. */
+export const applyAffine = (m: Affine, x: number, y: number) => ({
+  x: m.a * x + m.c * y + m.e,
+  y: m.b * x + m.d * y + m.f,
+});
+
+/** Inverse of `m`, or null when it is singular. */
+export const invertAffine = (m: Affine): Affine | null => {
+  const det = m.a * m.d - m.b * m.c;
+  if (Math.abs(det) < 1e-12) return null;
+  return {
+    a: m.d / det,
+    b: -m.b / det,
+    c: -m.c / det,
+    d: m.a / det,
+    e: (m.c * m.f - m.d * m.e) / det,
+    f: (m.b * m.e - m.a * m.f) / det,
+  };
+};

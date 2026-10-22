@@ -4,6 +4,7 @@ import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { buildNodeOutline } from "@/canvas/node-outline";
 import { createLruCache } from "@/canvas/render-cache";
 import { docToScreen, type Camera } from "@/canvas/types";
+import type { Segment } from "@/interaction/drag-target";
 import { HANDLES, handlePoint } from "@/interaction/transform";
 
 export const ACCENT = "#B79CFF";
@@ -11,6 +12,8 @@ const LABEL_TEXT = "#141418";
 const HANDLE_SIZE = 8;
 /** Hover outline width in screen px, constant at every zoom. */
 const HOVER_STROKE_WIDTH = 2;
+/** Auto-layout insertion line width in screen px. */
+const DROP_LINE_WIDTH = 2;
 
 export type OverlayState = {
   doc: PegoDocument;
@@ -20,6 +23,8 @@ export type OverlayState = {
   hoveredId: string | null;
   /** Marquee in document coordinates. */
   marquee: Box | null;
+  /** Insertion line in document coordinates while a node is dragged inside an auto-layout frame. */
+  dropLine?: Segment | null;
   /** Nodes the agent is working on right now (empty when no run is active). */
   agentFocusIds?: readonly string[];
   /** Hide the selection box, handles and size label (e.g. while a path is in pen edit mode). */
@@ -253,6 +258,16 @@ const drawAgentFocus = (
   }
 };
 
+/** Insertion line between auto-layout siblings, drawn as a fixed-width screen-space stroke. */
+const drawDropLine = (res: CanvasKitResources, canvas: SkCanvas, camera: Camera, line: Segment) => {
+  const a = docToScreen(camera, line.x1, line.y1);
+  const b = docToScreen(camera, line.x2, line.y2);
+  const { stroke } = getKit(res);
+  stroke.setStrokeWidth(DROP_LINE_WIDTH);
+  stroke.setColor(colorOf(res, ACCENT));
+  canvas.drawLine(a.x, a.y, b.x, b.y, stroke);
+};
+
 /** Editor chrome in screen space (CSS px; the caller applies the device pixel ratio). */
 export const renderOverlay = (
   res: CanvasKitResources,
@@ -264,6 +279,7 @@ export const renderOverlay = (
     selection,
     hoveredId,
     marquee,
+    dropLine,
     agentFocusIds,
     suppressSelection,
     time,
@@ -289,6 +305,8 @@ export const renderOverlay = (
       drawSizeLabel(res, canvas, screen, single);
     }
   }
+
+  if (dropLine) drawDropLine(res, canvas, camera, dropLine);
 
   if (marquee) {
     const screen = toScreenBox(camera, marquee);
