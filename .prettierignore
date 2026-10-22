@@ -6,3 +6,5 @@ design
 bun.lock
 STACK.md
 apps/web/public/fonts
+apps/desktop/release
+apps/desktop/resources

@@ -5,7 +5,14 @@ import tseslint from "typescript-eslint";
 
 export default tseslint.config(
   {
-    ignores: ["**/node_modules/**", "**/dist/**", "**/.wrangler/**", "graft/**", "design/**"],
+    ignores: [
+      "**/node_modules/**",
+      "**/dist/**",
+      "**/.wrangler/**",
+      "graft/**",
+      "design/**",
+      "apps/desktop/release/**",
+    ],
   },
   js.configs.recommended,
   ...tseslint.configs.recommended,

@@ -1,0 +1,23 @@
+{
+  "name": "@pego/desktop",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Pego desktop app (Electron shell around apps/web + the local bridge)",
+  "author": "Ari Padrian",
+  "homepage": "https://github.com/yolkmonday/pego",
+  "type": "module",
+  "main": "dist/main.cjs",
+  "scripts": {
+    "dev": "bun run scripts/dev.ts",
+    "build": "bun run scripts/build.ts",
+    "bundle": "bun run scripts/bundle.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "bun test"
+  },
+  "devDependencies": {
+    "@types/bun": "1.4.3",
+    "@types/node": "24.19.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3"
+  }
+}

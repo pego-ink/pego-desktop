@@ -1,0 +1,36 @@
+appId: id.yolk.pego
+productName: Pego
+copyright: Copyright © 2026 Ari Padrian
+directories:
+  output: release
+  buildResources: build
+artifactName: Pego-${version}-${arch}.${ext}
+# Everything the main process needs is bundled into dist/ by scripts/bundle.ts.
+files:
+  - dist/**
+  - package.json
+asar: true
+extraResources:
+  # Web build, served through app://pego/ (kept outside the asar so WASM/fonts stream from disk).
+  - from: ../web/dist
+    to: web
+  # Standalone Bun binary per arch (scripts/build.ts compiles resources/pego-bridge-<arch>).
+  - from: resources/pego-bridge-${arch}
+    to: bridge/pego-bridge
+mac:
+  electronLanguages: ["en", "id"]
+  category: public.app-category.graphics-design
+  icon: build/icon.icns
+  target:
+    - target: dmg
+    - target: zip
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # Signs the bundled Bun binary explicitly (it lives in Resources, outside the default sweep).
+  binaries:
+    - Contents/Resources/bridge/pego-bridge
+  # Notarization runs only when APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID are set.
+dmg:
+  sign: false

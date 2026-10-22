@@ -1,0 +1,9 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["bun", "node"],
+    "lib": ["ES2023", "DOM"],
+    "paths": { "@/*": ["./src/*"] }
+  },
+  "include": ["src", "scripts"]
+}

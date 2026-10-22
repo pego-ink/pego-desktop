@@ -1,0 +1,108 @@
+name: Release
+
+# Push a tag like v0.1.0 (must equal apps/desktop/package.json version). The job builds, signs,
+# notarizes and attaches the DMGs/zips to a DRAFT release. Publish it manually afterwards.
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  macos:
+    runs-on: macos-latest
+    timeout-minutes: 60
+    env:
+      TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check tag matches app version
+        run: |
+          version="$(node -p 'require("./apps/desktop/package.json").version')"
+          if [ "v${version}" != "${TAG}" ]; then
+            echo "::error::tag ${TAG} does not match apps/desktop/package.json version ${version}"
+            exit 1
+          fi
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+
+      - name: Require signing and notarization secrets
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        run: |
+          missing=0
+          for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_SIGNING_IDENTITY APPLE_TEAM_ID APPLE_ID APPLE_PASSWORD; do
+            if [ -z "${!name}" ]; then
+              echo "::error::secret ${name} is not set; refusing to build an unsigned or unnotarized release"
+              missing=1
+            fi
+          done
+          exit "${missing}"
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+
+      - run: bun install --frozen-lockfile
+
+      - name: Build, sign and notarize (arm64 + x64)
+        working-directory: apps/desktop
+        env:
+          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
+          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: bun run scripts/build.ts --mac --arm64 --x64 --publish never
+
+      - name: Verify signature and notarization of the shipped DMGs
+        working-directory: apps/desktop/release
+        env:
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          shopt -s nullglob
+          dmgs=(Pego-*.dmg)
+          if [ "${#dmgs[@]}" -ne 2 ]; then
+            echo "::error::expected 2 DMGs (arm64, x64), found ${#dmgs[@]}"
+            exit 1
+          fi
+          for dmg in "${dmgs[@]}"; do
+            mountpoint="$(mktemp -d)"
+            hdiutil attach "${dmg}" -nobrowse -readonly -mountpoint "${mountpoint}" >/dev/null
+            app="${mountpoint}/Pego.app"
+            status=0
+            codesign --verify --deep --strict --verbose=2 "${app}" || status=1
+            codesign -dv --verbose=2 "${app}" 2>&1 | grep -F "TeamIdentifier=${APPLE_TEAM_ID}" || status=1
+            codesign --verify --strict "${app}/Contents/Resources/bridge/pego-bridge" || status=1
+            xcrun stapler validate "${app}" || status=1
+            spctl -a -vv -t exec "${app}" 2>&1 | tee /dev/stderr | grep -q "source=Notarized Developer ID" || status=1
+            hdiutil detach "${mountpoint}" >/dev/null
+            if [ "${status}" -ne 0 ]; then
+              echo "::error::${dmg}: signature or notarization check FAILED"
+              exit 1
+            fi
+            echo "NOTARIZED OK: ${dmg} (Developer ID, stapled, Gatekeeper accepts)"
+          done
+
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${TAG}" \
+            --draft \
+            --verify-tag \
+            --title "${TAG}" \
+            --generate-notes \
+            apps/desktop/release/Pego-*.dmg \
+            apps/desktop/release/Pego-*.zip
+          echo "Draft release ${TAG} created. Review it, then publish: gh release edit ${TAG} --draft=false"
