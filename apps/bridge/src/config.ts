@@ -20,6 +20,8 @@ export type BridgeConfig = {
   allowedOrigins: string[] | null;
   toolTimeoutMs: number;
   log: (line: string) => void;
+  /** The project's design folder for the project panel (see project.ts); null = none. */
+  designDir?: string | null;
 };
 
 const parsePort = (raw: string | undefined): number => {

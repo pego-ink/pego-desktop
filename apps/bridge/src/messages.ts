@@ -53,6 +53,12 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
   z.object({ type: z.literal("run_start"), runId: id, prompt: z.string().min(1).max(100_000) }),
   z.object({ type: z.literal("run_cancel"), runId: id }),
   z.object({
+    type: z.literal("project_request"),
+    requestId: id,
+    action: z.enum(["list", "read"]),
+    path: z.string().min(1).max(4096).optional(),
+  }),
+  z.object({
     type: z.literal("save_file"),
     requestId: id,
     path: z.string().min(1).max(4096),

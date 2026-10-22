@@ -1,4 +1,9 @@
-import { BRIDGE_PROTOCOL_VERSION, type BridgeToEditor, type RunEvent } from "@pego/agent";
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  type BridgeToEditor,
+  type EditorToBridge,
+  type RunEvent,
+} from "@pego/agent";
 import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
 import { createEditorHub, type EditorSocket } from "./editor-hub";
 import { isClaudeCodeAvailable } from "./claude-code";
@@ -7,6 +12,7 @@ import { parseEditorMessage } from "./messages";
 import { createRunManager, type RunManager } from "./runs";
 import { isHostAllowed, isOriginAllowed } from "./security";
 import { writeDocumentFile } from "./files";
+import { listDesignFiles, readProjectFile } from "./project";
 
 type SocketData = { greeted: boolean };
 
@@ -21,6 +27,30 @@ export type BridgeOptions = BridgeConfig & {
 
 const text = (status: number, body: string): Response =>
   new Response(body, { status, headers: { "content-type": "text/plain; charset=utf-8" } });
+
+type ProjectRequest = Extract<EditorToBridge, { type: "project_request" }>;
+
+/** List the design folder or read one file from it; failures become `ok: false` replies. */
+export const answerProjectRequest = async (
+  root: string | null,
+  request: ProjectRequest,
+): Promise<BridgeToEditor> => {
+  const base = { type: "project_response" as const, requestId: request.requestId };
+  if (!root) return { ...base, ok: false, error: "No design folder in this project.", root };
+  try {
+    if (request.action === "list")
+      return { ...base, ok: true, root, files: await listDesignFiles(root) };
+    if (!request.path) return { ...base, ok: false, root, error: "Missing path." };
+    return { ...base, ok: true, root, text: await readProjectFile(root, request.path) };
+  } catch (error) {
+    return {
+      ...base,
+      ok: false,
+      root,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+};
 
 export const startBridge = (options: BridgeOptions) => {
   const hub = createEditorHub({ toolTimeoutMs: options.toolTimeoutMs });
@@ -59,7 +89,7 @@ export const startBridge = (options: BridgeOptions) => {
         }
         const length = Number(request.headers.get("content-length") ?? 0);
         if (length > MAX_MCP_BODY_BYTES) return text(413, "Payload too large");
-        return handleMcpRequest(request, hub.callTool);
+        return handleMcpRequest(request, hub.callTool, options.designDir ?? null);
       }
 
       return text(404, "Not found");
@@ -91,6 +121,7 @@ export const startBridge = (options: BridgeOptions) => {
             protocol: BRIDGE_PROTOCOL_VERSION,
             claudeCodeAvailable: checkClaude(),
             mcpUrl: `http://127.0.0.1:${server.port}/mcp`,
+            projectDir: options.designDir ?? null,
           };
           ws.send(JSON.stringify(welcome));
           return;
@@ -110,6 +141,10 @@ export const startBridge = (options: BridgeOptions) => {
           runs.start(message.runId, message.prompt);
         } else if (message.type === "run_cancel") {
           runs.cancel(message.runId);
+        } else if (message.type === "project_request") {
+          void answerProjectRequest(options.designDir ?? null, message).then((reply) =>
+            ws.send(JSON.stringify(reply)),
+          );
         } else {
           const { requestId, path, text: content } = message;
           void writeDocumentFile(path, content).then(

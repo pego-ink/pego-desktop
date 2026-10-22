@@ -200,6 +200,7 @@ describe("protocol and tool forwarding", () => {
       protocol: BRIDGE_PROTOCOL_VERSION,
       claudeCodeAvailable: true,
       mcpUrl: bridge.mcpUrl,
+      projectDir: null,
     });
     editor.ws.close();
   });

@@ -43,8 +43,10 @@ export const createPegoMcpServer = (options: {
   callTool: CallTool;
   source: (extra: { clientName?: string }) => ToolSource;
   clientName?: string;
-  /** Also serve open_document / save_document (reads and writes files on this machine). */
+  /** Also serve the file tools (read and write design files on this machine). */
   fileTools?: boolean;
+  /** The project's design folder for list_documents. */
+  designDir?: string | null;
 }): McpServer => {
   const fileTools = options.fileTools ? FILE_TOOLS : [];
   const instructions = options.fileTools
@@ -75,7 +77,15 @@ export const createPegoMcpServer = (options: {
   server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: input } = request.params;
     if (options.fileTools && isFileTool(name)) {
-      return toCallToolResult(await runFileTool(name, input ?? {}, options.callTool, sourceOf()));
+      return toCallToolResult(
+        await runFileTool(
+          name,
+          input ?? {},
+          options.callTool,
+          sourceOf(),
+          options.designDir ?? null,
+        ),
+      );
     }
     if (!agentTools.some((tool) => tool.name === name)) {
       return toCallToolResult({ content: `Unknown Pego tool "${name}".`, isError: true });
@@ -128,13 +138,18 @@ const clientNameOf = (request: Request): string | undefined => {
  * Stateless Streamable HTTP: one server + transport per request (the SDK forbids reusing a
  * stateless transport). JSON responses, so no long-lived SSE streams are held open.
  */
-export const handleMcpRequest = async (request: Request, callTool: CallTool): Promise<Response> => {
+export const handleMcpRequest = async (
+  request: Request,
+  callTool: CallTool,
+  designDir: string | null = null,
+): Promise<Response> => {
   const clientName = clientNameOf(request);
   const server = createPegoMcpServer({
     callTool,
     clientName,
     source: ({ clientName: name }) => ({ kind: "mcp", clientName: name }),
     fileTools: true,
+    designDir,
   });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,

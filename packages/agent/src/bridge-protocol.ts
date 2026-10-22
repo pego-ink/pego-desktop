@@ -7,7 +7,17 @@ import type { DecisionRequest, PlanStep, StepStatus } from "./types";
  * document the same way.
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
-export const BRIDGE_PROTOCOL_VERSION = 3;
+export const BRIDGE_PROTOCOL_VERSION = 4;
+
+/** A design file in the project folder (the bridge lists `design/` of the repo it runs in). */
+export type ProjectFile = {
+  /** Absolute path on disk. */
+  path: string;
+  /** Path inside the design folder with "/" separators, e.g. "app/checkout.pego". */
+  relativePath: string;
+  size: number;
+  modifiedAt: number;
+};
 /**
  * WebSocket close code the bridge sends to an editor tab when a newer tab takes its place. The
  * replaced tab must not reconnect on its own (two tabs would take turns forever); it waits for
@@ -26,6 +36,10 @@ export const EDITOR_OPS = {
   snapshotDocument: "pego.snapshot_document",
   /** Input `{ snapshotId, path }`: the snapshot was written to `path`; mark it saved. */
   markSaved: "pego.mark_saved",
+  /** Result JSON `{ tabs: [{ title, path, dirty, active }] }`: the open documents. */
+  listTabs: "pego.list_tabs",
+  /** Input `{ path }`: show the tab of that file; an error when it is not open. */
+  switchTab: "pego.switch_tab",
 } as const;
 
 /** Messages the editor sends to the bridge. */
@@ -44,11 +58,20 @@ export type EditorToBridge =
   | { type: "run_start"; runId: string; prompt: string }
   | { type: "run_cancel"; runId: string }
   /** Save the open document to a file the bridge opened it from (File → Save in the editor). */
-  | { type: "save_file"; requestId: string; path: string; text: string };
+  | { type: "save_file"; requestId: string; path: string; text: string }
+  /** The project panel: list the design folder, or read one file (`path`) from it. */
+  | { type: "project_request"; requestId: string; action: "list" | "read"; path?: string };
 
 /** Messages the bridge sends to the editor. */
 export type BridgeToEditor =
-  | { type: "welcome"; protocol: number; claudeCodeAvailable: boolean; mcpUrl: string }
+  | {
+      type: "welcome";
+      protocol: number;
+      claudeCodeAvailable: boolean;
+      mcpUrl: string;
+      /** The project's design folder, or null when the bridge found none. */
+      projectDir: string | null;
+    }
   /** Execute a shared tool by name in the editor and answer with `tool_result`. */
   | {
       type: "tool_call";
@@ -60,7 +83,16 @@ export type BridgeToEditor =
     }
   /** Progress of an Agent SDK run (assistant text, tool activity, completion). */
   | { type: "run_event"; runId: string; event: RunEvent }
-  | { type: "save_file_result"; requestId: string; ok: boolean; error?: string };
+  | { type: "save_file_result"; requestId: string; ok: boolean; error?: string }
+  | {
+      type: "project_response";
+      requestId: string;
+      ok: boolean;
+      error?: string;
+      root?: string | null;
+      files?: ProjectFile[];
+      text?: string;
+    };
 
 export type RunEvent =
   | { kind: "text"; text: string }
