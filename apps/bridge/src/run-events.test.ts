@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { createMapState, describeRunFailure, mapSdkMessage } from "@/run-events";
+import { createMapState, describeRunFailure, mapSdkMessage } from "./run-events";
 
 const assistant = (content: unknown[], extra: Record<string, unknown> = {}) => ({
   type: "assistant",

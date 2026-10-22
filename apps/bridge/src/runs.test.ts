@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { agentTools, type RunEvent } from "@pego/agent";
-import { createPegoMcpServer } from "@/mcp";
-import { buildQueryOptions, createRunManager } from "@/runs";
+import { createPegoMcpServer } from "./mcp";
+import { buildQueryOptions, createRunManager } from "./runs";
 
 const fakeStream = (messages: unknown[], hold?: Promise<void>) =>
   (async function* () {

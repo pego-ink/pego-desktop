@@ -1,5 +1,5 @@
 import type { RunEvent } from "@pego/agent";
-import { SDK_SERVER_NAME } from "@/config";
+import { SDK_SERVER_NAME } from "./config";
 
 /** Loose structural view of the SDK messages we read; keeps the mapper decoupled from SDK types. */
 type Block = { type?: string; [key: string]: unknown };

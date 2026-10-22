@@ -3,11 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { query, type Options, type SDKMessage } from "@anthropic-ai/claude-agent-sdk";
 import { agentTools, CLAUDE_CODE_SYSTEM, type RunEvent } from "@pego/agent";
-import { SDK_SERVER_NAME } from "@/config";
-import type { CallTool } from "@/editor-hub";
-import { createPegoMcpServer } from "@/mcp";
-import { resolveClaudeExecutable } from "@/claude-code";
-import { createMapState, describeRunFailure, mapSdkMessage } from "@/run-events";
+import { SDK_SERVER_NAME } from "./config";
+import type { CallTool } from "./editor-hub";
+import { createPegoMcpServer } from "./mcp";
+import { resolveClaudeExecutable } from "./claude-code";
+import { createMapState, describeRunFailure, mapSdkMessage } from "./run-events";
 
 const MAX_TURNS = 60;
 

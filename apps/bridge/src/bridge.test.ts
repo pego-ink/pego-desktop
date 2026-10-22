@@ -6,9 +6,9 @@ import {
   type EditorToBridge,
   type RunEvent,
 } from "@pego/agent";
-import type { BridgeConfig } from "@/config";
-import { NO_EDITOR_MESSAGE } from "@/editor-hub";
-import { startBridge, type Bridge } from "@/server";
+import type { BridgeConfig } from "./config";
+import { NO_EDITOR_MESSAGE } from "./editor-hub";
+import { startBridge, type Bridge } from "./server";
 
 const ORIGIN = "http://localhost:5173";
 const ECHO_TOOL = {

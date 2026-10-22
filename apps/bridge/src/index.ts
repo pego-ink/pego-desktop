@@ -1,5 +1,5 @@
-import { configFromEnv } from "@/config";
-import { startBridge } from "@/server";
+import { configFromEnv } from "./config";
+import { startBridge } from "./server";
 
 const config = configFromEnv(process.env);
 const bridge = startBridge(config);

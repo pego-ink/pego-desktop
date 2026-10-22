@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isHostAllowed, isOriginAllowed } from "@/security";
+import { isHostAllowed, isOriginAllowed } from "./security";
 
 describe("isHostAllowed", () => {
   test("accepts loopback names on the bridge port", () => {

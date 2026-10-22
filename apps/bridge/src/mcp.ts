@@ -6,7 +6,7 @@ import {
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
 import { agentTools, CLAUDE_CODE_SYSTEM } from "@pego/agent";
-import type { CallTool, ToolSource } from "@/editor-hub";
+import type { CallTool, ToolSource } from "./editor-hub";
 
 const MAX_TOOL_INPUT_BYTES = 1024 * 1024;
 

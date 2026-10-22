@@ -1,11 +1,11 @@
 import { BRIDGE_PROTOCOL_VERSION, type BridgeToEditor, type RunEvent } from "@pego/agent";
-import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "@/config";
-import { createEditorHub, type EditorSocket } from "@/editor-hub";
-import { isClaudeCodeAvailable } from "@/claude-code";
-import { handleMcpRequest } from "@/mcp";
-import { parseEditorMessage } from "@/messages";
-import { createRunManager, type RunManager } from "@/runs";
-import { isHostAllowed, isOriginAllowed } from "@/security";
+import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
+import { createEditorHub, type EditorSocket } from "./editor-hub";
+import { isClaudeCodeAvailable } from "./claude-code";
+import { handleMcpRequest } from "./mcp";
+import { parseEditorMessage } from "./messages";
+import { createRunManager, type RunManager } from "./runs";
+import { isHostAllowed, isOriginAllowed } from "./security";
 
 type SocketData = { greeted: boolean };
 

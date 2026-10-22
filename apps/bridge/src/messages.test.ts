@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { parseEditorMessage } from "@/messages";
+import { parseEditorMessage } from "./messages";
 
 const ok = (value: unknown) => parseEditorMessage(JSON.stringify(value));
 
