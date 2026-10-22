@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { BridgeToEditor, EditorToBridge } from "@pego/agent";
+import type { BridgeToEditor, EditorToBridge, LocalAgentInfo } from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { setActiveRun } from "./active-run";
 import { createBridgeClient, parseBridgeMessage, type SocketLike } from "./bridge-client";
@@ -23,6 +23,14 @@ class FakeSocket implements SocketLike {
   };
   receive = (message: unknown) => this.onmessage?.({ data: JSON.stringify(message) });
 }
+
+const CODEX: LocalAgentInfo = {
+  id: "codex",
+  name: "Codex",
+  installed: true,
+  version: "0.9.0",
+  supportsModels: true,
+};
 
 const state = () => useAgentStore.getState();
 const past = () => useDocumentStore.getState().history.past;
@@ -70,15 +78,17 @@ describe("bridge client", () => {
     sockets[0]!.onopen?.();
     expect(JSON.parse(sockets[0]!.sent[0]!)).toMatchObject({
       type: "hello",
+      protocol: 3,
       documentName: "doc.pego",
     });
     expect(client.isOpen()).toBe(true);
 
     sockets[0]!.receive({
       type: "welcome",
-      protocol: 1,
+      protocol: 3,
       claudeCodeAvailable: true,
       mcpUrl: "http://x",
+      agents: [],
     });
     sockets[0]!.receive({ type: "tool_call", callId: 5 }); // malformed
     sockets[0]!.onmessage?.({ data: "not json" });
@@ -111,6 +121,35 @@ describe("bridge client", () => {
     expect(client.send({ type: "run_cancel", runId: "r" })).toBe(false);
   });
 
+  test("parseBridgeMessage handles v3 welcome, agents and models", () => {
+    const parse = (value: unknown) => parseBridgeMessage(JSON.stringify(value));
+    expect(
+      parse({
+        type: "welcome",
+        protocol: 3,
+        claudeCodeAvailable: false,
+        mcpUrl: "u",
+        agents: [CODEX, { id: "nope", name: "x", installed: true, supportsModels: false }, 7],
+      }),
+    ).toMatchObject({ type: "welcome", agents: [CODEX] });
+    // A welcome without agents still parses (older bridge): empty list.
+    expect(
+      parse({ type: "welcome", protocol: 2, claudeCodeAvailable: true, mcpUrl: "u" }),
+    ).toMatchObject({ agents: [] });
+    expect(parse({ type: "agents", agents: [CODEX] })).toEqual({ type: "agents", agents: [CODEX] });
+    expect(parse({ type: "agents", agents: "x" })).toBeNull();
+    expect(parse({ type: "models", agentId: "codex", models: ["a", "b"] })).toEqual({
+      type: "models",
+      agentId: "codex",
+      models: ["a", "b"],
+    });
+    expect(parse({ type: "models", agentId: "codex", models: [], error: "boom" })).toMatchObject({
+      error: "boom",
+    });
+    expect(parse({ type: "models", agentId: "bogus", models: [] })).toBeNull();
+    expect(parse({ type: "models", agentId: "codex", models: [1] })).toBeNull();
+  });
+
   test("parseBridgeMessage rejects unknown types", () => {
     expect(parseBridgeMessage(JSON.stringify({ type: "evil" }))).toBeNull();
   });
@@ -134,14 +173,16 @@ describe("bridge handlers", () => {
     const { handlers } = setup();
     await handlers.handleMessage({
       type: "welcome",
-      protocol: 1,
+      protocol: 3,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
+      agents: [CODEX],
     });
     expect(state().bridge).toEqual({
       connected: true,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
+      agents: [CODEX],
     });
     handlers.handleClosed();
     expect(state().bridge.connected).toBe(false);
@@ -227,7 +268,7 @@ describe("bridge handlers", () => {
 
     setActiveRun({
       id: "r1",
-      backend: "claude-code",
+      backend: "local",
       controller: new AbortController(),
       host: createToolHost(),
     });
@@ -241,7 +282,7 @@ describe("bridge handlers", () => {
     state().beginRun("r1", "p");
     setActiveRun({
       id: "r1",
-      backend: "claude-code",
+      backend: "local",
       controller: new AbortController(),
       host: createToolHost(),
     });
@@ -266,7 +307,7 @@ describe("bridge handlers", () => {
     const activate = () =>
       setActiveRun({
         id: "r1",
-        backend: "claude-code",
+        backend: "local",
         controller: new AbortController(),
         host: createToolHost(),
       });
@@ -282,7 +323,7 @@ describe("bridge handlers", () => {
     state().beginRun("r2", "p");
     setActiveRun({
       id: "r2",
-      backend: "claude-code",
+      backend: "local",
       controller: new AbortController(),
       host: createToolHost(),
     });

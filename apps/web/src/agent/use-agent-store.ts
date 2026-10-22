@@ -1,8 +1,19 @@
 import { create } from "zustand";
-import type { DecisionRequest, PlanStep, StepStatus } from "@pego/agent";
+import type {
+  DecisionRequest,
+  LocalAgentId,
+  LocalAgentInfo,
+  PlanStep,
+  StepStatus,
+} from "@pego/agent";
+import {
+  loadAgentPrefs,
+  saveAgentPrefs,
+  type AgentBackend,
+  type AgentPrefs,
+} from "@/agent/agent-prefs";
 
-/** Which engine runs the panel's agent. `claude-code` goes through the local bridge. */
-export type AgentBackend = "api" | "claude-code";
+export type { AgentBackend };
 
 export type RunStatus =
   "idle" | "planning" | "running" | "awaiting_decision" | "done" | "failed" | "cancelled";
@@ -24,10 +35,37 @@ export type BridgeStatus = {
   /** The bridge found a usable local Claude Code login for Agent SDK runs. */
   claudeCodeAvailable: boolean;
   mcpUrl: string | null;
+  /** Local agent CLIs the bridge detected (empty until `welcome`). */
+  agents: LocalAgentInfo[];
 };
+
+/** Cached model list for one local agent (`models_request` / `models`). */
+export type ModelsEntry = {
+  models: string[];
+  loading: boolean;
+  /** True once a `models` reply arrived (even an empty or failed one). */
+  loaded: boolean;
+  error?: string;
+};
+
+export const emptyBridge = (): BridgeStatus => ({
+  connected: false,
+  claudeCodeAvailable: false,
+  mcpUrl: null,
+  agents: [],
+});
 
 type AgentState = {
   backend: AgentBackend;
+  /** Local agent used when `backend` is "local". */
+  localAgentId: LocalAgentId;
+  /** Selected model per local agent; undefined = the CLI's default. */
+  modelByAgent: Partial<Record<LocalAgentId, string>>;
+  modelsByAgent: Partial<Record<LocalAgentId, ModelsEntry>>;
+  /** An `agents_refresh` is in flight. */
+  agentsRefreshing: boolean;
+  /** Who runs the current/last run, e.g. "Codex · gpt-5" (shown in the run header). */
+  runLabel: string | null;
   status: RunStatus;
   runId: string | null;
   prompt: string;
@@ -45,6 +83,11 @@ type AgentState = {
 type AgentActions = {
   set: (patch: Partial<AgentState>) => void;
   setBackend: (backend: AgentBackend) => void;
+  setLocalAgent: (agentId: LocalAgentId) => void;
+  /** Select a model for an agent; undefined/empty restores the CLI default. */
+  setModel: (agentId: LocalAgentId, model: string | undefined) => void;
+  /** Re-read persisted preferences (done once at store creation). */
+  restorePrefs: () => void;
   /** Reset run fields for a new run (keeps backend and bridge status). */
   beginRun: (runId: string, prompt: string) => void;
   setPlan: (steps: PlanStep[]) => void;
@@ -63,35 +106,63 @@ const idleRun = {
   focusIds: [],
   transactionCount: 0,
   usage: { inputTokens: 0, outputTokens: 0, costUsd: 0 },
+  runLabel: null,
 };
+
+const prefsOf = (state: AgentPrefs): AgentPrefs => ({
+  backend: state.backend,
+  localAgentId: state.localAgentId,
+  modelByAgent: state.modelByAgent,
+});
 
 let logSeq = 0;
 
-export const useAgentStore = create<AgentState & AgentActions>((set) => ({
-  ...idleRun,
-  backend: "api",
-  bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null },
+export const useAgentStore = create<AgentState & AgentActions>((set, get) => {
+  const persist = () => saveAgentPrefs(prefsOf(get()));
+  return {
+    ...idleRun,
+    ...loadAgentPrefs(),
+    modelsByAgent: {},
+    agentsRefreshing: false,
+    bridge: emptyBridge(),
 
-  set: (patch) => set(patch),
-  setBackend: (backend) => set({ backend }),
-  beginRun: (runId, prompt) => set({ ...idleRun, runId, prompt, status: "planning" }),
-  setPlan: (steps) => set({ steps: steps.map((step) => ({ ...step, status: "pending" })) }),
-  setStepStatus: (stepId, status, summary) =>
-    set((state) => ({
-      steps: state.steps.map((step) =>
-        step.id === stepId ? { ...step, status, summary: summary ?? step.summary } : step,
-      ),
-    })),
-  appendLog: (entry) =>
-    set((state) => ({
-      log: [...state.log, { ...entry, id: `log-${++logSeq}`, at: Date.now() }],
-    })),
-  addUsage: (usage) =>
-    set((state) => ({
-      usage: {
-        inputTokens: state.usage.inputTokens + usage.inputTokens,
-        outputTokens: state.usage.outputTokens + usage.outputTokens,
-        costUsd: state.usage.costUsd + (usage.costUsd ?? 0),
-      },
-    })),
-}));
+    set: (patch) => set(patch),
+    setBackend: (backend) => {
+      set({ backend });
+      persist();
+    },
+    setLocalAgent: (localAgentId) => {
+      set({ localAgentId });
+      persist();
+    },
+    setModel: (agentId, model) => {
+      const next = { ...get().modelByAgent };
+      const value = model?.trim();
+      if (value) next[agentId] = value;
+      else delete next[agentId];
+      set({ modelByAgent: next });
+      persist();
+    },
+    restorePrefs: () => set(loadAgentPrefs()),
+    beginRun: (runId, prompt) => set({ ...idleRun, runId, prompt, status: "planning" }),
+    setPlan: (steps) => set({ steps: steps.map((step) => ({ ...step, status: "pending" })) }),
+    setStepStatus: (stepId, status, summary) =>
+      set((state) => ({
+        steps: state.steps.map((step) =>
+          step.id === stepId ? { ...step, status, summary: summary ?? step.summary } : step,
+        ),
+      })),
+    appendLog: (entry) =>
+      set((state) => ({
+        log: [...state.log, { ...entry, id: `log-${++logSeq}`, at: Date.now() }],
+      })),
+    addUsage: (usage) =>
+      set((state) => ({
+        usage: {
+          inputTokens: state.usage.inputTokens + usage.inputTokens,
+          outputTokens: state.usage.outputTokens + usage.outputTokens,
+          costUsd: state.usage.costUsd + (usage.costUsd ?? 0),
+        },
+      })),
+  };
+});

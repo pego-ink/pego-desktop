@@ -3,14 +3,14 @@ import { getActiveRun, getRunTail, setActiveRun, setRunTail } from "./active-run
 import { loadApiKey } from "./api-key";
 import { createAnthropicClient, runApiAgent } from "./api-runtime";
 import { answerPendingDecision, cancelPendingDecisions } from "./decisions";
-import { cancelClaudeCodeRun, startClaudeCodeRun } from "./claude-code-run";
+import { cancelLocalAgentRun, startLocalAgentRun } from "./local-agent-run";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
 
 /**
  * Agent run entry points used by the agent panel. Dispatches on `useAgentStore().backend`:
- * "api" runs the in-browser Anthropic loop with the user's own key, "claude-code" hands the
- * run to the local bridge. One run at a time.
+ * "api" runs the in-browser Anthropic loop with the user's own key, "local" hands the
+ * run to the local bridge (any supported coding-agent CLI). One run at a time.
  */
 export const startRun = async (prompt: string): Promise<void> => {
   const text = prompt.trim();
@@ -19,12 +19,13 @@ export const startRun = async (prompt: string): Promise<void> => {
   const agent = useAgentStore.getState();
   const runId = crypto.randomUUID();
 
-  if (agent.backend === "claude-code") {
-    startClaudeCodeRun(runId, text);
+  if (agent.backend === "local") {
+    startLocalAgentRun(runId, text);
     return;
   }
 
   agent.beginRun(runId, text);
+  agent.set({ runLabel: "Anthropic API" });
   agent.appendLog({ kind: "user", text });
   setRunTail(null);
 
@@ -57,8 +58,8 @@ export const cancelRun = (): void => {
   if (!active) return;
   active.controller.abort();
   cancelPendingDecisions();
-  if (active.backend === "claude-code") {
-    cancelClaudeCodeRun(active.id);
+  if (active.backend === "local") {
+    cancelLocalAgentRun(active.id);
     const state = useAgentStore.getState();
     for (const step of state.steps) {
       if (step.status === "pending" || step.status === "running") {

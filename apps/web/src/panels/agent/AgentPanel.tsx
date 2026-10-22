@@ -1,12 +1,13 @@
 import { useState } from "react";
-import { SparklesIcon } from "lucide-react";
+import { SettingsIcon, SparklesIcon } from "lucide-react";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore } from "@/agent/use-agent-store";
+import { AgentPicker } from "@/panels/agent/AgentPicker";
+import { AgentsDialog } from "@/panels/agent/AgentsDialog";
 import { ActivityLog } from "@/panels/agent/ActivityLog";
 import { AgentComposer } from "@/panels/agent/AgentComposer";
 import { AgentEmptyState } from "@/panels/agent/AgentEmptyState";
-import { BackendSwitch } from "@/panels/agent/BackendSwitch";
 import { ChangesBar } from "@/panels/agent/ChangesBar";
 import { DecisionCard } from "@/panels/agent/DecisionCard";
 import { PlanList } from "@/panels/agent/PlanList";
@@ -18,29 +19,49 @@ import {
   runStatusLabel,
 } from "@/panels/agent/agent-format";
 
-const RunHeader = () => {
+const RunHeader = ({ onOpenAgents }: { onOpenAgents: () => void }) => {
   const status = useAgentStore((s) => s.status);
   const steps = useAgentStore((s) => s.steps);
   const prompt = useAgentStore((s) => s.prompt);
+  const runLabel = useAgentStore((s) => s.runLabel);
   const active = isRunActive(status);
   return (
-    <PanelHeader className="h-auto min-h-11 flex-col items-start justify-center gap-0 py-1.5">
-      <span className="w-full truncate" title={prompt || undefined}>
-        {prompt || "Agent"}
-      </span>
-      {status === "idle" ? null : (
-        <span
-          className={cn(
-            "flex items-center gap-1.5 text-[11px] font-normal",
-            status === "failed" ? "text-destructive" : "text-muted-foreground",
-          )}
-        >
-          {active ? (
-            <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-foreground" />
-          ) : null}
-          {runStatusLabel(status, steps)}
+    <PanelHeader className="h-auto min-h-11 py-1.5">
+      <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <span className="w-full truncate" title={prompt || undefined}>
+          {prompt || "Agent"}
         </span>
-      )}
+        {status === "idle" ? null : (
+          <span
+            className={cn(
+              "flex min-w-0 items-center gap-1.5 text-[11px] font-normal",
+              status === "failed" ? "text-destructive" : "text-muted-foreground",
+            )}
+          >
+            {active ? (
+              <span
+                aria-hidden
+                className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground"
+              />
+            ) : null}
+            <span className="shrink-0">{runStatusLabel(status, steps)}</span>
+            {runLabel ? (
+              <span className="min-w-0 truncate" title={runLabel}>
+                · {runLabel}
+              </span>
+            ) : null}
+          </span>
+        )}
+      </div>
+      <button
+        type="button"
+        aria-label="Agents"
+        title="Agents"
+        onClick={onOpenAgents}
+        className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4"
+      >
+        <SettingsIcon />
+      </button>
     </PanelHeader>
   );
 };
@@ -90,11 +111,13 @@ export const AgentPanel = () => {
   const decision = useAgentStore((s) => s.decision);
   const status = useAgentStore((s) => s.status);
   const [seed, setSeed] = useState({ text: "", key: 0 });
+  const [agentsOpen, setAgentsOpen] = useState(false);
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <RunHeader />
-      <BackendSwitch />
+      <RunHeader onOpenAgents={() => setAgentsOpen(true)} />
+      <AgentPicker />
+      <AgentsDialog open={agentsOpen} onOpenChange={setAgentsOpen} />
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {hasRun ? (
           <RunView />

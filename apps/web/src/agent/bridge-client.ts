@@ -3,7 +3,9 @@ import {
   BRIDGE_PROTOCOL_VERSION,
   type BridgeToEditor,
   type EditorToBridge,
+  type LocalAgentInfo,
 } from "@pego/agent";
+import { isLocalAgentId } from "./agent-prefs";
 import { DEFAULT_FILE_NAME } from "@/persistence/file-format";
 import { useFileStore } from "@/persistence/use-file-store";
 import { createBridgeHandlers } from "./bridge-handlers";
@@ -38,6 +40,17 @@ const defaultBackoff = (attempt: number) => Math.min(1_000 * 2 ** attempt, 30_00
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+const isAgentInfo = (value: unknown): value is LocalAgentInfo =>
+  isRecord(value) &&
+  isLocalAgentId(value.id) &&
+  typeof value.name === "string" &&
+  typeof value.installed === "boolean" &&
+  typeof value.supportsModels === "boolean";
+
+/** Keep only well-formed agent entries (unknown agent ids are dropped). */
+const sanitizeAgents = (value: unknown): LocalAgentInfo[] =>
+  Array.isArray(value) ? value.filter(isAgentInfo) : [];
+
 /**
  * Parse and shape-check one bridge frame. The bridge is a local process, but its frames still
  * cross a trust boundary, so anything malformed is dropped rather than trusted.
@@ -54,7 +67,22 @@ export const parseBridgeMessage = (data: unknown): BridgeToEditor | null => {
   switch (value.type) {
     case "welcome":
       return typeof value.claudeCodeAvailable === "boolean" && typeof value.mcpUrl === "string"
-        ? (value as unknown as BridgeToEditor)
+        ? ({ ...value, agents: sanitizeAgents(value.agents) } as unknown as BridgeToEditor)
+        : null;
+    case "agents":
+      return Array.isArray(value.agents)
+        ? ({ type: "agents", agents: sanitizeAgents(value.agents) } satisfies BridgeToEditor)
+        : null;
+    case "models":
+      return isLocalAgentId(value.agentId) &&
+        Array.isArray(value.models) &&
+        value.models.every((model) => typeof model === "string")
+        ? ({
+            type: "models",
+            agentId: value.agentId,
+            models: value.models as string[],
+            ...(typeof value.error === "string" ? { error: value.error } : {}),
+          } satisfies BridgeToEditor)
         : null;
     case "tool_call":
       return typeof value.callId === "string" &&
@@ -179,7 +207,7 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
 let client: BridgeClient | null = null;
 const handlers = createBridgeHandlers({ send: (message) => client?.send(message) ?? false });
 
-/** Send to the bridge if connected. Used by the Claude Code run (`run_start`/`run_cancel`). */
+/** Send to the bridge if connected. Used by the local agent run (`run_start`/`run_cancel`) and agent/model requests. */
 export const sendToBridge = (message: EditorToBridge): boolean => client?.send(message) ?? false;
 
 /**

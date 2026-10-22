@@ -1,5 +1,5 @@
-import type { StepStatus } from "@pego/agent";
-import type { AgentBackend, RunStatus, RunStep } from "@/agent/use-agent-store";
+import type { LocalAgentId, LocalAgentInfo, StepStatus } from "@pego/agent";
+import type { RunStatus, RunStep } from "@/agent/use-agent-store";
 
 export type StepIconKind = "pending" | "running" | "done" | "failed" | "skipped";
 
@@ -70,8 +70,69 @@ export const countDoneSteps = (steps: readonly RunStep[]): number =>
 export const selectionHint = (count: number): string | null =>
   count === 0 ? null : `${count} ${count === 1 ? "layer" : "layers"} selected`;
 
-export const backendLabel = (backend: AgentBackend): string =>
-  backend === "api" ? "API key" : "Claude Code (local)";
+export const API_BACKEND_LABEL = "API key (Anthropic)";
+
+export type AgentStatusTone = "ready" | "warn" | "off";
+
+export type AgentStatus = {
+  tone: AgentStatusTone;
+  /** Short status, e.g. "v1.2.3", "Not installed", "Bridge not running". */
+  label: string;
+  /** Selectable as the active agent. */
+  selectable: boolean;
+};
+
+/** How to get an agent CLI (shown for agents that are not installed). */
+export const INSTALL_HINTS: Record<LocalAgentId, string> = {
+  "claude-code": "npm i -g @anthropic-ai/claude-code",
+  codex: "npm i -g @openai/codex",
+  opencode: "npm i -g opencode-ai",
+  qwen: "npm i -g @qwen-code/qwen-code",
+  gemini: "npm i -g @google/gemini-cli",
+  cursor: "curl https://cursor.com/install -fsS | bash",
+};
+
+/** Status of one local agent. `info` is undefined while the bridge has not reported it. */
+export const agentStatus = (
+  info: LocalAgentInfo | undefined,
+  bridgeConnected: boolean,
+): AgentStatus => {
+  if (!bridgeConnected || !info) {
+    return { tone: "off", label: "Bridge not running", selectable: true };
+  }
+  if (!info.installed) return { tone: "off", label: "Not installed", selectable: false };
+  const version = info.version ? `v${info.version.replace(/^v/, "")}` : "Installed";
+  return { tone: info.note ? "warn" : "ready", label: version, selectable: true };
+};
+
+/** Second line of a picker row: the install hint, or the agent's note (e.g. login needed). */
+export const agentDetail = (
+  id: LocalAgentId,
+  info: LocalAgentInfo | undefined,
+  bridgeConnected: boolean,
+): string | null => {
+  if (!bridgeConnected || !info) return null;
+  if (!info.installed) return info.note ?? `Install: ${INSTALL_HINTS[id]}`;
+  return info.note ?? null;
+};
+
+/** Models whose id contains every whitespace-separated term of `query` (case-insensitive). */
+export const filterModels = (models: readonly string[], query: string): string[] => {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) return [...models];
+  return models.filter((model) => {
+    const id = model.toLowerCase();
+    return terms.every((term) => id.includes(term));
+  });
+};
+
+/** The typed text as a custom model id, unless it is empty or already in the list. */
+export const customModelCandidate = (models: readonly string[], query: string): string | null => {
+  const value = query.trim();
+  return value && !models.includes(value) ? value : null;
+};
+
+export const MODEL_DEFAULT_LABEL = "Default";
 
 export const EXAMPLE_PROMPTS = [
   "Design a login screen with email, password and a primary button",

@@ -2,6 +2,7 @@ import {
   toolByName,
   type BridgeToEditor,
   type EditorToBridge,
+  type LocalAgentId,
   type RunEvent,
   type ToolImage,
   type ToolSpec,
@@ -9,7 +10,7 @@ import {
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
 import { createToolHost } from "./tool-host";
-import { useAgentStore } from "./use-agent-store";
+import { emptyBridge, useAgentStore } from "./use-agent-store";
 
 /** Consecutive Claude Code (MCP) calls arriving within this window share one undo step. */
 export const MCP_GROUP_WINDOW_MS = 2_000;
@@ -24,7 +25,7 @@ export type BridgeHandlerDeps = {
 
 const agent = () => useAgentStore.getState();
 
-/** Close out a Claude Code run: remaining steps resolve according to the final status. */
+/** Close out a local agent run: remaining steps resolve according to the final status. */
 const endRun = (status: "done" | "failed" | "cancelled") => {
   const state = agent();
   for (const step of state.steps) {
@@ -38,6 +39,15 @@ const endRun = (status: "done" | "failed" | "cancelled") => {
   cancelPendingDecisions();
   setActiveRun(null);
 };
+
+/** Cache a `models` reply (even a failed one, so the picker can show the error). */
+const applyModels = (agentId: LocalAgentId, models: string[], error?: string) =>
+  useAgentStore.setState((state) => ({
+    modelsByAgent: {
+      ...state.modelsByAgent,
+      [agentId]: { models, loading: false, loaded: true, ...(error ? { error } : {}) },
+    },
+  }));
 
 export const createBridgeHandlers = ({
   send,
@@ -70,7 +80,7 @@ export const createBridgeHandlers = ({
     let host = mcpHost;
     if (source.kind === "run") {
       const active = getActiveRun();
-      if (!active || active.id !== source.runId || active.backend !== "claude-code") {
+      if (!active || active.id !== source.runId || active.backend !== "local") {
         return void reply("No matching active run in the editor.", true);
       }
       host = active.host;
@@ -99,7 +109,7 @@ export const createBridgeHandlers = ({
 
   const handleRunEvent = (runId: string, event: RunEvent) => {
     const active = getActiveRun();
-    if (!active || active.id !== runId || active.backend !== "claude-code") return;
+    if (!active || active.id !== runId || active.backend !== "local") return;
     const state = agent();
     if (state.status === "planning") state.set({ status: "running" });
     switch (event.kind) {
@@ -146,9 +156,21 @@ export const createBridgeHandlers = ({
             connected: true,
             claudeCodeAvailable: message.claudeCodeAvailable,
             mcpUrl: message.mcpUrl,
+            agents: message.agents,
           },
+          // A new bridge session may have different CLIs: drop cached model lists.
+          modelsByAgent: {},
+          agentsRefreshing: false,
         });
         return;
+      case "agents":
+        agent().set({
+          bridge: { ...agent().bridge, agents: message.agents },
+          agentsRefreshing: false,
+        });
+        return;
+      case "models":
+        return applyModels(message.agentId, message.models, message.error);
       case "tool_call":
         return handleToolCall(message);
       case "run_event":
@@ -157,9 +179,9 @@ export const createBridgeHandlers = ({
   };
 
   const handleClosed = () => {
-    agent().set({ bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null } });
-    if (getActiveRun()?.backend === "claude-code") {
-      agent().appendLog({ kind: "error", text: "Lost the connection to the Claude Code bridge." });
+    agent().set({ bridge: emptyBridge(), modelsByAgent: {}, agentsRefreshing: false });
+    if (getActiveRun()?.backend === "local") {
+      agent().appendLog({ kind: "error", text: "Lost the connection to the local bridge." });
       endRun("failed");
     }
   };

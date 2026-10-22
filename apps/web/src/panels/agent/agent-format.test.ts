@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
+import type { LocalAgentInfo } from "@pego/agent";
 import type { RunStep } from "@/agent/use-agent-store";
 import {
+  agentDetail,
+  agentStatus,
+  customModelCandidate,
+  filterModels,
+  INSTALL_HINTS,
   countDoneSteps,
   currentStepNumber,
   formatCost,
@@ -59,5 +65,60 @@ describe("agent-format", () => {
     expect(selectionHint(0)).toBeNull();
     expect(selectionHint(1)).toBe("1 layer selected");
     expect(selectionHint(3)).toBe("3 layers selected");
+  });
+
+  const codex: LocalAgentInfo = {
+    id: "codex",
+    name: "Codex",
+    installed: true,
+    supportsModels: true,
+  };
+
+  test("agentStatus covers bridge down, not installed, version and note", () => {
+    expect(agentStatus(codex, false)).toEqual({
+      tone: "off",
+      label: "Bridge not running",
+      selectable: true,
+    });
+    expect(agentStatus(undefined, true).label).toBe("Bridge not running");
+    expect(agentStatus({ ...codex, installed: false }, true)).toEqual({
+      tone: "off",
+      label: "Not installed",
+      selectable: false,
+    });
+    expect(agentStatus({ ...codex, version: "1.2.3" }, true)).toEqual({
+      tone: "ready",
+      label: "v1.2.3",
+      selectable: true,
+    });
+    expect(agentStatus({ ...codex, version: "v2" }, true).label).toBe("v2");
+    expect(agentStatus(codex, true).label).toBe("Installed");
+    expect(agentStatus({ ...codex, note: "Run `codex login`" }, true).tone).toBe("warn");
+  });
+
+  test("agentDetail shows install hint or note", () => {
+    expect(agentDetail("codex", { ...codex, installed: false }, true)).toBe(
+      `Install: ${INSTALL_HINTS.codex}`,
+    );
+    expect(agentDetail("codex", { ...codex, installed: false, note: "n" }, true)).toBe("n");
+    expect(agentDetail("codex", { ...codex, note: "Run `codex login`" }, true)).toBe(
+      "Run `codex login`",
+    );
+    expect(agentDetail("codex", codex, true)).toBeNull();
+    expect(agentDetail("codex", codex, false)).toBeNull();
+  });
+
+  test("filterModels matches all terms case-insensitively", () => {
+    const models = ["anthropic/claude-sonnet-4", "openai/gpt-5", "openai/gpt-4o"];
+    expect(filterModels(models, "")).toEqual(models);
+    expect(filterModels(models, "GPT")).toEqual(["openai/gpt-5", "openai/gpt-4o"]);
+    expect(filterModels(models, "openai 4o")).toEqual(["openai/gpt-4o"]);
+    expect(filterModels(models, "zzz")).toEqual([]);
+  });
+
+  test("customModelCandidate skips empty and known ids", () => {
+    expect(customModelCandidate(["a"], "  ")).toBeNull();
+    expect(customModelCandidate(["a"], "a")).toBeNull();
+    expect(customModelCandidate(["a"], " my/model ")).toBe("my/model");
   });
 });
