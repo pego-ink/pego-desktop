@@ -16,6 +16,7 @@ import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useFontEvents } from "@/fonts/font-events";
+import { getToolHandler, useToolPreview } from "@/interaction/tool-handlers";
 import { useTextEditStore } from "@/store/use-text-edit-store";
 import { useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
@@ -88,6 +89,7 @@ export const Canvas = () => {
             marquee,
             agentFocusIds,
           });
+          getToolHandler(useToolStore.getState().tool)?.renderOverlay?.(res, canvas, camera);
           canvas.restore();
           surface.flush();
         };
@@ -122,6 +124,8 @@ export const Canvas = () => {
           useInteractionState.subscribe(schedule),
           useTextEditStore.subscribe(schedule),
           useFontEvents.subscribe(schedule),
+          useToolPreview.subscribe(schedule),
+          useToolStore.subscribe(schedule),
           useAgentStore.subscribe((state, prev) => {
             if (state.focusIds !== prev.focusIds || state.status !== prev.status) schedule();
           }),

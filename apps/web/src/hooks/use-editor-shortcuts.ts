@@ -8,7 +8,8 @@ import { escapeSelection } from "@/interaction/selection";
 import { nudgeOps, topmostSelected } from "@/interaction/transform";
 import { useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
-import { TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
+import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
+import { getToolHandler } from "@/interaction/tool-handlers";
 import { useViewportStore } from "@/store/use-viewport-store";
 
 const isEditable = (target: EventTarget | null): boolean => {
@@ -31,6 +32,11 @@ export const useEditorShortcuts = () => {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isEditable(e.target) || isTextEditing()) return;
+      // The active tool gets first pick (e.g. the pen finishing a path on Enter/Escape).
+      if (getToolHandler(useToolStore.getState().tool)?.onKeyDown?.(e)) {
+        e.preventDefault();
+        return;
+      }
       const mod = e.metaKey || e.ctrlKey;
       const doc = useDocumentStore.getState();
       const viewport = useViewportStore.getState();
@@ -85,6 +91,12 @@ export const useEditorShortcuts = () => {
       }
       if (mod) return;
 
+      const shiftTool = e.shiftKey && !e.altKey ? SHIFT_TOOL_KEYS[e.key.toLowerCase()] : undefined;
+      if (shiftTool) {
+        e.preventDefault();
+        useToolStore.getState().setTool(shiftTool);
+        return;
+      }
       const tool = TOOL_KEYS[e.key.toLowerCase()];
       if (tool && !e.altKey && !e.shiftKey) {
         e.preventDefault();

@@ -6,6 +6,8 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { isDrawTool, useToolStore, type Tool } from "@/store/use-tool-store";
+import { getToolHandler, type ToolPointer, type ToolSession } from "@/interaction/tool-handlers";
+import "@/interaction/tools";
 import {
   clickBox,
   createLabel,
@@ -74,7 +76,8 @@ type Gesture =
       placement: Placement;
       started: boolean;
     }
-  | { kind: "text"; placement: Placement; point: { x: number; y: number } };
+  | { kind: "text"; placement: Placement; point: { x: number; y: number } }
+  | { kind: "tool"; session: ToolSession };
 
 const setTool = (tool: Tool) => useToolStore.getState().setTool(tool);
 
@@ -108,6 +111,18 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
     const toDoc = (sx: number, sy: number) =>
       screenToDoc(useViewportStore.getState().camera, sx, sy);
     const isDeep = (e: { metaKey: boolean; ctrlKey: boolean }) => e.metaKey || e.ctrlKey;
+    const toolPointer = (e: PointerEvent | MouseEvent): ToolPointer => {
+      const screen = local(e);
+      return {
+        screen,
+        doc: toDoc(screen.x, screen.y),
+        shiftKey: e.shiftKey,
+        altKey: e.altKey,
+        metaKey: e.metaKey || e.ctrlKey,
+        pressure: "pressure" in e ? e.pressure : 0.5,
+        pointerType: "pointerType" in e ? e.pointerType : "mouse",
+      };
+    };
 
     const onWheel = (e: WheelEvent) => {
       e.preventDefault();
@@ -141,6 +156,13 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       // While the text editor is open the overlay owns confirm-on-blur; no new gesture starts.
       if (isTextEditing()) return;
       element.setPointerCapture(e.pointerId);
+
+      const handler = getToolHandler(tool);
+      if (handler) {
+        const session = handler.begin(toolPointer(e));
+        if (session) gesture = { kind: "tool", session };
+        return;
+      }
 
       if (isDrawTool(tool) || tool === "text") {
         const start = toDoc(p.x, p.y);
@@ -236,7 +258,13 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
 
     const onPointerMove = (e: PointerEvent) => {
       if (!gesture) {
-        updateHover(e);
+        const hover = getToolHandler(useToolStore.getState().tool)?.hover;
+        if (hover) hover(toolPointer(e));
+        else updateHover(e);
+        return;
+      }
+      if (gesture.kind === "tool") {
+        gesture.session.move(toolPointer(e));
         return;
       }
       const p = local(e);
@@ -359,6 +387,12 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
 
     const onPointerUp = (e: PointerEvent) => {
       if (element.hasPointerCapture(e.pointerId)) element.releasePointerCapture(e.pointerId);
+      if (gesture?.kind === "tool") {
+        if (e.type === "pointerup") gesture.session.up(toolPointer(e));
+        else gesture.session.cancel();
+        gesture = null;
+        return;
+      }
       if (e.type === "pointerup") finishCreate();
       endGesture();
     };
@@ -368,7 +402,10 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
     };
 
     const onDoubleClick = (e: MouseEvent) => {
-      if (useToolStore.getState().tool !== "select" || isTextEditing()) return;
+      if (isTextEditing()) return;
+      const toolHandler = getToolHandler(useToolStore.getState().tool);
+      if (toolHandler?.doubleClick?.(toolPointer(e))) return;
+      if (useToolStore.getState().tool !== "select") return;
       const p = local(e);
       const state = useDocumentStore.getState();
       const d = toDoc(p.x, p.y);

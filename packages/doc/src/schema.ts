@@ -69,10 +69,30 @@ const rectangleSchema = paintedNode.extend({
   cornerRadius: numberValueSchema.optional(),
 });
 const ellipseSchema = paintedNode.extend({ type: z.literal("ellipse") });
+/** Decoration at an open path's start or end (arrows, dots, bars). */
+export const pathMarkerSchema = z.enum(["none", "arrow", "triangle", "circle", "bar"]);
+
 const pathSchema = paintedNode.extend({
   type: z.literal("path"),
-  /** SVG path data. */
+  /** SVG path data, in the node's local coordinates. */
   geometry: z.string().min(1),
+  strokeCap: z.enum(["butt", "round", "square"]).optional(),
+  strokeJoin: z.enum(["miter", "round", "bevel"]).optional(),
+  startMarker: pathMarkerSchema.optional(),
+  endMarker: pathMarkerSchema.optional(),
+});
+/**
+ * Bitmap image. `src` is a data: URL (embedded, travels with the .pego file) or an https URL.
+ * `fit`: fill = cover the box (crop overflow), fit = contain, crop = no scaling, tile = repeat.
+ */
+const imageSchema = baseNode.extend({
+  type: z.literal("image"),
+  src: z.string().min(1),
+  fit: z.enum(["fill", "fit", "crop", "tile"]).optional(),
+  cornerRadius: numberValueSchema.optional(),
+  stroke: strokeSchema.optional(),
+  /** Optional alt text, used by exports and agents. */
+  alt: z.string().optional(),
 });
 const textSchema = baseNode.extend({
   type: z.literal("text"),
@@ -104,10 +124,19 @@ export type PathNode = z.infer<typeof pathSchema>;
 export type TextNode = z.infer<typeof textSchema>;
 export type IconNode = z.infer<typeof iconSchema>;
 export type RefNode = z.infer<typeof refSchema>;
+export type ImageNode = z.infer<typeof imageSchema>;
 export type FrameNode = z.infer<typeof frameShape> & { children: PegoNode[] };
 export type GroupNode = z.infer<typeof groupShape> & { children: PegoNode[] };
 export type PegoNode =
-  FrameNode | GroupNode | RectangleNode | EllipseNode | PathNode | TextNode | IconNode | RefNode;
+  | FrameNode
+  | GroupNode
+  | RectangleNode
+  | EllipseNode
+  | PathNode
+  | TextNode
+  | IconNode
+  | RefNode
+  | ImageNode;
 export type PegoNodeType = PegoNode["type"];
 
 // Recursive: containers reference the node union lazily.
@@ -121,6 +150,7 @@ export const nodeSchema: z.ZodType<PegoNode, unknown> = z.lazy(() =>
     textSchema,
     iconSchema,
     refSchema,
+    imageSchema,
   ]),
 );
 const frameSchema = frameShape.extend({ children: z.array(z.lazy(() => nodeSchema)).default([]) });

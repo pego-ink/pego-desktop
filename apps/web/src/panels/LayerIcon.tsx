@@ -22,6 +22,7 @@ const ICONS: Record<PegoNodeType, LucideIcon> = {
   text: TypeIcon,
   icon: ShapesIcon,
   ref: ComponentIcon,
+  image: ImageIcon,
 };
 
 /** Icon for a node: reusable nodes and instances get the violet component icon. */

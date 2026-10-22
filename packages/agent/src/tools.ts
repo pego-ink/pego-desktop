@@ -29,7 +29,9 @@ import {
   ToolError,
 } from "./tool-kit";
 import { editTools } from "./tools-edit";
+import { exportTools } from "./tools-export";
 import { inspectTools } from "./tools-inspect";
+import { mediaTools } from "./tools-media";
 import type { ToolSpec } from "./types";
 
 const id = z.string().min(1);
@@ -541,7 +543,13 @@ export const coreTools: ToolSpec[] = [
 ];
 
 /** Every tool the agent can use, shared by the in-browser loop, MCP and the Agent SDK. */
-export const agentTools: ToolSpec[] = [...coreTools, ...editTools, ...inspectTools];
+export const agentTools: ToolSpec[] = [
+  ...coreTools,
+  ...editTools,
+  ...inspectTools,
+  ...mediaTools,
+  ...exportTools,
+];
 
 export const toolByName = (name: string): ToolSpec | undefined =>
   agentTools.find((tool) => tool.name === name);
