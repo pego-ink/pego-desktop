@@ -12,6 +12,8 @@ export type AutosaveRecord = {
   dirty: boolean;
   /** Stored when the browser can structured-clone handles; permission is re-requested on save. */
   handle: PegoFileHandle | null;
+  /** File on disk the bridge opened the document from (see useFileStore.bridgePath). */
+  bridgePath?: string | null;
   savedAt: number;
 };
 

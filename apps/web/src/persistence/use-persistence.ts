@@ -1,4 +1,5 @@
 import { useEffect } from "react";
+import { loadDocument } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing } from "@/store/use-text-edit-store";
 import { readAutosave, writeAutosave } from "./autosave-db";
@@ -12,18 +13,32 @@ let autosavePending = false;
 
 const writeCurrent = async () => {
   const { doc } = useDocumentStore.getState();
-  const { fileName, handle } = useFileStore.getState();
-  await writeAutosave({ doc, fileName, handle, dirty: getIsDirty(), savedAt: Date.now() });
+  const { fileName, handle, bridgePath } = useFileStore.getState();
+  await writeAutosave({
+    doc,
+    fileName,
+    handle,
+    bridgePath,
+    dirty: getIsDirty(),
+    savedAt: Date.now(),
+  });
 };
 
 const restoreAutosave = async () => {
   const record = await readAutosave();
   if (!record) return;
-  useDocumentStore.getState().load(record.doc);
+  // Autosaves written by an older Pego hold an older document version.
+  const doc = loadDocument(record.doc);
+  if (!doc) {
+    console.warn("autosave ignored: the stored document is invalid or from a newer Pego");
+    return;
+  }
+  useDocumentStore.getState().load(doc);
   const loaded = useDocumentStore.getState().doc;
   useFileStore.getState().setSession({
     fileName: record.fileName,
     handle: record.handle,
+    bridgePath: record.bridgePath ?? null,
     savedDoc: record.dirty ? null : loaded,
   });
 };

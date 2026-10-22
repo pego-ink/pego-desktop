@@ -1,6 +1,7 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import type { GrDirectContext, Surface } from "canvaskit-wasm";
+import { requestDocumentFonts, useFontStore } from "@/canvas/fonts";
 import { loadCanvasKit } from "@/canvas/load-canvaskit";
 import { getLayout } from "@/canvas/layout";
 import { renderDocument } from "@/canvas/render-document";
@@ -11,6 +12,7 @@ import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
+import { dropFiles } from "@/interaction/drop-files";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -20,6 +22,7 @@ import { useViewportStore } from "@/store/use-viewport-store";
 
 export const Canvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
+  const [dropping, setDropping] = useState(false);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useCanvasPointer(canvasRef);
@@ -112,10 +115,17 @@ export const Canvas = () => {
         };
 
         resize();
+        const requestFonts = () =>
+          void requestDocumentFonts(res.fonts, useDocumentStore.getState().doc, res.fontFamily);
+        requestFonts();
         const observer = new ResizeObserver(resize);
         observer.observe(container);
         const unsubscribers = [
           useDocumentStore.subscribe(schedule),
+          useDocumentStore.subscribe((state, prev) => {
+            if (state.doc !== prev.doc) requestFonts();
+          }),
+          useFontStore.subscribe(schedule),
           useViewportStore.subscribe(schedule),
           useInteractionState.subscribe(schedule),
           useTextEditStore.subscribe(schedule),
@@ -146,8 +156,38 @@ export const Canvas = () => {
   }, []);
 
   return (
-    <div ref={containerRef} className="relative h-full w-full overflow-hidden">
+    <div
+      ref={containerRef}
+      className="relative h-full w-full overflow-hidden"
+      onDragOver={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        event.dataTransfer.dropEffect = "copy";
+        setDropping(true);
+      }}
+      onDragLeave={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
+      }}
+      onDrop={(event) => {
+        if (!event.dataTransfer.types.includes("Files")) return;
+        event.preventDefault();
+        setDropping(false);
+        const rect = event.currentTarget.getBoundingClientRect();
+        void dropFiles(
+          Array.from(event.dataTransfer.files),
+          event.clientX - rect.left,
+          event.clientY - rect.top,
+        );
+      }}
+    >
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
+      {dropping ? (
+        <div className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/5">
+          <span className="rounded-md bg-card px-3 py-1.5 text-xs text-foreground shadow-sm">
+            Drop a .pego or .pen file to open it, or images to add them
+          </span>
+        </div>
+      ) : null}
       <TextEditorOverlay />
       <Toolbar />
     </div>

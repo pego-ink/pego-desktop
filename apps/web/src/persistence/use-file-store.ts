@@ -8,19 +8,33 @@ type FileState = {
   /** Null until the document has been opened from / saved to a file. */
   fileName: string | null;
   handle: PegoFileHandle | null;
+  /**
+   * Absolute path of the file on disk when the document was opened or saved through the local
+   * bridge (Claude Code's open_document / save_document). Save writes back there via the bridge.
+   */
+  bridgePath: string | null;
   /** The doc object at last save/open; null = unknown (restored unsaved work), always dirty. */
   savedDoc: PegoDocument | null;
-  setSession: (session: Pick<FileState, "fileName" | "handle" | "savedDoc">) => void;
-  markSaved: (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => void;
+  setSession: (
+    session: Pick<FileState, "fileName" | "handle" | "savedDoc"> & { bridgePath?: string | null },
+  ) => void;
+  markSaved: (
+    doc: PegoDocument,
+    fileName: string | null,
+    handle: PegoFileHandle | null,
+    bridgePath?: string | null,
+  ) => void;
 };
 
 export const useFileStore = create<FileState>((set) => ({
   fileName: null,
   handle: null,
+  bridgePath: null,
   // The default document counts as clean at startup.
   savedDoc: useDocumentStore.getState().doc,
-  setSession: (session) => set(session),
-  markSaved: (doc, fileName, handle) => set({ savedDoc: doc, fileName, handle }),
+  setSession: (session) => set({ ...session, bridgePath: session.bridgePath ?? null }),
+  markSaved: (doc, fileName, handle, bridgePath = null) =>
+    set({ savedDoc: doc, fileName, handle, bridgePath }),
 }));
 
 export const useIsDirty = () => {
