@@ -11,12 +11,13 @@ import {
   type ToolResult,
   type ToolSpec,
 } from "@pego/agent";
-import { anthropicUserContent } from "./attachments";
+import { anthropicImageBlocks, anthropicUserContent } from "./attachments";
 import { AgentRunError, describeApiError, isAbortError } from "./api-errors";
 import { RunCancelledError } from "./decisions";
 import type { AgentToolHost } from "./tool-host";
 import { toUsageDelta } from "./usage";
 import { resolveRunSkills, skillLogLines, skillsBlock } from "./run-skills";
+import { steerImages, steerText, type SteerInbox, type SteerMessage } from "./steer-inbox";
 import { promptWithHistory } from "./sessions/session-context";
 import type { RunScope } from "./use-agent-store";
 
@@ -170,7 +171,20 @@ type RuntimeContext = {
   attachments?: readonly RunAttachment[];
   /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
   history?: string;
+  /** Mailbox for messages the user sends into the running agent (read at every turn boundary). */
+  steer?: SteerInbox;
 };
+
+/** Content blocks for steer messages: their images first, then the text. Empty without messages. */
+export const steerBlocks = (
+  messages: readonly SteerMessage[],
+): Anthropic.Beta.BetaContentBlockParam[] =>
+  messages.length === 0
+    ? []
+    : [
+        ...anthropicImageBlocks(steerImages(messages)),
+        { type: "text" as const, text: steerText(messages) },
+      ];
 
 const cancelIfAborted = (signal: AbortSignal) => {
   if (signal.aborted) throw new RunCancelledError();
@@ -468,12 +482,16 @@ const executeStep = async (
   step: PlanStep,
 ): Promise<StepOutcome> => {
   ctx.host.reportStep(step.id, "running");
+  // Steers sent while planning or between steps are read now; earlier ones stay in every later step.
+  ctx.steer?.drain();
+  const followUps = ctx.steer?.delivered() ?? [];
+  const stepText = stepPrompt(ctx.host.run, prompt, steps, step, ctx.skillsText);
   const messages: BetaMessageParam[] = [
     {
       role: "user",
       content: anthropicUserContent(
-        stepPrompt(ctx.host.run, prompt, steps, step, ctx.skillsText),
-        ctx.attachments ?? [],
+        followUps.length > 0 ? `${stepText}\n\n${steerText(followUps)}` : stepText,
+        [...(ctx.attachments ?? []), ...steerImages(followUps)],
       ),
     },
   ];
@@ -514,6 +532,13 @@ const executeStep = async (
       (block): block is Anthropic.Beta.BetaToolUseBlock => block.type === "tool_use",
     );
     if (toolUses.length === 0) {
+      // A steer that arrived during this last turn gets its answer before the step closes.
+      const late = message.stop_reason === "end_turn" ? (ctx.steer?.drain() ?? []) : [];
+      if (late.length > 0) {
+        messages.push({ role: "assistant", content: message.content });
+        messages.push({ role: "user", content: steerBlocks(late) });
+        continue;
+      }
       const finished =
         message.stop_reason === "end_turn" || message.stop_reason === "stop_sequence";
       return finished
@@ -537,7 +562,11 @@ const executeStep = async (
       });
     }
     // ALL results in ONE user message (splitting them trains the model off parallel calls).
-    messages.push({ role: "user", content: results });
+    // Steers join that same message, after the results, so the next call sees them.
+    messages.push({
+      role: "user",
+      content: [...results, ...steerBlocks(ctx.steer?.drain() ?? [])],
+    });
   }
   return { status: "failed", summary: "The step used too many turns without finishing." };
 };

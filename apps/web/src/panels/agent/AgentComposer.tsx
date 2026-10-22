@@ -1,7 +1,8 @@
 import { useRef, useState, type ClipboardEvent, type KeyboardEvent } from "react";
 import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
-import { cancelRun, startRun } from "@/agent/run";
+import { submitPrompt, steerNow } from "@/agent/queue";
+import { cancelRun } from "@/agent/run";
 import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { AgentSelector } from "@/panels/agent/AgentSelector";
@@ -24,12 +25,13 @@ type AgentComposerProps = {
 export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const active = useVisibleRun((s) => isRunActive(s.status));
   const runId = useVisibleRun((s) => s.runId);
+  const sessionId = useAgentStore((s) => s.visibleSessionId);
   const selectionCount = useDocumentStore((s) => s.selection.length);
   const hint = selectionHint(selectionCount);
 
   const attachments = useAgentStore((s) => s.pendingAttachments);
   const removeAttachment = useAgentStore((s) => s.removeAttachment);
-  const drop = useAttachmentDrop(!active);
+  const drop = useAttachmentDrop(true);
 
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -40,15 +42,21 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     setValue(seed.text);
   }
 
-  const canSend = !active && value.trim().length > 0;
+  const canSend = value.trim().length > 0;
 
-  const send = () => {
+  /** Send the box: a run starts now when the chat is idle, otherwise the message is queued. */
+  const send = (steer = false) => {
     if (!canSend) return;
     const prompt = value.trim();
+    // The images travel with the message; the composer starts empty again.
+    const images = useAgentStore.getState().pendingAttachments;
     setValue("");
-    void safely(() => startRun(prompt)).then((ok) => {
-      if (!ok) setValue(prompt);
-    });
+    const result =
+      steer && active
+        ? steerNow(sessionId, prompt, images)
+        : submitPrompt(sessionId, prompt, { attachments: images });
+    if (result === "refused") setValue(prompt);
+    else if (images.length > 0) useAgentStore.getState().clearAttachments();
   };
 
   const onPickFiles = (files: FileList | null) => {
@@ -68,7 +76,8 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const onKeyDown = (event: KeyboardEvent<HTMLTextAreaElement>) => {
     if (event.key !== "Enter" || event.shiftKey || event.nativeEvent.isComposing) return;
     event.preventDefault();
-    send();
+    // Cmd/Ctrl+Enter while the agent works sends the message into the run right away.
+    send(event.metaKey || event.ctrlKey);
   };
 
   return (
@@ -76,7 +85,6 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       {...drop.handlers}
       className={cn(
         "relative rounded-lg border border-border bg-muted/40 p-2 transition-[border-color,opacity] duration-(--duration-fast) ease-out focus-within:border-ring",
-        active && "opacity-70",
         drop.dragging && "border-ring",
       )}
     >
@@ -92,12 +100,11 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         ref={textareaRef}
         aria-label="Prompt"
         value={value}
-        disabled={active}
         rows={2}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={onKeyDown}
         onPaste={onPaste}
-        placeholder={active ? "Agent is working…" : "Describe what to design…"}
+        placeholder={active ? "Queue a message…" : "Describe what to design…"}
         className="max-h-40 min-h-12 w-full resize-none bg-transparent px-1 text-xs leading-5 text-foreground outline-none [field-sizing:content] placeholder:text-muted-foreground disabled:cursor-not-allowed"
       />
       <div className="mt-1 flex items-center gap-1">
@@ -115,7 +122,6 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
           type="button"
           aria-label="Attach images"
           title="Attach images"
-          disabled={active}
           onClick={() => fileInputRef.current?.click()}
           className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
         >
@@ -131,35 +137,27 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
           // Spacer keeps the send button at the end of the row.
           <span aria-hidden className="min-w-0 flex-1" />
         )}
-        <div className="relative size-7 shrink-0">
+        <div className="flex shrink-0 items-center gap-1">
+          {active ? (
+            <button
+              type="button"
+              aria-label="Cancel run"
+              title="Cancel run"
+              onClick={() => {
+                if (runId) void safely(() => cancelRun(runId));
+              }}
+              className={cn(ACTION_BUTTON, "hover:bg-foreground/90")}
+            >
+              <SquareIcon className="size-3 fill-current" />
+            </button>
+          ) : null}
           <button
             type="button"
-            aria-label="Cancel run"
-            title="Cancel run"
-            inert={!active}
-            onClick={() => {
-              if (runId) void safely(() => cancelRun(runId));
-            }}
-            className={cn(
-              ACTION_BUTTON,
-              "absolute inset-0 hover:bg-foreground/90",
-              !active && "pointer-events-none opacity-0",
-            )}
-          >
-            <SquareIcon className="size-3 fill-current" />
-          </button>
-          <button
-            type="button"
-            aria-label="Send"
-            title="Send (Enter)"
+            aria-label={active ? "Queue message" : "Send"}
+            title={active ? "Queue (Enter) · Send to the agent now (⌘Enter)" : "Send (Enter)"}
             disabled={!canSend}
-            inert={active}
-            onClick={send}
-            className={cn(
-              ACTION_BUTTON,
-              "absolute inset-0 hover:bg-foreground/90",
-              active ? "pointer-events-none opacity-0" : "disabled:opacity-30",
-            )}
+            onClick={() => send()}
+            className={cn(ACTION_BUTTON, "hover:bg-foreground/90 disabled:opacity-30")}
           >
             <ArrowUpIcon className="size-4" />
           </button>

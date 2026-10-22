@@ -80,6 +80,11 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
           ["shift", "↓"],
         ],
       },
+      {
+        id: "edit.ask-pego",
+        label: "Ask Pego about the selection",
+        chords: [["mod", "K"]],
+      },
       { id: "edit.select-all", label: "Select all", chords: [["mod", "A"]] },
       { id: "edit.escape", label: "Back to Select, then step out of selection", chords: [["Esc"]] },
       { id: "edit.edit-text", label: "Edit selected text or path", chords: [["Enter"]] },
@@ -158,11 +163,21 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
   },
   {
     id: "agent",
-    label: "Agent decisions",
+    label: "Agent",
     entries: [
       { id: "agent.pick", label: "Pick option", chords: [["1"], ["2"], ["3"], ["4"]] },
       { id: "agent.navigate", label: "Move between options", chords: [["↑"], ["↓"]] },
       { id: "agent.custom", label: "Send a custom answer", chords: [["Enter"]] },
+      {
+        id: "agent.queue",
+        label: "Queue a message while the agent works",
+        chords: [["Enter"]],
+      },
+      {
+        id: "agent.steer",
+        label: "Send to the running agent now (steer)",
+        chords: [["mod", "Enter"]],
+      },
     ],
   },
 ];

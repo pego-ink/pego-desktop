@@ -14,6 +14,7 @@ import {
   sessionTitle,
   settleStatus,
   type AttachmentMeta,
+  type QueuedMessage,
   type SessionState,
   type SessionTurn,
 } from "@/agent/sessions/session-model";
@@ -26,7 +27,7 @@ import {
   type AgentPrefs,
 } from "@/agent/agent-prefs";
 
-export type { AgentBackend };
+export type { AgentBackend, QueuedMessage };
 
 export type RunStatus =
   "idle" | "planning" | "running" | "awaiting_decision" | "done" | "failed" | "cancelled";
@@ -45,6 +46,11 @@ export type AgentLogEntry = {
   attachments?: RunAttachment[];
   /** Name and size of images attached in a restored session (the image data is not stored). */
   attachmentsMeta?: AttachmentMeta[];
+  /**
+   * A message sent into the running agent (steer), user entries only: "pending" until the agent
+   * took it, "delivered" once it did, "failed" when the run ended first.
+   */
+  steered?: "pending" | "delivered" | "failed";
 };
 
 export type BridgeStatus = {
@@ -89,14 +95,6 @@ export type RunFields = {
   usage: { inputTokens: number; outputTokens: number; costUsd: number };
 };
 
-/** A message typed while the session's run was busy, waiting for the next run (or a steer). */
-export type QueuedMessage = {
-  id: string;
-  text: string;
-  attachments: RunAttachment[];
-  createdAt: number;
-};
-
 /**
  * A chat session held in memory: its finished turns plus the live fields of its latest run. The
  * visible session is always live; others stay live while they run in the background (or have
@@ -106,7 +104,7 @@ export type SessionLive = SessionState &
   RunFields & {
     /** Palette slot of this session's canvas focus box and cursor (see agent/run-colors). */
     colorIndex: number;
-    /** Messages for the next run of this session, oldest first. Reserved for the queue/steer UI. */
+    /** Messages for the next run of this session, oldest first (see agent/queue). */
     queue: QueuedMessage[];
   };
 
@@ -166,6 +164,8 @@ type AgentActions = {
    * live state. The previously visible session leaves memory unless it is still needed there.
    */
   showSession: (session: SessionState) => void;
+  /** Put a session in memory without showing it (no-op when it is already live). */
+  addSession: (session: SessionState) => void;
   /** Only `session` stays in memory, shown in the panel (another file was opened). */
   resetSessions: (session: SessionState) => void;
   /** Forget a live session (it was deleted). The visible session is never dropped. */
@@ -180,7 +180,18 @@ type AgentActions = {
   patchSession: (sessionId: string, patch: SessionPatch) => void;
   setPlan: (sessionId: string, steps: PlanStep[]) => void;
   setStepStatus: (sessionId: string, stepId: string, status: StepStatus, summary?: string) => void;
-  appendLog: (sessionId: string, entry: LogInput) => void;
+  /** Append a log entry; returns its id. */
+  appendLog: (sessionId: string, entry: LogInput) => string;
+  /** Set the delivery state of a steered user entry. */
+  setSteered: (
+    sessionId: string,
+    entryId: string,
+    steered: "pending" | "delivered" | "failed",
+  ) => void;
+  /** The agent took a steered message: the oldest pending entry with this text becomes delivered. */
+  markSteerDelivered: (sessionId: string, text: string) => void;
+  /** Every still-pending steered entry of the session did not arrive (the run ended). */
+  failPendingSteers: (sessionId: string) => void;
   addUsage: (sessionId: string, usage: UsageInput) => void;
 };
 
@@ -202,7 +213,7 @@ export const liveFromSession = (session: SessionState, colorIndex = 0): SessionL
   ...session,
   ...idleRun,
   colorIndex,
-  queue: [],
+  queue: session.queue ?? [],
 });
 
 /** The latest run as a turn, or null when nothing has run since the session was opened. */
@@ -229,12 +240,13 @@ export const sessionTurns = (state: TurnSource): SessionTurn[] => {
 
 /** A live session as plain data (for titles, storage and the prompt history). */
 export const sessionOf = (
-  state: TurnSource & Pick<SessionState, "id" | "createdAt" | "customTitle">,
+  state: TurnSource & Pick<SessionState, "id" | "createdAt" | "customTitle" | "queue">,
 ): SessionState => ({
   id: state.id,
   createdAt: state.createdAt,
   customTitle: state.customTitle,
   turns: sessionTurns(state),
+  queue: state.queue,
 });
 
 /** Cheap title for selectors: avoids copying the whole transcript on every log entry. */
@@ -352,6 +364,12 @@ const createAgentStore = () =>
           liveSessions[session.id] ??= liveFromSession(session);
           return { liveSessions, visibleSessionId: session.id };
         }),
+      addSession: (session) =>
+        set((state) =>
+          state.liveSessions[session.id]
+            ? state
+            : { liveSessions: { ...state.liveSessions, [session.id]: liveFromSession(session) } },
+        ),
       resetSessions: (session) =>
         set({
           liveSessions: { [session.id]: liveFromSession(session) },
@@ -390,10 +408,34 @@ const createAgentStore = () =>
             step.id === stepId ? { ...step, status, summary: summary ?? step.summary } : step,
           ),
         })),
-      appendLog: (sessionId, entry) =>
+      appendLog: (sessionId, entry) => {
+        const id = `log-${++logSeq}`;
+        patch(sessionId, (live) => ({ log: [...live.log, { ...entry, id, at: Date.now() }] }));
+        return id;
+      },
+      setSteered: (sessionId, entryId, steered) =>
         patch(sessionId, (live) => ({
-          log: [...live.log, { ...entry, id: `log-${++logSeq}`, at: Date.now() }],
+          log: live.log.map((entry) => (entry.id === entryId ? { ...entry, steered } : entry)),
         })),
+      markSteerDelivered: (sessionId, text) =>
+        patch(sessionId, (live) => {
+          const pending = live.log.filter((e) => e.steered === "pending");
+          const target = pending.find((e) => e.text === text) ?? pending[0];
+          if (!target) return {};
+          return {
+            log: live.log.map((e) => (e === target ? { ...e, steered: "delivered" as const } : e)),
+          };
+        }),
+      failPendingSteers: (sessionId) =>
+        patch(sessionId, (live) =>
+          live.log.some((e) => e.steered === "pending")
+            ? {
+                log: live.log.map((e) =>
+                  e.steered === "pending" ? { ...e, steered: "failed" as const } : e,
+                ),
+              }
+            : {},
+        ),
       addUsage: (sessionId, usage) =>
         patch(sessionId, (live) => ({
           usage: {

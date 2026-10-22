@@ -17,6 +17,18 @@ export type SessionTurn = {
   usage: TurnUsage;
 };
 
+/** A message typed while the session's run was busy, waiting for the next run (or a steer). */
+export type QueuedMessage = {
+  id: string;
+  text: string;
+  /** What the chip and, once run, the user bubble show instead of `text` (which the agent gets). */
+  displayText?: string;
+  attachments: RunAttachment[];
+  /** Name and size of images the message had before a reload (the image data is gone). */
+  attachmentsMeta?: AttachmentMeta[];
+  createdAt: number;
+};
+
 /** Everything the panel needs of one session, live or restored. */
 export type SessionState = {
   id: string;
@@ -24,6 +36,8 @@ export type SessionState = {
   /** Explicit user rename; null = derive the title from the first prompt. */
   customTitle: string | null;
   turns: SessionTurn[];
+  /** Messages waiting for the next run; absent = none. */
+  queue?: QueuedMessage[];
 };
 
 /** Lightweight attachment record: the image data is never stored. */
@@ -33,6 +47,13 @@ export type StoredLogEntry = Omit<AgentLogEntry, "attachments"> & {
   attachments?: AttachmentMeta[];
 };
 export type StoredTurn = Omit<SessionTurn, "log"> & { log: StoredLogEntry[] };
+export type StoredQueuedMessage = {
+  id: string;
+  text: string;
+  displayText?: string;
+  createdAt: number;
+  attachments: AttachmentMeta[];
+};
 
 /** The IndexedDB record ("pego-sessions"). Holds no API keys and no image data. */
 export type StoredSession = {
@@ -45,6 +66,8 @@ export type StoredSession = {
   createdAt: number;
   updatedAt: number;
   turns: StoredTurn[];
+  /** Queued messages; their images are stored as name and size only. */
+  queue?: StoredQueuedMessage[];
 };
 
 export type SessionMeta = { id: string; title: string; updatedAt: number };
@@ -103,6 +126,26 @@ const restoreEntry = (entry: StoredLogEntry): AgentLogEntry => {
   return attachments?.length ? { ...rest, attachmentsMeta: attachments } : rest;
 };
 
+const stripQueued = (message: QueuedMessage): StoredQueuedMessage => ({
+  id: message.id,
+  text: message.text,
+  ...(message.displayText ? { displayText: message.displayText } : {}),
+  createdAt: message.createdAt,
+  attachments:
+    message.attachments.length > 0
+      ? attachmentMeta(message.attachments)
+      : (message.attachmentsMeta ?? []),
+});
+
+const restoreQueued = (message: StoredQueuedMessage): QueuedMessage => ({
+  id: message.id,
+  text: message.text,
+  ...(message.displayText ? { displayText: message.displayText } : {}),
+  createdAt: message.createdAt,
+  attachments: [],
+  ...(message.attachments.length > 0 ? { attachmentsMeta: message.attachments } : {}),
+});
+
 export const toStoredSession = (
   session: SessionState,
   docId: string,
@@ -121,6 +164,7 @@ export const toStoredSession = (
     createdAt: session.createdAt,
     updatedAt,
     turns,
+    ...(session.queue?.length ? { queue: session.queue.map(stripQueued) } : {}),
   };
 };
 
@@ -133,6 +177,7 @@ export const fromStoredSession = (stored: StoredSession): SessionState => ({
     status: settleStatus(turn.status),
     log: turn.log.map(restoreEntry),
   })),
+  ...(stored.queue?.length ? { queue: stored.queue.map(restoreQueued) } : {}),
 });
 
 export const metaOf = (stored: StoredSession): SessionMeta => ({

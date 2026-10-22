@@ -16,6 +16,7 @@ import {
   type StartBlock,
 } from "./run-registry";
 import { buildHistoryBlock } from "./sessions/session-context";
+import { createSteerInbox } from "./steer-inbox";
 import { createToolHost } from "./tool-host";
 import { findRunSession, sessionTurns, useAgentStore } from "./use-agent-store";
 
@@ -51,17 +52,63 @@ export type RunStartOptions = {
   attachments?: readonly RunAttachment[];
   /** Session memory block (see sessions/session-context); the log keeps only the user's text. */
   history?: string;
+  /** The prompt is a steer that restarted the run: its bubble carries the "Steered" label. */
+  steered?: boolean;
+  /** What the user bubble and the session title show; `text` (with extra context) goes to the agent. */
+  displayText?: string;
 };
+
+const shownText = (text: string, options: RunStartOptions): string =>
+  options.displayText?.trim() || text;
 
 const sessionFor = (options: RunStartOptions): string =>
   options.sessionId ?? useAgentStore.getState().visibleSessionId;
 
 /** The user bubble of the activity log (carries the attached images, if any). */
-const userLogEntry = (text: string, attachments: readonly RunAttachment[]) => ({
+export const userLogEntry = (
+  text: string,
+  attachments: readonly RunAttachment[],
+  steered = false,
+) => ({
   kind: "user" as const,
   text,
   ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
+  ...(steered ? { steered: "delivered" as const } : {}),
 });
+
+/**
+ * Registry pieces of an in-browser run: a mailbox for steers (its bubbles flip to "delivered" when
+ * a turn takes them) and the image list the tool host reads, which steer images are added to.
+ */
+const inBrowserSteering = (sessionId: string, attachments: readonly RunAttachment[]) => {
+  const steerAttachments = [...attachments];
+  const steerInbox = createSteerInbox((message) =>
+    useAgentStore.getState().setSteered(sessionId, message.id, "delivered"),
+  );
+  return { steerInbox, attachments: steerAttachments };
+};
+
+/**
+ * A run ended with steer messages the model never read: say so on their bubbles and put their text
+ * back at the front of the session's queue so the next run (or the user) still gets them.
+ */
+const settleSteers = (sessionId: string, steerInbox: ReturnType<typeof createSteerInbox>) => {
+  const left = steerInbox.takePending();
+  if (left.length === 0) return;
+  const agent = useAgentStore.getState();
+  for (const message of left) agent.setSteered(sessionId, message.id, "failed");
+  agent.patchSession(sessionId, (live) => ({
+    queue: [
+      ...left.map((message) => ({
+        id: crypto.randomUUID(),
+        text: message.text,
+        attachments: message.attachments,
+        createdAt: Date.now(),
+      })),
+      ...live.queue,
+    ],
+  }));
+};
 
 /**
  * Backend "custom": load the selected provider and its key, then route by dialect. Same store
@@ -78,13 +125,14 @@ export const startCustomRun = async (
   const { attachments = [], history = "", styleId } = options;
   const sessionId = sessionFor(options);
   const agent = useAgentStore.getState();
-  agent.beginRun(sessionId, runId, text);
+  agent.beginRun(sessionId, runId, shownText(text, options));
   const controller = new AbortController();
-  const host = createToolHost({ runId, attachments });
+  const steering = inBrowserSteering(sessionId, attachments);
+  const host = createToolHost({ runId, attachments: steering.attachments });
   const scope = host.run;
   scope.set({ runLabel: "Custom provider" });
-  scope.appendLog(userLogEntry(text, attachments));
-  registerRun({ id: runId, sessionId, backend: "custom", controller, host, styleId });
+  scope.appendLog(userLogEntry(shownText(text, options), attachments, options.steered));
+  registerRun({ id: runId, sessionId, backend: "custom", controller, host, styleId, ...steering });
 
   const fail = (message: string) => {
     scope.appendLog({ kind: "error", text: message });
@@ -116,6 +164,7 @@ export const startCustomRun = async (
         styleId,
         attachments,
         history,
+        steer: steering.steerInbox,
       });
     } else {
       await deps.runAnthropic(text, {
@@ -134,10 +183,12 @@ export const startCustomRun = async (
         styleId,
         attachments,
         history,
+        steer: steering.steerInbox,
       });
     }
   } finally {
     unregisterRun(runId);
+    settleSteers(sessionId, steering.steerInbox);
   }
 };
 
@@ -164,7 +215,7 @@ const showStartBlock = (sessionId: string, text: string, block: StartBlock) => {
  */
 export const startRun = async (
   prompt: string,
-  options: Pick<RunStartOptions, "sessionId" | "attachments"> = {},
+  options: Pick<RunStartOptions, "sessionId" | "attachments" | "steered" | "displayText"> = {},
 ): Promise<string | null> => {
   const text = prompt.trim();
   if (!text) return null;
@@ -190,7 +241,14 @@ export const startRun = async (
   // Images from the composer move into this run; the composer starts empty again.
   const attachments = options.attachments ?? agent.pendingAttachments;
   if (!options.attachments && attachments.length > 0) agent.clearAttachments();
-  const start: RunStartOptions = { sessionId, styleId, attachments, history };
+  const start: RunStartOptions = {
+    sessionId,
+    styleId,
+    attachments,
+    history,
+    steered: options.steered,
+    displayText: options.displayText,
+  };
 
   if (agent.backend === "local") {
     await startLocalAgentRun(runId, text, undefined, skillId, start);
@@ -202,13 +260,14 @@ export const startRun = async (
     return runId;
   }
 
-  agent.beginRun(sessionId, runId, text);
+  agent.beginRun(sessionId, runId, shownText(text, options));
   const controller = new AbortController();
-  const host = createToolHost({ runId, attachments });
+  const steering = inBrowserSteering(sessionId, attachments);
+  const host = createToolHost({ runId, attachments: steering.attachments });
   const scope = host.run;
   scope.set({ runLabel: "Anthropic API" });
-  scope.appendLog(userLogEntry(text, attachments));
-  registerRun({ id: runId, sessionId, backend: "api", controller, host, styleId });
+  scope.appendLog(userLogEntry(shownText(text, options), attachments, options.steered));
+  registerRun({ id: runId, sessionId, backend: "api", controller, host, styleId, ...steering });
 
   try {
     const apiKey = await loadApiKey();
@@ -228,9 +287,11 @@ export const startRun = async (
       styleId,
       attachments,
       history,
+      steer: steering.steerInbox,
     });
   } finally {
     unregisterRun(runId);
+    settleSteers(sessionId, steering.steerInbox);
   }
   return runId;
 };
@@ -250,6 +311,8 @@ export const cancelRun = (runId: string): void => {
       }
     }
     scope.set({ status: "cancelled", decision: null, focusIds: [] });
+    const sessionId = scope.sessionId();
+    if (sessionId) useAgentStore.getState().failPendingSteers(sessionId);
     unregisterRun(runId);
   }
   // API runs finish through `runApiAgent`, which sees the abort and sets "cancelled".

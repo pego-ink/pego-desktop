@@ -51,6 +51,8 @@ const endRun = (run: RunEntry, status: "done" | "failed" | "cancelled") => {
     }
   }
   scope.set({ status, decision: null, focusIds: [] });
+  // A steer the CLI never confirmed did not arrive.
+  agent().failPendingSteers(run.sessionId);
   cancelPendingDecisions(run.id);
   unregisterRun(run.id);
 };
@@ -144,6 +146,9 @@ export const createBridgeHandlers = ({
             tool: { name: event.tool, isError: true },
           });
         }
+        break;
+      case "steered":
+        agent().markSteerDelivered(run.sessionId, event.text);
         break;
       case "usage":
         scope.addUsage({

@@ -192,4 +192,40 @@ describe("session sync", () => {
     expect(sid()).toBe(back?.id ?? "");
     expect(sessionTurns(view())[0]?.log[0]?.text).toBe("alpha");
   });
+
+  test("the queue is stored with the session and survives a reload", async () => {
+    await runTurn("alpha", "a");
+    const alpha = sid();
+    // Cancelled runs keep their queue (a finished one would start it right away).
+    agent().patchSession(alpha, {
+      status: "cancelled",
+      queue: [
+        {
+          id: "q1",
+          text: "next thing",
+          attachments: [{ id: "att-1", name: "a.png", mediaType: "image/png", data: "AAAA" }],
+          createdAt: 1,
+        },
+      ],
+    });
+    await settle();
+    expect((await listSessions(docId))[0]?.queue?.[0]).toMatchObject({
+      text: "next thing",
+      attachments: [{ name: "a.png", size: 3 }],
+    });
+
+    // Reload: nothing in memory, the session comes back from storage with its queue.
+    agent().resetSessions(emptySession());
+    await switchSession(alpha);
+    expect(sid()).toBe(alpha);
+    expect(view().queue[0]).toMatchObject({
+      text: "next thing",
+      attachments: [],
+      attachmentsMeta: [{ name: "a.png", size: 3 }],
+    });
+    // A restored queue does not start by itself.
+    await settle();
+    expect(view().status).toBe("idle");
+    expect(view().queue).toHaveLength(1);
+  });
 });

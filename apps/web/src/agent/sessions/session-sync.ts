@@ -1,6 +1,7 @@
 import { useDocumentStore } from "@/store/use-document-store";
 import { isRunActive, isRunFinished } from "@/panels/agent/agent-format";
 import { cancelAllRuns, cancelRun } from "@/agent/run";
+import { startQueueDriver } from "@/agent/queue";
 import { runsForSession } from "@/agent/run-registry";
 import {
   runningSessions,
@@ -53,7 +54,13 @@ const upsertMeta = (meta: SessionMeta, removed: readonly string[]) =>
     ),
   }));
 
-type Fingerprint = { turns: unknown; log: unknown; status: unknown; title: unknown };
+type Fingerprint = {
+  turns: unknown;
+  log: unknown;
+  status: unknown;
+  title: unknown;
+  queue: unknown;
+};
 /** What was last written per session, to skip writes when nothing changed (switching must not reorder). */
 const saved = new Map<string, Fingerprint>();
 const fingerprint = (live: SessionLive): Fingerprint => ({
@@ -61,6 +68,7 @@ const fingerprint = (live: SessionLive): Fingerprint => ({
   log: live.log,
   status: live.status,
   title: live.customTitle,
+  queue: live.queue,
 });
 const markSaved = (id: string) => {
   const live = liveOf(id);
@@ -80,7 +88,8 @@ const isDirty = (id: string) => {
     was.turns !== now.turns ||
     was.log !== now.log ||
     was.status !== now.status ||
-    was.title !== now.title
+    was.title !== now.title ||
+    was.queue !== now.queue
   );
 };
 
@@ -145,6 +154,17 @@ const openDoc = async (docId: string) => {
 };
 
 const currentDocId = () => sessions().docId;
+
+/**
+ * Create an empty session for the open file without showing it: it is live (a run can start in it
+ * with `submitPrompt`) and appears in the session list once that run starts. Returns its id.
+ */
+export const createSessionInBackground = (): string => {
+  const fresh = emptySession();
+  agent().addSession(fresh);
+  markSaved(fresh.id);
+  return fresh.id;
+};
 
 /** Start an empty session. The old one is stored first (and keeps running if it has a run). */
 export const startNewSession = async (): Promise<void> => {
@@ -236,7 +256,8 @@ export const startSessionSync = (): (() => void) => {
       if (!before || before === live) continue;
       const started = live.log.length > 0 && before.log.length === 0 && isRunActive(live.status);
       const ended = isRunFinished(live.status) && !isRunFinished(before.status);
-      if (started || ended) void saveLive(docId, live.id);
+      const queueChanged = live.queue !== before.queue;
+      if (started || ended || queueChanged) void saveLive(docId, live.id);
     }
   });
 
@@ -260,8 +281,11 @@ export const startSessionSync = (): (() => void) => {
   };
   const unsubscribeDoc = useDocumentStore.subscribe(() => void followDoc());
   void followDoc();
+  // A finished run starts the first message queued behind it.
+  const stopQueueDriver = startQueueDriver();
 
   return () => {
+    stopQueueDriver();
     unsubscribeAgent();
     unsubscribeDoc();
     loadToken++;

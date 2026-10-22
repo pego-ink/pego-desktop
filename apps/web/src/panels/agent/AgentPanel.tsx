@@ -9,6 +9,7 @@ import { AgentComposer } from "@/panels/agent/AgentComposer";
 import { AgentEmptyState } from "@/panels/agent/AgentEmptyState";
 import { ChangesBar } from "@/panels/agent/ChangesBar";
 import { DecisionCard } from "@/panels/agent/DecisionCard";
+import { QueuedMessages } from "@/panels/agent/QueuedMessages";
 import { PlanPill } from "@/panels/agent/PlanPill";
 import { SessionHeader } from "@/panels/agent/SessionHeader";
 import { WorkingIndicator } from "@/panels/agent/WorkingIndicator";
@@ -130,6 +131,7 @@ export const AgentPanel = () => {
         <Reveal show={isRunFinished(status) && hasChanges} className="pb-2">
           <ChangesBar />
         </Reveal>
+        <QueuedMessages />
         <AgentComposer seed={seed} />
       </div>
     </div>

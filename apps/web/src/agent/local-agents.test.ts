@@ -259,6 +259,24 @@ describe("local agent runs", () => {
     expect(visible().status).toBe("planning");
   });
 
+  test("displayText is what the bubble shows; the agent gets the full prompt", () => {
+    connect([info("codex", { name: "Codex" })]);
+    state().setLocalAgent("codex");
+    const sent: EditorToBridge[] = [];
+    startLocalAgentRun(
+      "r9",
+      "Target layers (a)\n\nmake it red",
+      (m) => (sent.push(m), true),
+      undefined,
+      {
+        displayText: "make it red",
+      },
+    );
+    expect(visible().log[0]).toMatchObject({ kind: "user", text: "make it red" });
+    expect(visible().prompt).toBe("make it red");
+    expect(JSON.stringify(sent)).toContain("Target layers");
+  });
+
   test("no model key when the CLI default is used", () => {
     connect([info("claude-code", { name: "Claude Code" })]);
     const sent: EditorToBridge[] = [];

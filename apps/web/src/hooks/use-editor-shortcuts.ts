@@ -12,6 +12,7 @@ import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { getToolHandler } from "@/interaction/tool-handlers";
 import { nudgeStep } from "@/interaction/nudge";
+import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
 import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { desktopApi } from "@/desktop/desktop-api";
@@ -128,6 +129,11 @@ export const useEditorShortcuts = () => {
         if (plan.ops.length === 0) return;
         if (doc.commit(plan.ops, { label: "Duplicate" }))
           useDocumentStore.getState().select(plan.ids);
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (doc.selection.length > 0) useSelectionPrompt.getState().toggle();
         return;
       }
       if (mod) return;

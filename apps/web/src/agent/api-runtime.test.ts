@@ -7,6 +7,7 @@ import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
 import { runScope } from "./use-agent-store";
 import { toolByName } from "@pego/agent";
+import { createSteerInbox } from "./steer-inbox";
 
 type Body = Parameters<MessagesClient["beta"]["messages"]["stream"]>[0];
 type Message = Awaited<
@@ -335,5 +336,71 @@ describe("toToolResultBlock", () => {
       content: "x",
       is_error: true,
     });
+  });
+});
+
+describe("steer inbox", () => {
+  const steerRun = (replies: Reply[], steer = createSteerInbox()) => {
+    const fake = fakeClient(replies);
+    const done = runApiAgent("make a card", {
+      client: fake.client,
+      host: createToolHost(),
+      signal: new AbortController().signal,
+      steer,
+    });
+    return { ...fake, steer, done };
+  };
+
+  test("a message sent during a turn joins the tool results message of that turn", async () => {
+    const inbox = createSteerInbox();
+    const ctx = steerRun(
+      [
+        planMessage(),
+        (): Message => {
+          // The user steers while the model is thinking about its first executor turn.
+          inbox.push({ id: "log-x", text: "make it red", attachments: [] });
+          return message({ content: [toolUse("get_document", {})], stop_reason: "tool_use" });
+        },
+        message({ content: [{ type: "text", text: "Done." }] }),
+      ],
+      inbox,
+    );
+    await ctx.done;
+
+    const turn = ctx.calls[2]?.messages.at(-1);
+    expect(turn?.role).toBe("user");
+    const blocks = turn?.content as { type: string; text?: string }[];
+    expect(blocks.map((b) => b.type)).toEqual(["tool_result", "text"]);
+    expect(blocks[1]?.text).toContain("make it red");
+    expect(ctx.steer.pending()).toBe(0);
+    expect(ctx.steer.delivered()).toHaveLength(1);
+  });
+
+  test("a steer that arrives with the model's final answer gets one more turn", async () => {
+    const inbox = createSteerInbox();
+    const ctx = steerRun(
+      [
+        planMessage(),
+        (): Message => {
+          inbox.push({ id: "log-y", text: "also add a shadow", attachments: [] });
+          return message({ content: [{ type: "text", text: "First pass." }] });
+        },
+        message({ content: [{ type: "text", text: "With shadow." }] }),
+      ],
+      inbox,
+    );
+    await ctx.done;
+
+    expect(ctx.calls).toHaveLength(3);
+    const last = ctx.calls[2]?.messages.at(-1);
+    expect(JSON.stringify(last?.content)).toContain("also add a shadow");
+    expect(state().steps[0]?.summary).toBe("With shadow.");
+  });
+
+  test("a steer sent before the step starts is part of the step prompt", async () => {
+    const ctx = steerRun([planMessage(), message({ content: [{ type: "text", text: "Done." }] })]);
+    ctx.steer.push({ id: "log-z", text: "use blue", attachments: [] });
+    await ctx.done;
+    expect(JSON.stringify(ctx.calls[1]?.messages[0])).toContain("use blue");
   });
 });

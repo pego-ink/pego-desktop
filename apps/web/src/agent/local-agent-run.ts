@@ -55,7 +55,8 @@ export const startLocalAgentRun = async (
   const name = info?.name ?? LOCAL_AGENT_NAMES[agentId];
   const model = info?.supportsModels === false ? undefined : agent.modelByAgent[agentId];
 
-  agent.beginRun(sessionId, runId, prompt);
+  const shown = options.displayText?.trim() || prompt;
+  agent.beginRun(sessionId, runId, shown);
   // Registered before any wait so a second start in this session is refused meanwhile.
   const host = createToolHost({ runId, attachments });
   const scope = host.run;
@@ -66,12 +67,14 @@ export const startLocalAgentRun = async (
     controller: new AbortController(),
     host,
     styleId: options.styleId,
+    steerMode: info?.steer ?? "restart",
   });
   scope.set({ runLabel: describeRunAgent(name, model) });
   scope.appendLog({
     kind: "user",
-    text: prompt,
+    text: shown,
     ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
+    ...(options.steered ? { steered: "delivered" as const } : {}),
   });
 
   // The CLI loads the skills itself through get_skill; the panel and log keep the user's text.

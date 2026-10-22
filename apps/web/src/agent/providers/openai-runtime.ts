@@ -13,6 +13,7 @@ import { attachmentNote, openAiImageParts } from "../attachments";
 import { AgentRunError, describeApiError, isAbortError } from "../api-errors";
 import { RunCancelledError } from "../decisions";
 import { resolveRunSkills, skillLogLines, skillsBlock } from "../run-skills";
+import { steerImages, steerText, type SteerInbox, type SteerMessage } from "../steer-inbox";
 import { promptWithHistory } from "../sessions/session-context";
 import type { AgentToolHost } from "../tool-host";
 import type { RunScope } from "../use-agent-store";
@@ -31,6 +32,8 @@ export type OpenAiRunContext = {
   attachments?: readonly RunAttachment[];
   /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
   history?: string;
+  /** Mailbox for messages the user sends into the running agent (read at every turn boundary). */
+  steer?: SteerInbox;
 };
 
 /*
@@ -97,6 +100,16 @@ export const userContent = (
     { type: "text", text: note ? `${note}\n\n${text}` : text },
     ...openAiImageParts(attachments),
   ];
+};
+
+/** User message for steer messages: the text, plus `image_url` parts when the provider takes images. */
+export const steerMessage = (messages: readonly SteerMessage[], withImages = true): ChatMessage => {
+  const images = withImages ? steerImages(messages) : [];
+  const text = steerText(messages);
+  return {
+    role: "user",
+    content: images.length === 0 ? text : [{ type: "text", text }, ...openAiImageParts(images)],
+  };
 };
 
 const cancelIfAborted = (signal: AbortSignal) => {
@@ -448,13 +461,17 @@ const executeStep = async (
 ): Promise<StepOutcome> => {
   const { provider, host, signal } = state.ctx;
   host.reportStep(step.id, "running");
+  // Steers sent while planning or between steps are read now; earlier ones stay in every later step.
+  state.ctx.steer?.drain();
+  const followUps = state.ctx.steer?.delivered() ?? [];
+  const stepText = stepPrompt(state.ctx.host.run, prompt, steps, step, state.skillsText);
   const messages: ChatMessage[] = [
     { role: "system", content: EXECUTOR_SYSTEM },
     {
       role: "user",
       content: userContent(
-        stepPrompt(state.ctx.host.run, prompt, steps, step, state.skillsText),
-        state.ctx.attachments,
+        followUps.length > 0 ? `${stepText}\n\n${steerText(followUps)}` : stepText,
+        [...(state.ctx.attachments ?? []), ...steerImages(followUps)],
       ),
     },
   ];
@@ -485,7 +502,14 @@ const executeStep = async (
     }
 
     const calls = toolCallsOf(message, turn);
-    if (calls.length === 0) return { status: "done", summary: lastText || undefined };
+    if (calls.length === 0) {
+      // A steer that arrived during this last turn gets its answer before the step closes.
+      const late = state.ctx.steer?.drain() ?? [];
+      if (late.length === 0) return { status: "done", summary: lastText || undefined };
+      messages.push({ role: "assistant", content: text || null });
+      messages.push(steerMessage(late, state.images));
+      continue;
+    }
 
     messages.push({ role: "assistant", content: text || null, tool_calls: calls });
 
@@ -514,6 +538,8 @@ const executeStep = async (
         content: [{ type: "text", text: "Screenshots from the tool calls above." }, ...images],
       });
     }
+    const steers = state.ctx.steer?.drain() ?? [];
+    if (steers.length > 0) messages.push(steerMessage(steers, state.images));
   }
   return { status: "failed", summary: "The step used too many turns without finishing." };
 };

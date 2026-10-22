@@ -18,6 +18,7 @@ import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { useImageDrop } from "@/interaction/use-image-drop";
 import { AgentCursors } from "@/components/AgentCursor";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
+import { SelectionPrompt } from "@/components/SelectionPrompt";
 import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useFontEvents } from "@/fonts/font-events";
@@ -306,9 +307,14 @@ export const Canvas = () => {
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
+      <canvas
+        ref={canvasRef}
+        tabIndex={-1}
+        className="absolute inset-0 h-full w-full touch-none outline-none"
+      />
       <TextEditorOverlay />
       <AgentCursors />
+      <SelectionPrompt canvasRef={canvasRef} />
       <Toolbar />
     </div>
   );

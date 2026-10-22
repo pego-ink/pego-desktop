@@ -1,5 +1,7 @@
 import { MAX_CONCURRENT_RUNS } from "@pego/agent";
+import type { RunAttachment } from "@pego/agent";
 import { runClaims } from "./run-claims";
+import type { SteerInbox } from "./steer-inbox";
 import type { AgentToolHost } from "./tool-host";
 import type { AgentBackend } from "./use-agent-store";
 
@@ -15,6 +17,12 @@ export type RunEntry = {
   host: AgentToolHost;
   /** Explicit style choice of this run (undefined = auto, null = none). */
   styleId: string | null | undefined;
+  /** In-browser runs: mailbox for steer messages, drained at the runtime's turn boundaries. */
+  steerInbox?: SteerInbox;
+  /** The image list the run's tool host reads; steer images are added here (ids stay unique). */
+  attachments?: RunAttachment[];
+  /** Local runs: whether the CLI takes `run_steer` mid-run; anything else is restarted to steer. */
+  steerMode?: "native" | "restart";
 };
 
 const runs = new Map<string, RunEntry>();
