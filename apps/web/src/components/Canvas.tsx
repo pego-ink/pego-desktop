@@ -189,6 +189,7 @@ export const Canvas = () => {
             agentFocusIds !== undefined && agentFocusIds.length > 0 && !prefersReducedMotion();
           const toolHandler = getToolHandler(useToolStore.getState().tool);
           renderOverlay(res, canvas, {
+            doc,
             layout,
             camera,
             selection,

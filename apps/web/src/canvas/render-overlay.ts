@@ -1,6 +1,7 @@
-import type { Canvas as SkCanvas, Paint, Paragraph } from "canvaskit-wasm";
-import type { Box, Layout } from "@pego/doc";
+import type { Canvas as SkCanvas, Paint, Paragraph, Path } from "canvaskit-wasm";
+import type { Box, Layout, PegoDocument } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
+import { buildNodeOutline } from "@/canvas/node-outline";
 import { createLruCache } from "@/canvas/render-cache";
 import { docToScreen, type Camera } from "@/canvas/types";
 import { HANDLES, handlePoint } from "@/interaction/transform";
@@ -8,8 +9,11 @@ import { HANDLES, handlePoint } from "@/interaction/transform";
 export const ACCENT = "#B79CFF";
 const LABEL_TEXT = "#141418";
 const HANDLE_SIZE = 8;
+/** Hover outline width in screen px, constant at every zoom. */
+const HOVER_STROKE_WIDTH = 2;
 
 export type OverlayState = {
+  doc: PegoDocument;
   layout: Layout;
   camera: Camera;
   selection: readonly string[];
@@ -38,6 +42,8 @@ type Kit = {
   stroke: Paint;
   colors: Map<string, Float32Array>;
   paragraphs: ReturnType<typeof createLruCache<Paragraph>>;
+  /** Document-space outline of the last hovered node; rebuilt only when doc, layout or id change. */
+  hover: { doc: PegoDocument; layout: Layout; id: string; path: Path | null } | null;
 };
 
 const kits = new WeakMap<CanvasKitResources, Kit>();
@@ -58,6 +64,7 @@ const getKit = (res: CanvasKitResources): Kit => {
     stroke: make("stroke"),
     colors: new Map(),
     paragraphs: createLruCache<Paragraph>(64),
+    hover: null,
   };
   kits.set(res, kit);
   return kit;
@@ -97,6 +104,46 @@ const getLabel = (res: CanvasKitResources, text: string, fontSize: number): Para
   } finally {
     builder.delete();
   }
+};
+
+/** The hovered node's outline, cached across frames so pointer moves do not rebuild paths. */
+const getHoverOutline = (
+  res: CanvasKitResources,
+  doc: PegoDocument,
+  layout: Layout,
+  id: string,
+): Path | null => {
+  const kit = getKit(res);
+  const cached = kit.hover;
+  if (cached && cached.doc === doc && cached.layout === layout && cached.id === id)
+    return cached.path;
+  cached?.path?.delete();
+  const path = buildNodeOutline(res.ck, doc, layout, id);
+  kit.hover = { doc, layout, id, path };
+  return path;
+};
+
+/** Stroke the hovered node's real (transformed) outline at a fixed screen width. */
+const drawHover = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  doc: PegoDocument,
+  layout: Layout,
+  camera: Camera,
+  id: string,
+) => {
+  const path = getHoverOutline(res, doc, layout, id);
+  if (!path) return;
+  const { stroke } = getKit(res);
+  // The path lives in document space: scale the canvas and divide the width back out so the
+  // line stays HOVER_STROKE_WIDTH screen px wide.
+  stroke.setStrokeWidth(HOVER_STROKE_WIDTH / camera.zoom);
+  stroke.setColor(colorOf(res, ACCENT));
+  canvas.save();
+  canvas.translate(camera.panX, camera.panY);
+  canvas.scale(camera.zoom, camera.zoom);
+  canvas.drawPath(path, stroke);
+  canvas.restore();
 };
 
 const toScreenBox = (camera: Camera, box: Box): Box => ({
@@ -211,6 +258,7 @@ export const renderOverlay = (
   res: CanvasKitResources,
   canvas: SkCanvas,
   {
+    doc,
     layout,
     camera,
     selection,
@@ -225,10 +273,8 @@ export const renderOverlay = (
     drawAgentFocus(res, canvas, layout, camera, agentFocusIds, time);
 
   if (!suppressSelection) {
-    if (hoveredId && !selection.includes(hoveredId)) {
-      const box = layout.get(hoveredId);
-      if (box) strokeRect(res, canvas, toScreenBox(camera, box), ACCENT, 1);
-    }
+    if (hoveredId && !selection.includes(hoveredId))
+      drawHover(res, canvas, doc, layout, camera, hoveredId);
 
     for (const id of selection) {
       const box = layout.get(id);

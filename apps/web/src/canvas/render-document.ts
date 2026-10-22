@@ -12,6 +12,7 @@ import {
 } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { getIconPath } from "@/canvas/icons";
+import { nodePlacement } from "@/canvas/node-transform";
 import { getParagraph } from "@/canvas/measure-text";
 import { createLruCache } from "@/canvas/render-cache";
 import { drawImageNode } from "@/canvas/render-image-node";
@@ -55,7 +56,8 @@ const getPaints = (ck: CanvasKit): Paints => {
   return paints;
 };
 
-const getSvgPath = (ck: CanvasKit, geometry: string): Path | null => {
+/** Parsed SVG path shared with the hover outline; callers must copy before mutating. */
+export const getSvgPath = (ck: CanvasKit, geometry: string): Path | null => {
   const cached = svgPaths.get(geometry);
   if (cached) return cached;
   const path = ck.Path.MakeFromSVGString(geometry);
@@ -157,8 +159,9 @@ const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth:
     const rotation = resolveNumber(node.rotation, doc.variables, 0);
 
     canvas.save();
-    canvas.translate(box.x - parent.x, box.y - parent.y);
-    if (rotation !== 0) canvas.rotate(-rotation, 0, 0);
+    const placement = nodePlacement(box, parent, rotation);
+    canvas.translate(placement.x, placement.y);
+    if (placement.angle !== 0) canvas.rotate(placement.angle, 0, 0);
     if (opacity < 1) {
       paints.layer.setAlphaf(opacity);
       canvas.saveLayer(paints.layer);
