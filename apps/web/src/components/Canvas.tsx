@@ -2,7 +2,9 @@ import { useEffect, useRef } from "react";
 import { toast } from "sonner";
 import type { GrDirectContext, Surface } from "canvaskit-wasm";
 import { loadCanvasKit } from "@/canvas/load-canvaskit";
+import { getLayout } from "@/canvas/layout";
 import { renderDocument } from "@/canvas/render-document";
+import { DEFAULT_CAMERA } from "@/canvas/types";
 import { useDocumentStore } from "@/store/use-document-store";
 
 export const Canvas = () => {
@@ -34,10 +36,8 @@ export const Canvas = () => {
           const canvas = surface.getCanvas();
           canvas.save();
           canvas.scale(dpr, dpr);
-          renderDocument(res, canvas, useDocumentStore.getState().doc, {
-            width: container.clientWidth,
-            height: container.clientHeight,
-          });
+          const { doc } = useDocumentStore.getState();
+          renderDocument(res, canvas, doc, getLayout(doc), DEFAULT_CAMERA);
           canvas.restore();
           surface.flush();
         };

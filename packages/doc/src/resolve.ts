@@ -1,4 +1,4 @@
-import type { Variables } from "@pego/doc";
+import type { Variables } from "./schema";
 
 const isVariableRef = (value: string) => value.startsWith("$");
 

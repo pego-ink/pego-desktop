@@ -1,7 +1,8 @@
 import type { Canvas as SkCanvas, CanvasKit, Paint } from "canvaskit-wasm";
-import type { PegoDocument, PegoNode } from "@pego/doc";
+import type { Layout, PegoDocument, PegoNode } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
-import { resolveColor, resolveNumber, resolveString } from "@/canvas/resolve-value";
+import { resolveColor, resolveNumber, resolveString } from "@pego/doc";
+import type { Camera } from "@/canvas/types";
 
 type Size = { width: number; height: number };
 
@@ -12,7 +13,6 @@ type Scene = {
 };
 
 const BACKGROUND = "#141418";
-const FIT_PADDING = 48;
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 
 const nodeSize = (node: PegoNode): Size => ({
@@ -113,52 +113,22 @@ const drawNode = (scene: Scene, node: PegoNode) => {
   canvas.restore();
 };
 
-/** Bounds of all top-level nodes, used to fit the document into the viewport. */
-const contentBounds = (doc: PegoDocument) =>
-  doc.children.reduce(
-    (acc, node) => {
-      const { width, height } = nodeSize(node);
-      const x = resolveNumber(node.x, doc.variables, 0);
-      const y = resolveNumber(node.y, doc.variables, 0);
-      return {
-        minX: Math.min(acc.minX, x),
-        minY: Math.min(acc.minY, y),
-        maxX: Math.max(acc.maxX, x + width),
-        maxY: Math.max(acc.maxY, y + height),
-      };
-    },
-    { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity },
-  );
-
 /**
- * Draw the document, fitted and centered in a viewport of `viewport` CSS pixels.
- * The canvas is expected to already be scaled by devicePixelRatio by the caller.
+ * Draw the document through `camera`. The canvas is expected to already be scaled by
+ * devicePixelRatio by the caller. `layout` holds the absolute box of every rendered node.
  */
 export const renderDocument = (
   res: CanvasKitResources,
   canvas: SkCanvas,
   doc: PegoDocument,
-  viewport: Size,
+  layout: Layout,
+  camera: Camera,
 ) => {
   canvas.clear(res.ck.parseColorString(BACKGROUND));
-  if (doc.children.length === 0) return;
-
-  const bounds = contentBounds(doc);
-  const contentWidth = Math.max(bounds.maxX - bounds.minX, 1);
-  const contentHeight = Math.max(bounds.maxY - bounds.minY, 1);
-  const scale = Math.min(
-    1,
-    (viewport.width - FIT_PADDING * 2) / contentWidth,
-    (viewport.height - FIT_PADDING * 2) / contentHeight,
-  );
-  const safeScale = scale > 0 ? scale : 1;
-
+  void layout; // TODO(renderer): draw from layout boxes instead of raw x/y.
   canvas.save();
-  canvas.translate(
-    (viewport.width - contentWidth * safeScale) / 2 - bounds.minX * safeScale,
-    (viewport.height - contentHeight * safeScale) / 2 - bounds.minY * safeScale,
-  );
-  canvas.scale(safeScale, safeScale);
+  canvas.translate(camera.panX, camera.panY);
+  canvas.scale(camera.zoom, camera.zoom);
   doc.children.forEach((node) => drawNode({ res, canvas, doc }, node));
   canvas.restore();
 };
