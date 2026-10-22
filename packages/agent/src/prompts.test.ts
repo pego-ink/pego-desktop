@@ -19,7 +19,9 @@ describe("prompts", () => {
   test("Claude Code prompt names only real tools", () => {
     const names = agentTools.map((t) => t.name);
     for (const name of names) expect(CLAUDE_CODE_SYSTEM).toContain(name);
-    const mentioned = [...CLAUDE_CODE_SYSTEM.matchAll(/\b([a-z]+_[a-z]+)\b/g)].map((m) => m[1]);
+    const mentioned = [...CLAUDE_CODE_SYSTEM.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map(
+      (m) => m[1],
+    );
     const allowed = new Set([
       ...names,
       "fill_container",
@@ -28,6 +30,35 @@ describe("prompts", () => {
       "space_around",
     ]);
     for (const word of mentioned) expect(allowed.has(word as string)).toBe(true);
+  });
+});
+
+describe("prompts teach the workflow", () => {
+  test("every prompt mentions the verify loop and placement", () => {
+    for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
+      for (const name of ["get_screenshot", "check_layout", "get_guidelines"]) {
+        expect(prompt).toContain(name);
+      }
+    }
+    for (const prompt of [EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
+      for (const name of ["get_selection", "batch_design", "find_empty_space", "focus_nodes"]) {
+        expect(prompt).toContain(name);
+      }
+    }
+  });
+
+  test("prompts only name real tools or known keywords", () => {
+    const names = new Set([
+      ...agentTools.map((t) => t.name),
+      "fill_container",
+      "fit_content",
+      "space_between",
+      "space_around",
+    ]);
+    for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
+      const mentioned = [...prompt.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map((m) => m[1]);
+      for (const word of mentioned) expect(names.has(word as string)).toBe(true);
+    }
   });
 });
 

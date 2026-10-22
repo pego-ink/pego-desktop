@@ -1,6 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { findNode, type PegoDocument } from "@pego/doc";
-import { agentTools, toolByName } from "./tools";
+import { agentTools, coreTools, toolByName } from "./tools";
+import { editTools } from "./tools-edit";
+import { inspectTools } from "./tools-inspect";
 import { createFakeHost } from "./test-host";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -16,7 +18,8 @@ describe("tool registry", () => {
   test("names are unique snake_case and every inputSchema is an object schema", () => {
     const names = agentTools.map((t) => t.name);
     expect(new Set(names).size).toBe(names.length);
-    expect(names).toEqual([
+    expect(names).toEqual([...coreTools, ...editTools, ...inspectTools].map((t) => t.name));
+    expect(coreTools.map((t) => t.name)).toEqual([
       "get_document",
       "get_node",
       "insert_nodes",
