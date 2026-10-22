@@ -135,7 +135,7 @@ export const AgentPanel = () => {
       </div>
       <div className="flex shrink-0 flex-col px-3 pb-3">
         <Reveal show={decision !== null} className="pb-2">
-          {decision ? <DecisionCard decision={decision} /> : null}
+          {decision ? <DecisionCard key={decision.id} decision={decision} /> : null}
         </Reveal>
         <Reveal show={isRunFinished(status) && hasChanges} className="pb-2">
           <ChangesBar />

@@ -1,9 +1,9 @@
 import { useId, useState } from "react";
 import { AlertCircleIcon, ChevronRightIcon, InfoIcon, WrenchIcon } from "lucide-react";
-import { Markdown } from "@pego/ui/components/markdown";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore, type AgentLogEntry } from "@/agent/use-agent-store";
+import { AssistantText } from "@/panels/agent/AssistantText";
 import { AttachmentStrip } from "@/panels/agent/attachments/AttachmentStrip";
 import { collapseRuns, countFailed, groupLog, type ToolGroup } from "@/panels/agent/tool-groups";
 
@@ -84,7 +84,15 @@ const ToolGroupRow = ({
   );
 };
 
-const Entry = ({ entry, className }: { entry: AgentLogEntry; className?: string }) => {
+const Entry = ({
+  entry,
+  className,
+  animate,
+}: {
+  entry: AgentLogEntry;
+  className?: string;
+  animate: boolean;
+}) => {
   switch (entry.kind) {
     case "user":
       return (
@@ -106,8 +114,8 @@ const Entry = ({ entry, className }: { entry: AgentLogEntry; className?: string 
       );
     case "assistant":
       return (
-        <li className={cn("px-1 text-foreground", className)}>
-          <Markdown text={entry.text} />
+        <li className="px-1 text-foreground">
+          <AssistantText text={entry.text} animate={animate} />
         </li>
       );
     case "error":
@@ -160,7 +168,7 @@ export const ActivityLog = ({ log }: { log: readonly AgentLogEntry[] }) => {
             className={className}
           />
         ) : (
-          <Entry key={id} entry={item.entry} className={className} />
+          <Entry key={id} entry={item.entry} className={className} animate={!initialIds.has(id)} />
         );
       })}
     </ul>

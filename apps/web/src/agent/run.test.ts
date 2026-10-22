@@ -2,7 +2,8 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { useDocumentStore } from "@/store/use-document-store";
 import { setRunTail } from "./active-run";
-import { canUndoRunChanges, undoRunChanges } from "./run";
+import { requestDecision } from "./decisions";
+import { answerDecision, canUndoRunChanges, undoRunChanges } from "./run";
 import { insertRect, resetStores } from "./test-utils";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
@@ -62,5 +63,24 @@ describe("undo all", () => {
 
   test("nothing to undo before any run change", () => {
     expect(canUndoRunChanges()).toBe(false);
+  });
+});
+
+describe("answerDecision", () => {
+  test("resolves with the custom text and logs it as a user bubble", async () => {
+    const answer = requestDecision({ question: "Which?", options: ["A", "B"] });
+    const id = useAgentStore.getState().decision?.id ?? "";
+    answerDecision(id, "  Tambah section Harga ");
+    expect(await answer).toBe("Tambah section Harga");
+    const last = useAgentStore.getState().log.at(-1);
+    expect(last).toMatchObject({ kind: "user", text: "→ Tambah section Harga" });
+    expect(useAgentStore.getState().decision).toBeNull();
+  });
+
+  test("ignores a stale id and empty text", () => {
+    const before = useAgentStore.getState().log.length;
+    answerDecision("decision-missing", "x");
+    answerDecision("decision-missing", "   ");
+    expect(useAgentStore.getState().log).toHaveLength(before);
   });
 });

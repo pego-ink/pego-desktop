@@ -191,7 +191,11 @@ export const cancelRun = (): void => {
 
 /** Answer the pending decision card. */
 export const answerDecision = (decisionId: string, choice: string): void => {
-  answerPendingDecision(decisionId, choice);
+  const text = choice.trim();
+  if (!text) return;
+  // `text` (a picked option or a free-form answer) is what the ask_user tool result hands back.
+  if (!answerPendingDecision(decisionId, text)) return;
+  useAgentStore.getState().appendLog({ kind: "user", text: `→ ${text}` });
 };
 
 /** True when the run's transactions are the newest `transactionCount` entries, all by the agent. */
