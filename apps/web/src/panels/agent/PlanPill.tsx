@@ -80,7 +80,7 @@ export const PlanPill = () => {
         aria-label={`Plan, ${progress} steps done. ${text}`}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "pointer-events-auto flex h-7 max-w-full items-center gap-1.5 rounded-full border bg-popover pr-2 pl-2.5 text-xs shadow-sm outline-none",
+          "pointer-events-auto flex h-7 max-w-[min(13rem,70%)] items-center gap-1.5 rounded-full border bg-popover pr-2 pl-2.5 text-xs shadow-sm outline-none",
           "transition-colors duration-150 hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50",
           TONE_CLASS[tone],
         )}
