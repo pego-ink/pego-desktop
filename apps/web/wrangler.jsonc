@@ -7,6 +7,8 @@
     "directory": "./dist",
     "not_found_handling": "single-page-application",
   },
+  // Production lives on app.pego.ink; workers.dev stays on because preview aliases need it.
+  "routes": [{ "pattern": "app.pego.ink", "custom_domain": true }],
   "workers_dev": true,
   "preview_urls": true,
 }
