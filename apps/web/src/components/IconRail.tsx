@@ -69,11 +69,20 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
   return (
     <nav
       aria-label="Editor sidebar"
-      className="flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5"
+      className={cn(
+        "flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5",
+        // The traffic lights straddle the rail's edge: start its divider below their row.
+        windowControls &&
+          "relative border-r-0 after:absolute after:top-11 after:right-0 after:bottom-0 after:w-px after:bg-border",
+      )}
     >
       {windowControls ? (
-        // The traffic lights' row: drags the window; the Pego mark moves below it.
-        <div aria-hidden className="-mt-2.5 h-11 w-full shrink-0 [-webkit-app-region:drag]" />
+        // The traffic lights' row: drags the window, continues the top bar's bottom border, and
+        // pushes the Pego mark below it.
+        <div
+          aria-hidden
+          className="-mt-2.5 h-11 w-full shrink-0 border-b border-border [-webkit-app-region:drag]"
+        />
       ) : null}
       {onHome ? (
         <Tooltip content="Projects">
