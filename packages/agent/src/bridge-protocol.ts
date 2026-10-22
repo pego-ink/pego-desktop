@@ -7,7 +7,21 @@ import type { DecisionRequest, PlanStep, StepStatus } from "./types";
  * document the same way.
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
-export const BRIDGE_PROTOCOL_VERSION = 4;
+export const BRIDGE_PROTOCOL_VERSION = 5;
+
+/** A project: a folder in the design folder with a project.json (id, name). */
+export type ProjectInfo = {
+  id: string;
+  name: string;
+  /** Absolute folder path. */
+  dir: string;
+  /** Folder inside the design folder, e.g. "checkout". */
+  relativeDir: string;
+  fileCount: number;
+  /** Latest file change (ms since epoch), 0 when the project has no files. */
+  modifiedAt: number;
+  createdAt: string;
+};
 
 /** A design file in the project folder (the bridge lists `design/` of the repo it runs in). */
 export type ProjectFile = {
@@ -40,6 +54,8 @@ export const EDITOR_OPS = {
   listTabs: "pego.list_tabs",
   /** Input `{ path }`: show the tab of that file; an error when it is not open. */
   switchTab: "pego.switch_tab",
+  /** Input a ProjectInfo: open (or show) that project's tab in the editor. */
+  openProject: "pego.open_project",
 } as const;
 
 /** Messages the editor sends to the bridge. */
@@ -59,8 +75,17 @@ export type EditorToBridge =
   | { type: "run_cancel"; runId: string }
   /** Save the open document to a file the bridge opened it from (File → Save in the editor). */
   | { type: "save_file"; requestId: string; path: string; text: string }
-  /** The project panel: list the design folder, or read one file (`path`) from it. */
-  | { type: "project_request"; requestId: string; action: "list" | "read"; path?: string };
+  /**
+   * The dashboard and project panel: list projects, create one (`name`), list the files of a
+   * folder (`path`, default the whole design folder) or read one file (`path`).
+   */
+  | {
+      type: "project_request";
+      requestId: string;
+      action: "list" | "read" | "projects" | "create_project";
+      path?: string;
+      name?: string;
+    };
 
 /** Messages the bridge sends to the editor. */
 export type BridgeToEditor =
@@ -92,6 +117,8 @@ export type BridgeToEditor =
       root?: string | null;
       files?: ProjectFile[];
       text?: string;
+      projects?: ProjectInfo[];
+      project?: ProjectInfo;
     };
 
 export type RunEvent =

@@ -55,8 +55,9 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("project_request"),
     requestId: id,
-    action: z.enum(["list", "read"]),
+    action: z.enum(["list", "read", "projects", "create_project"]),
     path: z.string().min(1).max(4096).optional(),
+    name: z.string().min(1).max(200).optional(),
   }),
   z.object({
     type: z.literal("save_file"),
