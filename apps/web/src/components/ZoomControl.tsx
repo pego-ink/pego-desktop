@@ -17,8 +17,8 @@ const zoomIn = () => useViewportStore.getState().zoomCenterBy(ZOOM_STEP);
 const zoomOut = () => useViewportStore.getState().zoomCenterBy(1 / ZOOM_STEP);
 const zoomTo = (zoom: number) => useViewportStore.getState().zoomCenterTo(zoom);
 const zoomToFit = () => {
-  const { doc } = useDocumentStore.getState();
-  useViewportStore.getState().zoomToFit(contentBounds(doc, getLayout(doc)));
+  const { doc, pageId } = useDocumentStore.getState();
+  useViewportStore.getState().zoomToFit(contentBounds(doc, getLayout(doc), pageId));
 };
 const zoomToSelection = () => {
   const { doc, selection } = useDocumentStore.getState();
