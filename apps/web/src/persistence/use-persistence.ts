@@ -95,20 +95,19 @@ const toSnapshot = (tab: AutosavedTab): TabSnapshot | null => {
   };
 };
 
-/** A workspace's saved tabs, or null when none of them is readable. */
+/**
+ * A workspace's saved document (its active tab; older autosaves kept several tabs per workspace,
+ * now each shows one document), or null when it is not readable.
+ */
 const toSavedWorkspace = (stored: AutosavedTab[], activeIndex: number): SavedWorkspace | null => {
-  const snapshots = stored.map(toSnapshot);
-  const valid = snapshots.filter((snapshot): snapshot is TabSnapshot => snapshot !== null);
-  if (valid.length < snapshots.length) {
-    console.warn("autosave: some tabs were ignored (invalid or from a newer Pego)");
+  const active = stored[Math.min(Math.max(activeIndex, 0), stored.length - 1)];
+  const snapshot = active ? toSnapshot(active) : null;
+  if (!snapshot) {
+    if (active) console.warn("autosave: a document was ignored (invalid or from a newer Pego)");
+    return null;
   }
-  if (valid.length === 0) return null;
-  const index = Math.min(snapshots.slice(0, activeIndex).filter(Boolean).length, valid.length - 1);
-  const tabs = valid.map((snapshot, i) => ({
-    id: createId(),
-    snapshot: i === index ? null : snapshot,
-  }));
-  return { tabs, activeId: tabs[index]!.id, live: valid[index]! };
+  const id = createId();
+  return { tabs: [{ id, snapshot: null }], activeId: id, live: snapshot };
 };
 
 const restoreAutosave = async () => {

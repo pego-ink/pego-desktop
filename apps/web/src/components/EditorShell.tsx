@@ -4,7 +4,6 @@ import { Canvas } from "@/components/Canvas";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { PagesPanel } from "@/pages/PagesPanel";
 import { ProjectPanel } from "@/project/ProjectPanel";
-import { TabBar } from "@/tabs/TabBar";
 import { Dashboard } from "@/workspace/Dashboard";
 import { HomeButton } from "@/workspace/HomeButton";
 import { ThemeToggle } from "@/theme/ThemeToggle";
@@ -139,7 +138,6 @@ export const EditorShell = () => {
         <div className="flex min-h-0 flex-1">
           <LeftColumn />
           <main className="flex min-w-0 flex-1 flex-col">
-            <TabBar />
             <div className="min-h-0 flex-1">
               <Canvas />
             </div>

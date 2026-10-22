@@ -123,41 +123,43 @@ export const switchTab = (id: string): boolean => {
   return true;
 };
 
-/** An untitled, unsaved tab nobody has edited: opening a file reuses it instead of adding one. */
-const isPristine = (tab: Tab): boolean => {
-  const state = tabState(tab);
-  return state.file.fileName === null && state.history.past.length === 0 && !state.file.bridgePath;
-};
-
 /** The tab already showing the file at `bridgePath`, if any. */
 export const findTabByPath = (bridgePath: string): Tab | undefined =>
   useTabsStore.getState().tabs.find((tab) => tabState(tab).file.bridgePath === bridgePath);
 
+/** What to do when the shown document has unsaved changes and another one should replace it. */
+export type UnsavedPolicy = "ask" | "refuse" | "discard";
+export type OpenResult = "opened" | "busy" | "unsaved";
+
 /**
- * Show `doc` in a tab: a new one, or the active tab when it is an untouched untitled document.
- * `file` describes where it came from; `saved` marks it as matching that file.
+ * Show `doc` as the workspace's document (there is one per workspace; screens are pages).
+ * Unsaved changes of the current document are asked about ("ask", the user), refused
+ * ("refuse", Claude Code: save first) or dropped ("discard"). `saved` marks `doc` as matching
+ * its file.
  */
 export const openTab = (
   doc: PegoDocument,
   file: Partial<Omit<TabFile, "savedDoc">>,
-  options: { saved: boolean } = { saved: true },
-): boolean => {
-  if (blockedByRun()) return false;
-  const { tabs, activeId } = useTabsStore.getState();
-  const active = tabs.find((tab) => tab.id === activeId);
-  if (active && !isPristine(active)) {
-    const live = captureLive();
-    const id = createId();
-    useTabsStore.setState({
-      activeId: id,
-      tabs: [
-        ...tabs.map((tab) => (tab.id === activeId ? { ...tab, snapshot: live } : tab)),
-        { id, snapshot: null },
-      ],
-    });
+  options: { saved?: boolean; unsaved?: UnsavedPolicy } = {},
+): OpenResult => {
+  if (blockedByRun()) return "busy";
+  const live = captureLive();
+  if (isDirty(live.doc, live.file.savedDoc)) {
+    const policy = options.unsaved ?? "ask";
+    if (policy === "refuse") return "unsaved";
+    if (
+      policy === "ask" &&
+      !window.confirm(
+        `"${documentTitle(live.doc, live.file)}" has unsaved changes. Open the other document anyway?`,
+      )
+    ) {
+      return "unsaved";
+    }
   }
-  loadIntoActive(doc, file, options.saved);
-  return true;
+  const id = createId();
+  useTabsStore.setState({ tabs: [{ id, snapshot: null }], activeId: id });
+  loadIntoActive(doc, file, options.saved ?? true);
+  return "opened";
 };
 
 /** Put a document into the live stores (the active tab), fitted to the view. */
@@ -177,36 +179,8 @@ export const loadIntoActive = (
   useViewportStore.getState().zoomToFit(contentBounds(loaded, getLayout(loaded)));
 };
 
-export const newTab = (): boolean => openTab(createEmptyDocument(), {}, { saved: true });
-
-/** Close a tab (asking first when it has unsaved changes). The last tab becomes a new document. */
-export const closeTab = (id: string): void => {
-  const { tabs, activeId } = useTabsStore.getState();
-  const index = tabs.findIndex((tab) => tab.id === id);
-  const tab = tabs[index];
-  if (!tab) return;
-  if (
-    tabIsDirty(tab) &&
-    !window.confirm(`"${tabTitle(tab)}" has unsaved changes. Close it anyway?`)
-  ) {
-    return;
-  }
-  if (id === activeId) {
-    const neighbor = tabs[index + 1] ?? tabs[index - 1];
-    if (neighbor) {
-      if (!switchTab(neighbor.id)) return;
-    } else {
-      if (blockedByRun()) return;
-      const replacement = createId();
-      useTabsStore.setState({ tabs: [{ id: replacement, snapshot: null }], activeId: replacement });
-      loadIntoActive(createEmptyDocument(), {}, true);
-      return;
-    }
-  }
-  useTabsStore.setState((state) => ({
-    tabs: state.tabs.filter((candidate) => candidate.id !== id),
-  }));
-};
+/** A new empty document in place of the current one (asking about unsaved changes). */
+export const newTab = (): OpenResult => openTab(createEmptyDocument(), {}, { saved: true });
 
 /** Replace every tab (autosave restore). The first snapshot with `active` becomes the live tab. */
 export const restoreTabs = (snapshots: TabSnapshot[], activeIndex: number): void => {

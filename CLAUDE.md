@@ -198,10 +198,12 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
 - **Workspaces** (`apps/web/src/workspace/use-workspace-store.ts`): the header shows Dashboard, Scratch
   (documents outside any project) and one tab per open project. Each workspace keeps its own document tabs;
   only the live one is in the stores, like document tabs. The Dashboard is a view, not a workspace.
-- **Document tabs** (`apps/web/src/tabs/use-tabs-store.ts`): the active tab lives in the normal stores (document,
-  file, viewport), so editor code never deals with tabs. Open files through `openTab` (File > Open, drops, .pen
-  import, `open_document` and the project panel all do), never by calling `useDocumentStore.load` directly.
-  Switching tabs or projects is blocked while a panel agent run is active. Autosave stores every workspace.
+- **One document per workspace** (`apps/web/src/tabs/use-tabs-store.ts`): a project shows its `project.pego`,
+  Scratch one loose document; screens are pages, there is no document tab bar. The shown document lives in the
+  normal stores (document, file, viewport). Open documents through `openTab` (File > Open, drops, .pen import,
+  `open_document`, the project panel), never with `useDocumentStore.load` directly; it asks the user about
+  unsaved changes ("ask"), refuses for Claude Code ("refuse": save first) or drops them ("discard"). Switching
+  projects is blocked while a panel agent run is active. Autosave stores every workspace.
 - The project panel lists the live project's files (or all of `design/` in Scratch), opens them in tabs and
   creates new ones; reads are limited to `design/`.
 - MCP: `list_projects`, `open_project` (by id, name or unambiguous prefix), `create_project`,

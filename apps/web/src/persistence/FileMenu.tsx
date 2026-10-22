@@ -2,9 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import { newDocument, openFile, saveFile, saveFileAs } from "./file-actions";
-import { useDocumentStore } from "@/store/use-document-store";
-import { documentTitle } from "@/tabs/use-tabs-store";
-import { useFileStore, useIsDirty } from "./use-file-store";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const MOD = isMac ? "⌘" : "Ctrl+";
@@ -20,11 +17,6 @@ const ITEMS = [
 export const FileMenu = () => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const doc = useDocumentStore((s) => s.doc);
-  const fileName = useFileStore((s) => s.fileName);
-  const bridgePath = useFileStore((s) => s.bridgePath);
-  const title = documentTitle(doc, { fileName, bridgePath });
-  const dirty = useIsDirty();
 
   useEffect(() => {
     if (!open) return;
@@ -54,20 +46,6 @@ export const FileMenu = () => {
         File
         <ChevronDownIcon />
       </Button>
-      <span
-        className="flex items-center gap-1.5 text-sm text-muted-foreground"
-        title={bridgePath ?? fileName ?? title}
-      >
-        <span className="max-w-56 truncate">{title}</span>
-        {dirty ? (
-          <span
-            role="status"
-            aria-label="Unsaved changes"
-            title="Unsaved changes"
-            className="size-1.5 rounded-full bg-foreground"
-          />
-        ) : null}
-      </span>
       {open ? (
         <div
           role="menu"

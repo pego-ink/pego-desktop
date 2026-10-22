@@ -5,9 +5,11 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { FILE_EXTENSION, parseDocumentFile, serializeDocument } from "./file-format";
 import {
+  documentTitle,
   findTabByPath,
   openTab,
   switchTab,
+  type UnsavedPolicy,
   tabIsDirty,
   tabState,
   tabTitle,
@@ -47,11 +49,32 @@ const describe = (doc: PegoDocument) => {
  * is shown again; its tab is reloaded from disk unless it has unsaved changes (or `reload` is
  * false). `.pen` files import as an unsaved document that saves next to them as `.pego`.
  */
+const BUSY: OpOutcome = {
+  content: "The editor is busy with an agent run; try again when it finishes.",
+  isError: true,
+};
+
+/** When the shown document's unsaved changes stopped the open (refused or declined by the user). */
+const unsavedOutcome = (policy: UnsavedPolicy): OpOutcome =>
+  policy === "refuse"
+    ? {
+        content: `The open document "${documentTitle(useDocumentStore.getState().doc, useFileStore.getState())}" has unsaved changes. Call save_document first, or pass discardUnsaved: true to drop them.`,
+        isError: true,
+      }
+    : { content: "Kept the current document (it has unsaved changes).", isError: false };
+
+/**
+ * Show a design file's text (read from disk by the bridge) as the workspace's document. The file
+ * already shown is reloaded from disk unless it has unsaved changes (or `reload` is false).
+ * `.pen` files import as an unsaved document that saves next to them as `.pego`. `unsaved` says
+ * what happens to unsaved changes of another document shown now.
+ */
 export const openDocumentText = (
   text: string,
   path: string,
-  options: { reload?: boolean; discardUnsaved?: boolean } = {},
+  options: { reload?: boolean; discardUnsaved?: boolean; unsaved?: UnsavedPolicy } = {},
 ): OpOutcome => {
+  const policy: UnsavedPolicy = options.discardUnsaved ? "discard" : (options.unsaved ?? "ask");
   const name = fileNameOf(path);
   try {
     if (path.toLowerCase().endsWith(".pen")) {
@@ -67,18 +90,13 @@ export const openDocumentText = (
         };
       }
       const { doc, warnings } = importPen(JSON.parse(text), base);
-      if (
-        !openTab(
-          doc,
-          { fileName: `${base}${FILE_EXTENSION}`, bridgePath: target },
-          { saved: false },
-        )
-      ) {
-        return {
-          content: "The editor is busy with an agent run; try again when it finishes.",
-          isError: true,
-        };
-      }
+      const result = openTab(
+        doc,
+        { fileName: `${base}${FILE_EXTENSION}`, bridgePath: target },
+        { saved: false, unsaved: policy },
+      );
+      if (result === "busy") return BUSY;
+      if (result === "unsaved") return unsavedOutcome(policy);
       const notes = warnings.map((w) => `- ${w.message}${w.count > 1 ? ` (${w.count}x)` : ""}`);
       return {
         content: [
@@ -91,15 +109,10 @@ export const openDocumentText = (
     const doc = parseDocumentFile(text);
     const existing = findTabByPath(path);
     if (existing) {
-      if (!switchTab(existing.id)) {
-        return {
-          content: "The editor is busy with an agent run; try again when it finishes.",
-          isError: true,
-        };
-      }
+      if (!switchTab(existing.id)) return BUSY;
       if (getIsDirty() && !options.discardUnsaved) {
         return {
-          content: `${path} is already open with unsaved changes; showing that tab (pass discardUnsaved: true to reload it from disk).`,
+          content: `${path} is already open with unsaved changes; keeping them (pass discardUnsaved: true to reload it from disk).`,
           isError: false,
         };
       }
@@ -109,13 +122,10 @@ export const openDocumentText = (
       zoomToDocument(doc);
       return { content: `Reloaded ${path} from disk (${describe(doc)}).`, isError: false };
     }
-    if (!openTab(doc, { fileName: name, bridgePath: path })) {
-      return {
-        content: "The editor is busy with an agent run; try again when it finishes.",
-        isError: true,
-      };
-    }
-    return { content: `Opened ${path} in a tab (${describe(doc)}).`, isError: false };
+    const result = openTab(doc, { fileName: name, bridgePath: path }, { unsaved: policy });
+    if (result === "busy") return BUSY;
+    if (result === "unsaved") return unsavedOutcome(policy);
+    return { content: `Opened ${path} (${describe(doc)}).`, isError: false };
   } catch (error) {
     return {
       content: `Could not open ${name}: ${error instanceof Error ? error.message : String(error)}`,
@@ -131,8 +141,10 @@ export const loadDocumentFromBridge = (input: unknown): OpOutcome => {
   }
   // Show what Claude Code opened, even when the user is on the dashboard.
   showEditor();
+  // Claude Code cannot answer a dialog: unsaved work is refused unless it says to drop it.
   return openDocumentText(input.text, input.path, {
     discardUnsaved: input.discardUnsaved === true,
+    unsaved: "refuse",
   });
 };
 
@@ -214,12 +226,15 @@ export const openProjectForBridge = async (input: unknown): Promise<OpOutcome> =
     return { content: "Invalid project.", isError: true };
   }
   const { openProject } = await import("@/project/use-project-store");
-  const opened = await openProject({
-    id: input.id,
-    name: input.name,
-    dir: input.dir,
-    ...(typeof input.mainFile === "string" ? { mainFile: input.mainFile } : {}),
-  });
+  const opened = await openProject(
+    {
+      id: input.id,
+      name: input.name,
+      dir: input.dir,
+      ...(typeof input.mainFile === "string" ? { mainFile: input.mainFile } : {}),
+    },
+    "refuse",
+  );
   if (!opened) {
     return {
       content: "The editor is busy with an agent run; try again when it finishes.",

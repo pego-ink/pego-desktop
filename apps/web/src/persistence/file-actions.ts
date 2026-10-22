@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { importPen, type PegoDocument } from "@pego/doc";
 import { saveFileViaBridge } from "@/agent/bridge-client";
 import { newTab, openTab } from "@/tabs/use-tabs-store";
-import { showEditor } from "@/workspace/use-workspace-store";
+import { activateWorkspace, SCRATCH_ID } from "@/workspace/use-workspace-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import {
   DEFAULT_FILE_NAME,
@@ -28,13 +28,14 @@ const MAX_LISTED_WARNINGS = 4;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Opened files go to a tab of their own (or the untouched untitled tab). */
+/** Files opened from disk (not a project's design) are scratch documents. */
 const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => {
-  showEditor();
-  return openTab(doc, { fileName, handle });
+  if (!activateWorkspace(SCRATCH_ID)) return;
+  openTab(doc, { fileName, handle });
 };
 
 export const newDocument = () => {
+  if (!activateWorkspace(SCRATCH_ID)) return;
   newTab();
 };
 
@@ -78,7 +79,8 @@ const importPenFile = async (file: File) => {
     throw new Error("Not a valid .pen file: the content is not valid JSON.");
   }
   const { doc, warnings } = importPen(raw, base);
-  if (!openTab(doc, { fileName: `${base}${FILE_EXTENSION}` }, { saved: false })) return;
+  if (!activateWorkspace(SCRATCH_ID)) return;
+  if (openTab(doc, { fileName: `${base}${FILE_EXTENSION}` }, { saved: false }) !== "opened") return;
   if (warnings.length === 0) {
     toast.success(`Imported ${file.name}`);
     return;
