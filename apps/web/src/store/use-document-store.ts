@@ -23,7 +23,10 @@ type DocumentState = {
   hoveredId: string | null;
 
   /** Apply ops as one undo step. Returns false (and toasts) when an op does not fit the doc. */
-  commit: (ops: Op[], meta?: { label?: string; source?: TransactionSource }) => boolean;
+  commit: (
+    ops: Op[],
+    meta?: { label?: string; source?: TransactionSource; runId?: string },
+  ) => boolean;
   /**
    * Fold ops into the last undo step, for continuous gestures (drag, resize, scrubbing).
    * Start the gesture with `commit`, then call this on every further change.
@@ -65,6 +68,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
       const next = commitOps(doc, history, ops, {
         source: meta?.source ?? "user",
         label: meta?.label,
+        ...(meta?.runId ? { runId: meta.runId } : {}),
       });
       set({
         doc: next.doc,
