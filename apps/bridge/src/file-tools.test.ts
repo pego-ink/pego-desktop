@@ -117,3 +117,50 @@ describe("file tools", () => {
     expect(await Bun.file(target).exists()).toBe(true);
   });
 });
+
+describe("list_documents and switch_document", () => {
+  test("lists open tabs and the design folder", async () => {
+    const callTool: CallTool = async (tool) =>
+      tool === EDITOR_OPS.listTabs
+        ? {
+            content: JSON.stringify({
+              tabs: [
+                { title: "a.pego", path: join(dir, "a.pego"), dirty: false, active: true },
+                { title: "Untitled", path: null, dirty: true, active: false },
+              ],
+            }),
+            isError: false,
+          }
+        : { content: "?", isError: true };
+    const outcome = await runFileTool("list_documents", {}, callTool, source, dir);
+    expect(outcome.content).toContain(`- a.pego (${join(dir, "a.pego")}) [active]`);
+    expect(outcome.content).toContain("- Untitled (not saved to disk) [unsaved]");
+    expect(outcome.content).toContain(`Project design folder ${dir}:`);
+    expect(outcome.content).toContain(join(dir, "atomic.pego"));
+  });
+
+  test("switch_document shows an open tab, else opens the file", async () => {
+    const path = join(dir, "switch.pego");
+    await writeFile(path, '{"format":"pego"}');
+    const calls: string[] = [];
+    const open = new Set<string>();
+    const callTool: CallTool = async (tool, input) => {
+      calls.push(tool);
+      const target = (input as { path: string }).path;
+      if (tool === EDITOR_OPS.switchTab) {
+        return open.has(target)
+          ? { content: `Showing ${target}.`, isError: false }
+          : { content: `not_open: ${target} is not open in a tab.`, isError: true };
+      }
+      open.add(target);
+      return { content: "Opened", isError: false };
+    };
+    expect((await runFileTool("switch_document", { path }, callTool, source)).content).toBe(
+      "Opened",
+    );
+    expect((await runFileTool("switch_document", { path }, callTool, source)).content).toBe(
+      `Showing ${path}.`,
+    );
+    expect(calls).toEqual([EDITOR_OPS.switchTab, EDITOR_OPS.loadDocument, EDITOR_OPS.switchTab]);
+  });
+});
