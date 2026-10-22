@@ -8,6 +8,8 @@ import { useAgentStore } from "@/agent/use-agent-store";
 import { PropertiesPanel } from "@/panels/PropertiesPanel";
 import { useDocumentStore } from "@/store/use-document-store";
 import { Button } from "@pego/ui/components/button";
+import { ResizeHandle } from "@pego/ui/components/resize-handle";
+import { usePanelWidth } from "@/hooks/use-panel-width";
 import { cn } from "@pego/ui/lib/utils";
 import { FileMenu } from "@/persistence/FileMenu";
 
@@ -67,16 +69,24 @@ const TabButton = ({
   </button>
 );
 
-/** Left column: layer tree, or the agent panel (wider, like the design's agent view). */
+const LEFT_PANEL = {
+  storageKey: "pego:left-panel-width",
+  defaultWidth: 300,
+  min: 240,
+  max: 520,
+  maxViewportRatio: 0.4,
+} as const;
+
+/** Left column: layer tree or agent panel, one shared, user-resizable width. */
 const LeftColumn = () => {
+  const { attachElement, ...panel } = usePanelWidth(LEFT_PANEL);
   const [tab, setTab] = useState<LeftTab>("layers");
   const working = useAgentStore((s) => isRunActive(s.status));
   return (
     <aside
-      className={cn(
-        "flex shrink-0 flex-col border-r border-border bg-card",
-        tab === "agent" ? "w-80" : "w-64",
-      )}
+      ref={attachElement}
+      style={{ width: panel.width }}
+      className="relative flex shrink-0 flex-col border-r border-border bg-card"
     >
       <div
         role="tablist"
@@ -100,6 +110,15 @@ const LeftColumn = () => {
       <div className={cn("min-h-0 flex-1 flex-col", tab === "agent" ? "flex" : "hidden")}>
         <AgentPanel />
       </div>
+      <ResizeHandle
+        label="Resize left panel"
+        value={panel.width}
+        min={panel.min}
+        max={panel.max}
+        onResize={panel.preview}
+        onResizeEnd={panel.commit}
+        onReset={panel.reset}
+      />
     </aside>
   );
 };
