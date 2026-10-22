@@ -28,6 +28,8 @@ import {
   parseNode,
   ToolError,
 } from "./tool-kit";
+import { editTools } from "./tools-edit";
+import { inspectTools } from "./tools-inspect";
 import type { ToolSpec } from "./types";
 
 const id = z.string().min(1);
@@ -522,7 +524,8 @@ const askUser = defineTool({
 });
 
 /** Every tool the agent can use, shared by the in-browser loop, MCP and the Agent SDK. */
-export const agentTools: ToolSpec[] = [
+/** The original document tools (read, insert/update/move/delete, plan reporting, ask_user). */
+export const coreTools: ToolSpec[] = [
   getDocument,
   getNode,
   insertNodes,
@@ -536,6 +539,9 @@ export const agentTools: ToolSpec[] = [
   reportStep,
   askUser,
 ];
+
+/** Every tool the agent can use, shared by the in-browser loop, MCP and the Agent SDK. */
+export const agentTools: ToolSpec[] = [...coreTools, ...editTools, ...inspectTools];
 
 export const toolByName = (name: string): ToolSpec | undefined =>
   agentTools.find((tool) => tool.name === name);

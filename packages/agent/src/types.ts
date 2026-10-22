@@ -1,4 +1,4 @@
-import type { Op, PegoDocument } from "@pego/doc";
+import type { Layout, Op, PegoDocument } from "@pego/doc";
 
 /** A step of the agent's plan, shown in the agent panel. */
 export type PlanStep = { id: string; title: string; detail?: string };
@@ -22,10 +22,31 @@ export type ToolHost = {
   reportStep: (stepId: string, status: StepStatus, summary?: string) => void;
   /** Resolves with the chosen option. */
   askUser: (request: DecisionRequest) => Promise<string>;
+
+  // Editor capabilities. Optional so pure/test hosts can omit them; tools that need one
+  // return an `unsupported` error when it is missing.
+
+  /** Computed absolute boxes of the current document (same as the renderer uses). */
+  getLayout?: () => Layout;
+  /** Node ids the user has selected in the editor. */
+  getSelection?: () => string[];
+  setSelection?: (ids: string[]) => void;
+  /** Pan/zoom the user's viewport so these nodes are visible. */
+  focusViewport?: (ids: string[]) => void;
+  /** Icon names available to `icon` nodes (lucide, kebab-case). */
+  listIcons?: () => string[];
+  /** Render a node (and its subtree only) to PNG, as drawn on canvas. */
+  renderImage?: (
+    nodeId: string,
+    options?: { scale?: number; maxSize?: number },
+  ) => Promise<ToolImage>;
 };
 
+/** Base64 PNG attached to a tool result (screenshots). */
+export type ToolImage = { mediaType: "image/png"; data: string; width: number; height: number };
+
 /** Tool output in a provider-neutral shape (maps to tool_result / MCP CallToolResult). */
-export type ToolResult = { content: string; isError: boolean };
+export type ToolResult = { content: string; isError: boolean; images?: ToolImage[] };
 
 /** JSON Schema for a tool's input object. */
 export type JsonSchema = Record<string, unknown>;

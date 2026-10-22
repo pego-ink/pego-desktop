@@ -7,13 +7,20 @@ import type { DecisionRequest, PlanStep, StepStatus } from "./types";
  * document the same way.
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
-export const BRIDGE_PROTOCOL_VERSION = 1;
+export const BRIDGE_PROTOCOL_VERSION = 2;
 
 /** Messages the editor sends to the bridge. */
 export type EditorToBridge =
   | { type: "hello"; protocol: number; documentName: string }
   /** Result of a `tool_call` the bridge forwarded. */
-  | { type: "tool_result"; callId: string; content: string; isError: boolean }
+  | {
+      type: "tool_result";
+      callId: string;
+      content: string;
+      isError: boolean;
+      /** Base64 PNGs (e.g. get_screenshot); the bridge maps them to MCP image content. */
+      images?: { mediaType: "image/png"; data: string; width: number; height: number }[];
+    }
   /** Start a Claude Agent SDK run with the user's local Claude Code login. */
   | { type: "run_start"; runId: string; prompt: string }
   | { type: "run_cancel"; runId: string };
