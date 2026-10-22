@@ -4,6 +4,7 @@ export * from "./history";
 export * from "./resolve";
 export * from "./instance";
 export * from "./layout";
+export * from "./id";
 export {
   collectDocIds,
   collectIds,

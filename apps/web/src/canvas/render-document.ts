@@ -23,6 +23,7 @@ type Scene = {
   doc: PegoDocument;
   layout: Layout;
   paints: Paints;
+  hiddenIds: ReadonlySet<string>;
 };
 
 const BACKGROUND = "#141418";
@@ -133,7 +134,7 @@ const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth:
   const { canvas, doc, layout, paints, res } = scene;
   for (const raw of nodes) {
     const node = raw.type === "ref" && depth < MAX_INSTANCE_DEPTH ? resolveInstance(doc, raw) : raw;
-    if (!node) continue;
+    if (!node || scene.hiddenIds.has(node.id)) continue;
     const box = layout.get(node.id);
     if (!box) continue;
 
@@ -176,13 +177,28 @@ export const renderDocument = (
   doc: PegoDocument,
   layout: Layout,
   camera: Camera,
+  /** `hiddenIds`: nodes not drawn, e.g. the text node being edited in the DOM overlay. */
+  options: { hiddenIds?: ReadonlySet<string> } = {},
 ) => {
   canvas.clear(res.ck.parseColorString(BACKGROUND));
   canvas.save();
   canvas.translate(camera.panX, camera.panY);
   canvas.scale(camera.zoom, camera.zoom);
-  drawNodes({ res, canvas, doc, layout, paints: getPaints(res.ck) }, doc.children, ORIGIN, 0);
+  drawNodes(
+    {
+      res,
+      canvas,
+      doc,
+      layout,
+      paints: getPaints(res.ck),
+      hiddenIds: options.hiddenIds ?? NO_HIDDEN_IDS,
+    },
+    doc.children,
+    ORIGIN,
+    0,
+  );
   canvas.restore();
 };
 
+const NO_HIDDEN_IDS: ReadonlySet<string> = new Set();
 const ORIGIN: Box = { x: 0, y: 0, width: 0, height: 0 };
