@@ -6,6 +6,7 @@ import {
   type PegoDocument,
   type PegoNode,
 } from "@pego/doc";
+import { roundPx, snapEnabled } from "@/interaction/snap";
 
 export type DrawTool = "frame" | "rectangle" | "ellipse";
 
@@ -44,17 +45,16 @@ export const uniqueName = (base: string, siblings: readonly PegoNode[]): string 
   return `${base} ${n}`;
 };
 
-const round = (v: number) => Math.round(v);
-
 /**
  * Box dragged from `start` to `end` (doc coords). shift = square, alt = `start` is the center.
- * Whole numbers, at least 1x1.
+ * Whole numbers when snapping to pixels (the default), at least 1x1.
  */
 export const drawBox = (
   start: { x: number; y: number },
   end: { x: number; y: number },
-  opts: { shift?: boolean; alt?: boolean } = {},
+  opts: { shift?: boolean; alt?: boolean; snap?: boolean } = {},
 ): Box => {
+  const round = (v: number) => roundPx(v, opts.snap ?? snapEnabled());
   let dx = end.x - start.x;
   let dy = end.y - start.y;
   if (opts.shift) {
@@ -75,9 +75,13 @@ export const drawBox = (
 };
 
 /** Box for a click without drag: default size, top-left at the click point. */
-export const clickBox = (tool: DrawTool, point: { x: number; y: number }): Box => ({
-  x: round(point.x),
-  y: round(point.y),
+export const clickBox = (
+  tool: DrawTool,
+  point: { x: number; y: number },
+  snap = snapEnabled(),
+): Box => ({
+  x: roundPx(point.x, snap),
+  y: roundPx(point.y, snap),
   ...DEFAULT_SIZES[tool],
 });
 
@@ -120,9 +124,14 @@ export const resolvePlacement = (
 };
 
 /** Position of a doc-space point inside the placement's parent. */
-export const toParentSpace = (placement: Placement, x: number, y: number) => ({
-  x: round(x - placement.originX),
-  y: round(y - placement.originY),
+export const toParentSpace = (
+  placement: Placement,
+  x: number,
+  y: number,
+  snap = snapEnabled(),
+) => ({
+  x: roundPx(x - placement.originX, snap),
+  y: roundPx(y - placement.originY, snap),
 });
 
 export const buildNode = (

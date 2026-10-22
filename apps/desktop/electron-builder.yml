@@ -10,6 +10,15 @@ files:
   - dist/**
   - package.json
 asar: true
+# Update feed = published GitHub releases of this (public) repo. `channel: latest` keeps the feed
+# file named latest-mac.yml even for -beta versions (otherwise electron-builder emits beta-mac.yml).
+# Publishing itself is done by .github/workflows/release.yml (`--publish never` + gh release).
+publish:
+  provider: github
+  owner: yolkmonday
+  repo: pego
+  releaseType: release
+  channel: latest
 extraResources:
   # Web build, served through app://pego/ (kept outside the asar so WASM/fonts stream from disk).
   - from: ../web/dist
@@ -23,7 +32,9 @@ mac:
   icon: build/icon.icns
   target:
     - target: dmg
-    - target: zip
+      arch: [arm64, x64]
+    - target: zip # required for auto-update on macOS
+      arch: [arm64, x64]
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist

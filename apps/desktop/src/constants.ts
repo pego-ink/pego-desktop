@@ -45,3 +45,7 @@ export const CONTENT_SECURITY_POLICY = [
   "form-action 'none'",
   "frame-src 'none'",
 ].join("; ");
+
+/** Public GitHub repo whose published releases are the update feed (no token needed). */
+export const UPDATE_OWNER = "yolkmonday";
+export const UPDATE_REPO = "pego";

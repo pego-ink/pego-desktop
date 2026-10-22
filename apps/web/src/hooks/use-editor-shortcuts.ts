@@ -10,6 +10,8 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { getToolHandler } from "@/interaction/tool-handlers";
+import { nudgeStep } from "@/interaction/nudge";
+import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
 const isEditable = (target: EventTarget | null): boolean => {
@@ -31,6 +33,15 @@ const DUPLICATE_OFFSET = 10;
 export const useEditorShortcuts = () => {
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
+      // Settings: Cmd/Ctrl+, works everywhere, even inside inputs.
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && !e.altKey && e.key === ",") {
+        e.preventDefault();
+        const { tab, openSettings } = useSettingsModal.getState();
+        openSettings(tab);
+        return;
+      }
+      // The settings modal owns the keyboard: no tool keys, delete or nudge behind it.
+      if (useSettingsModal.getState().open) return;
       if (isEditable(e.target) || isTextEditing()) return;
       // The active tool gets first pick (e.g. the pen finishing a path on Enter/Escape).
       if (getToolHandler(useToolStore.getState().tool)?.onKeyDown?.(e)) {
@@ -137,7 +148,7 @@ export const useEditorShortcuts = () => {
       const arrow = ARROW_DELTAS[e.key];
       if (arrow && doc.selection.length > 0) {
         e.preventDefault();
-        const step = e.shiftKey ? 10 : 1;
+        const step = nudgeStep(e.shiftKey, useSettingsStore.getState());
         const ops = nudgeOps(doc.doc, doc.selection, arrow[0] * step, arrow[1] * step);
         if (ops.length > 0) doc.commit(ops, { label: "Nudge" });
       }

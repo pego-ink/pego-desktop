@@ -20,7 +20,7 @@ electron-builder: `bun run desktop:build -- --mac --arm64 --x64` (must include a
 
 ## Security model
 
-- `contextIsolation`, `sandbox`, no `nodeIntegration`; the preload only exposes `window.pegoDesktop.platform`.
+- `contextIsolation`, `sandbox`, no `nodeIntegration`; the preload exposes only `window.pegoDesktop` (`platform`, `version`, update calls) over a fixed IPC channel allowlist; main checks the sender is the app origin and statuses are validated on both sides.
 - Navigation and `window.open` to anything outside the app origin are blocked; `https:` links open in the system browser.
 - All permission requests are denied (the editor needs none).
 - CSP is attached to every `app://pego` response (see `src/constants.ts`): `script-src 'self' 'wasm-unsafe-eval'`,
@@ -51,19 +51,27 @@ Tag must equal the version in `apps/desktop/package.json`:
 # bump apps/desktop/package.json "version" to X.Y.Z, commit, then
 git tag vX.Y.Z && git push origin main vX.Y.Z
 gh run watch            # .github/workflows/release.yml
-gh release edit vX.Y.Z --draft=false   # after checking the draft
+gh release edit vX.Y.Z --draft=false   # publishing the draft is what ships the update
 ```
 
 Required repo secrets: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`,
 `APPLE_ID`, `APPLE_PASSWORD` (app-specific password). The job fails if any is missing and verifies signature,
-stapled ticket and Gatekeeper acceptance of both DMGs before creating the draft.
+stapled ticket and Gatekeeper acceptance of both DMGs before creating the draft. It attaches both DMGs, both zips,
+their blockmaps and `latest-mac.yml` using the built-in `GITHUB_TOKEN` (`contents: write`); no other secret is needed.
 
-## Auto-update (not enabled)
+## Auto-update
 
-The repo is private, so an update feed would need a token inside the app. To add updates later:
-
-1. Create a public releases repo (for example `yolkmonday/pego-releases`) and publish the dmg/zip + `latest-mac.yml` there
-   (`publish: { provider: github, owner, repo }` in `electron-builder.yml`, with `GH_TOKEN` for that repo in CI).
-2. Add `electron-updater` as a dependency of `@pego/desktop`, bundle it into `main.cjs`, and call
-   `autoUpdater.checkForUpdatesAndNotify()` after the window is ready (packaged builds only).
-3. macOS updates need the zip target and a signed + notarized app, which this pipeline already produces.
+- Feed: published releases of the public repo `yolkmonday/pego` (GitHub provider, no token in the app; `src/constants.ts`
+  and `publish` in `electron-builder.yml`). Drafts are invisible, so **publishing the draft release ships the update**.
+- `electron-builder` is run with `--publish never` in CI; it still writes `latest-mac.yml` (one file listing the arm64 and
+  x64 zip + dmg; `channel: latest` keeps that name even for `-beta` versions). macOS updates need the zip target and a
+  signed + notarized app. Squirrel.Mac verifies the new build is signed by the same identity before installing.
+- `src/updater.ts`: packaged builds only. Checks 10s after launch and every 6h, `autoDownload` and `autoInstallOnAppQuit`
+  on. Status goes to the renderer over IPC (`src/update-status.ts` holds the status model, validation and channel names);
+  the web app reads it from `window.pegoDesktop` (`apps/web/src/desktop`). `desktop:dev` skips the updater.
+- Pre-releases: electron-updater sets `allowPrerelease` from the installed version. A `-beta` build (current) accepts beta
+  and stable releases (mark `-beta` releases as pre-release; the workflow does); a stable build only sees stable ones.
+  So once a stable version ships, beta testers have to install a beta build by hand to go back on the beta line.
+- Test the UI without a release: `PEGO_FAKE_UPDATE=1 bun run desktop:dev` replays checking, available, downloading and
+  ready over a few seconds (3s after launch, and again on "check for updates"). `installUpdate` is a no-op there.
+- Test the real path: build version X, install it, publish a release of X+1 and wait for the notice (or relaunch).

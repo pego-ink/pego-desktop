@@ -27,11 +27,11 @@ import {
 import type { CustomProvider } from "@/agent/providers/types";
 import { ModelList, ModelOptions } from "@/panels/agent/ModelList";
 import { safely } from "@/panels/agent/run-actions";
-import { ModelSettingsDialog, type SettingsSection } from "@/panels/agent/ModelSettingsDialog";
 import { ProviderLogo } from "@/panels/agent/ProviderLogo";
 import { StatusDot } from "@/panels/agent/StatusDot";
 import { navigateList } from "@/panels/agent/list-nav";
 import { useHasApiKey } from "@/panels/agent/use-has-api-key";
+import { useSettingsModal } from "@/store/use-settings-store";
 import {
   agentDetail,
   agentStatus,
@@ -103,7 +103,7 @@ type AgentMenuProps = {
   hasKey: boolean;
   onClose: () => void;
   onModels: (target: ModelsTarget) => void;
-  onSettings: (section: SettingsSection) => void;
+  onSettings: (section?: string) => void;
 };
 
 const AgentMenu = ({ hasKey, onClose, onModels, onSettings }: AgentMenuProps) => {
@@ -227,13 +227,13 @@ const AgentMenu = ({ hasKey, onClose, onModels, onSettings }: AgentMenuProps) =>
       <Separator />
       <MenuRow
         role="menuitem"
-        onClick={() => onSettings("custom-provider")}
+        onClick={() => onSettings("add-provider")}
         icon={<PlusIcon aria-hidden className="size-3.5 text-muted-foreground" />}
         title="Add provider…"
       />
       <MenuRow
         role="menuitem"
-        onClick={() => onSettings("top")}
+        onClick={() => onSettings()}
         icon={<Settings2Icon aria-hidden className="size-3.5 text-muted-foreground" />}
         title="Model settings…"
       />
@@ -319,11 +319,11 @@ const CustomModelsView = ({ providerId, onBack, onDone }: CustomModelsViewProps)
 };
 
 type AgentSelectorProps = {
-  /** Where focus goes after the popover or Model settings closes (the prompt box). */
+  /** Where focus goes after the popover closes (the prompt box). */
   restoreFocusRef: RefObject<HTMLElement | null>;
 };
 
-/** Composer pill: current agent + model, with a popover to switch and a Model settings modal. */
+/** Composer pill: current agent + model, with a popover to switch; settings open in the Agent & Models tab. */
 export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
   const backend = useAgentStore((s) => s.backend);
   const localAgentId = useAgentStore((s) => s.localAgentId);
@@ -336,10 +336,9 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
     backend === "custom" ? providers.find((p) => p.id === customId) : undefined;
   const customReady = useProviderReady(customProvider);
   const locked = useAgentStore((s) => isRunActive(s.status));
-  const [hasKey, setHasKey] = useHasApiKey();
+  const [hasKey] = useHasApiKey();
   const [open, setOpen] = useState(false);
   const [modelsFor, setModelsFor] = useState<ModelsTarget | null>(null);
-  const [section, setSection] = useState<SettingsSection | null>(null);
   const opensSettings = useRef(false);
   // View swap: the outgoing menu height becomes the model list's min-height (no shrink-snap), and
   // swapped views fade in over 100ms. The first view of an open popover does not animate.
@@ -400,10 +399,10 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
     setModelsFor(target);
   };
 
-  const openSettings = (target: SettingsSection) => {
+  const openSettings = (section?: string) => {
     opensSettings.current = true;
     setOpen(false);
-    setSection(target);
+    useSettingsModal.getState().openSettings("agent", section);
   };
 
   const restoreFocus = (event: Event) => {
@@ -492,13 +491,6 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
           </div>
         </PopoverContent>
       </Popover>
-      <ModelSettingsDialog
-        section={section}
-        onClose={() => setSection(null)}
-        hasKey={hasKey}
-        onHasKeyChange={setHasKey}
-        onCloseAutoFocus={restoreFocus}
-      />
     </>
   );
 };

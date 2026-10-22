@@ -82,10 +82,17 @@ CI runs the same on every push to `main`.
 1. Bump `version` in `apps/desktop/package.json`, commit.
 2. Tag and push: `git tag vX.Y.Z && git push origin main vX.Y.Z`.
 3. The `release` workflow builds arm64 + x64 dmg/zip, signs with Developer ID, notarizes, verifies, and creates a
-   **draft** GitHub release. Review it, then `gh release edit vX.Y.Z --draft=false`.
+   **draft** release on [yolkmonday/pego](https://github.com/yolkmonday/pego/releases) with the dmg, zip, blockmaps and
+   `latest-mac.yml`. Review it, then **publish it to ship the update**: `gh release edit vX.Y.Z --draft=false`.
+
+Installed apps check the published releases of this public repo (launch + 10s, then every 6h), download in the
+background and offer "Restart to update". Drafts are invisible to the updater, so nothing ships until you publish.
+`-beta` versions are marked pre-release; a `-beta` build of the app picks up beta and stable releases, a stable build
+only stable ones. No extra secrets: the workflow uses the built-in `GITHUB_TOKEN`.
 
 Needs these repository secrets: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
 `APPLE_TEAM_ID`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password). The workflow fails if any is missing.
+Details and local testing (`PEGO_FAKE_UPDATE=1`): [apps/desktop/README.md](apps/desktop/README.md#auto-update).
 
 ## Layout
 

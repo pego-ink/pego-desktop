@@ -1,5 +1,6 @@
 // Polygon + Star tools: drag a box (Shift = equal sides, Alt = from center), release to create
 // a closed `path` node fitted to it. Click without drag = 100x100.
+import { roundPx, snapEnabled } from "@/interaction/snap";
 import type { Canvas as SkCanvas, Path } from "canvaskit-wasm";
 import { createId, findNode, type Box, type PegoNode } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
@@ -119,8 +120,8 @@ const makeHandler = (kind: ShapeKind): ToolHandler => ({
         const box = dragged
           ? boxFor(q)
           : {
-              x: Math.round(start.x),
-              y: Math.round(start.y),
+              x: roundPx(start.x, snapEnabled()),
+              y: roundPx(start.y, snapEnabled()),
               width: DEFAULT_SIZE,
               height: DEFAULT_SIZE,
             };

@@ -1,13 +1,5 @@
 import { useEffect, useId, useState, type FormEvent, type ReactNode } from "react";
 import { Button } from "@pego/ui/components/button";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@pego/ui/components/dialog";
 import { Input } from "@pego/ui/components/input";
 import { NativeSelect } from "@pego/ui/components/native-select";
 import { SegmentedControl } from "@pego/ui/components/segmented-control";
@@ -59,12 +51,14 @@ type FetchState =
   | { status: "ok"; count: number; applied: boolean }
   | { status: "error"; message: string };
 
-type FormBodyProps = {
+type ProviderFormProps = {
+  /** Provider to edit; null adds a new one. */
   editing: CustomProvider | null;
   onClose: () => void;
 };
 
-const FormBody = ({ editing, onClose }: FormBodyProps) => {
+/** Inline add/edit form. Mount it per use so each starts from a clean draft. */
+export const ProviderForm = ({ editing, onClose }: ProviderFormProps) => {
   const uid = useId();
   const [draft, setDraft] = useState<ProviderDraft>(() =>
     editing ? draftFromProvider(editing) : emptyDraft(),
@@ -150,15 +144,20 @@ const FormBody = ({ editing, onClose }: FormBodyProps) => {
   const listId = `${uid}-models`;
 
   return (
-    <form onSubmit={(event) => void submit(event)} noValidate className="grid gap-3">
-      <DialogHeader>
-        <DialogTitle>{editing ? "Edit provider" : "Add provider"}</DialogTitle>
-        <DialogDescription>
+    <form
+      onSubmit={(event) => void submit(event)}
+      noValidate
+      aria-label={editing ? "Edit provider" : "Add provider"}
+      className="grid gap-3 rounded-lg border border-border p-3"
+    >
+      <div className="grid gap-0.5">
+        <h4 className="text-xs font-medium">{editing ? "Edit provider" : "Add provider"}</h4>
+        <p className="text-[11px] leading-4 text-muted-foreground">
           Use any OpenAI- or Anthropic-compatible endpoint. Requests go straight from this browser
           to the base URL you enter.
-        </DialogDescription>
-      </DialogHeader>
-      <div className="grid max-h-[62vh] gap-3 overflow-y-auto px-1 py-0.5 [overscroll-behavior:contain]">
+        </p>
+      </div>
+      <div className="grid gap-3">
         <div className="grid gap-1">
           <span className="text-[11px] font-medium text-muted-foreground">Type</span>
           <SegmentedControl
@@ -340,30 +339,14 @@ const FormBody = ({ editing, onClose }: FormBodyProps) => {
           />
         </Field>
       </div>
-      <DialogFooter>
+      <div className="flex justify-end gap-2">
         <Button type="button" variant="ghost" size="sm" onClick={onClose}>
           Cancel
         </Button>
         <Button type="submit" size="sm" disabled={saving}>
           {editing ? "Save changes" : "Add provider"}
         </Button>
-      </DialogFooter>
+      </div>
     </form>
   );
 };
-
-type ProviderFormDialogProps = {
-  open: boolean;
-  onOpenChange: (open: boolean) => void;
-  /** Provider to edit; null adds a new one. */
-  editing: CustomProvider | null;
-};
-
-/** Compact add/edit form. The body remounts per open, so each use starts from a clean draft. */
-export const ProviderFormDialog = ({ open, onOpenChange, editing }: ProviderFormDialogProps) => (
-  <Dialog open={open} onOpenChange={onOpenChange}>
-    <DialogContent className="max-w-md">
-      <FormBody editing={editing} onClose={() => onOpenChange(false)} />
-    </DialogContent>
-  </Dialog>
-);
