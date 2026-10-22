@@ -28,6 +28,8 @@ describe("projects", () => {
     expect(shop.id).toMatch(/^[a-z0-9]{8}$/);
     const meta = JSON.parse(await readFile(join(shop.dir, "project.json"), "utf8"));
     expect(meta).toMatchObject({ id: shop.id, name: "Kirimi Shop" });
+    // The design's document id is the project id (chat sessions key on it).
+    expect(design.document.id).toBe(shop.id);
 
     await writeFile(join(shop.dir, "home.pego"), "{}");
     await mkdir(join(root, "assets"));

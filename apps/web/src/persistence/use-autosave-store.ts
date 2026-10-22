@@ -6,8 +6,10 @@ const STORAGE_KEY = "pego.autosave.file";
  * idle: nothing to show. saving/saved: transient write feedback.
  * needs-permission: a restored handle must be re-authorised by a click.
  * paused: a write failed; file autosave is off for this session until retried.
+ * offline: the document saves through the bridge, which is not connected; it resumes on reconnect.
  */
-export type AutosaveStatus = "idle" | "saving" | "saved" | "needs-permission" | "paused";
+export type AutosaveStatus =
+  "idle" | "saving" | "saved" | "needs-permission" | "paused" | "offline";
 
 const readEnabled = () => {
   try {

@@ -1,9 +1,10 @@
 import { useEffect } from "react";
-import { createId, emptyHistory, loadDocument } from "@pego/doc";
+import { emptyHistory, loadDocument } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
-import { captureLive, tabIsDirty, useTabsStore, type TabSnapshot } from "@/tabs/use-tabs-store";
+import { captureLive, snapshotIsDirty, type DocumentSnapshot } from "@/workspace/live-document";
 import {
+  anyWorkspaceDirty,
   restoreWorkspaces,
   SCRATCH_ID,
   useWorkspaceStore,
@@ -17,7 +18,6 @@ import {
   type AutosavedTab,
   type AutosavedWorkspace,
 } from "./autosave-db";
-import { isDirty } from "./file-format";
 import { openFile, saveFile, saveFileAs } from "./file-actions";
 import { isFileWriteInFlight, startFileAutosave } from "./file-autosave";
 import { getIsDirty, useFileStore } from "./use-file-store";
@@ -27,30 +27,20 @@ const AUTOSAVE_DELAY_MS = 800;
 /** True while a debounced autosave is scheduled or being written. */
 let autosavePending = false;
 
-const autosavedTab = (state: TabSnapshot, dirty: boolean, keepHandle: boolean): AutosavedTab => ({
+/** Handles are kept (autosave-db retries without them when the browser cannot clone one). */
+const autosavedTab = (state: DocumentSnapshot): AutosavedTab => ({
   doc: state.doc,
   fileName: state.file.fileName,
-  // Handles may not be cloneable: only the live tab keeps one (autosave-db retries without it).
-  handle: keepHandle ? state.file.handle : null,
+  handle: state.file.handle,
   bridgePath: state.file.bridgePath,
-  dirty,
+  dirty: snapshotIsDirty(state),
 });
 
-/** Tabs of a workspace from its saved copy, or from the live stores. */
-const workspaceTabs = (workspace: Workspace): { tabs: AutosavedTab[]; activeIndex: number } => {
-  const source = workspace.saved ?? { ...useTabsStore.getState(), live: captureLive() };
-  const tabs = source.tabs.map((tab) => {
-    const state = tab.snapshot ?? source.live;
-    return autosavedTab(state, isDirty(state.doc, state.file.savedDoc), false);
-  });
-  return {
-    tabs,
-    activeIndex: Math.max(
-      0,
-      source.tabs.findIndex((tab) => tab.id === source.activeId),
-    ),
-  };
-};
+/** A workspace's one document, from its snapshot or (live) from the stores. */
+const workspaceTabs = (workspace: Workspace): { tabs: AutosavedTab[]; activeIndex: number } => ({
+  tabs: [autosavedTab(workspace.saved ?? captureLive())],
+  activeIndex: 0,
+});
 
 const writeCurrent = async () => {
   const { workspaces, liveId, view } = useWorkspaceStore.getState();
@@ -67,7 +57,7 @@ const writeCurrent = async () => {
   );
   const live = captureLive();
   await writeAutosave({
-    ...autosavedTab(live, getIsDirty(), true),
+    ...autosavedTab(live),
     tabs: saved[liveIndex]?.tabs,
     activeIndex: saved[liveIndex]?.activeIndex,
     workspaces: saved,
@@ -77,7 +67,7 @@ const writeCurrent = async () => {
   });
 };
 
-const toSnapshot = (tab: AutosavedTab): TabSnapshot | null => {
+const toSnapshot = (tab: AutosavedTab): DocumentSnapshot | null => {
   // Autosaves written by an older Pego hold an older document version.
   const doc = loadDocument(tab.doc);
   if (!doc) return null;
@@ -98,17 +88,15 @@ const toSnapshot = (tab: AutosavedTab): TabSnapshot | null => {
 
 /**
  * A workspace's saved document (its active tab; older autosaves kept several tabs per workspace,
- * now each shows one document), or null when it is not readable.
+ * now each has one document), or null when it is not readable.
  */
 const toSavedWorkspace = (stored: AutosavedTab[], activeIndex: number): SavedWorkspace | null => {
   const active = stored[Math.min(Math.max(activeIndex, 0), stored.length - 1)];
   const snapshot = active ? toSnapshot(active) : null;
-  if (!snapshot) {
-    if (active) console.warn("autosave: a document was ignored (invalid or from a newer Pego)");
-    return null;
+  if (!snapshot && active) {
+    console.warn("autosave: a document was ignored (invalid or from a newer Pego)");
   }
-  const id = createId();
-  return { tabs: [{ id, snapshot: null }], activeId: id, live: snapshot };
+  return snapshot;
 };
 
 const restoreAutosave = async () => {
@@ -164,7 +152,7 @@ const handleShortcut = (event: KeyboardEvent) => {
 
 const handleBeforeUnload = (event: BeforeUnloadEvent) => {
   // The browser copy covers everything except a pending IndexedDB write or a file write mid-flight.
-  const dirty = getIsDirty() || useTabsStore.getState().tabs.some(tabIsDirty);
+  const dirty = getIsDirty() || anyWorkspaceDirty();
   if (!((autosavePending || isFileWriteInFlight()) && dirty)) return;
   event.preventDefault();
 };
@@ -195,12 +183,10 @@ export const usePersistence = () => {
       });
       const unsubFile = useFileStore.subscribe(schedule);
       stopFileAutosave = startFileAutosave();
-      const unsubTabs = useTabsStore.subscribe(schedule);
       const unsubWorkspaces = useWorkspaceStore.subscribe(schedule);
       unsubscribe = () => {
         unsubDoc();
         unsubFile();
-        unsubTabs();
         unsubWorkspaces();
       };
     });

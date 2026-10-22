@@ -4,15 +4,14 @@ import { sampleDoc } from "@pego/doc";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
-import { releaseWindow, resetTabs, stubConfirm } from "./test-reset";
 import {
+  captureLive,
   documentTitle,
   isProjectDesign,
-  newTab,
-  openTab,
-  tabTitle,
-  useTabsStore,
-} from "./use-tabs-store";
+  openDocument,
+  openNewDocument,
+} from "./live-document";
+import { releaseWindow, resetLiveDocument, stubConfirm } from "./test-reset";
 
 const docs = () => useDocumentStore.getState();
 const named = (name: string) => ({ ...sampleDoc, name });
@@ -20,7 +19,7 @@ let confirmAnswer = true;
 let asked = 0;
 
 beforeEach(() => {
-  resetTabs();
+  resetLiveDocument();
   useAgentStore.getState().set({ status: "idle" });
   confirmAnswer = true;
   asked = 0;
@@ -35,37 +34,38 @@ afterAll(releaseWindow);
 const edit = () => docs().commit([{ op: "update", id: "frame-1", props: { x: 10 } }]);
 
 describe("one document per workspace", () => {
-  test("opening replaces the shown document; there is never more than one tab", () => {
-    openTab(named("A"), { fileName: "a.pego" });
-    openTab(named("B"), { fileName: "b.pego" });
-    expect(useTabsStore.getState().tabs).toHaveLength(1);
+  test("opening replaces the shown document", () => {
+    openDocument(named("A"), { fileName: "a.pego" });
+    openDocument(named("B"), { fileName: "b.pego" });
     expect(docs().doc.name).toBe("B");
     expect(useFileStore.getState().fileName).toBe("b.pego");
     expect(asked).toBe(0);
   });
 
   test("unsaved changes: ask (user), refuse (Claude Code), discard", () => {
-    openTab(named("A"), { fileName: "a.pego" });
+    openDocument(named("A"), { fileName: "a.pego" });
     edit();
     confirmAnswer = false;
-    expect(openTab(named("B"), {}, { unsaved: "ask" })).toBe("unsaved");
+    expect(openDocument(named("B"), {}, { unsaved: "ask" })).toBe("unsaved");
     expect(docs().doc.name).toBe("A");
-    expect(openTab(named("B"), {}, { unsaved: "refuse" })).toBe("unsaved");
+    expect(openDocument(named("B"), {}, { unsaved: "refuse" })).toBe("unsaved");
     expect(asked).toBe(1);
-    expect(openTab(named("B"), {}, { unsaved: "discard" })).toBe("opened");
+    expect(openDocument(named("B"), {}, { unsaved: "discard" })).toBe("opened");
     expect(docs().doc.name).toBe("B");
   });
 
   test("new documents start clean and untitled", () => {
-    openTab(named("A"), { fileName: "a.pego" });
-    expect(newTab()).toBe("opened");
+    openDocument(named("A"), { fileName: "a.pego" });
+    expect(openNewDocument()).toBe("opened");
     expect(docs().doc.name).toBe("Untitled");
-    expect(tabTitle(useTabsStore.getState().tabs[0]!)).toBe("Untitled");
+    const live = captureLive();
+    expect(documentTitle(live.doc, live.file)).toBe("Untitled");
+    expect(live.file.savedDoc).toBe(live.doc);
   });
 
   test("opening is blocked while the panel agent runs", () => {
     useAgentStore.getState().set({ status: "running" });
-    expect(openTab(named("A"), {})).toBe("busy");
+    expect(openDocument(named("A"), {})).toBe("busy");
   });
 });
 

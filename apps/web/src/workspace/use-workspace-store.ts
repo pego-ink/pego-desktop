@@ -1,28 +1,28 @@
 import { create } from "zustand";
-import { createId } from "@pego/doc";
+import type { PegoDocument } from "@pego/doc";
 import type { ProjectInfo } from "@pego/agent";
-import { createEmptyDocument, isDirty } from "@/persistence/file-format";
+import { createEmptyDocument } from "@/persistence/file-format";
+import { getIsDirty, useFileStore } from "@/persistence/use-file-store";
 import {
   blockedByRun,
   captureLive,
   loadIntoActive,
   restoreLive,
-  tabIsDirty,
-  useTabsStore,
-  type Tab,
-  type TabSnapshot,
-} from "@/tabs/use-tabs-store";
+  runBeforeSwap,
+  snapshotIsDirty,
+  type DocumentSnapshot,
+} from "./live-document";
 
 /**
- * Workspaces: the scratch area plus every open project, shown as tabs in the header next to the
- * dashboard. Each keeps its own document tabs. Like document tabs, only one workspace is live
- * (its tabs are in the tabs store, its active document in the editor stores); the others keep
- * a saved copy of that state.
+ * Workspaces: the scratch area (local files, the default document source) plus every open bridge
+ * project, shown as tabs in the header while a bridge serves a design folder. Each workspace has
+ * one document. Only one workspace is live (its document is in the editor stores, see
+ * live-document.ts); the others keep a snapshot of that state.
  */
 
 export const SCRATCH_ID = "scratch";
 
-export type SavedWorkspace = { tabs: Tab[]; activeId: string; live: TabSnapshot };
+export type SavedWorkspace = DocumentSnapshot;
 
 export type Workspace = {
   id: string;
@@ -66,19 +66,11 @@ export const liveProject = (): Workspace | null => {
   return workspace.kind === "project" ? workspace : null;
 };
 
-const captureWorkspace = (): SavedWorkspace => {
-  const { tabs, activeId } = useTabsStore.getState();
-  return { tabs, activeId, live: captureLive() };
-};
-
 const restoreWorkspace = (saved: SavedWorkspace | null) => {
   if (saved) {
-    useTabsStore.setState({ tabs: saved.tabs, activeId: saved.activeId });
-    restoreLive(saved.live);
+    restoreLive(saved);
     return;
   }
-  const id = createId();
-  useTabsStore.setState({ tabs: [{ id, snapshot: null }], activeId: id });
   loadIntoActive(createEmptyDocument(), {}, true);
 };
 
@@ -92,7 +84,9 @@ export const activateWorkspace = (id: string): boolean => {
     return true;
   }
   if (blockedByRun()) return false;
-  const current = captureWorkspace();
+  // Pending autosave of the outgoing document is written before it leaves the stores.
+  runBeforeSwap();
+  const current = captureLive();
   restoreWorkspace(target.saved);
   useWorkspaceStore.setState({
     liveId: id,
@@ -136,16 +130,39 @@ export const openProjectWorkspace = (
 export const showDashboard = (): void => useWorkspaceStore.setState({ view: "dashboard" });
 export const showEditor = (): void => useWorkspaceStore.setState({ view: "editor" });
 
-/** Tabs of a workspace with unsaved changes. */
-export const workspaceIsDirty = (workspace: Workspace): boolean => {
-  if (!workspace.saved) return useTabsStore.getState().tabs.some(tabIsDirty);
-  const { tabs, live } = workspace.saved;
-  return tabs.some((tab) =>
-    tab.snapshot
-      ? isDirty(tab.snapshot.doc, tab.snapshot.file.savedDoc)
-      : isDirty(live.doc, live.file.savedDoc),
-  );
-};
+/** The workspace's document has unsaved changes. */
+export const workspaceIsDirty = (workspace: Workspace): boolean =>
+  workspace.saved ? snapshotIsDirty(workspace.saved) : getIsDirty();
+
+/** Any open document has unsaved changes. */
+export const anyWorkspaceDirty = (): boolean =>
+  useWorkspaceStore.getState().workspaces.some(workspaceIsDirty);
+
+/** The workspace whose document lives at `bridgePath` on disk, if one is open. */
+export const findWorkspaceByPath = (bridgePath: string): Workspace | undefined =>
+  useWorkspaceStore
+    .getState()
+    .workspaces.find((workspace) =>
+      workspace.saved
+        ? workspace.saved.file.bridgePath === bridgePath
+        : useFileStore.getState().bridgePath === bridgePath,
+    );
+
+/**
+ * A background autosave wrote `doc` after its workspace was switched away: mark that snapshot
+ * saved (when it still holds exactly that document).
+ */
+export const markSavedInBackground = (doc: PegoDocument): void =>
+  useWorkspaceStore.setState((state) => ({
+    workspaces: state.workspaces.map((workspace) =>
+      workspace.saved?.doc === doc
+        ? {
+            ...workspace,
+            saved: { ...workspace.saved, file: { ...workspace.saved.file, savedDoc: doc } },
+          }
+        : workspace,
+    ),
+  }));
 
 /** Close a project workspace (asking when it has unsaved documents). Scratch stays. */
 export const closeWorkspace = (id: string): void => {

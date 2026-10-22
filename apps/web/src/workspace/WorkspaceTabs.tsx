@@ -1,6 +1,6 @@
 import { FolderIcon, NotebookPenIcon, XIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
-import { useTabsStore } from "@/tabs/use-tabs-store";
+import { useIsDirty } from "@/persistence/use-file-store";
 import {
   activateWorkspace,
   closeWorkspace,
@@ -17,8 +17,8 @@ const tabClass = (active: boolean) =>
 /** Header tabs: scratch documents and every open project (the Pego logo opens the dashboard). */
 export const WorkspaceTabs = () => {
   const { workspaces, liveId, view } = useWorkspaceStore();
-  // Re-render when the live workspace's documents change (unsaved marker).
-  useTabsStore((s) => s.tabs);
+  // Re-render when the live document's unsaved state changes (its marker).
+  useIsDirty();
 
   return (
     <nav aria-label="Projects" className="flex min-w-0 items-center gap-1 overflow-x-auto">

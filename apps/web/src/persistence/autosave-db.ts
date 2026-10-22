@@ -82,8 +82,20 @@ export const writeAutosave = async (record: AutosaveRecord): Promise<void> => {
   try {
     await withStore("readwrite", (s) => s.put(record, KEY));
   } catch (error) {
-    // Handles may not be cloneable in every browser; retry without one.
-    if (record.handle) return writeAutosave({ ...record, handle: null });
+    // Handles may not be cloneable in every browser; retry without any.
+    const withHandles =
+      record.handle || record.workspaces?.some((w) => w.tabs.some((t) => t.handle));
+    if (withHandles) {
+      return writeAutosave({
+        ...record,
+        handle: null,
+        tabs: record.tabs?.map((tab) => ({ ...tab, handle: null })),
+        workspaces: record.workspaces?.map((workspace) => ({
+          ...workspace,
+          tabs: workspace.tabs.map((tab) => ({ ...tab, handle: null })),
+        })),
+      });
+    }
     console.warn("autosave write failed", error);
   }
 };

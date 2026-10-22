@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { saveFileAs, writeDocToHandle } from "./file-actions";
+import { saveFile, saveFileAs, writeDocToHandle } from "./file-actions";
 import { resumeFileAutosave } from "./file-autosave";
 import { ensureWritePermission, requestWritePermission } from "./file-permission";
 import { useAutosaveStore } from "./use-autosave-store";
@@ -23,7 +23,9 @@ export const resumeAutoSave = async () => {
 
 /** Header "Retry" after a failed write: re-authorise and write, else fall back to Save As. */
 export const retryAutoSave = async () => {
-  const { handle, fileName } = useFileStore.getState();
+  const { handle, fileName, bridgePath } = useFileStore.getState();
+  // A bridge file: try the bridge again (saveFile reports a failure itself).
+  if (!handle && bridgePath) return saveFile();
   if (!handle) return saveFileAs();
   try {
     if (!(await ensureWritePermission(handle))) throw new Error("permission denied");

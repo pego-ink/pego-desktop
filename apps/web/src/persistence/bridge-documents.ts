@@ -5,17 +5,19 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { FILE_EXTENSION, parseDocumentFile, serializeDocument } from "./file-format";
 import {
+  captureLive,
   documentTitle,
-  findTabByPath,
-  openTab,
-  switchTab,
+  openDocument,
+  snapshotIsDirty,
   type UnsavedPolicy,
-  tabIsDirty,
-  tabState,
-  tabTitle,
-  useTabsStore,
-} from "@/tabs/use-tabs-store";
-import { liveProject, showEditor } from "@/workspace/use-workspace-store";
+} from "@/workspace/live-document";
+import {
+  activateWorkspace,
+  findWorkspaceByPath,
+  liveProject,
+  showEditor,
+  useWorkspaceStore,
+} from "@/workspace/use-workspace-store";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
 /**
@@ -44,11 +46,6 @@ const describe = (doc: PegoDocument) => {
   return pages.join("; ");
 };
 
-/**
- * Open a design file's text (read from disk by the bridge) in a tab. A file that is already open
- * is shown again; its tab is reloaded from disk unless it has unsaved changes (or `reload` is
- * false). `.pen` files import as an unsaved document that saves next to them as `.pego`.
- */
 const BUSY: OpOutcome = {
   content: "The editor is busy with an agent run; try again when it finishes.",
   isError: true,
@@ -64,15 +61,32 @@ const unsavedOutcome = (policy: UnsavedPolicy): OpOutcome =>
     : { content: "Kept the current document (it has unsaved changes).", isError: false };
 
 /**
- * Show a design file's text (read from disk by the bridge) as the workspace's document. The file
- * already shown is reloaded from disk unless it has unsaved changes (or `reload` is false).
- * `.pen` files import as an unsaved document that saves next to them as `.pego`. `unsaved` says
- * what happens to unsaved changes of another document shown now.
+ * Show the workspace that holds the file at `path` (each workspace has one document). True when
+ * it is shown now, false when it is not open, "busy" while a panel run blocks switching.
+ */
+const showOpenFile = (path: string): boolean | "busy" => {
+  if (useFileStore.getState().bridgePath === path) return true;
+  const workspace = findWorkspaceByPath(path);
+  if (!workspace) return false;
+  return activateWorkspace(workspace.id) ? true : "busy";
+};
+
+/**
+ * Show a design file's text (read from disk by the bridge) as the workspace's document. A file
+ * already open is shown again and reloaded from disk unless it has unsaved changes (or `reload`
+ * is false). `.pen` files import as an unsaved document that saves next to them as `.pego`.
+ * `unsaved` says what happens to unsaved changes of another document shown now. `documentId`
+ * gives the document that id (a project's design takes its project id).
  */
 export const openDocumentText = (
   text: string,
   path: string,
-  options: { reload?: boolean; discardUnsaved?: boolean; unsaved?: UnsavedPolicy } = {},
+  options: {
+    reload?: boolean;
+    discardUnsaved?: boolean;
+    unsaved?: UnsavedPolicy;
+    documentId?: string;
+  } = {},
 ): OpOutcome => {
   const policy: UnsavedPolicy = options.discardUnsaved ? "discard" : (options.unsaved ?? "ask");
   const name = fileNameOf(path);
@@ -81,16 +95,16 @@ export const openDocumentText = (
       const base = name.replace(/\.pen$/i, "");
       // The .pen file is never written; saving goes to a .pego next to it.
       const target = path.replace(/\.pen$/i, FILE_EXTENSION);
-      const existing = findTabByPath(target);
-      if (existing) {
-        switchTab(existing.id);
+      const shown = showOpenFile(target);
+      if (shown === "busy") return BUSY;
+      if (shown) {
         return {
           content: `${fileNameOf(target)} is already open (from ${name}); showing it.`,
           isError: false,
         };
       }
       const { doc, warnings } = importPen(JSON.parse(text), base);
-      const result = openTab(
+      const result = openDocument(
         doc,
         { fileName: `${base}${FILE_EXTENSION}`, bridgePath: target },
         { saved: false, unsaved: policy },
@@ -106,10 +120,16 @@ export const openDocumentText = (
         isError: false,
       };
     }
-    const doc = parseDocumentFile(text);
-    const existing = findTabByPath(path);
-    if (existing) {
-      if (!switchTab(existing.id)) return BUSY;
+    const parsed = parseDocumentFile(text);
+    const doc =
+      options.documentId && parsed.id !== options.documentId
+        ? { ...parsed, id: options.documentId }
+        : parsed;
+    // Saved means "matches the file": an adopted id is a change the next save writes.
+    const saved = doc === parsed;
+    const shown = showOpenFile(path);
+    if (shown === "busy") return BUSY;
+    if (shown) {
       if (getIsDirty() && !options.discardUnsaved) {
         return {
           content: `${path} is already open with unsaved changes; keeping them (pass discardUnsaved: true to reload it from disk).`,
@@ -118,11 +138,16 @@ export const openDocumentText = (
       }
       if (options.reload === false) return { content: `Showing ${path}.`, isError: false };
       useDocumentStore.getState().load(doc);
-      useFileStore.getState().markSaved(useDocumentStore.getState().doc, name, null, path);
+      const loaded = useDocumentStore.getState().doc;
+      useFileStore.getState().markSaved(saved ? loaded : parsed, name, null, path);
       zoomToDocument(doc);
       return { content: `Reloaded ${path} from disk (${describe(doc)}).`, isError: false };
     }
-    const result = openTab(doc, { fileName: name, bridgePath: path }, { unsaved: policy });
+    const result = openDocument(
+      doc,
+      { fileName: name, bridgePath: path },
+      { unsaved: policy, saved },
+    );
     if (result === "busy") return BUSY;
     if (result === "unsaved") return unsavedOutcome(policy);
     return { content: `Opened ${path} (${describe(doc)}).`, isError: false };
@@ -181,37 +206,39 @@ export const markSavedFromBridge = (input: unknown): OpOutcome => {
   return { content: "ok", isError: false };
 };
 
-/** Editor side of list_documents: the open tabs. */
+/**
+ * Editor side of list_documents: the open documents, one per workspace (scratch and each open
+ * project). The wire format keeps the `tabs` name of the EDITOR_OPS contract.
+ */
 export const listTabsForBridge = (): OpOutcome => {
-  const { tabs, activeId } = useTabsStore.getState();
+  const { workspaces, liveId } = useWorkspaceStore.getState();
   const project = liveProject();
   return {
     content: JSON.stringify({
       project: project ? { id: project.id, name: project.name, dir: project.dir } : null,
-      tabs: tabs.map((tab) => ({
-        title: tabTitle(tab),
-        path: tabState(tab).file.bridgePath,
-        dirty: tabIsDirty(tab),
-        active: tab.id === activeId,
-      })),
+      tabs: workspaces.map((workspace) => {
+        const state = workspace.saved ?? captureLive();
+        return {
+          title: documentTitle(state.doc, state.file),
+          path: state.file.bridgePath,
+          dirty: snapshotIsDirty(state),
+          active: workspace.id === liveId,
+        };
+      }),
     }),
     isError: false,
   };
 };
 
-/** Editor side of switch_document: show the tab of an open file. */
+/** Editor side of switch_document: show the workspace of an open file. */
 export const switchTabForBridge = (input: unknown): OpOutcome => {
   if (!isObject(input) || typeof input.path !== "string") {
     return { content: "Invalid switch request.", isError: true };
   }
-  const tab = findTabByPath(input.path);
-  if (!tab) return { content: `not_open: ${input.path} is not open in a tab.`, isError: true };
-  if (!switchTab(tab.id)) {
-    return {
-      content: "The editor is busy with an agent run; try again when it finishes.",
-      isError: true,
-    };
-  }
+  const shown = showOpenFile(input.path);
+  if (shown === "busy") return BUSY;
+  if (!shown) return { content: `not_open: ${input.path} is not open.`, isError: true };
+  showEditor();
   return { content: `Showing ${input.path}.`, isError: false };
 };
 

@@ -3,12 +3,13 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useAgentStore } from "@/agent/use-agent-store";
-import { resetTabs } from "@/tabs/test-reset";
-import { tabTitle, useTabsStore } from "@/tabs/use-tabs-store";
+import { captureLive, documentTitle } from "@/workspace/live-document";
+import { resetLiveDocument } from "@/workspace/test-reset";
 import {
   listTabsForBridge,
   loadDocumentFromBridge,
   markSavedFromBridge,
+  openDocumentText,
   snapshotDocumentForBridge,
   switchTabForBridge,
 } from "./bridge-documents";
@@ -18,12 +19,16 @@ import { getIsDirty, useFileStore } from "./use-file-store";
 const pegoText = serializeDocument({ ...sampleDoc, name: "From disk" });
 
 beforeEach(() => {
-  resetTabs();
+  resetLiveDocument();
   // Other suites leave a run "active", which blocks opening tabs.
   useAgentStore.getState().set({ status: "idle" });
 });
 
-const titles = () => useTabsStore.getState().tabs.map(tabTitle);
+/** Title of the shown document, in a list like the editor's list_documents reply. */
+const titles = () => {
+  const live = captureLive();
+  return [documentTitle(live.doc, live.file)];
+};
 
 describe("bridge documents", () => {
   test("opens a .pego file as saved, remembering its path", () => {
@@ -89,6 +94,18 @@ describe("bridge documents", () => {
     ]);
     expect(switchTabForBridge({ path: "/repo/design/a.pego" }).isError).toBe(false);
     expect(switchTabForBridge({ path: "/nope.pego" }).content).toStartWith("not_open");
+  });
+
+  test("a project's design takes the project id, as a change the next save writes", () => {
+    const path = "/repo/design/shop/project.pego";
+    expect(openDocumentText(pegoText, path, { documentId: "shp00001" }).isError).toBe(false);
+    expect(useDocumentStore.getState().doc.id).toBe("shp00001");
+    expect(getIsDirty()).toBe(true);
+    // A design that already carries the project id opens clean.
+    resetLiveDocument();
+    const own = serializeDocument({ ...sampleDoc, id: "shp00001" });
+    openDocumentText(own, path, { documentId: "shp00001" });
+    expect(getIsDirty()).toBe(false);
   });
 
   test("reports parse errors", () => {

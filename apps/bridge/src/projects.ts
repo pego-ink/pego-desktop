@@ -91,7 +91,11 @@ export const createProject = async (root: string, name: string): Promise<Project
   await mkdir(dir);
   const meta = { id: newProjectId(), name: trimmed, createdAt: new Date().toISOString() };
   await writeFile(join(dir, PROJECT_FILE), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
-  await writeFile(join(dir, PROJECT_DESIGN), serializePegoFile(starterDocument(trimmed)), "utf8");
+  await writeFile(
+    join(dir, PROJECT_DESIGN),
+    serializePegoFile(starterDocument(trimmed, meta.id)),
+    "utf8",
+  );
   return describeProject(root, dir, meta);
 };
 

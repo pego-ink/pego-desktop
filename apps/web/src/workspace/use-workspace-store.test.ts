@@ -4,8 +4,8 @@ import { sampleDoc } from "@pego/doc";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
-import { releaseWindow, resetTabs, stubConfirm } from "@/tabs/test-reset";
-import { openTab, tabTitle, useTabsStore } from "@/tabs/use-tabs-store";
+import { captureLive, documentTitle, openDocument } from "./live-document";
+import { releaseWindow, resetLiveDocument, stubConfirm } from "./test-reset";
 import {
   activateWorkspace,
   closeWorkspace,
@@ -19,10 +19,13 @@ import {
 
 const checkout = { id: "chk00001", name: "Checkout", dir: "/repo/design/checkout" };
 const shop = { id: "shp00001", name: "Shop", dir: "/repo/design/shop" };
-const titles = () => useTabsStore.getState().tabs.map(tabTitle);
+const title = () => {
+  const live = captureLive();
+  return documentTitle(live.doc, live.file);
+};
 
 beforeEach(() => {
-  resetTabs();
+  resetLiveDocument();
   useAgentStore.getState().set({ status: "idle" });
   useWorkspaceStore.setState({
     workspaces: [{ id: SCRATCH_ID, name: "Scratch", dir: null, kind: "scratch", saved: null }],
@@ -35,32 +38,32 @@ beforeEach(() => {
 afterAll(releaseWindow);
 
 describe("workspaces", () => {
-  test("opening a project gives it its own document tabs; switching back restores scratch", () => {
-    openTab({ ...sampleDoc, name: "Scratch doc" }, { fileName: "notes.pego" });
+  test("opening a project gives it its own document; switching back restores scratch", () => {
+    openDocument({ ...sampleDoc, name: "Scratch doc" }, { fileName: "notes.pego" });
     openProjectWorkspace(checkout);
     expect(useWorkspaceStore.getState()).toMatchObject({ liveId: "chk00001", view: "editor" });
     expect(liveProject()?.name).toBe("Checkout");
-    expect(titles()).toEqual(["Untitled"]);
-    openTab(
+    expect(title()).toBe("Untitled");
+    openDocument(
       { ...sampleDoc, name: "Pay" },
       { fileName: "pay.pego", bridgePath: "/repo/design/checkout/pay.pego" },
     );
 
     activateWorkspace(SCRATCH_ID);
-    expect(titles()).toEqual(["notes.pego"]);
+    expect(title()).toBe("notes.pego");
     expect(useDocumentStore.getState().doc.name).toBe("Scratch doc");
     expect(liveProject()).toBeNull();
 
     openProjectWorkspace(checkout);
-    expect(titles()).toEqual(["pay.pego"]);
+    expect(title()).toBe("pay.pego");
     expect(useFileStore.getState().bridgePath).toBe("/repo/design/checkout/pay.pego");
   });
 
   test("each project keeps its own documents", () => {
     openProjectWorkspace(checkout);
-    openTab({ ...sampleDoc, name: "Pay" }, { fileName: "pay.pego" });
+    openDocument({ ...sampleDoc, name: "Pay" }, { fileName: "pay.pego" });
     openProjectWorkspace(shop);
-    openTab({ ...sampleDoc, name: "Home" }, { fileName: "home.pego" });
+    openDocument({ ...sampleDoc, name: "Home" }, { fileName: "home.pego" });
     openProjectWorkspace(checkout);
     expect(useDocumentStore.getState().doc.name).toBe("Pay");
     expect(useWorkspaceStore.getState().workspaces.map((w) => w.name)).toEqual([
@@ -80,7 +83,7 @@ describe("workspaces", () => {
 
   test("closing a project with unsaved work asks; the live one falls back to scratch", () => {
     openProjectWorkspace(checkout);
-    openTab({ ...sampleDoc, name: "Pay" }, { fileName: "pay.pego" }, { saved: false });
+    openDocument({ ...sampleDoc, name: "Pay" }, { fileName: "pay.pego" }, { saved: false });
     const workspace = useWorkspaceStore.getState().workspaces[1]!;
     expect(workspaceIsDirty(workspace)).toBe(true);
     stubConfirm(() => false);

@@ -1,10 +1,15 @@
 import { sampleDoc } from "@pego/doc";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
-import { useTabsStore } from "./use-tabs-store";
+import { SCRATCH_ID, useWorkspaceStore } from "./use-workspace-store";
 
-/** One untitled, untouched tab showing the sample document. */
-export const resetTabs = () => {
+/** The sample document, untitled and untouched, as the live document of the scratch workspace. */
+export const resetLiveDocument = () => {
+  useWorkspaceStore.setState({
+    workspaces: [{ id: SCRATCH_ID, name: "Scratch", dir: null, kind: "scratch", saved: null }],
+    liveId: SCRATCH_ID,
+    view: "editor",
+  });
   useDocumentStore.getState().load(sampleDoc);
   useFileStore.setState({
     fileName: null,
@@ -12,7 +17,6 @@ export const resetTabs = () => {
     bridgePath: null,
     savedDoc: useDocumentStore.getState().doc,
   });
-  useTabsStore.setState({ tabs: [{ id: "t0", snapshot: null }], activeId: "t0" });
 };
 
 let createdWindow = false;

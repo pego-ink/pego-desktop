@@ -1,7 +1,6 @@
 import { toast } from "sonner";
 import { importPen, type PegoDocument } from "@pego/doc";
-import { saveFileViaBridge } from "@/agent/bridge-client";
-import { newTab, openTab } from "@/tabs/use-tabs-store";
+import { openDocument, openNewDocument } from "@/workspace/live-document";
 import { activateWorkspace, SCRATCH_ID } from "@/workspace/use-workspace-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import {
@@ -17,8 +16,9 @@ import {
   getSaveFilePicker,
   type PegoFileHandle,
 } from "./fs-access";
+import { savedFields, sourceOf, writeToSource, type DocumentSource } from "./document-source";
 import { noteManualSave, runExclusiveSave } from "./file-autosave";
-import { ensureWritePermission, writeToHandle } from "./file-permission";
+import { ensureWritePermission } from "./file-permission";
 import { useFileStore } from "./use-file-store";
 
 const PEN_EXTENSION = ".pen";
@@ -30,15 +30,15 @@ const MAX_LISTED_WARNINGS = 4;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Files opened from disk (not a project's design) are scratch documents. */
+/** Local files (not a bridge project's design) are scratch documents. */
 const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => {
   if (!activateWorkspace(SCRATCH_ID)) return;
-  openTab(doc, { fileName, handle });
+  openDocument(doc, { fileName, handle });
 };
 
 export const newDocument = () => {
   if (!activateWorkspace(SCRATCH_ID)) return;
-  newTab();
+  openNewDocument();
 };
 
 const readTextViaInput = () =>
@@ -82,7 +82,8 @@ const importPenFile = async (file: File) => {
   }
   const { doc, warnings } = importPen(raw, base);
   if (!activateWorkspace(SCRATCH_ID)) return;
-  if (openTab(doc, { fileName: `${base}${FILE_EXTENSION}` }, { saved: false }) !== "opened") return;
+  const opened = openDocument(doc, { fileName: `${base}${FILE_EXTENSION}` }, { saved: false });
+  if (opened !== "opened") return;
   if (warnings.length === 0) {
     toast.success(`Imported ${file.name}`);
     return;
@@ -116,25 +117,18 @@ const downloadFile = (name: string, text: string) => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 };
 
-/** Writes the current doc to a handle inside the autosave queue, then marks it clean. */
-export const writeDocToHandle = (handle: PegoFileHandle, fileName: string) =>
+/** Writes the current doc to `source` inside the autosave queue, then marks it clean. */
+const writeDocTo = (source: DocumentSource) =>
   runExclusiveSave(async () => {
     const { doc } = useDocumentStore.getState();
-    await writeToHandle(handle, serializeDocument(doc));
-    useFileStore.getState().markSaved(doc, fileName, handle);
+    await writeToSource(source, serializeDocument(doc));
+    const { fileName, handle, bridgePath } = savedFields(source);
+    useFileStore.getState().markSaved(doc, fileName, handle, bridgePath);
     noteManualSave();
   });
 
-/** Write back to the file on disk that Claude Code opened (through the local bridge). */
-const saveToBridgePath = async (path: string) => {
-  const { doc } = useDocumentStore.getState();
-  try {
-    await saveFileViaBridge(path, serializeDocument(doc));
-    useFileStore.getState().markSaved(doc, path.split(/[\\/]/).pop() ?? path, null, path);
-  } catch (error) {
-    toast.error(`Could not save to ${path}: ${errorMessage(error)}`);
-  }
-};
+export const writeDocToHandle = (handle: PegoFileHandle, fileName: string) =>
+  writeDocTo({ kind: "file", handle, fileName });
 
 export const saveFileAs = async () => {
   const { doc } = useDocumentStore.getState();
@@ -156,17 +150,18 @@ export const saveFileAs = async () => {
   }
 };
 
+/** Save to the document's source: its local file, or the file the bridge opened it from. */
 export const saveFile = async () => {
-  const { handle, fileName, bridgePath } = useFileStore.getState();
-  if (!handle && bridgePath) return saveToBridgePath(bridgePath);
-  if (!handle) return saveFileAs();
+  const source = sourceOf(useFileStore.getState());
+  if (source.kind === "none") return saveFileAs();
   try {
-    if (!(await ensureWritePermission(handle))) {
+    if (source.kind === "file" && !(await ensureWritePermission(source.handle))) {
       toast.error("Write permission was denied. Choose where to save.");
       return saveFileAs();
     }
-    await writeDocToHandle(handle, fileName ?? handle.name);
+    await writeDocTo(source);
   } catch (error) {
-    toast.error(`Could not save file: ${errorMessage(error)}`);
+    const where = source.kind === "bridge" ? ` to ${source.path}` : "";
+    toast.error(`Could not save file${where}: ${errorMessage(error)}`);
   }
 };
