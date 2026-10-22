@@ -278,14 +278,10 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
           className="flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[11px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-foreground"
         >
           <ProviderLogo provider={isApi ? "anthropic" : AGENT_PROVIDER[localAgentId]} />
-          <span
-            className={cn(
-              "max-w-[140px] min-w-0 truncate",
-              pill.isDefault ? "" : "text-foreground",
-            )}
-          >
-            {pill.label}
-          </span>
+          {/* "Default" adds nothing visible: the logo alone says which agent; the title has the rest. */}
+          {pill.isDefault ? null : (
+            <span className="max-w-[140px] min-w-0 truncate text-foreground">{pill.label}</span>
+          )}
           {tone === "ready" ? null : <StatusDot tone={tone} />}
           <ChevronDownIcon aria-hidden className="size-3 shrink-0" />
         </PopoverTrigger>
