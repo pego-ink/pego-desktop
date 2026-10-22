@@ -1,13 +1,21 @@
-import { createId, documentSchema, type PegoDocument } from "@pego/doc";
+import {
+  DOCUMENT_VERSION,
+  serializePegoFile,
+  starterDocument,
+  documentSchema,
+  MigrationError,
+  migrateDocument,
+  type PegoDocument,
+} from "@pego/doc";
 
 export const FILE_FORMAT = "pego";
-export const FILE_VERSION = 0;
+/** The envelope version follows the document version; older files are migrated on open. */
+export const FILE_VERSION = DOCUMENT_VERSION;
 export const FILE_EXTENSION = ".pego";
 export const FILE_MIME = "application/json";
 export const DEFAULT_FILE_NAME = `Untitled${FILE_EXTENSION}`;
 
-export const serializeDocument = (doc: PegoDocument): string =>
-  JSON.stringify({ format: FILE_FORMAT, version: FILE_VERSION, document: doc }, null, 2);
+export const serializeDocument = (doc: PegoDocument): string => serializePegoFile(doc);
 
 export class FileFormatError extends Error {}
 
@@ -29,12 +37,24 @@ export const parseDocumentFile = (text: string): PegoDocument => {
     throw new FileFormatError('Not a Pego file: missing "format": "pego".');
   }
   const { version, document } = raw as { version?: unknown; document?: unknown };
-  if (version !== FILE_VERSION) {
+  if (typeof version !== "number" || !Number.isInteger(version) || version < 0) {
+    throw new FileFormatError(`Unsupported Pego file version ${JSON.stringify(version)}.`);
+  }
+  if (version > FILE_VERSION) {
     throw new FileFormatError(
-      `Unsupported Pego file version ${JSON.stringify(version)} (expected ${FILE_VERSION}).`,
+      `This file was made by a newer Pego (file version ${version}, this app reads up to ${FILE_VERSION}). Update Pego to open it.`,
     );
   }
-  const result = documentSchema.safeParse(document);
+  let migrated: unknown;
+  try {
+    migrated = migrateDocument(document);
+  } catch (error) {
+    if (error instanceof MigrationError) {
+      throw new FileFormatError(`Invalid Pego document: ${error.message}.`);
+    }
+    throw error;
+  }
+  const result = documentSchema.safeParse(migrated);
   if (result.success) return result.data;
   const issues = result.error.issues
     .slice(0, MAX_ISSUES)
@@ -46,25 +66,8 @@ export const parseDocumentFile = (text: string): PegoDocument => {
   );
 };
 
-/** A new empty document: one 1440x1024 white frame named "Frame". */
-export const createEmptyDocument = (): PegoDocument =>
-  documentSchema.parse({
-    version: 0,
-    id: createId(),
-    name: "Untitled",
-    children: [
-      {
-        id: createId(),
-        type: "frame",
-        name: "Frame",
-        x: 0,
-        y: 0,
-        width: 1440,
-        height: 1024,
-        fill: "#FFFFFF",
-      },
-    ],
-  });
+/** A new empty document: one page holding one 1440x1024 white frame named "Frame". */
+export const createEmptyDocument = (): PegoDocument => starterDocument();
 
 /** Dirty means the live doc object differs from the one at last save/open (`null` = never saved state). */
 export const isDirty = (doc: PegoDocument, savedDoc: PegoDocument | null): boolean =>

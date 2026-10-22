@@ -1,9 +1,9 @@
 /// <reference types="bun" />
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { toolByName } from "@pego/agent";
-import { resetStores } from "../test-utils";
+import { resetStores, visible } from "../test-utils";
 import { createToolHost } from "../tool-host";
-import { useAgentStore } from "../use-agent-store";
+import { runScope } from "../use-agent-store";
 import { extractJson, runOpenAiCompatibleAgent } from "./openai-runtime";
 import type { CustomProvider } from "./types";
 
@@ -56,7 +56,7 @@ const toolCalls = (...calls: [string, string][]) =>
 const httpError = (status: number, message: string) =>
   new Response(JSON.stringify({ error: { message } }), { status });
 
-const state = () => useAgentStore.getState();
+const state = visible;
 
 const run = (replies: Reply[], signal = new AbortController().signal, apiKey = "sk-test") => {
   const calls: { url: string; headers: Record<string, string>; body: Body }[] = [];
@@ -83,7 +83,7 @@ const run = (replies: Reply[], signal = new AbortController().signal, apiKey = "
 
 beforeEach(() => {
   resetStores();
-  state().set({ status: "planning" });
+  runScope(null).set({ status: "planning" });
 });
 
 describe("extractJson", () => {
@@ -172,7 +172,7 @@ describe("agent loop", () => {
     expect(text).not.toContain("sk-test");
 
     resetStores();
-    state().set({ status: "planning" });
+    runScope(null).set({ status: "planning" });
     await run([new TypeError("Failed to fetch")]).done;
     expect(state().log.at(-1)?.text).toContain("CORS");
   });

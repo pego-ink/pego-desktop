@@ -1,5 +1,5 @@
 import { useEffect, type RefObject } from "react";
-import { createId, findNode, type Box, type Op, type PegoDocument } from "@pego/doc";
+import { createId, findNode, type Op, type PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { screenToDoc } from "@/canvas/types";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -20,7 +20,17 @@ import {
   type Placement,
 } from "@/interaction/create-node";
 import { applyAll, duplicateOps } from "@/interaction/duplicate";
+import {
+  childrenAmong,
+  insertionLine,
+  planDrag,
+  sameSegment,
+  type Segment,
+} from "@/interaction/drag-target";
 import { hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
+import { useSettingsStore } from "@/store/use-settings-store";
+import { wheelAction } from "@/interaction/wheel-behavior";
+import { snapEnabled } from "@/interaction/snap";
 import { isDiscreteWheel, wheelNotchFactor } from "@/interaction/camera";
 import { useInteractionState } from "@/interaction/interaction-state";
 import {
@@ -30,16 +40,15 @@ import {
   pickAt,
   toggleSelection,
 } from "@/interaction/selection";
+import { constrainAxis, resizeOps, type Handle } from "@/interaction/transform";
 import {
-  constrainAxis,
-  HANDLE_CURSORS,
-  hitHandle,
-  moveOps,
-  resizeBox,
-  resizeOps,
-  type Handle,
-} from "@/interaction/transform";
-import { docToScreen } from "@/canvas/types";
+  frameHandleCursor,
+  getSelectionFrame,
+  hitFrameHandle,
+  resizeFrame,
+  toScreenMatrix,
+  type SelectionFrame,
+} from "@/interaction/selection-frame";
 import { enterPathEdit } from "@/interaction/tools/pen";
 
 const DRAG_THRESHOLD = 3;
@@ -54,6 +63,8 @@ type Gesture =
       startDoc: PegoDocument;
       ids: string[];
       started: boolean;
+      /** Whether the drag's undo step exists yet (a reorder can start with no ops). */
+      committed: boolean;
       /** Click without drag on a multi-selection collapses it to the clicked node. */
       collapseTo: string | null;
     }
@@ -64,8 +75,10 @@ type Gesture =
       startY: number;
       startDoc: PegoDocument;
       id: string;
-      startBox: Box;
+      /** Start-state placement of the node (rotation of the node and its ancestors included). */
+      frame: SelectionFrame;
       started: boolean;
+      committed: boolean;
     }
   | { kind: "marquee"; startDocX: number; startDocY: number; base: string[] }
   | {
@@ -83,20 +96,24 @@ type Gesture =
 
 const setTool = (tool: Tool) => useToolStore.getState().setTool(tool);
 
-/** The single selected node's screen box, for handle hit-testing. */
-const selectedScreenBox = (): { id: string; box: Box } | null => {
+/** The handle under the screen point on the single selected node (rotation-aware), if any. */
+const handleAt = (
+  x: number,
+  y: number,
+): { id: string; frame: SelectionFrame; handle: Handle } | null => {
   const { doc, selection } = useDocumentStore.getState();
   const [id] = selection;
   if (selection.length !== 1 || !id) return null;
-  const box = getLayout(doc).get(id);
-  if (!box) return null;
-  const { camera } = useViewportStore.getState();
-  const topLeft = docToScreen(camera, box.x, box.y);
-  return {
-    id,
-    box: { ...topLeft, width: box.width * camera.zoom, height: box.height * camera.zoom },
-  };
+  const frame = getSelectionFrame(doc, getLayout(doc), id);
+  if (!frame) return null;
+  const screen = toScreenMatrix(useViewportStore.getState().camera, frame.matrix);
+  const handle = hitFrameHandle(screen, frame.box.width, frame.box.height, x, y, HANDLE_HIT_RADIUS);
+  return handle ? { id, frame, handle } : null;
 };
+
+/** Resize cursor for a handle, rotated with the node. */
+const cursorFor = (frame: SelectionFrame, handle: Handle): string =>
+  frameHandleCursor(toScreenMatrix(useViewportStore.getState().camera, frame.matrix), handle);
 
 /** Wire pointer + wheel interaction (pan, zoom, select, move, resize, marquee) to the canvas element. */
 export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>) => {
@@ -134,14 +151,17 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const dx = e.deltaX * unit;
       const dy = e.deltaY * unit;
       const viewport = useViewportStore.getState();
-      if (e.ctrlKey || e.metaKey) {
+      const action = wheelAction(useSettingsStore.getState().wheelBehavior, e);
+      if (action === "zoom") {
         const p = local(e);
         // Notched wheels ease toward a clamped step; trackpad pinch stays 1:1.
         if (isDiscreteWheel(e)) viewport.wheelZoomBy(wheelNotchFactor(dy), p.x, p.y);
         else viewport.zoomBy(Math.exp(-dy * 0.01), p.x, p.y);
         return;
       }
-      viewport.panBy(-dx, -dy);
+      // Shift+wheel: browsers may already report the delta as deltaX, otherwise use deltaY.
+      if (action === "pan-horizontal") viewport.panBy(-(dx || dy), 0);
+      else viewport.panBy(-dx, -dy);
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -175,7 +195,8 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         const placement = resolvePlacement(
           state.doc,
           getLayout(state.doc),
-          hitPath(state.doc, getLayout(state.doc), start.x, start.y),
+          hitPath(state.doc, getLayout(state.doc), start.x, start.y, { pageId: state.pageId }),
+          state.pageId,
         );
         gesture = isDrawTool(tool)
           ? {
@@ -192,29 +213,29 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         return;
       }
 
-      const sel = selectedScreenBox();
-      const handle = sel ? hitHandle(sel.box, p.x, p.y, HANDLE_HIT_RADIUS) : null;
-      if (sel && handle) {
-        const startBox = getLayout(state.doc).get(sel.id);
-        if (startBox) {
-          gesture = {
-            kind: "resize",
-            handle,
-            startX: p.x,
-            startY: p.y,
-            startDoc: state.doc,
-            id: sel.id,
-            startBox,
-            started: false,
-          };
-          ui.set({ handleCursor: HANDLE_CURSORS[handle] });
-          return;
-        }
+      const grabbed = handleAt(p.x, p.y);
+      if (grabbed) {
+        gesture = {
+          kind: "resize",
+          handle: grabbed.handle,
+          startX: p.x,
+          startY: p.y,
+          startDoc: state.doc,
+          id: grabbed.id,
+          frame: grabbed.frame,
+          started: false,
+          committed: false,
+        };
+        ui.set({ handleCursor: cursorFor(grabbed.frame, grabbed.handle) });
+        return;
       }
 
       const d = toDoc(p.x, p.y);
       const layout = getLayout(state.doc);
-      const hit = pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e), hitTolerance());
+      const hit = pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e), {
+        tolerance: hitTolerance(),
+        pageId: state.pageId,
+      });
 
       if (!hit) {
         if (!e.shiftKey) state.select([]);
@@ -240,6 +261,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         startDoc: state.doc,
         ids,
         started: false,
+        committed: false,
         collapseTo: inSelection && ids.length > 1 ? hit : null,
       };
     };
@@ -251,22 +273,17 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       }
       const p = local(e);
       const state = useDocumentStore.getState();
-      const sel = selectedScreenBox();
-      const handle = sel ? hitHandle(sel.box, p.x, p.y, HANDLE_HIT_RADIUS) : null;
-      const cursor = handle ? HANDLE_CURSORS[handle] : null;
+      const grabbed = handleAt(p.x, p.y);
+      const handle = grabbed?.handle ?? null;
+      const cursor = grabbed ? cursorFor(grabbed.frame, grabbed.handle) : null;
       if (useInteractionState.getState().handleCursor !== cursor) ui.set({ handleCursor: cursor });
       const d = toDoc(p.x, p.y);
       const hit = handle
         ? null
-        : pickAt(
-            state.doc,
-            getLayout(state.doc),
-            d.x,
-            d.y,
-            state.selection,
-            isDeep(e),
-            hitTolerance(),
-          );
+        : pickAt(state.doc, getLayout(state.doc), d.x, d.y, state.selection, isDeep(e), {
+            tolerance: hitTolerance(),
+            pageId: state.pageId,
+          });
       if (state.hoveredId !== hit) state.setHovered(hit);
     };
 
@@ -303,7 +320,11 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
           Math.hypot(p.x - gesture.startX, p.y - gesture.startY) < DRAG_THRESHOLD
         )
           return;
-        const box = drawBox(gesture.start, toDoc(p.x, p.y), { shift: e.shiftKey, alt: e.altKey });
+        const box = drawBox(gesture.start, toDoc(p.x, p.y), {
+          shift: e.shiftKey,
+          alt: e.altKey,
+          snap: snapEnabled(),
+        });
         if (!gesture.started) {
           gesture.started = true;
           const ok = store.commit(
@@ -325,7 +346,7 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         const d = toDoc(p.x, p.y);
         const rect = normalizeRect(gesture.startDocX, gesture.startDocY, d.x, d.y);
         ui.set({ marquee: rect });
-        const hits = marqueeSelect(store.doc, getLayout(store.doc), rect);
+        const hits = marqueeSelect(store.doc, getLayout(store.doc), rect, store.pageId);
         store.select([...new Set([...gesture.base, ...hits])]);
         return;
       }
@@ -337,9 +358,13 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       gesture.started = true;
       if (store.hoveredId) store.setHovered(null);
 
+      const active = gesture;
       const apply = (ops: Op[], label: string) => {
-        if (ops.length === 0) return true;
-        return first ? store.commit(ops, { label }) : store.extendLast(ops);
+        if (ops.length === 0 || (active.kind !== "move" && active.kind !== "resize")) return true;
+        // Only the first non-empty change opens the undo step; later ones fold into it.
+        const opened = active.committed;
+        active.committed = true;
+        return opened ? store.extendLast(ops) : store.commit(ops, { label });
       };
 
       let ok: boolean;
@@ -358,25 +383,49 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         const delta = e.shiftKey
           ? constrainAxis(screenDx / zoom, screenDy / zoom)
           : { dx: screenDx / zoom, dy: screenDy / zoom };
-        ok = apply(
-          [...copyOps, ...moveOps(gesture.startDoc, gesture.ids, delta.dx, delta.dy)],
-          copyOps.length > 0 ? "Duplicate" : "Move",
-        );
+        // On the duplicate frame the copies are not in the store yet; startDoc already has them.
+        const current = copyOps.length > 0 ? gesture.startDoc : store.doc;
+        const plan = planDrag({
+          startDoc: gesture.startDoc,
+          startLayout: getLayout(gesture.startDoc),
+          doc: current,
+          layout: getLayout(current),
+          ids: gesture.ids,
+          point: toDoc(p.x, p.y),
+          dx: delta.dx,
+          dy: delta.dy,
+          snap: snapEnabled(),
+        });
+        ok = apply([...copyOps, ...plan.ops], copyOps.length > 0 ? "Duplicate" : "Move");
+        if (ok) showDropLine(plan.flexParentId, gesture.ids);
         if (ok && copyOps.length > 0) store.select(gesture.ids);
       } else {
-        const next = resizeBox(gesture.startBox, gesture.handle, screenDx / zoom, screenDy / zoom, {
+        const next = resizeFrame(gesture.frame, gesture.handle, screenDx / zoom, screenDy / zoom, {
           shift: e.shiftKey,
           alt: e.altKey,
+          snap: snapEnabled(),
         });
-        ok = apply(resizeOps(gesture.startDoc, gesture.id, gesture.startBox, next), "Resize");
+        ok = apply(
+          resizeOps(gesture.startDoc, gesture.id, gesture.frame.box, next, snapEnabled()),
+          "Resize",
+        );
       }
       if (!ok) endGesture();
+    };
+
+    /** Show the auto-layout insertion line for `ids` after the latest drag ops, or clear it. */
+    const showDropLine = (flexParentId: string | null, ids: readonly string[]) => {
+      const { doc } = useDocumentStore.getState();
+      const line: Segment | null = flexParentId
+        ? insertionLine(doc, getLayout(doc), flexParentId, childrenAmong(doc, flexParentId, ids))
+        : null;
+      if (!sameSegment(useInteractionState.getState().dropLine, line)) ui.set({ dropLine: line });
     };
 
     const endGesture = () => {
       const g = gesture;
       gesture = null;
-      ui.set({ panning: false, marquee: null, handleCursor: null });
+      ui.set({ panning: false, marquee: null, handleCursor: null, dropLine: null });
       if (g?.kind === "move" && !g.started && g.collapseTo) {
         useDocumentStore.getState().select([g.collapseTo]);
       }
@@ -426,7 +475,10 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const p = local(e);
       const state = useDocumentStore.getState();
       const d = toDoc(p.x, p.y);
-      const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y, hitTolerance());
+      const path = hitPath(state.doc, getLayout(state.doc), d.x, d.y, {
+        tolerance: hitTolerance(),
+        pageId: state.pageId,
+      });
       const leafId = path?.[path.length - 1];
       // Pen tool: double-clicking a path enters its vector edit mode (see tools/pen.ts).
       if (leafId && findNode(state.doc, leafId)?.type === "path" && enterPathEdit(leafId)) return;
@@ -435,7 +487,9 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         useTextEditStore.getState().start({ mode: "edit", id: leafId });
         return;
       }
-      const target = drillTarget(state.doc, getLayout(state.doc), d.x, d.y, state.selection);
+      const target = drillTarget(state.doc, getLayout(state.doc), d.x, d.y, state.selection, {
+        pageId: state.pageId,
+      });
       if (target) state.select([target]);
     };
 

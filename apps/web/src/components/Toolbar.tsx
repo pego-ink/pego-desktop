@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import {
@@ -17,6 +17,9 @@ import {
 } from "@/components/toolbar-groups";
 
 const FOCUS_RING = "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
+
+/** The navigation tools (Move, Hand) sit apart from the creation tools. */
+const DIVIDER_AFTER = "hand";
 
 type GroupButtonProps = { group: ToolGroup };
 
@@ -98,7 +101,12 @@ export const Toolbar = () => (
     className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[0_8px_24px_#00000055]"
   >
     {TOOL_GROUPS.map((group) => (
-      <GroupButton key={group.id} group={group} />
+      <Fragment key={group.id}>
+        <GroupButton group={group} />
+        {group.id === DIVIDER_AFTER ? (
+          <div role="separator" aria-orientation="vertical" className="mx-1 h-5 w-px bg-border" />
+        ) : null}
+      </Fragment>
     ))}
   </div>
 );

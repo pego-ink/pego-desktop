@@ -28,11 +28,13 @@ export type ToolGroup = {
 export const TOOL_GROUPS: readonly ToolGroup[] = [
   {
     id: "move",
-    label: "Move tools",
-    tools: [
-      { tool: "select", label: "Move", shortcut: "V", Icon: MousePointer2Icon },
-      { tool: "hand", label: "Hand", shortcut: "H", Icon: HandIcon },
-    ],
+    label: "Move",
+    tools: [{ tool: "select", label: "Move", shortcut: "V", Icon: MousePointer2Icon }],
+  },
+  {
+    id: "hand",
+    label: "Hand",
+    tools: [{ tool: "hand", label: "Hand", shortcut: "H", Icon: HandIcon }],
   },
   {
     id: "frame",

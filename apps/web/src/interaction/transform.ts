@@ -1,6 +1,7 @@
 import { resolveNumber, type Box, type Op, type PegoDocument } from "@pego/doc";
 import { findNode } from "@pego/doc";
 import { getNodeIndex } from "./hit-test";
+import { roundPx } from "./snap";
 
 export type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 export const HANDLES: readonly Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
@@ -15,8 +16,6 @@ export const HANDLE_CURSORS: Record<Handle, string> = {
   e: "ew-resize",
   w: "ew-resize",
 };
-
-const round = (v: number) => Math.round(v * 100) / 100;
 
 /** Handle position on a (screen or doc) box. */
 export const handlePoint = (box: Box, handle: Handle) => ({
@@ -54,8 +53,9 @@ export const resizeBox = (
   handle: Handle,
   dx: number,
   dy: number,
-  opts: { shift?: boolean; alt?: boolean } = {},
+  opts: { shift?: boolean; alt?: boolean; snap?: boolean } = {},
 ): Box => {
+  const round = (v: number) => roundPx(v, opts.snap ?? false);
   const sx = handle.includes("e") ? 1 : handle.includes("w") ? -1 : 0;
   const sy = handle.includes("s") ? 1 : handle.includes("n") ? -1 : 0;
   const k = opts.alt ? 2 : 1;
@@ -86,7 +86,12 @@ export const resizeBox = (
       : sy === 1
         ? start.y
         : start.y + start.height - height;
-  return { x: round(x), y: round(y), width: round(width), height: round(height) };
+  return {
+    x: round(x),
+    y: round(y),
+    width: Math.max(1, round(width)),
+    height: Math.max(1, round(height)),
+  };
 };
 
 /** True when the parent frame positions its children itself (flex). */
@@ -117,26 +122,34 @@ export const moveOps = (
   ids: readonly string[],
   dx: number,
   dy: number,
+  snap = false,
 ): Op[] =>
   topmostSelected(startDoc, ids).flatMap((id): Op[] => {
     const node = findNode(startDoc, id);
     if (!node || isFlexChild(startDoc, id)) return [];
     const x = resolveNumber(node.x, startDoc.variables, 0);
     const y = resolveNumber(node.y, startDoc.variables, 0);
-    return [{ op: "update", id, props: { x: round(x + dx), y: round(y + dy) } }];
+    return [{ op: "update", id, props: { x: roundPx(x + dx, snap), y: roundPx(y + dy, snap) } }];
   });
 
 /** Absolute `update` op that resizes one node from its start state to `next` (doc coords). */
-export const resizeOps = (startDoc: PegoDocument, id: string, startBox: Box, next: Box): Op[] => {
+export const resizeOps = (
+  startDoc: PegoDocument,
+  id: string,
+  startBox: Box,
+  next: Box,
+  snap = false,
+): Op[] => {
   const node = findNode(startDoc, id);
   if (!node) return [];
   const props: Record<string, number> = { width: next.width, height: next.height };
   if (!isFlexChild(startDoc, id)) {
-    props.x = round(resolveNumber(node.x, startDoc.variables, 0) + next.x - startBox.x);
-    props.y = round(resolveNumber(node.y, startDoc.variables, 0) + next.y - startBox.y);
+    props.x = roundPx(resolveNumber(node.x, startDoc.variables, 0) + next.x - startBox.x, snap);
+    props.y = roundPx(resolveNumber(node.y, startDoc.variables, 0) + next.y - startBox.y, snap);
   }
   return [{ op: "update", id, props }];
 };
 
 /** `update` ops that shift selected nodes by (dx, dy) from the current document (nudge). */
-export const nudgeOps = moveOps;
+export const nudgeOps = (doc: PegoDocument, ids: readonly string[], dx: number, dy: number): Op[] =>
+  moveOps(doc, ids, dx, dy, false);

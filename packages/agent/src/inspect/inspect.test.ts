@@ -625,3 +625,36 @@ describe("skills and styles", () => {
     expect((await call(host, "get_style", { name: "nope" })).json.error.code).toBe("unknown_style");
   });
 });
+
+describe("contrast background", () => {
+  const contrastIssues = (children: unknown[]) =>
+    issuesOf(children).filter((issue) => issue.issue.includes("contrast"));
+
+  test("text on a shape drawn below it is measured against that shape", () => {
+    // White text over a red frame, both on a white page (the earlier false positive).
+    const page = (redFirst: boolean) => {
+      const red = frame("red", { x: 0, y: 0, width: 400, height: 120, fill: "#C13333" });
+      const label = text("label", "PEGO", { x: 20, y: 20, fill: "#FFFFFF", fontSize: 48 });
+      return [
+        frame(
+          "page",
+          { width: 800, height: 400, fill: "#FFFFFF" },
+          redFirst ? [red, label] : [label, red],
+        ),
+      ];
+    };
+    expect(contrastIssues(page(true))).toEqual([]);
+    // A shape drawn above the text does not count as its background.
+    expect(contrastIssues(page(false)).map((issue) => issue.nodeId)).toEqual(["label"]);
+  });
+
+  test("shapes that only partly cover the text are ignored", () => {
+    const issues = contrastIssues([
+      frame("page", { width: 800, height: 400, fill: "#FFFFFF" }, [
+        rect("chip", { x: 0, y: 0, width: 30, height: 30, fill: "#000000" }),
+        text("label", "Readable?", { x: 10, y: 10, fill: "#FFFFFF" }),
+      ]),
+    ]);
+    expect(issues.map((issue) => issue.nodeId)).toEqual(["label"]);
+  });
+});

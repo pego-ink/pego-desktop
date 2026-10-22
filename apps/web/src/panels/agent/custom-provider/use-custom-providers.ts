@@ -13,7 +13,7 @@ import { useAgentStore } from "@/agent/use-agent-store";
 import { staleCustomSelection } from "@/panels/agent/custom-provider/provider-form";
 
 /**
- * Custom providers as the panel sees them, shared by the composer popover and Model settings so
+ * Custom providers as the panel sees them, shared by the composer popover and the settings page so
  * an add/edit/delete in one shows in the other. Storage is the source of truth; this is a cache.
  */
 type ProvidersState = {

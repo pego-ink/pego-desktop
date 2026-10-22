@@ -1,7 +1,7 @@
-import type { Layout, PegoDocument } from "@pego/doc";
+import { findRenderedNode, type Layout, type PegoDocument } from "@pego/doc";
 import type { ToolImage } from "@pego/agent";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
-import { findRenderedNode, renderDocument } from "@/canvas/render-document";
+import { renderDocument } from "@/canvas/render-document";
 
 /** Anthropic downsizes images above ~1568 px on the long edge, so that is the default cap. */
 export const DEFAULT_MAX_IMAGE_SIZE = 1568;
@@ -49,7 +49,8 @@ export const bytesToBase64 = (bytes: Uint8Array): string => {
  * Render one node (and its subtree) to a PNG on a separate raster surface, so it works while
  * the editor canvas is live. The node is drawn as `renderDocument` draws it with `rootId`:
  * upright at the origin, ancestors' transforms/clip/opacity not applied, on the editor's solid
- * background (#141418) so both light and dark content stay readable.
+ * background (#141418) so both light and dark content stay readable, unless `background` says
+ * otherwise (null = transparent, for exports).
  * Throws on an unknown node, a node without size, or an encoding failure.
  */
 export const renderNodeImage = (
@@ -57,7 +58,7 @@ export const renderNodeImage = (
   doc: PegoDocument,
   layout: Layout,
   nodeId: string,
-  options: { scale?: number; maxSize?: number } = {},
+  options: { scale?: number; maxSize?: number; background?: string | null } = {},
 ): ToolImage => {
   const node = findRenderedNode(doc, nodeId);
   const box = node && layout.get(node.id);
@@ -74,7 +75,7 @@ export const renderNodeImage = (
       doc,
       layout,
       { panX: 0, panY: 0, zoom: scale },
-      { rootId: nodeId },
+      { rootId: nodeId, background: options.background },
     );
     surface.flush();
     const image = surface.makeImageSnapshot();

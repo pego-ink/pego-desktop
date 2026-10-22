@@ -2,15 +2,15 @@ import { useState } from "react";
 import { PencilIcon, PlusIcon, ServerIcon, Trash2Icon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import type { CustomProvider } from "@/agent/providers/types";
-import { useAgentStore } from "@/agent/use-agent-store";
-import { ProviderFormDialog } from "@/panels/agent/custom-provider/ProviderForm";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
+import { ProviderForm } from "@/panels/agent/custom-provider/ProviderForm";
 import { KIND_LABEL, providerSummary } from "@/panels/agent/custom-provider/provider-form";
 import {
   removeProvider,
   useCustomProviders,
 } from "@/panels/agent/custom-provider/use-custom-providers";
-import { isRunActive } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
+import { Section } from "@/panels/settings/agent/Section";
 
 const ProviderRow = ({
   provider,
@@ -20,7 +20,7 @@ const ProviderRow = ({
   onEdit: (provider: CustomProvider) => void;
 }) => {
   const active = useAgentStore((s) => s.backend === "custom" && s.customProviderId === provider.id);
-  const locked = useAgentStore((s) => isRunActive(s.status));
+  const locked = useAgentStore((s) => selectRunsActive(s) > 0);
   const setCustomProvider = useAgentStore((s) => s.setCustomProvider);
   const [confirming, setConfirming] = useState(false);
   const titleId = `cp-${provider.id}`;
@@ -107,53 +107,63 @@ const ProviderRow = ({
 };
 
 type CustomProvidersSectionProps = {
-  /** Open the add form right away (from the composer's "Add provider…"). */
+  /** Open the add form (from the composer's "Add provider…"). */
   startAdding: boolean;
+  flashing: boolean;
 };
 
-/** Model settings: the user's own OpenAI- and Anthropic-compatible providers. */
-export const CustomProvidersSection = ({ startAdding }: CustomProvidersSectionProps) => {
+/** The form is closed, adding a provider, or editing one. */
+type FormState = { mode: "closed" } | { mode: "add" } | { mode: "edit"; provider: CustomProvider };
+
+/** The user's own OpenAI- and Anthropic-compatible providers, with the add/edit form inline. */
+export const CustomProvidersSection = ({ startAdding, flashing }: CustomProvidersSectionProps) => {
   const { providers, loaded } = useCustomProviders();
-  // `editing` outlives `open` so the form keeps its title while the dialog animates out.
-  const [form, setForm] = useState<{ editing: CustomProvider | null; open: boolean }>({
-    editing: null,
-    open: startAdding,
-  });
+  const [form, setForm] = useState<FormState>({ mode: "closed" });
+
+  // Open the form when a deep link asks for it (adjusting state during render, not in an effect).
+  const [seenAdding, setSeenAdding] = useState(false);
+  if (startAdding !== seenAdding) {
+    setSeenAdding(startAdding);
+    if (startAdding) setForm({ mode: "add" });
+  }
+
+  const close = () => setForm({ mode: "closed" });
 
   return (
-    <section aria-label="Custom providers" className="grid gap-2">
-      <div className="flex items-center gap-2">
-        <h3 className="px-0.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-          Custom providers
-        </h3>
-        <Button
-          size="xs"
-          variant="secondary"
-          className="ml-auto"
-          onClick={() => setForm({ editing: null, open: true })}
-        >
-          <PlusIcon aria-hidden />
-          Add provider
-        </Button>
-      </div>
+    <Section
+      id="custom-providers"
+      title="Custom providers"
+      description="Your own OpenAI- or Anthropic-compatible endpoints."
+      flashing={flashing}
+      action={
+        form.mode === "add" ? null : (
+          <Button size="xs" variant="secondary" onClick={() => setForm({ mode: "add" })}>
+            <PlusIcon aria-hidden />
+            Add provider
+          </Button>
+        )
+      }
+    >
+      {form.mode === "closed" ? null : (
+        <ProviderForm
+          key={form.mode === "edit" ? form.provider.id : "add"}
+          editing={form.mode === "edit" ? form.provider : null}
+          onClose={close}
+        />
+      )}
       {providers.map((provider) => (
         <ProviderRow
           key={provider.id}
           provider={provider}
-          onEdit={(editing) => setForm({ editing, open: true })}
+          onEdit={(editing) => setForm({ mode: "edit", provider: editing })}
         />
       ))}
-      {loaded && providers.length === 0 ? (
+      {loaded && providers.length === 0 && form.mode === "closed" ? (
         <p className="text-[11px] leading-4 text-muted-foreground">
           Add OpenRouter, DeepSeek, Groq, a local Ollama or LM Studio server, or any
           Anthropic-compatible gateway.
         </p>
       ) : null}
-      <ProviderFormDialog
-        open={form.open}
-        onOpenChange={(open) => setForm((current) => ({ ...current, open }))}
-        editing={form.editing}
-      />
-    </section>
+    </Section>
   );
 };

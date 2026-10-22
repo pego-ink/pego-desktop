@@ -1,30 +1,50 @@
-import type { Canvas as SkCanvas, Paint, Paragraph } from "canvaskit-wasm";
-import type { Box, Layout } from "@pego/doc";
+import type { Canvas as SkCanvas, Paint, Paragraph, Path } from "canvaskit-wasm";
+import type { Box, Layout, PegoDocument } from "@pego/doc";
+import type { AgentFocusGroup } from "@/agent/focus-groups";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
+import { buildNodeOutline } from "@/canvas/node-outline";
 import { createLruCache } from "@/canvas/render-cache";
 import { docToScreen, type Camera } from "@/canvas/types";
-import { HANDLES, handlePoint } from "@/interaction/transform";
+import type { Segment } from "@/interaction/drag-target";
+import type { Affine } from "@/canvas/node-transform";
+import {
+  frameAxes,
+  frameCorners,
+  frameHandlePoint,
+  getSelectionFrame,
+  labelAnchor,
+  toScreenMatrix,
+  topmostCorner,
+  type SelectionFrame,
+} from "@/interaction/selection-frame";
+import { HANDLES } from "@/interaction/transform";
 
 export const ACCENT = "#B79CFF";
 const LABEL_TEXT = "#141418";
 const HANDLE_SIZE = 8;
+/** Hover outline width in screen px, constant at every zoom. */
+const HOVER_STROKE_WIDTH = 2;
+/** Auto-layout insertion line width in screen px. */
+const DROP_LINE_WIDTH = 2;
 
 export type OverlayState = {
+  doc: PegoDocument;
   layout: Layout;
   camera: Camera;
   selection: readonly string[];
   hoveredId: string | null;
   /** Marquee in document coordinates. */
   marquee: Box | null;
-  /** Nodes the agent is working on right now (empty when no run is active). */
-  agentFocusIds?: readonly string[];
+  /** Insertion line in document coordinates while a node is dragged inside an auto-layout frame. */
+  dropLine?: Segment | null;
+  /** Nodes each running agent is working on right now, one tinted group per run. */
+  agentFocus?: readonly AgentFocusGroup[];
   /** Hide the selection box, handles and size label (e.g. while a path is in pen edit mode). */
   suppressSelection?: boolean;
   /** `performance.now()` for the agent focus animation; omit for a static box (reduced motion). */
   time?: number;
 };
 
-const AGENT_FOCUS_FILL = "#B79CFF";
 const DASH: number[] = [5, 4];
 const DASH_PERIOD = DASH[0]! + DASH[1]!;
 /** Dash travel speed (ms per px) and fill pulse period (ms) of the agent focus box. */
@@ -38,6 +58,8 @@ type Kit = {
   stroke: Paint;
   colors: Map<string, Float32Array>;
   paragraphs: ReturnType<typeof createLruCache<Paragraph>>;
+  /** Document-space outline of the last hovered node; rebuilt only when doc, layout or id change. */
+  hover: { doc: PegoDocument; layout: Layout; id: string; path: Path | null } | null;
 };
 
 const kits = new WeakMap<CanvasKitResources, Kit>();
@@ -58,6 +80,7 @@ const getKit = (res: CanvasKitResources): Kit => {
     stroke: make("stroke"),
     colors: new Map(),
     paragraphs: createLruCache<Paragraph>(64),
+    hover: null,
   };
   kits.set(res, kit);
   return kit;
@@ -99,6 +122,46 @@ const getLabel = (res: CanvasKitResources, text: string, fontSize: number): Para
   }
 };
 
+/** The hovered node's outline, cached across frames so pointer moves do not rebuild paths. */
+const getHoverOutline = (
+  res: CanvasKitResources,
+  doc: PegoDocument,
+  layout: Layout,
+  id: string,
+): Path | null => {
+  const kit = getKit(res);
+  const cached = kit.hover;
+  if (cached && cached.doc === doc && cached.layout === layout && cached.id === id)
+    return cached.path;
+  cached?.path?.delete();
+  const path = buildNodeOutline(res.ck, doc, layout, id);
+  kit.hover = { doc, layout, id, path };
+  return path;
+};
+
+/** Stroke the hovered node's real (transformed) outline at a fixed screen width. */
+const drawHover = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  doc: PegoDocument,
+  layout: Layout,
+  camera: Camera,
+  id: string,
+) => {
+  const path = getHoverOutline(res, doc, layout, id);
+  if (!path) return;
+  const { stroke } = getKit(res);
+  // The path lives in document space: scale the canvas and divide the width back out so the
+  // line stays HOVER_STROKE_WIDTH screen px wide.
+  stroke.setStrokeWidth(HOVER_STROKE_WIDTH / camera.zoom);
+  stroke.setColor(colorOf(res, ACCENT));
+  canvas.save();
+  canvas.translate(camera.panX, camera.panY);
+  canvas.scale(camera.zoom, camera.zoom);
+  canvas.drawPath(path, stroke);
+  canvas.restore();
+};
+
 const toScreenBox = (camera: Camera, box: Box): Box => ({
   ...docToScreen(camera, box.x, box.y),
   width: box.width * camera.zoom,
@@ -124,17 +187,52 @@ const fillRect = (res: CanvasKitResources, canvas: SkCanvas, box: Box, color: st
   canvas.drawRect(res.ck.XYWHRect(box.x, box.y, box.width, box.height), fill);
 };
 
-const drawHandles = (res: CanvasKitResources, canvas: SkCanvas, box: Box) => {
+/** Run `draw` with the canvas transformed by `m` (local -> screen), then restore. */
+const withMatrix = (canvas: SkCanvas, m: Affine, draw: () => void) => {
+  canvas.save();
+  canvas.concat([m.a, m.c, m.e, m.b, m.d, m.f, 0, 0, 1]);
+  draw();
+  canvas.restore();
+};
+
+/** The node's box as a rotated rectangle: drawn in local space, so the stroke is divided by zoom. */
+const drawFrameOutline = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  frame: SelectionFrame,
+  screen: Affine,
+  zoom: number,
+) =>
+  withMatrix(canvas, screen, () =>
+    strokeRect(
+      res,
+      canvas,
+      { x: 0, y: 0, width: frame.box.width, height: frame.box.height },
+      ACCENT,
+      1.5 / zoom,
+    ),
+  );
+
+/** Handles sit on the rotated corners/edges and are squares aligned to the node's axes. */
+const drawHandles = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  frame: SelectionFrame,
+  screen: Affine,
+) => {
+  const { ux, uy } = frameAxes(screen);
+  const rect = {
+    x: -HANDLE_SIZE / 2,
+    y: -HANDLE_SIZE / 2,
+    width: HANDLE_SIZE,
+    height: HANDLE_SIZE,
+  };
   for (const handle of HANDLES) {
-    const c = handlePoint(box, handle);
-    const rect = {
-      x: c.x - HANDLE_SIZE / 2,
-      y: c.y - HANDLE_SIZE / 2,
-      width: HANDLE_SIZE,
-      height: HANDLE_SIZE,
-    };
-    fillRect(res, canvas, rect, "#FFFFFF");
-    strokeRect(res, canvas, rect, ACCENT, 1.5);
+    const c = frameHandlePoint(screen, frame.box.width, frame.box.height, handle);
+    withMatrix(canvas, { a: ux.x, b: ux.y, c: uy.x, d: uy.y, e: c.x, f: c.y }, () => {
+      fillRect(res, canvas, rect, "#FFFFFF");
+      strokeRect(res, canvas, rect, ACCENT, 1.5);
+    });
   }
 };
 
@@ -146,59 +244,94 @@ const drawPill = (
   fontSize: number,
   pad: { x: number; y: number },
   place: (width: number, height: number) => { x: number; y: number },
+  color: string = ACCENT,
 ) => {
   const paragraph = getLabel(res, text, fontSize);
   const w = paragraph.getLongestLine() + pad.x * 2;
   const h = paragraph.getHeight() + pad.y * 2;
   const { x, y } = place(w, h);
   const { fill } = getKit(res);
-  fill.setColor(colorOf(res, ACCENT));
+  fill.setColor(colorOf(res, color));
   canvas.drawRRect(res.ck.RRectXY(res.ck.XYWHRect(x, y, w, h), 4, 4), fill);
   canvas.drawParagraph(paragraph, x + pad.x, y + pad.y);
 };
 
-const drawSizeLabel = (res: CanvasKitResources, canvas: SkCanvas, box: Box, docBox: Box) =>
+/** Horizontal size label (the node's own, unrotated size) below the lowest point of the box. */
+const drawSizeLabel = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  anchor: { x: number; y: number },
+  docBox: Box,
+) =>
   drawPill(
     res,
     canvas,
     `${Math.round(docBox.width)} × ${Math.round(docBox.height)}`,
     11,
     { x: 6, y: 3 },
-    (w) => ({ x: box.x + box.width / 2 - w / 2, y: box.y + box.height + HANDLE_SIZE + 4 }),
+    (w) => ({ x: anchor.x - w / 2, y: anchor.y + HANDLE_SIZE + 4 }),
   );
 
-/** Small "Agent" pill sitting on the top-left edge of a focused box. */
-const drawAgentTag = (res: CanvasKitResources, canvas: SkCanvas, box: Box) =>
-  drawPill(res, canvas, "Agent", 10, { x: 6, y: 2 }, (_w, h) => ({ x: box.x, y: box.y - h - 3 }));
+/** Small pill (the run's session title) sitting above a focused box's topmost corner. */
+const drawAgentTag = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  corner: { x: number; y: number },
+  label: string,
+  color: string,
+) =>
+  drawPill(
+    res,
+    canvas,
+    label,
+    10,
+    { x: 6, y: 2 },
+    (_w, h) => ({ x: corner.x, y: corner.y - h - 3 }),
+    color,
+  );
 
 const drawAgentFocus = (
   res: CanvasKitResources,
   canvas: SkCanvas,
+  doc: PegoDocument,
   layout: Layout,
   camera: Camera,
-  ids: readonly string[],
+  { ids, color, label }: AgentFocusGroup,
   time: number | undefined,
 ) => {
   const { ck } = res;
   const { fill, stroke } = getKit(res);
+  const { zoom } = camera;
   const animated = time !== undefined;
   const pulse = animated ? 0.5 + 0.5 * Math.sin((time * 2 * Math.PI) / PULSE_PERIOD_MS) : 0.5;
-  const dash = ck.PathEffect.MakeDash(DASH, animated ? (time / DASH_MS_PER_PX) % DASH_PERIOD : 0);
+  // The box is drawn in node-local space (scaled by zoom), so dashes are specified in local units.
+  const dash = ck.PathEffect.MakeDash(
+    DASH.map((v) => v / zoom),
+    (animated ? (time / DASH_MS_PER_PX) % DASH_PERIOD : 0) / zoom,
+  );
   try {
     for (const id of ids) {
-      const box = layout.get(id);
-      if (!box) continue;
-      const screen = toScreenBox(camera, box);
-      const rect = ck.XYWHRect(screen.x, screen.y, screen.width, screen.height);
-      fill.setColor(colorOf(res, AGENT_FOCUS_FILL));
-      fill.setAlphaf(FOCUS_FILL_ALPHA + (pulse - 0.5) * FOCUS_FILL_PULSE);
-      canvas.drawRect(rect, fill);
-      stroke.setStrokeWidth(1.5);
-      stroke.setColor(colorOf(res, ACCENT));
-      stroke.setPathEffect(dash);
-      canvas.drawRect(rect, stroke);
-      stroke.setPathEffect(null);
-      drawAgentTag(res, canvas, screen);
+      const frame = getSelectionFrame(doc, layout, id);
+      if (!frame) continue;
+      const screen = toScreenMatrix(camera, frame.matrix);
+      const rect = ck.XYWHRect(0, 0, frame.box.width, frame.box.height);
+      withMatrix(canvas, screen, () => {
+        fill.setColor(colorOf(res, color));
+        fill.setAlphaf(FOCUS_FILL_ALPHA + (pulse - 0.5) * FOCUS_FILL_PULSE);
+        canvas.drawRect(rect, fill);
+        stroke.setStrokeWidth(1.5 / zoom);
+        stroke.setColor(colorOf(res, color));
+        stroke.setPathEffect(dash);
+        canvas.drawRect(rect, stroke);
+        stroke.setPathEffect(null);
+      });
+      drawAgentTag(
+        res,
+        canvas,
+        topmostCorner(frameCorners(screen, frame.box.width, frame.box.height)),
+        label,
+        color,
+      );
     }
   } finally {
     stroke.setPathEffect(null);
@@ -206,43 +339,58 @@ const drawAgentFocus = (
   }
 };
 
+/** Insertion line between auto-layout siblings, drawn as a fixed-width screen-space stroke. */
+const drawDropLine = (res: CanvasKitResources, canvas: SkCanvas, camera: Camera, line: Segment) => {
+  const a = docToScreen(camera, line.x1, line.y1);
+  const b = docToScreen(camera, line.x2, line.y2);
+  const { stroke } = getKit(res);
+  stroke.setStrokeWidth(DROP_LINE_WIDTH);
+  stroke.setColor(colorOf(res, ACCENT));
+  canvas.drawLine(a.x, a.y, b.x, b.y, stroke);
+};
+
 /** Editor chrome in screen space (CSS px; the caller applies the device pixel ratio). */
 export const renderOverlay = (
   res: CanvasKitResources,
   canvas: SkCanvas,
   {
+    doc,
     layout,
     camera,
     selection,
     hoveredId,
     marquee,
-    agentFocusIds,
+    dropLine,
+    agentFocus,
     suppressSelection,
     time,
   }: OverlayState,
 ) => {
-  if (agentFocusIds && agentFocusIds.length > 0)
-    drawAgentFocus(res, canvas, layout, camera, agentFocusIds, time);
+  for (const group of agentFocus ?? []) {
+    if (group.ids.length > 0) drawAgentFocus(res, canvas, doc, layout, camera, group, time);
+  }
 
   if (!suppressSelection) {
-    if (hoveredId && !selection.includes(hoveredId)) {
-      const box = layout.get(hoveredId);
-      if (box) strokeRect(res, canvas, toScreenBox(camera, box), ACCENT, 1);
-    }
+    if (hoveredId && !selection.includes(hoveredId))
+      drawHover(res, canvas, doc, layout, camera, hoveredId);
 
     for (const id of selection) {
-      const box = layout.get(id);
-      if (box) strokeRect(res, canvas, toScreenBox(camera, box), ACCENT, 1.5);
+      const frame = getSelectionFrame(doc, layout, id);
+      if (frame)
+        drawFrameOutline(res, canvas, frame, toScreenMatrix(camera, frame.matrix), camera.zoom);
     }
 
     const [only] = selection;
-    const single = selection.length === 1 && only ? layout.get(only) : undefined;
+    const single = selection.length === 1 && only ? getSelectionFrame(doc, layout, only) : null;
     if (single) {
-      const screen = toScreenBox(camera, single);
-      drawHandles(res, canvas, screen);
-      drawSizeLabel(res, canvas, screen, single);
+      const screen = toScreenMatrix(camera, single.matrix);
+      drawHandles(res, canvas, single, screen);
+      const corners = frameCorners(screen, single.box.width, single.box.height);
+      drawSizeLabel(res, canvas, labelAnchor(corners), single.box);
     }
   }
+
+  if (dropLine) drawDropLine(res, canvas, camera, dropLine);
 
   if (marquee) {
     const screen = toScreenBox(camera, marquee);

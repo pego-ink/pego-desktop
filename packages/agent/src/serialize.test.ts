@@ -3,47 +3,56 @@ import { documentSchema, sampleDoc, type PegoDocument } from "@pego/doc";
 import { serializeDocument } from "./serialize";
 
 const doc: PegoDocument = documentSchema.parse({
-  version: 0,
+  version: 3,
   id: "d",
   name: "App",
   variables: { gap: { type: "number", value: 8 }, accent: { type: "color", value: "#0E7C5A" } },
   children: [
     {
-      type: "frame",
-      id: "page",
-      name: "Page",
-      x: 10,
+      type: "page",
+      id: "page-1",
+      name: "Page 1",
+      x: 0,
       y: 0,
-      width: 400,
-      layout: "vertical",
-      gap: "$gap",
-      padding: [8, 16, 8, 16],
       children: [
         {
           type: "frame",
-          id: "btn",
-          name: "Button",
-          reusable: true,
-          width: "fit_content",
-          layout: "horizontal",
-          fill: "$accent",
-          x: 99,
+          id: "page",
+          name: "Page",
+          x: 10,
+          y: 0,
+          width: 400,
+          layout: "vertical",
+          gap: "$gap",
+          padding: [8, 16, 8, 16],
           children: [
             {
-              type: "text",
-              id: "label",
-              content: "Buy now",
-              fontSize: 14,
-              fontStyle: "italic",
+              type: "frame",
+              id: "btn",
+              name: "Button",
+              reusable: true,
+              width: "fit_content",
+              layout: "horizontal",
+              fill: "$accent",
+              x: 99,
+              children: [
+                {
+                  type: "text",
+                  id: "label",
+                  content: "Buy now",
+                  fontSize: 14,
+                  fontStyle: "italic",
+                },
+                { type: "icon", id: "ic", iconSet: "lucide", iconName: "arrow-right" },
+              ],
             },
-            { type: "icon", id: "ic", iconSet: "lucide", iconName: "arrow-right" },
+            { type: "ref", id: "b2", ref: "btn", descendants: { label: { content: "Go" } } },
+            { type: "path", id: "p", geometry: "M0 0 L10 10 ".repeat(20) },
           ],
         },
-        { type: "ref", id: "b2", ref: "btn", descendants: { label: { content: "Go" } } },
-        { type: "path", id: "p", geometry: "M0 0 L10 10 ".repeat(20) },
+        { type: "group", id: "g", x: 5, children: [{ type: "ellipse", id: "e", x: 3, width: 4 }] },
       ],
     },
-    { type: "group", id: "g", x: 5, children: [{ type: "ellipse", id: "e", x: 3, width: 4 }] },
   ],
 });
 
@@ -90,7 +99,7 @@ describe("serializeDocument", () => {
 
   test("rootId scopes, maxDepth summarizes", () => {
     const sub = serializeDocument(doc, { rootId: "btn" });
-    expect(sub).toContain("scope: btn (parent page, index 0)");
+    expect(sub).toContain("scope: btn (parent page, index 0, page page-1)");
     expect(sub).not.toContain("group#g");
     expect(sub).not.toContain("x=99");
     const shallow = serializeDocument(doc, { maxDepth: 0 });
@@ -113,29 +122,35 @@ describe("serializeDocument", () => {
 
 describe("serializeDocument image nodes", () => {
   const withImage = documentSchema.parse({
-    version: 0,
+    version: 3,
     id: "d",
     name: "Img",
     variables: {},
     children: [
       {
-        type: "image",
-        id: "pic",
-        src: `data:image/png;base64,${"A".repeat(4096)}`,
-        fit: "crop",
-        alt: "A cat",
-        width: 100,
-        height: 50,
-      },
-      { type: "image", id: "remote", src: "https://example.com/a.png", width: 10, height: 10 },
-      {
-        type: "path",
-        id: "arrow",
-        geometry: "M0 0L10 10",
-        strokeCap: "round",
-        endMarker: "arrow",
-        width: 10,
-        height: 10,
+        type: "page",
+        id: "page-1",
+        children: [
+          {
+            type: "image",
+            id: "pic",
+            src: `data:image/png;base64,${"A".repeat(4096)}`,
+            fit: "crop",
+            alt: "A cat",
+            width: 100,
+            height: 50,
+          },
+          { type: "image", id: "remote", src: "https://example.com/a.png", width: 10, height: 10 },
+          {
+            type: "path",
+            id: "arrow",
+            geometry: "M0 0L10 10",
+            strokeCap: "round",
+            endMarker: "arrow",
+            width: 10,
+            height: 10,
+          },
+        ],
       },
     ],
   });
@@ -153,5 +168,93 @@ describe("serializeDocument image nodes", () => {
   test("lists new path props", () => {
     expect(text).toContain("strokeCap=round");
     expect(text).toContain("endMarker=arrow");
+  });
+});
+
+describe("serializeDocument v1 props", () => {
+  const v1: PegoDocument = documentSchema.parse({
+    version: 3,
+    id: "d",
+    name: "Effects",
+    children: [
+      {
+        type: "page",
+        id: "page-1",
+        name: "Page 1",
+        x: 0,
+        y: 0,
+        children: [
+          {
+            type: "frame",
+            id: "card",
+            stroke: { color: "#E5E7EB", width: [0, 0, 1, 0] },
+            effects: [
+              { type: "shadow", color: "#0000001F", y: 8, blur: 24 },
+              { type: "shadow", inner: true, color: "#FFFFFF", blur: 2, spread: 1 },
+              { type: "blur", radius: 4 },
+            ],
+            children: [
+              { type: "text", id: "t", content: "Hi", lineHeight: 1.5, letterSpacing: -0.2 },
+              { type: "path", id: "p", geometry: "M0 0L24 24", viewBox: [0, 0, 24, 24] },
+            ],
+          },
+        ],
+      },
+    ],
+  });
+  const text = serializeDocument(v1);
+
+  test("shows per-side strokes and effects compactly", () => {
+    expect(text).toContain("stroke=#E5E7EB:[0,0,1,0]");
+    expect(text).toContain(
+      "effects=shadow(0,8,24,#0000001F)+inner-shadow(0,0,2,1,#FFFFFF)+blur(4)",
+    );
+  });
+
+  test("shows text spacing and path viewBox", () => {
+    expect(text).toContain("lineHeight=1.5 letterSpacing=-0.2");
+    expect(text).toContain("viewBox=[0,0,24,24]");
+  });
+});
+
+describe("serializeDocument fills", () => {
+  test("gradients inline, images by size", () => {
+    const text = serializeDocument(
+      documentSchema.parse({
+        version: 3,
+        id: "d",
+        name: "Fills",
+        children: [
+          {
+            type: "page",
+            id: "page-1",
+            name: "Page 1",
+            x: 0,
+            y: 0,
+            children: [
+              {
+                type: "rectangle",
+                id: "g",
+                fill: {
+                  type: "linear",
+                  angle: 90,
+                  stops: [
+                    { color: "#000000", position: 0 },
+                    { color: "$accent", position: 1 },
+                  ],
+                },
+              },
+              {
+                type: "rectangle",
+                id: "i",
+                fill: { type: "image", src: `data:image/png;base64,${"A".repeat(4096)}` },
+              },
+            ],
+          },
+        ],
+      }),
+    );
+    expect(text).toContain("fill=linear(90,#000000 0,$accent 1)");
+    expect(text).toContain("fill=image(cover,3KB)");
   });
 });

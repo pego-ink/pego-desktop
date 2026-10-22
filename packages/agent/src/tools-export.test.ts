@@ -31,6 +31,42 @@ describe("export_code", () => {
     expect((await run("export_code", { nodeId: "page", format: "vue" }, host)).isError).toBe(true);
   });
 
+  test("exports a node on a non-first page, rejects a page", async () => {
+    const doc = {
+      ...exportDoc,
+      children: [
+        ...exportDoc.children,
+        {
+          type: "page" as const,
+          id: "page-2",
+          name: "Page 2",
+          x: 0,
+          y: 0,
+          children: [
+            {
+              type: "frame" as const,
+              id: "second",
+              x: 0,
+              y: 0,
+              width: 80,
+              height: 40,
+              layout: "none" as const,
+              fill: "#123456",
+              children: [],
+            },
+          ],
+        },
+      ],
+    };
+    const host = createFakeHost(doc);
+    const ok = await run("export_code", { nodeId: "second", format: "html-css" }, host);
+    expect(ok.isError).toBe(false);
+    expect(ok.content).toContain("#123456");
+    const page = await run("export_code", { nodeId: "page-2", format: "html-css" }, host);
+    expect(page.isError).toBe(true);
+    expect(page.content).toContain("is a page");
+  });
+
   test("truncates long output with a note", () => {
     const { files, truncated } = truncateFiles(
       [

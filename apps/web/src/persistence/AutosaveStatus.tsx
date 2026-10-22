@@ -26,6 +26,7 @@ const SR_TEXT = {
   saved: "Saved",
   "needs-permission": "Auto save needs permission",
   paused: "Auto save paused",
+  offline: "Bridge offline, changes kept in this browser",
 } as const;
 
 /** Save state, shown as the muted subtitle under the file name. */
@@ -33,14 +34,19 @@ export const AutosaveStatus = () => {
   const status = useAutosaveStore((s) => s.status);
   const enabled = useAutosaveStore((s) => s.enabled);
   const handle = useFileStore((s) => s.handle);
-  // Without a handle nothing autosaves to disk, unless the browser can only download anyway.
+  const bridgePath = useFileStore((s) => s.bridgePath);
+  // Without a handle or a bridge file nothing autosaves to disk, unless the browser can only
+  // download anyway.
   const supported = isFileAutosaveSupported();
-  const untitled = useFileStore((s) => s.handle === null && (s.fileName === null || supported));
+  const untitled = useFileStore(
+    (s) => s.handle === null && s.bridgePath === null && (s.fileName === null || supported),
+  );
   const dirty = useIsDirty();
   const savedMounted = useFadeOut(status === "saved");
 
-  const fileAutosave = enabled && supported && handle !== null && status !== "needs-permission";
-  const showDot = dirty && !(fileAutosave && status !== "paused");
+  const writable = (supported && handle !== null) || bridgePath !== null;
+  const fileAutosave = enabled && writable && status !== "needs-permission";
+  const showDot = dirty && !(fileAutosave && status !== "paused" && status !== "offline");
 
   return (
     <span className="flex min-w-0 items-center gap-1.5 text-[11px] leading-4 text-muted-foreground">
@@ -89,6 +95,15 @@ export const AutosaveStatus = () => {
             Retry
           </Button>
         </>
+      ) : null}
+      {status === "offline" ? (
+        <span
+          aria-hidden
+          className="truncate"
+          title="Saves to the project file once the bridge is back"
+        >
+          Bridge offline
+        </span>
       ) : null}
       {untitled ? (
         <span aria-hidden className="truncate">

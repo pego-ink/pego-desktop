@@ -59,7 +59,7 @@ function ColorField({
       )}
     >
       <label
-        className="relative size-4 shrink-0 cursor-pointer overflow-hidden rounded-[4px] border border-white/15"
+        className="relative size-4 shrink-0 cursor-pointer overflow-hidden rounded-[4px] border border-border"
         style={{ background: mixed || !value ? undefined : value }}
       >
         <input

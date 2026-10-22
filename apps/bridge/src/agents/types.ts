@@ -2,6 +2,9 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { AgentAttachment } from "../attachments";
 import type { LocalAgentId, LocalAgentInfo, RunEvent } from "@pego/agent";
 
+/** A steer message pushed into a running run (attachments already written to the workdir). */
+export type SteerMessage = { text: string; attachments?: AgentAttachment[] };
+
 /** What an adapter gets to run one prompt against the open document. */
 export type AgentRunContext = {
   runId: string;
@@ -29,11 +32,17 @@ export type AgentRunContext = {
    * `mcpUrl`). Only adapters that embed their agent (the Claude Agent SDK) need it.
    */
   createMcpServer?: () => McpServer;
+  /**
+   * Register the handler that receives steer messages while the run is live (adapters with
+   * `steer: "native"` only; others ignore it). The handler returns false once it can no longer
+   * accept messages (the run is ending). Messages sent before registration are replayed.
+   */
+  onSteer?: (handler: (steer: SteerMessage) => boolean) => void;
   signal: AbortSignal;
   emit: (event: RunEvent) => void;
 };
 
-export type AgentDetection = Omit<LocalAgentInfo, "id" | "name" | "supportsModels">;
+export type AgentDetection = Omit<LocalAgentInfo, "id" | "name" | "supportsModels" | "steer">;
 
 /**
  * One local agent CLI. Adapters must: never modify the user's global CLI config (write any
@@ -45,6 +54,8 @@ export type AgentAdapter = {
   id: LocalAgentId;
   name: string;
   supportsModels: boolean;
+  /** "native" when the adapter accepts `steer` mid-run; defaults to "restart". */
+  steer?: LocalAgentInfo["steer"];
   detect: (env: Record<string, string>) => Promise<AgentDetection>;
   listModels?: (env: Record<string, string>) => Promise<string[]>;
   /** Resolves when the run ends (emit `done` or `error` before resolving). */

@@ -64,6 +64,25 @@ export const TextSection = ({ nodes }: { nodes: readonly TextNode[] }) => {
         <div />
       </PropertyRow>
       <FontStyleControls nodes={nodes} catalogReady={catalogReady} />
+      <PropertyRow>
+        <PropNumber
+          nodes={nodes}
+          propKey="lineHeight"
+          label="LH"
+          labelTitle="Line height (multiple of font size, 0 = auto)"
+          min={0}
+          step={0.1}
+          history="Change line height"
+        />
+        <PropNumber
+          nodes={nodes}
+          propKey="letterSpacing"
+          label="LS"
+          labelTitle="Letter spacing"
+          step={0.1}
+          history="Change letter spacing"
+        />
+      </PropertyRow>
       <SegmentedControl
         aria-label="Text alignment"
         value={textAlign.kind === "same" ? textAlign.value : undefined}

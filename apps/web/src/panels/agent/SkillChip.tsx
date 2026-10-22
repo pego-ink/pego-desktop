@@ -4,7 +4,7 @@ import { skills } from "@pego/agent";
 import { Input } from "@pego/ui/components/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@pego/ui/components/popover";
 import { cn } from "@pego/ui/lib/utils";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
 import { navigateList } from "@/panels/agent/list-nav";
 import { isRunActive } from "@/panels/agent/agent-format";
 import {
@@ -69,7 +69,7 @@ export const SkillChip = ({ prompt, restoreFocusRef }: SkillChipProps) => {
   const selectedStyleId = useAgentStore((s) => s.selectedStyleId);
   const setSelected = useAgentStore((s) => s.setSelectedSkill);
   const setSelectedStyle = useAgentStore((s) => s.setSelectedStyle);
-  const locked = useAgentStore((s) => isRunActive(s.status));
+  const locked = useVisibleRun((s) => isRunActive(s.status));
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const debounced = useDebounced(prompt, DEBOUNCE_MS);

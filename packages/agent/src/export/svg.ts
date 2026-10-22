@@ -5,8 +5,12 @@ import {
   resolveColor,
   resolveInstance,
   resolveNumber,
+  resolveSides,
   resolveString,
   type Box,
+  type Effect,
+  type Fill,
+  type Stroke,
   type Layout,
   type PegoDocument,
   type PegoNode,
@@ -16,7 +20,8 @@ import { DEFAULT_FONT } from "./build";
 import { googleFontsUrl } from "./fonts";
 import { getIconProvider } from "./icons";
 import type { FontUse } from "./ir";
-import type { IconProvider } from "./types";
+import { paintDef, splitAlpha, type SvgDef } from "./svg-paint";
+import { PAGE_EXPORT_ERROR, type IconProvider } from "./types";
 
 const round = (n: number): number => Math.round(n * 100) / 100;
 const esc = (value: string): string =>
@@ -27,26 +32,14 @@ const AVG_GLYPH = 0.56;
 const LINE_HEIGHT = 1.21;
 const BASELINE = 0.97;
 
-type Paint = { color: string; opacity?: number };
-
-/** SVG 1.1 tools ignore `#rrggbbaa`, so split alpha into `*-opacity`. */
-const toPaint = (hex: string): Paint => {
-  const h = hex.toLowerCase();
-  if (/^#[0-9a-f]{4}$/.test(h)) {
-    const [, r, g, b, a] = h.split("") as [string, string, string, string, string];
-    return { color: `#${r}${r}${g}${g}${b}${b}`, opacity: round(parseInt(a + a, 16) / 255) };
-  }
-  if (/^#[0-9a-f]{8}$/.test(h)) {
-    return { color: h.slice(0, 7), opacity: round(parseInt(h.slice(7), 16) / 255) };
-  }
-  return { color: h };
-};
-
 const paintAttrs = (kind: "fill" | "stroke", hex: string | undefined): string => {
   if (!hex) return ` ${kind}="none"`;
-  const { color, opacity } = toPaint(hex);
+  const { color, opacity } = splitAlpha(hex);
   return ` ${kind}="${color}"${opacity !== undefined ? ` ${kind}-opacity="${opacity}"` : ""}`;
 };
+
+const serializeDef = (def: SvgDef): string =>
+  `<${def.tag}${def.attrs.map(([k, v]) => ` ${k}="${esc(v)}"`).join("")}>${def.children.map(serializeDef).join("")}</${def.tag}>`;
 
 type Ctx = {
   doc: PegoDocument;
@@ -55,6 +48,8 @@ type Ctx = {
   fonts: Map<string, FontUse>;
   defs: string[];
   clipCount: number;
+  /** Counter for unique paint and filter ids. */
+  idCount: number;
 };
 
 const num = (ctx: Ctx, value: number | string | undefined, fallback: number): number =>
@@ -63,13 +58,24 @@ const num = (ctx: Ctx, value: number | string | undefined, fallback: number): nu
 const color = (ctx: Ctx, value: string | undefined): string | undefined =>
   resolveColor(value, ctx.doc.variables);
 
-const strokeAttrs = (
-  ctx: Ctx,
-  stroke: { color: string; width?: number | string } | undefined,
-): string => {
+const strokeAttrs = (ctx: Ctx, stroke: Stroke | undefined): string => {
   const c = color(ctx, stroke?.color);
-  if (!stroke || !c) return "";
+  // Per-side widths are drawn separately by sideStrokes.
+  if (!stroke || !c || Array.isArray(stroke.width)) return "";
   return `${paintAttrs("stroke", c)} stroke-width="${round(num(ctx, stroke.width, 1))}"`;
+};
+
+const newId = (ctx: Ctx, prefix: string): string => `${prefix}${++ctx.idCount}`;
+
+/** Fill attribute for a shape; gradients and images go into <defs> as paint servers. */
+const fillAttrs = (ctx: Ctx, fill: Fill | undefined, w: number, h: number, minX = 0, minY = 0) => {
+  if (fill === undefined) return paintAttrs("fill", undefined);
+  if (typeof fill === "string") return paintAttrs("fill", color(ctx, fill));
+  const id = newId(ctx, "paint");
+  const angle = fill.type === "linear" ? num(ctx, fill.angle, 180) : 0;
+  const area = { x: minX, y: minY, width: w, height: h };
+  ctx.defs.push(serializeDef(paintDef(fill, id, area, angle, (c) => color(ctx, c))));
+  return ` fill="url(#${id})"`;
 };
 
 const addClip = (ctx: Ctx, w: number, h: number, radius: number): string => {
@@ -79,6 +85,126 @@ const addClip = (ctx: Ctx, w: number, h: number, radius: number): string => {
     `<clipPath id="${id}"><rect width="${round(w)}" height="${round(h)}"${r > 0 ? ` rx="${round(r)}"` : ""} /></clipPath>`,
   );
   return id;
+};
+
+/** Filter region large enough for blurred and offset results. */
+const FILTER_REGION =
+  'x="-50%" y="-50%" width="200%" height="200%" color-interpolation-filters="sRGB"';
+
+/** A filter drawing the node's shadows (outer below, inner above); "" when it has none. */
+const shadowFilter = (ctx: Ctx, effects: Effect[] | undefined): string => {
+  const outer: string[] = [];
+  const inner: string[] = [];
+  const parts: string[] = [];
+  (effects ?? []).forEach((effect, i) => {
+    if (effect.type !== "shadow") return;
+    const c = color(ctx, effect.color);
+    if (!c) return;
+    const { color: rgb, opacity = 1 } = splitAlpha(c);
+    const dx = round(num(ctx, effect.x, 0));
+    const dy = round(num(ctx, effect.y, 0));
+    // CSS blur radius is twice the gaussian standard deviation.
+    const sigma = round(num(ctx, effect.blur, 0) / 2);
+    const spread = num(ctx, effect.spread, 0);
+    const name = `s${i}`;
+    if (effect.inner) {
+      // Source alpha minus its shifted, blurred copy = the band just inside the edge.
+      parts.push(
+        `<feOffset in="SourceAlpha" dx="${dx}" dy="${dy}" result="${name}o"/>`,
+        spread > 0
+          ? `<feMorphology in="${name}o" operator="erode" radius="${round(spread)}" result="${name}o"/>`
+          : "",
+        `<feGaussianBlur in="${name}o" stdDeviation="${sigma}" result="${name}b"/>`,
+        `<feComposite in="SourceAlpha" in2="${name}b" operator="arithmetic" k2="1" k3="-1" result="${name}m"/>`,
+        `<feFlood flood-color="${rgb}" flood-opacity="${round(opacity)}"/>`,
+        `<feComposite in2="${name}m" operator="in" result="${name}"/>`,
+      );
+      inner.push(name);
+      return;
+    }
+    parts.push(
+      spread > 0
+        ? `<feMorphology in="SourceAlpha" operator="dilate" radius="${round(spread)}" result="${name}d"/>`
+        : "",
+      `<feOffset in="${spread > 0 ? `${name}d` : "SourceAlpha"}" dx="${dx}" dy="${dy}" result="${name}o"/>`,
+      `<feGaussianBlur in="${name}o" stdDeviation="${sigma}" result="${name}b"/>`,
+      `<feFlood flood-color="${rgb}" flood-opacity="${round(opacity)}"/>`,
+      `<feComposite in2="${name}b" operator="in" result="${name}"/>`,
+    );
+    outer.push(name);
+  });
+  if (outer.length === 0 && inner.length === 0) return "";
+  const merged = [...outer, "SourceGraphic", ...inner]
+    .map((name) => `<feMergeNode in="${name}"/>`)
+    .join("");
+  const id = newId(ctx, "fx");
+  ctx.defs.push(
+    `<filter id="${id}" ${FILTER_REGION}>${parts.filter(Boolean).join("")}<feMerge>${merged}</feMerge></filter>`,
+  );
+  return ` filter="url(#${id})"`;
+};
+
+/** A filter blurring the whole layer (the node and its children); "" without a blur effect. */
+const blurFilter = (ctx: Ctx, effects: Effect[] | undefined): string => {
+  const radius = (effects ?? []).reduce(
+    (sum, effect) => (effect.type === "blur" ? sum + num(ctx, effect.radius, 0) : sum),
+    0,
+  );
+  if (radius <= 0) return "";
+  const id = newId(ctx, "fx");
+  ctx.defs.push(
+    `<filter id="${id}" ${FILTER_REGION}><feGaussianBlur stdDeviation="${round(radius)}"/></filter>`,
+  );
+  return ` filter="url(#${id})"`;
+};
+
+const effectsOf = (node: PegoNode): Effect[] | undefined =>
+  "effects" in node ? node.effects : undefined;
+
+type Shape = { tag: "rect" | "ellipse"; attrs: string };
+
+/** Outline of a frame, rectangle, ellipse or image node in its own box. */
+const shapeOf = (ctx: Ctx, node: PegoNode, box: Box): Shape => {
+  if (node.type === "ellipse") {
+    return {
+      tag: "ellipse",
+      attrs: `cx="${round(box.width / 2)}" cy="${round(box.height / 2)}" rx="${round(box.width / 2)}" ry="${round(box.height / 2)}"`,
+    };
+  }
+  const radius =
+    node.type === "frame" || node.type === "rectangle" || node.type === "image"
+      ? num(ctx, node.cornerRadius, 0)
+      : 0;
+  return { tag: "rect", attrs: rectAttrs(box, radius) };
+};
+
+/**
+ * Per-side strokes as filled bars along the box edges, clipped to the shape's outline so they
+ * follow rounded corners. Uniform strokes are drawn on the shape itself.
+ */
+const sideStrokes = (ctx: Ctx, node: PegoNode, box: Box): string => {
+  if (!("stroke" in node) || !node.stroke || !Array.isArray(node.stroke.width)) return "";
+  const c = color(ctx, node.stroke.color);
+  if (!c) return "";
+  const [top, right, bottom, left] = resolveSides(node.stroke.width, ctx.doc.variables, 0);
+  const { width, height } = box;
+  const bars = [
+    top > 0 ? [0, 0, width, top] : null,
+    bottom > 0 ? [0, height - bottom, width, bottom] : null,
+    left > 0 ? [0, 0, left, height] : null,
+    right > 0 ? [width - right, 0, right, height] : null,
+  ]
+    .filter((bar): bar is number[] => bar !== null)
+    .map(
+      ([x, y, w, h]) =>
+        `<rect x="${round(x!)}" y="${round(y!)}" width="${round(w!)}" height="${round(h!)}"${paintAttrs("fill", c)} />`,
+    )
+    .join("");
+  if (!bars) return "";
+  const shape = shapeOf(ctx, node, box);
+  const id = newId(ctx, "clip");
+  ctx.defs.push(`<clipPath id="${id}"><${shape.tag} ${shape.attrs} /></clipPath>`);
+  return `<g clip-path="url(#${id})">${bars}</g>`;
 };
 
 const wrapLines = (content: string, maxWidth: number | undefined, size: number): string[] =>
@@ -116,17 +242,23 @@ const textElement = (ctx: Ctx, node: TextNode, box: Box): string => {
   const anchor = align === "center" ? "middle" : align === "right" ? "end" : "start";
   const wraps = node.width !== undefined;
   const lines = wrapLines(content, wraps ? box.width : undefined, size);
-  const lineHeight = size * LINE_HEIGHT;
+  // `lineHeight` is a multiple of the font size; without it the font's natural height is estimated.
+  const lineHeight =
+    size * (node.lineHeight === undefined ? LINE_HEIGHT : num(ctx, node.lineHeight, LINE_HEIGHT));
+  const letterSpacing = num(ctx, node.letterSpacing, 0);
   const fill = paintAttrs("fill", color(ctx, node.fill) ?? "#000000");
   const generic = /mono|code|courier/i.test(family) ? "monospace" : "sans-serif";
   const attrs =
     ` font-family="'${esc(family)}', ${generic}" font-size="${round(size)}"` +
     (weight !== 400 ? ` font-weight="${weight}"` : "") +
     (italic ? ' font-style="italic"' : "") +
+    (letterSpacing !== 0 ? ` letter-spacing="${round(letterSpacing)}"` : "") +
     `${fill} text-anchor="${anchor}" xml:space="preserve"`;
-  const baseline = size * BASELINE;
+  // Keep the baseline centered in the line box when a custom line height is set.
+  const baseline = size * BASELINE + (lineHeight - size * LINE_HEIGHT) / 2;
+  const shadow = shadowFilter(ctx, node.effects);
   if (lines.length === 1) {
-    return `<text x="${round(x)}" y="${round(baseline)}"${attrs}>${esc(lines[0] ?? "")}</text>`;
+    return `<text x="${round(x)}" y="${round(baseline)}"${attrs}${shadow}>${esc(lines[0] ?? "")}</text>`;
   }
   const spans = lines
     .map(
@@ -134,7 +266,7 @@ const textElement = (ctx: Ctx, node: TextNode, box: Box): string => {
         `<tspan x="${round(x)}" y="${round(baseline + i * lineHeight)}">${esc(text)}</tspan>`,
     )
     .join("");
-  return `<text${attrs}>${spans}</text>`;
+  return `<text${attrs}${shadow}>${spans}</text>`;
 };
 
 const imageElement = (ctx: Ctx, node: Extract<PegoNode, { type: "image" }>, box: Box): string => {
@@ -153,7 +285,7 @@ const imageElement = (ctx: Ctx, node: Extract<PegoNode, { type: "image" }>, box:
 const iconElement = (ctx: Ctx, node: Extract<PegoNode, { type: "icon" }>, box: Box): string => {
   const elements = ctx.icons?.(node.iconName);
   if (!elements) return `<!-- icon ${esc(node.iconName)}: no icon data available -->`;
-  const stroke = toPaint(color(ctx, node.fill) ?? "#ffffff");
+  const stroke = splitAlpha(color(ctx, node.fill) ?? "#ffffff");
   const shapes = elements
     .map(([tag, attrs]) => {
       const rendered = Object.entries(attrs)
@@ -163,7 +295,8 @@ const iconElement = (ctx: Ctx, node: Extract<PegoNode, { type: "icon" }>, box: B
       return `<${tag}${rendered} />`;
     })
     .join("");
-  return `<svg width="${round(box.width)}" height="${round(box.height)}" viewBox="0 0 24 24" fill="none" stroke="${stroke.color}"${stroke.opacity !== undefined ? ` stroke-opacity="${stroke.opacity}"` : ""} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${shapes}</svg>`;
+  const shadow = shadowFilter(ctx, node.effects);
+  return `<svg width="${round(box.width)}" height="${round(box.height)}" viewBox="0 0 24 24"${shadow} fill="none" stroke="${stroke.color}"${stroke.opacity !== undefined ? ` stroke-opacity="${stroke.opacity}"` : ""} stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${shapes}</svg>`;
 };
 
 const rectAttrs = (box: Box, radius: number): string => {
@@ -171,20 +304,39 @@ const rectAttrs = (box: Box, radius: number): string => {
   return `width="${round(box.width)}" height="${round(box.height)}"${r > 0 ? ` rx="${round(r)}"` : ""}`;
 };
 
+const pathElement = (ctx: Ctx, node: Extract<PegoNode, { type: "path" }>, box: Box): string => {
+  const shared =
+    `${strokeAttrs(ctx, node.stroke)}` +
+    `${node.strokeCap ? ` stroke-linecap="${node.strokeCap}"` : ""}` +
+    `${node.strokeJoin ? ` stroke-linejoin="${node.strokeJoin}"` : ""}`;
+  const shadow = shadowFilter(ctx, node.effects);
+  const { viewBox } = node;
+  if (!viewBox || viewBox[2] <= 0 || viewBox[3] <= 0) {
+    const fill = fillAttrs(ctx, node.fill, box.width, box.height);
+    return `<path d="${esc(node.geometry)}"${fill}${shared}${shadow} />`;
+  }
+  // The geometry is scaled to the node's box by a nested svg; paints live in viewBox coordinates.
+  const [minX, minY, vbWidth, vbHeight] = viewBox;
+  const fill = fillAttrs(ctx, node.fill, vbWidth, vbHeight, minX, minY);
+  const inner = `<svg width="${round(box.width)}" height="${round(box.height)}" viewBox="${viewBox.map(round).join(" ")}" preserveAspectRatio="none" overflow="visible"><path d="${esc(node.geometry)}"${fill}${shared} vector-effect="non-scaling-stroke" /></svg>`;
+  return shadow ? `<g${shadow}>${inner}</g>` : inner;
+};
+
 const contentOf = (ctx: Ctx, node: PegoNode, box: Box): string => {
   switch (node.type) {
     case "frame": {
-      const fill = color(ctx, node.fill);
+      const fill = node.fill === undefined ? "" : fillAttrs(ctx, node.fill, box.width, box.height);
       const stroke = strokeAttrs(ctx, node.stroke);
       if (!fill && !stroke) return "";
-      return `<rect ${rectAttrs(box, num(ctx, node.cornerRadius, 0))}${paintAttrs("fill", fill)}${stroke} />`;
+      const shadow = shadowFilter(ctx, node.effects);
+      return `<rect ${rectAttrs(box, num(ctx, node.cornerRadius, 0))}${fill || paintAttrs("fill", undefined)}${stroke}${shadow} />`;
     }
     case "rectangle":
-      return `<rect ${rectAttrs(box, num(ctx, node.cornerRadius, 0))}${paintAttrs("fill", color(ctx, node.fill))}${strokeAttrs(ctx, node.stroke)} />`;
+      return `<rect ${rectAttrs(box, num(ctx, node.cornerRadius, 0))}${fillAttrs(ctx, node.fill, box.width, box.height)}${strokeAttrs(ctx, node.stroke)}${shadowFilter(ctx, node.effects)} />`;
     case "ellipse":
-      return `<ellipse cx="${round(box.width / 2)}" cy="${round(box.height / 2)}" rx="${round(box.width / 2)}" ry="${round(box.height / 2)}"${paintAttrs("fill", color(ctx, node.fill))}${strokeAttrs(ctx, node.stroke)} />`;
+      return `<ellipse ${shapeOf(ctx, node, box).attrs}${fillAttrs(ctx, node.fill, box.width, box.height)}${strokeAttrs(ctx, node.stroke)}${shadowFilter(ctx, node.effects)} />`;
     case "path":
-      return `<path d="${esc(node.geometry)}"${paintAttrs("fill", color(ctx, node.fill))}${strokeAttrs(ctx, node.stroke)}${node.strokeCap ? ` stroke-linecap="${node.strokeCap}"` : ""}${node.strokeJoin ? ` stroke-linejoin="${node.strokeJoin}"` : ""} />`;
+      return pathElement(ctx, node, box);
     case "text":
       return textElement(ctx, node, box);
     case "icon":
@@ -220,7 +372,7 @@ const renderNode = (
         ? `<g clip-path="url(#${addClip(ctx, box.width, box.height, num(ctx, node.cornerRadius, 0))})">${inner}</g>`
         : inner;
   }
-  const body = `${own}${children}`;
+  const body = `${own}${children}${sideStrokes(ctx, node, box)}`;
   if (!body) return "";
 
   const opacity = Math.min(1, Math.max(0, num(ctx, node.opacity, 1)));
@@ -233,8 +385,9 @@ const renderNode = (
   ]
     .filter(Boolean)
     .join(" ");
-  if (!transform && opacity === 1) return body;
-  return `<g${transform ? ` transform="${transform}"` : ""}${opacity < 1 ? ` opacity="${round(opacity)}"` : ""}>${body}</g>`;
+  const blur = blurFilter(ctx, effectsOf(node));
+  if (!transform && opacity === 1 && !blur) return body;
+  return `<g${transform ? ` transform="${transform}"` : ""}${opacity < 1 ? ` opacity="${round(opacity)}"` : ""}${blur}>${body}</g>`;
 };
 
 /**
@@ -249,6 +402,7 @@ export const exportSvg = (
 ): string => {
   const root = findNode(doc, nodeId);
   if (!root) throw new Error(`Unknown node: ${nodeId}`);
+  if (root.type === "page") throw new Error(PAGE_EXPORT_ERROR);
   const rootNode = root.type === "ref" ? resolveInstance(doc, root) : root;
   const box = options.layout.get(root.id);
   if (!rootNode || !box) throw new Error(`Node ${nodeId} has no layout`);
@@ -261,6 +415,7 @@ export const exportSvg = (
     fonts: new Map(),
     defs: [],
     clipCount: 0,
+    idCount: 0,
   };
   const body = renderNode(ctx, root, box, 0, true);
   const fontsUrl = googleFontsUrl(ctx.fonts);

@@ -10,19 +10,13 @@ import {
   type Skill,
 } from "@pego/agent";
 import { runApiAgent, type MessagesClient } from "./api-runtime";
-import { getActiveRun } from "./active-run";
+import { allRuns } from "./run-registry";
 import { startLocalAgentRun } from "./local-agent-run";
 import { startRun } from "./run";
-import {
-  resolveRunSkills,
-  setRunStyleId,
-  skillLogLines,
-  skillPromptPrefix,
-  skillsBlock,
-} from "./run-skills";
-import { resetStores } from "./test-utils";
+import { resolveRunSkills, skillLogLines, skillPromptPrefix, skillsBlock } from "./run-skills";
+import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
-import { emptyBridge, useAgentStore } from "./use-agent-store";
+import { emptyBridge, runScope, useAgentStore } from "./use-agent-store";
 
 const fake = (id: string, title: string, over: Partial<Skill> = {}): Skill => ({
   id,
@@ -48,7 +42,6 @@ beforeEach(() => {
   localRunConfig.bridgeWaitMs = 0; // no bridge in tests: local runs fail fast instead of waiting
   resetStores();
   useAgentStore.getState().set({ selectedSkillId: undefined, selectedStyleId: undefined });
-  setRunStyleId(undefined);
   added = [...FAKES];
   skills.unshift(...added);
 });
@@ -97,9 +90,8 @@ describe("resolveRunSkills", () => {
     expect(run(undefined, "fake-dash")).toEqual(["fake-core", "fake-landing"]);
   });
 
-  test("the run's pending style applies when no argument is passed", () => {
-    setRunStyleId("fakeswiss");
-    expect(resolveRunSkills("zzfoo fakehaus").map((s) => s.id)).toEqual([
+  test("the run's explicit style overrides the one detected in the prompt", () => {
+    expect(resolveRunSkills("zzfoo fakehaus", undefined, "fakeswiss").map((s) => s.id)).toEqual([
       "fake-core",
       "fake-landing",
       "fakeswiss",
@@ -175,7 +167,7 @@ describe("api runtime injects skills into user turns, not system prompts", () =>
         },
       },
     };
-    state().set({ status: "planning" });
+    runScope(null).set({ status: "planning" });
     await runApiAgent("buat zzfoo page", {
       client,
       host: createToolHost(),
@@ -192,7 +184,7 @@ describe("api runtime injects skills into user turns, not system prompts", () =>
       expect(first).toContain("RULES-fake-landing");
       expect(first).toContain("- CHECK-fake-landing");
     }
-    expect(state().log.some((e) => e.text === "Using skill: Fake landing")).toBe(true);
+    expect(visible().log.some((e) => e.text === "Using skill: Fake landing")).toBe(true);
   });
 
   test("an explicit skillId overrides auto-detection", async () => {
@@ -215,7 +207,7 @@ describe("api runtime injects skills into user turns, not system prompts", () =>
         },
       },
     };
-    state().set({ status: "planning" });
+    runScope(null).set({ status: "planning" });
     await runApiAgent("buat zzfoo page", {
       client,
       host: createToolHost(),
@@ -234,7 +226,13 @@ describe("local agent prompt", () => {
 
   test("prepends the skills line, keeps the user's text in the log", () => {
     state().set({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents: [info()] },
+      bridge: {
+        connected: true,
+        claudeCodeAvailable: true,
+        mcpUrl: "u",
+        agents: [info()],
+        projectDir: null,
+      },
       localAgentId: "codex",
     });
     const sent: EditorToBridge[] = [];
@@ -244,13 +242,19 @@ describe("local agent prompt", () => {
       prompt:
         "Use Pego skills: fake-core, fake-landing (call get_skill). Reply and write design copy in the language of the request below.\n\nbuat zzfoo page",
     });
-    expect(state().log.find((e) => e.kind === "user")?.text).toBe("buat zzfoo page");
-    expect(state().log.some((e) => e.text === "Using skill: Fake landing")).toBe(true);
+    expect(visible().log.find((e) => e.kind === "user")?.text).toBe("buat zzfoo page");
+    expect(visible().log.some((e) => e.text === "Using skill: Fake landing")).toBe(true);
   });
 
   test("explicit none leaves core only", () => {
     state().set({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents: [info()] },
+      bridge: {
+        connected: true,
+        claudeCodeAvailable: true,
+        mcpUrl: "u",
+        agents: [info()],
+        projectDir: null,
+      },
       localAgentId: "codex",
     });
     const sent: EditorToBridge[] = [];
@@ -265,18 +269,18 @@ describe("manual skill choice lasts one run", () => {
   test("startRun clears selectedSkillId", async () => {
     state().set({ backend: "local", bridge: emptyBridge() });
     state().setSelectedSkill("fake-dash");
-    useAgentStore.getState().set({ status: "idle" });
+    runScope(null).set({ status: "idle" });
     await startRun("buat zzfoo page");
     expect(state().selectedSkillId).toBeUndefined();
-    expect(getActiveRun()).toBeNull(); // bridge is down: the run failed before starting
+    expect(allRuns()).toEqual([]); // bridge is down: the run failed before starting
   });
 
   test("startRun clears selectedStyleId and hands it to the run", async () => {
     state().set({ backend: "local", bridge: emptyBridge() });
     state().setSelectedStyle("fakeswiss");
-    useAgentStore.getState().set({ status: "idle" });
+    runScope(null).set({ status: "idle" });
     await startRun("buat zzfoo page");
     expect(state().selectedStyleId).toBeUndefined();
-    expect(state().log.some((e) => e.text === "Using style: Fakeswiss")).toBe(true);
+    expect(visible().log.some((e) => e.text === "Using style: Fakeswiss")).toBe(true);
   });
 });

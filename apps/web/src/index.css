@@ -8,3 +8,22 @@ body,
 #root {
   height: 100%;
 }
+
+/*
+ * The editor chrome is UI, not text: no stray highlights on drags, double-clicks or Cmd+A.
+ * Fields, the canvas text editor and content meant to be copied (agent replies, code
+ * previews, marked with data-selectable) opt back in.
+ */
+body {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+input,
+textarea,
+[contenteditable]:not([contenteditable="false"]),
+[data-selectable],
+[data-selectable] * {
+  -webkit-user-select: text;
+  user-select: text;
+}

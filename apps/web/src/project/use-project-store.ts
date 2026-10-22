@@ -1,0 +1,47 @@
+import { toast } from "sonner";
+import type { ProjectInfo } from "@pego/agent";
+import { starterDocument } from "@pego/doc";
+import { requestProject } from "@/agent/bridge-client";
+import { useAgentStore } from "@/agent/use-agent-store";
+import { openDocumentText } from "@/persistence/bridge-documents";
+import { saveFile } from "@/persistence/file-actions";
+import { useFileStore } from "@/persistence/use-file-store";
+import { openDocument, PROJECT_DESIGN_FILE, type UnsavedPolicy } from "@/workspace/live-document";
+import { openProjectWorkspace } from "@/workspace/use-workspace-store";
+
+/**
+ * Open a project: show its workspace and its design (project.pego), creating the file
+ * when the project has none yet. Resolves false when the workspace could not be shown.
+ * The design's document id is the project id, so chat sessions (keyed by document id) follow
+ * the project; an older file with another id adopts it (an unsaved change that autosave writes).
+ */
+export const openProject = async (
+  project: Pick<ProjectInfo, "id" | "name" | "dir"> & { mainFile?: string },
+  unsaved: UnsavedPolicy = "ask",
+): Promise<boolean> => {
+  if (!openProjectWorkspace(project)) return false;
+  const mainFile = project.mainFile ?? `${project.dir}/${PROJECT_DESIGN_FILE}`;
+  // The workspace already shows its design.
+  if (useFileStore.getState().bridgePath === mainFile) return true;
+  try {
+    const response = await requestProject("read", mainFile);
+    const outcome = openDocumentText(response.text ?? "", mainFile, {
+      reload: false,
+      unsaved,
+      documentId: project.id,
+    });
+    if (outcome.isError) toast.error(outcome.content);
+    return true;
+  } catch {
+    // No project.pego yet (projects made before it existed): start one and save it.
+    if (!useAgentStore.getState().bridge.connected) return true;
+    const result = openDocument(
+      starterDocument(project.name, project.id),
+      { fileName: PROJECT_DESIGN_FILE, bridgePath: mainFile },
+      { saved: false, unsaved },
+    );
+    if (result !== "opened") return true;
+    await saveFile();
+    return true;
+  }
+};

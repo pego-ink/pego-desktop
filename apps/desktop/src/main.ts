@@ -4,6 +4,8 @@ import { APP_ORIGIN, APP_URL } from "@/constants";
 import { startBridge, stopBridge } from "@/bridge";
 import { installMenu } from "@/menu";
 import { registerAppProtocol, registerAppScheme } from "@/protocol";
+import { registerUpdateIpc } from "@/update-ipc";
+import { VERSION_ARG } from "@/update-status";
 
 // Dev: `desktop:dev` points this at the Vite server. Anything else loads the built web app.
 const devUrl = process.env.PEGO_DEV_URL;
@@ -47,6 +49,7 @@ const createWindow = (): void => {
       webSecurity: true,
       allowRunningInsecureContent: false,
       spellcheck: false,
+      additionalArguments: [`${VERSION_ARG}${app.getVersion()}`],
     },
   });
   mainWindow = win;
@@ -107,6 +110,7 @@ if (!app.requestSingleInstanceLock()) {
     installMenu(isDev);
     if (!isDev) registerAppProtocol(webRoot());
     await startBridge();
+    await registerUpdateIpc(appOrigin, () => mainWindow);
     createWindow();
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0) createWindow();

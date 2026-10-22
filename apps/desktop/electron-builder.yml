@@ -10,20 +10,34 @@ files:
   - dist/**
   - package.json
 asar: true
+# Update feed = published GitHub releases of this (public) repo. `channel: latest` keeps the feed
+# file named latest-mac.yml even for -beta versions (otherwise electron-builder emits beta-mac.yml).
+# Publishing itself is done by .github/workflows/release.yml (`--publish never` + gh release).
+publish:
+  provider: github
+  owner: pego-ink
+  repo: pego-desktop
+  releaseType: release
+  channel: latest
 extraResources:
   # Web build, served through app://pego/ (kept outside the asar so WASM/fonts stream from disk).
   - from: ../web/dist
     to: web
-  # Standalone Bun binary per arch (scripts/build.ts compiles resources/pego-bridge-<arch>).
-  - from: resources/pego-bridge-${arch}
-    to: bridge/pego-bridge
+# The bridge is a standalone Bun binary per platform and arch, compiled by scripts/build.ts to
+# resources/pego-bridge-<os>-<arch>[.exe]; each platform adds its own (platform extraResources
+# are appended to the list above).
 mac:
+  extraResources:
+    - from: resources/pego-bridge-mac-${arch}
+      to: bridge/pego-bridge
   electronLanguages: ["en", "id"]
   category: public.app-category.graphics-design
   icon: build/icon.icns
   target:
     - target: dmg
-    - target: zip
+      arch: [arm64, x64]
+    - target: zip # required for auto-update on macOS
+      arch: [arm64, x64]
   hardenedRuntime: true
   gatekeeperAssess: false
   entitlements: build/entitlements.mac.plist
@@ -34,3 +48,30 @@ mac:
   # Notarization runs only when APPLE_ID + APPLE_APP_SPECIFIC_PASSWORD + APPLE_TEAM_ID are set.
 dmg:
   sign: false
+linux:
+  extraResources:
+    - from: resources/pego-bridge-linux-${arch}
+      to: bridge/pego-bridge
+  icon: build/icon.png
+  category: Graphics
+  synopsis: AI-native design editor
+  executableName: pego
+  # .deb needs a maintainer; replace with "Name <email>" of whoever publishes the package.
+  maintainer: Pego maintainers
+  target:
+    - target: AppImage
+    - target: deb
+deb:
+  # The compiled bridge is self-contained; nothing beyond Electron's own runtime libraries.
+  packageCategory: graphics
+win:
+  extraResources:
+    - from: resources/pego-bridge-win-${arch}.exe
+      to: bridge/pego-bridge.exe
+  icon: build/icon.png
+  target:
+    - target: nsis
+nsis:
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true

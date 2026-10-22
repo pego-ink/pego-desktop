@@ -33,4 +33,9 @@ export default tseslint.config(
     files: ["**/*.js"],
     languageOptions: { globals: globals.node },
   },
+  {
+    // Plain scripts served to the browser as they are (e.g. theme-init.js).
+    files: ["apps/web/public/**/*.js"],
+    languageOptions: { globals: globals.browser },
+  },
 );

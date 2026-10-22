@@ -4,7 +4,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { RunEvent } from "@pego/agent";
 import { attachmentPromptNote, writeAttachments } from "../attachments";
-import { buildClaudePrompt, createClaudeCodeAdapter } from "./claude-code";
+import { buildUserMessage, createClaudeCodeAdapter } from "./claude-code";
 import { buildCodexArgs, codexAdapter } from "./codex";
 import {
   buildCursorCliConfig,
@@ -68,18 +68,14 @@ const lines = async (path: string) => (await readFile(path, "utf8")).split("\n")
 const run = (adapter: AgentAdapter, ctx: AgentRunContext) => adapter.run(ctx);
 
 describe("claude code (Agent SDK streaming input)", () => {
-  test("no attachments: the prompt stays a plain string", () => {
-    expect(buildClaudePrompt("hi")).toBe("hi");
-    expect(buildClaudePrompt("hi", [])).toBe("hi");
+  test("no attachments: the message content is the plain text", () => {
+    expect(buildUserMessage("hi").message.content).toBe("hi");
   });
 
   test("attachments: one user message, image blocks (base64) first, text last", async () => {
     const a = makeAttachment("att-1", "image/png");
     const b = makeAttachment("att-2", "image/webp");
-    const prompt = buildClaudePrompt("describe", [a, b]);
-    expect(typeof prompt).not.toBe("string");
-    const messages: unknown[] = [];
-    for await (const message of prompt as AsyncIterable<unknown>) messages.push(message);
+    const messages = [buildUserMessage("describe", [a, b])];
     expect(messages).toEqual([
       {
         type: "user",

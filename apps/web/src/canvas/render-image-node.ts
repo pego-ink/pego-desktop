@@ -1,5 +1,11 @@
 import type { Canvas as SkCanvas, CanvasKit, Image as SkImage, Paint } from "canvaskit-wasm";
-import { resolveColor, resolveNumber, type ImageNode, type Variables } from "@pego/doc";
+import {
+  resolveColor,
+  resolveNumber,
+  resolveStrokeWidth,
+  type ImageNode,
+  type Variables,
+} from "@pego/doc";
 import { getIconPath } from "@/canvas/icons";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { createLruCache } from "@/canvas/render-cache";
@@ -333,7 +339,7 @@ export const drawImageNode = (
 
   if (!node.stroke) return;
   const color = resolveColor(node.stroke.color, variables);
-  const strokeWidth = resolveNumber(node.stroke.width, variables, 1);
+  const strokeWidth = resolveStrokeWidth(node.stroke.width, variables);
   if (!color || strokeWidth <= 0) return;
   paints.stroke.setColor(ck.parseColorString(color));
   paints.stroke.setStrokeWidth(strokeWidth);
