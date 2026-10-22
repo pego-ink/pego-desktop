@@ -7,6 +7,8 @@ import { ProjectPanel } from "@/project/ProjectPanel";
 import { Dashboard } from "@/workspace/Dashboard";
 import { HomeButton } from "@/workspace/HomeButton";
 import { ThemeToggle } from "@/theme/ThemeToggle";
+import { PanelToggles } from "@/layout/PanelToggles";
+import { usePanelsStore } from "@/layout/use-panels-store";
 import { WorkspaceTabs } from "@/workspace/WorkspaceTabs";
 import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
@@ -115,6 +117,7 @@ const LeftColumn = () => {
 
 export const EditorShell = () => {
   const view = useWorkspaceStore((s) => s.view);
+  const { left, right } = usePanelsStore();
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
@@ -126,6 +129,7 @@ export const EditorShell = () => {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {view === "editor" ? <HistoryButtons /> : null}
+          {view === "editor" ? <PanelToggles /> : null}
           <ThemeToggle />
           <Button size="sm" variant="secondary">
             Share
@@ -136,15 +140,17 @@ export const EditorShell = () => {
         <Dashboard />
       ) : (
         <div className="flex min-h-0 flex-1">
-          <LeftColumn />
+          {left ? <LeftColumn /> : null}
           <main className="flex min-w-0 flex-1 flex-col">
             <div className="min-h-0 flex-1">
               <Canvas />
             </div>
           </main>
-          <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
-            <PropertiesPanel />
-          </aside>
+          {right ? (
+            <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
+              <PropertiesPanel />
+            </aside>
+          ) : null}
         </div>
       )}
     </div>
