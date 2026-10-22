@@ -6,3 +6,4 @@ export * from "./serialize";
 export * from "./guides/index";
 export { editTools } from "./tools-edit";
 export { inspectTools } from "./tools-inspect";
+export * from "./skills/index";
