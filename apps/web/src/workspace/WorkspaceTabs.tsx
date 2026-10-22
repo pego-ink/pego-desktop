@@ -1,10 +1,9 @@
-import { FolderIcon, LayoutGridIcon, NotebookPenIcon, XIcon } from "lucide-react";
+import { FolderIcon, NotebookPenIcon, XIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import { useTabsStore } from "@/tabs/use-tabs-store";
 import {
   activateWorkspace,
   closeWorkspace,
-  showDashboard,
   useWorkspaceStore,
   workspaceIsDirty,
 } from "./use-workspace-store";
@@ -15,7 +14,7 @@ const tabClass = (active: boolean) =>
     active && "bg-accent text-foreground",
   );
 
-/** Header tabs: the dashboard, scratch documents and every open project. */
+/** Header tabs: scratch documents and every open project (the Pego logo opens the dashboard). */
 export const WorkspaceTabs = () => {
   const { workspaces, liveId, view } = useWorkspaceStore();
   // Re-render when the live workspace's documents change (unsaved marker).
@@ -23,15 +22,6 @@ export const WorkspaceTabs = () => {
 
   return (
     <nav aria-label="Projects" className="flex min-w-0 items-center gap-1 overflow-x-auto">
-      <button
-        type="button"
-        className={tabClass(view === "dashboard")}
-        onClick={() => showDashboard()}
-      >
-        <LayoutGridIcon />
-        Dashboard
-      </button>
-      <span aria-hidden className="mx-1 h-4 w-px shrink-0 bg-border" />
       {workspaces.map((workspace) => {
         const active = view === "editor" && workspace.id === liveId;
         const dirty = workspaceIsDirty(workspace);
