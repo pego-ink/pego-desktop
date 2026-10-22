@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { setVisibleStatus } from "@/agent/test-utils";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import {
@@ -20,7 +20,7 @@ let asked = 0;
 
 beforeEach(() => {
   resetLiveDocument();
-  useAgentStore.getState().set({ status: "idle" });
+  setVisibleStatus("idle");
   confirmAnswer = true;
   asked = 0;
   stubConfirm(() => {
@@ -64,7 +64,7 @@ describe("one document per workspace", () => {
   });
 
   test("opening is blocked while the panel agent runs", () => {
-    useAgentStore.getState().set({ status: "running" });
+    setVisibleStatus("running");
     expect(openDocument(named("A"), {})).toBe("busy");
   });
 });

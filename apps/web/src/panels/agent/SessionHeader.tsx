@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { ChevronDownIcon, PlusIcon } from "lucide-react";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@pego/ui/components/popover";
@@ -10,47 +11,20 @@ import {
   startNewSession,
   switchSession,
 } from "@/agent/sessions/session-sync";
-import { sessionTitle } from "@/agent/sessions/session-model";
 import { useSessionsStore } from "@/agent/sessions/use-sessions-store";
-import { currentTurn, useAgentStore, type AgentStoreState } from "@/agent/use-agent-store";
+import { liveTitle, runningSessions, useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
 import { SessionList } from "@/panels/agent/SessionList";
-import { isRunActive, runStatusLabel } from "@/panels/agent/agent-format";
+import { isRunActive } from "@/panels/agent/agent-format";
 
-/** Cheap title for a selector: avoids copying the whole transcript on every streamed token. */
-const liveTitle = (s: AgentStoreState): string => {
-  const latest = s.turns.length === 0 ? currentTurn(s) : null;
-  return sessionTitle({ customTitle: s.sessionTitle, turns: latest ? [latest] : s.turns });
-};
-
-/** Compact run status under the title: pulsing dot while working, red when failed. */
-const RunStatusLine = () => {
-  const status = useAgentStore((s) => s.status);
-  const runLabel = useAgentStore((s) => s.runLabel);
-  // A restored session has no live run; show how its last turn ended.
-  const last = useAgentStore((s) => (s.status === "idle" ? s.turns.at(-1) : undefined));
-  const shown = status === "idle" ? last?.status : status;
-  const label = status === "idle" ? (last?.runLabel ?? null) : runLabel;
-  if (!shown || shown === "idle") return null;
+/** Small pulsing dot next to the title while the chat's run is working (no text, no backend). */
+const RunningDot = () => {
+  const active = useVisibleRun((s) => isRunActive(s.status));
+  if (!active) return null;
   return (
     <span
-      className={cn(
-        "flex min-w-0 items-center gap-1.5 text-[11px] leading-4 font-normal text-muted-foreground",
-        shown === "failed" && "text-destructive",
-      )}
-    >
-      {isRunActive(shown) ? (
-        <span
-          aria-hidden
-          className="size-1.5 shrink-0 rounded-full bg-foreground motion-safe:animate-pulse"
-        />
-      ) : null}
-      <span className="shrink-0">{runStatusLabel(shown, [])}</span>
-      {label ? (
-        <span className="min-w-0 truncate" title={label}>
-          · {label}
-        </span>
-      ) : null}
-    </span>
+      aria-hidden
+      className="size-1.5 shrink-0 rounded-full bg-foreground motion-safe:animate-pulse"
+    />
   );
 };
 
@@ -86,25 +60,23 @@ const TitleEditor = ({
 };
 
 /**
- * Agent panel header: chat title with a chevron (opens the file's chats), the run status under
- * it, and "+" for a new chat. Double-click the title to rename.
+ * Agent panel header on one line: chat title with a chevron (opens the file's chats), a pulsing
+ * dot while its run works, and "+" for a new chat. Double-click the title to rename.
  */
 export const SessionHeader = () => {
-  const title = useAgentStore(liveTitle);
-  const sessionId = useAgentStore((s) => s.sessionId);
-  const hasTurns = useAgentStore((s) => s.turns.length > 0 || s.log.length > 0);
-  const busy = useAgentStore((s) => isRunActive(s.status));
-  const isEmpty = useAgentStore((s) => s.turns.length === 0 && s.log.length === 0);
+  const title = useVisibleRun(liveTitle);
+  const sessionId = useAgentStore((s) => s.visibleSessionId);
+  const hasTurns = useVisibleRun((s) => s.turns.length > 0 || s.log.length > 0);
+  const isEmpty = useVisibleRun((s) => s.turns.length === 0 && s.log.length === 0);
+  // Chats with a working run (this one or in the background) get a running mark in the list.
+  const runningIds = useAgentStore(useShallow((s) => runningSessions(s).map((live) => live.id)));
   const items = useSessionsStore((s) => s.items);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
 
-  const addDisabled = busy || isEmpty;
-  const addHint = busy
-    ? "Stop the current run to start a new chat"
-    : isEmpty
-      ? "This chat is empty"
-      : "New chat";
+  // A running chat keeps going in the background, so a new one can start any time.
+  const addDisabled = isEmpty;
+  const addHint = isEmpty ? "This chat is empty" : "New chat";
 
   return (
     <PanelHeader className="gap-1 pr-2">
@@ -128,17 +100,15 @@ export const SessionHeader = () => {
             }}
             className="-ml-1.5 flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-accent"
           >
-            <span className="flex min-w-0 flex-col">
-              <span className="truncate leading-4">{title}</span>
-              <RunStatusLine />
-            </span>
+            <span className="min-w-0 truncate leading-4">{title}</span>
+            <RunningDot />
             <ChevronDownIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           </PopoverTrigger>
           <PopoverContent className="w-72" align="start">
             <SessionList
               items={items}
               activeId={sessionId}
-              busy={busy}
+              runningIds={runningIds}
               onPick={(id) => {
                 setOpen(false);
                 void switchSession(id);

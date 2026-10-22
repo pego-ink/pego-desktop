@@ -2,7 +2,7 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { setVisibleStatus } from "@/agent/test-utils";
 import { captureLive, documentTitle } from "@/workspace/live-document";
 import { resetLiveDocument } from "@/workspace/test-reset";
 import {
@@ -21,7 +21,7 @@ const pegoText = serializeDocument({ ...sampleDoc, name: "From disk" });
 beforeEach(() => {
   resetLiveDocument();
   // Other suites leave a run "active", which blocks opening tabs.
-  useAgentStore.getState().set({ status: "idle" });
+  setVisibleStatus("idle");
 });
 
 /** Title of the shown document, in a list like the editor's list_documents reply. */

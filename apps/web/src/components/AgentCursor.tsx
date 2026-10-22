@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { useShallow } from "zustand/react/shallow";
 import { EASE_OUT, prefersReducedMotion } from "@pego/ui/lib/motion";
 import type { Layout, PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
@@ -21,11 +22,11 @@ import {
   type Rect,
 } from "@/canvas/agent-cursor-motion";
 import { docToScreen, screenToDoc } from "@/canvas/types";
+import { runColor, RUN_INK } from "@/agent/run-colors";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
-const ACCENT = "var(--violet)";
 const PILL_FLIP_MARGIN = 190;
 
 type Mode = "target" | "wander" | "park";
@@ -72,10 +73,11 @@ const pillText = (mode: Mode, runLabel: string | null) =>
   mode === "park" ? "Waiting for you" : runLabel ? `Pego · ${runLabel}` : "Pego";
 
 /**
- * Multiplayer-style cursor that shows where the agent is working. Pure DOM overlay: one rAF loop
- * writes transforms from refs, React never re-renders per frame.
+ * Multiplayer-style cursor that shows where one session's agent is working, tinted with that
+ * session's run color. Pure DOM overlay: one rAF loop writes transforms from refs, React never
+ * re-renders per frame.
  */
-export const AgentCursor = () => {
+const AgentCursor = ({ sessionId }: { sessionId: string }) => {
   const rootRef = useRef<HTMLDivElement>(null);
   const arrowRef = useRef<HTMLDivElement>(null);
   const pillRef = useRef<HTMLDivElement>(null);
@@ -93,13 +95,15 @@ export const AgentCursor = () => {
     let shownText = "";
     let flipped = false;
     let visible = false;
+    let shownColor = "";
     const focusInfo = createFocusMemo();
+    const live = () => useAgentStore.getState().liveSessions[sessionId];
 
     const resolveAim = (current: Session, size: { width: number; height: number }) => {
       const { camera } = useViewportStore.getState();
       const { doc } = useDocumentStore.getState();
       if (current.mode === "target" && current.aim.kind === "box") {
-        const { union } = focusInfo(doc, useAgentStore.getState().focusIds, () => getLayout(doc));
+        const { union } = focusInfo(doc, live()?.focusIds ?? [], () => getLayout(doc));
         if (union) {
           const raw = pointInRect(union, current.aim.anchor);
           const screen = clampToSize(docToScreen(camera, raw.x, raw.y), size);
@@ -135,9 +139,16 @@ export const AgentCursor = () => {
     const tick = () => {
       frame = 0;
       const now = performance.now();
-      const agent = useAgentStore.getState();
+      const agent = live();
+      if (!agent) return hide();
       const lastLogAt = agent.log.at(-1)?.at ?? null;
       if (!isCursorActive(agent.status, lastLogAt, Date.now())) return hide();
+      const color = runColor(agent.colorIndex);
+      if (color !== shownColor) {
+        shownColor = color;
+        root.style.color = color;
+        pill.style.background = color;
+      }
 
       const { camera, size } = useViewportStore.getState();
       if (size.width === 0) {
@@ -247,14 +258,22 @@ export const AgentCursor = () => {
     };
 
     const unsubscribeAgent = useAgentStore.subscribe((state, prev) => {
-      if (state.status !== prev.status || state.log !== prev.log) ensureLoop();
+      const now = state.liveSessions[sessionId];
+      const before = prev.liveSessions[sessionId];
+      if (now?.status !== before?.status || now?.log !== before?.log) ensureLoop();
     });
     const unsubscribeDoc = useDocumentStore.subscribe((state, prev) => {
       const past = state.history.past;
       const last = past.at(-1);
       if (!last || last === prev.history.past.at(-1)) return;
       if (past.length < prev.history.past.length) return;
-      if (last.source === "agent") playClick();
+      if (last.source !== "agent") return;
+      // Click only on this session's own edits; run-less edits (Claude Code over MCP) belong to
+      // the session in the panel.
+      const own = last.runId
+        ? last.runId === live()?.runId
+        : useAgentStore.getState().visibleSessionId === sessionId;
+      if (own) playClick();
     });
     ensureLoop();
 
@@ -263,7 +282,7 @@ export const AgentCursor = () => {
       unsubscribeDoc();
       stop();
     };
-  }, []);
+  }, [sessionId]);
 
   return (
     <div
@@ -272,13 +291,14 @@ export const AgentCursor = () => {
       className="pointer-events-none absolute top-0 left-0 z-20 will-change-transform"
       style={{
         opacity: 0,
+        color: runColor(0),
         transition: "opacity 200ms cubic-bezier(0.23, 1, 0.32, 1)",
       }}
     >
       <div
         ref={ringRef}
         className="absolute top-0 left-0 size-8 rounded-full opacity-0"
-        style={{ border: `2px solid ${ACCENT}`, transform: "translate(-50%, -50%) scale(0.3)" }}
+        style={{ border: "2px solid currentColor", transform: "translate(-50%, -50%) scale(0.3)" }}
       />
       <div
         ref={arrowRef}
@@ -292,7 +312,7 @@ export const AgentCursor = () => {
         <svg width="20" height="22" viewBox="0 0 20 22" fill="none">
           <path
             d="M1.5 1.2 L1.5 16.4 L5.6 12.7 L8.3 19.1 L11.1 17.9 L8.4 11.6 L14 11.6 Z"
-            style={{ fill: ACCENT }}
+            fill="currentColor"
             stroke="#fff"
             strokeWidth="1.4"
             strokeLinejoin="round"
@@ -303,8 +323,8 @@ export const AgentCursor = () => {
         ref={pillRef}
         className="absolute top-[18px] left-[14px] rounded-full px-2 py-[3px] text-[11px] leading-4 font-medium whitespace-nowrap"
         style={{
-          background: ACCENT,
-          color: "var(--violet-foreground)",
+          background: runColor(0),
+          color: RUN_INK,
           boxShadow: "0 0 0 1px rgb(255 255 255 / 0.35), 0 2px 8px rgb(0 0 0 / 0.3)",
         }}
       >
@@ -312,4 +332,10 @@ export const AgentCursor = () => {
       </div>
     </div>
   );
+};
+
+/** One cursor per session in memory; each shows only while its agent is working. */
+export const AgentCursors = () => {
+  const sessionIds = useAgentStore(useShallow((state) => Object.keys(state.liveSessions)));
+  return sessionIds.map((id) => <AgentCursor key={id} sessionId={id} />);
 };

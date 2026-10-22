@@ -1,12 +1,12 @@
 /// <reference types="bun" />
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import type { BridgeToEditor, EditorToBridge, LocalAgentInfo } from "@pego/agent";
-import { getActiveRun } from "./active-run";
+import { allRuns } from "./run-registry";
 import { AGENT_PREFS_KEY, loadAgentPrefs, parseAgentPrefs, pickDefaultAgent } from "./agent-prefs";
 import { createBridgeHandlers } from "./bridge-handlers";
 import { startLocalAgentRun } from "./local-agent-run";
 import { refreshAgents, requestModels } from "./local-agents";
-import { resetStores } from "./test-utils";
+import { resetStores, visible } from "./test-utils";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
 
 const state = () => useAgentStore.getState();
@@ -256,9 +256,27 @@ describe("local agent runs", () => {
         model: "gpt-5",
       },
     ]);
-    expect(getActiveRun()).toMatchObject({ id: "r1", backend: "local" });
-    expect(state().runLabel).toBe("Codex · gpt-5");
-    expect(state().status).toBe("planning");
+    expect(allRuns()[0]).toMatchObject({ id: "r1", backend: "local" });
+    expect(visible().runLabel).toBe("Codex · gpt-5");
+    expect(visible().status).toBe("planning");
+  });
+
+  test("displayText is what the bubble shows; the agent gets the full prompt", () => {
+    connect([info("codex", { name: "Codex" })]);
+    state().setLocalAgent("codex");
+    const sent: EditorToBridge[] = [];
+    startLocalAgentRun(
+      "r9",
+      "Target layers (a)\n\nmake it red",
+      (m) => (sent.push(m), true),
+      undefined,
+      {
+        displayText: "make it red",
+      },
+    );
+    expect(visible().log[0]).toMatchObject({ kind: "user", text: "make it red" });
+    expect(visible().prompt).toBe("make it red");
+    expect(JSON.stringify(sent)).toContain("Target layers");
   });
 
   test("no model key when the CLI default is used", () => {
@@ -271,7 +289,7 @@ describe("local agent runs", () => {
       prompt: expect.stringMatching(/p$/),
       agentId: "claude-code",
     });
-    expect(state().runLabel).toBe("Claude Code");
+    expect(visible().runLabel).toBe("Claude Code");
   });
 
   test("not installed agent or missing bridge fails without sending", async () => {
@@ -280,20 +298,20 @@ describe("local agent runs", () => {
     state().setLocalAgent("gemini");
     connect([info("gemini", { name: "Gemini CLI", installed: false })]);
     startLocalAgentRun("r3", "p", send);
-    expect(state().status).toBe("failed");
-    expect(state().log.at(-1)?.text).toContain("not installed");
+    expect(visible().status).toBe("failed");
+    expect(visible().log.at(-1)?.text).toContain("not installed");
 
     useAgentStore.setState({ bridge: emptyBridge() });
     await startLocalAgentRun("r4", "p", send, undefined, { bridgeWaitMs: 0 });
-    expect(state().log.at(-1)?.text).toContain("bridge is not running");
+    expect(visible().log.at(-1)?.text).toContain("bridge is not running");
     expect(sent).toEqual([]);
-    expect(getActiveRun()).toBeNull();
+    expect(allRuns()).toEqual([]);
   });
 
   test("failed send clears the active run", async () => {
     connect([info("claude-code")]);
     await startLocalAgentRun("r5", "p", () => false, undefined, { bridgeWaitMs: 0 });
-    expect(getActiveRun()).toBeNull();
-    expect(state().status).toBe("failed");
+    expect(allRuns()).toEqual([]);
+    expect(visible().status).toBe("failed");
   });
 });

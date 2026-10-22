@@ -84,6 +84,7 @@ const PreviewBody = ({ nodeId, format }: { nodeId: string; format: CodeFormat })
         ))}
       </div>
       <pre
+        data-selectable
         tabIndex={0}
         aria-label={file?.path}
         className="max-h-[55vh] overflow-auto rounded-md bg-muted p-3 font-mono text-[11px] leading-relaxed text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"

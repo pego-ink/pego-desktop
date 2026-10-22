@@ -1,7 +1,15 @@
 import { useDocumentStore } from "@/store/use-document-store";
 import { isRunActive, isRunFinished } from "@/panels/agent/agent-format";
-import { cancelRun } from "@/agent/run";
-import { sessionOf, useAgentStore } from "@/agent/use-agent-store";
+import { cancelAllRuns, cancelRun } from "@/agent/run";
+import { startQueueDriver } from "@/agent/queue";
+import { runsForSession } from "@/agent/run-registry";
+import {
+  runningSessions,
+  sessionOf,
+  useAgentStore,
+  visibleSession,
+  type SessionLive,
+} from "@/agent/use-agent-store";
 import { deleteSession, getSession, listSessions, saveSession } from "./session-db";
 import {
   emptySession,
@@ -14,13 +22,15 @@ import {
 import { useSessionsStore } from "./use-sessions-store";
 
 /**
- * Keeps the live agent session and IndexedDB in step. Writes happen when a run starts (its
- * prompt is stored, as cancelled until it ends), when it ends, and on rename; never per token.
- * Opening or creating a design file shows that file's newest session.
+ * Keeps the live agent sessions and IndexedDB in step. Each session is written on its own when
+ * one of its runs starts (its prompt is stored, as cancelled until it ends), when it ends, and on
+ * rename; never per token. Sessions with a run keep running (and saving) while another one is
+ * shown. Opening or creating a design file shows that file's newest session.
  */
 
 const agent = () => useAgentStore.getState();
 const sessions = () => useSessionsStore.getState();
+const liveOf = (id: string): SessionLive | undefined => agent().liveSessions[id];
 
 /** Writes run one after another so an older snapshot never lands after a newer one. */
 let queue: Promise<unknown> = Promise.resolve();
@@ -33,10 +43,9 @@ const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
 /** Bumped on every file change so a slow read for the previous file is dropped. */
 let loadToken = 0;
 
-const liveIsEmpty = () => {
-  const s = agent();
-  return s.turns.length === 0 && s.log.length === 0 && s.status === "idle";
-};
+const isEmpty = (live: SessionLive) =>
+  live.turns.length === 0 && live.log.length === 0 && live.status === "idle";
+const visibleIsEmpty = () => isEmpty(visibleSession(agent()));
 
 const upsertMeta = (meta: SessionMeta, removed: readonly string[]) =>
   useSessionsStore.setState((state) => ({
@@ -45,28 +54,52 @@ const upsertMeta = (meta: SessionMeta, removed: readonly string[]) =>
     ),
   }));
 
-/** What was last written, to skip writes when nothing changed (switching must not reorder). */
-let saved: { turns: unknown; log: unknown; status: unknown; title: unknown } | null = null;
-const fingerprint = () => {
-  const s = agent();
-  return { turns: s.turns, log: s.log, status: s.status, title: s.sessionTitle };
+type Fingerprint = {
+  turns: unknown;
+  log: unknown;
+  status: unknown;
+  title: unknown;
+  queue: unknown;
 };
-const isDirty = () => {
-  const now = fingerprint();
+/** What was last written per session, to skip writes when nothing changed (switching must not reorder). */
+const saved = new Map<string, Fingerprint>();
+const fingerprint = (live: SessionLive): Fingerprint => ({
+  turns: live.turns,
+  log: live.log,
+  status: live.status,
+  title: live.customTitle,
+  queue: live.queue,
+});
+const markSaved = (id: string) => {
+  const live = liveOf(id);
+  if (live) saved.set(id, fingerprint(live));
+};
+/** Drop fingerprints of sessions that left memory. */
+const forgetDropped = () => {
+  for (const id of saved.keys()) if (!liveOf(id)) saved.delete(id);
+};
+const isDirty = (id: string) => {
+  const live = liveOf(id);
+  if (!live) return false;
+  const was = saved.get(id);
+  const now = fingerprint(live);
   return (
-    !saved ||
-    saved.turns !== now.turns ||
-    saved.log !== now.log ||
-    saved.status !== now.status ||
-    saved.title !== now.title
+    !was ||
+    was.turns !== now.turns ||
+    was.log !== now.log ||
+    was.status !== now.status ||
+    was.title !== now.title ||
+    was.queue !== now.queue
   );
 };
 
-/** Store the live session under `docId` (no-op while it has no turn). Snapshot is taken now. */
-const saveLive = (docId: string): Promise<void> => {
-  const session = sessionOf(agent());
+/** Store a live session under `docId` (no-op while it has no turn). Snapshot is taken now. */
+const saveLive = (docId: string, sessionId: string): Promise<void> => {
+  const live = liveOf(sessionId);
+  if (!live) return Promise.resolve();
+  const session = sessionOf(live);
   if (session.turns.length === 0) return Promise.resolve();
-  saved = fingerprint();
+  saved.set(sessionId, fingerprint(live));
   const stored = toStoredSession(session, docId, Date.now());
   if (useSessionsStore.getState().docId === docId) upsertMeta(metaOf(stored), []);
   return enqueue(async () => {
@@ -75,23 +108,29 @@ const saveLive = (docId: string): Promise<void> => {
   });
 };
 
+/** Show an empty session next to whatever still runs in the background. */
 const showFresh = () => {
-  agent().loadSession(emptySession());
-  saved = fingerprint();
+  const fresh = emptySession();
+  agent().showSession(fresh);
+  markSaved(fresh.id);
+  forgetDropped();
 };
 
-/** Resolves once no run is active (a cancelled API run ends asynchronously). */
-const untilIdle = (timeoutMs = 3000): Promise<void> =>
+const anyRunning = (sessionId?: string) =>
+  runningSessions(agent()).some((live) => sessionId === undefined || live.id === sessionId);
+
+/** Resolves once no run is active (in `sessionId`, or anywhere); a cancelled API run ends asynchronously. */
+const untilIdle = (sessionId?: string, timeoutMs = 3000): Promise<void> =>
   new Promise((resolve) => {
-    if (!isRunActive(agent().status)) return resolve();
+    if (!anyRunning(sessionId)) return resolve();
     const done = () => {
       clearTimeout(timer);
       unsubscribe();
       resolve();
     };
     const timer = setTimeout(done, timeoutMs);
-    const unsubscribe = useAgentStore.subscribe((state) => {
-      if (!isRunActive(state.status)) done();
+    const unsubscribe = useAgentStore.subscribe(() => {
+      if (!anyRunning(sessionId)) done();
     });
   });
 
@@ -99,59 +138,91 @@ const untilIdle = (timeoutMs = 3000): Promise<void> =>
 const openDoc = async (docId: string) => {
   const token = ++loadToken;
   useSessionsStore.setState({ docId, items: [] });
-  showFresh();
+  const fresh = emptySession();
+  agent().resetSessions(fresh);
+  saved.clear();
+  markSaved(fresh.id);
   const stored = await enqueue(() => listSessions(docId));
   if (token !== loadToken) return;
   useSessionsStore.setState({ items: sortMetas(stored.map(metaOf)) });
   const newest = stored[0];
   // A run started while the list was loading keeps the panel.
-  if (!newest || !liveIsEmpty()) return;
-  agent().loadSession(fromStoredSession(newest));
-  saved = fingerprint();
+  if (!newest || !visibleIsEmpty()) return;
+  agent().showSession(fromStoredSession(newest));
+  markSaved(newest.id);
+  forgetDropped();
 };
 
 const currentDocId = () => sessions().docId;
 
-export const isSessionBusy = () => isRunActive(agent().status);
+/**
+ * Create an empty session for the open file without showing it: it is live (a run can start in it
+ * with `submitPrompt`) and appears in the session list once that run starts. Returns its id.
+ */
+export const createSessionInBackground = (): string => {
+  const fresh = emptySession();
+  agent().addSession(fresh);
+  markSaved(fresh.id);
+  return fresh.id;
+};
 
-/** Start an empty session. The old one is already stored; no-op mid-run or when already empty. */
+/** Start an empty session. The old one is stored first (and keeps running if it has a run). */
 export const startNewSession = async (): Promise<void> => {
   const docId = currentDocId();
-  if (isSessionBusy() || !docId || liveIsEmpty()) return;
-  if (isDirty()) await saveLive(docId);
+  if (!docId || visibleIsEmpty()) return;
+  const current = agent().visibleSessionId;
+  if (isDirty(current)) await saveLive(docId, current);
+  if (docId !== currentDocId()) return;
   showFresh();
 };
 
-/** Read a stored session of the open file into the panel. */
-const loadStored = async (id: string, docId: string): Promise<void> => {
+/** Show session `id` of the open file: from memory when it is live, else from storage. */
+const showById = async (id: string, docId: string): Promise<void> => {
+  const live = liveOf(id);
+  if (live) {
+    agent().showSession(live);
+    forgetDropped();
+    return;
+  }
   const stored = await enqueue(() => getSession(id));
   if (!stored || stored.docId !== docId) {
     useSessionsStore.setState((s) => ({ items: s.items.filter((m) => m.id !== id) }));
     return;
   }
-  if (isSessionBusy() || docId !== currentDocId()) return;
-  agent().loadSession(fromStoredSession(stored));
-  saved = fingerprint();
+  if (docId !== currentDocId()) return;
+  agent().showSession(fromStoredSession(stored));
+  markSaved(id);
+  forgetDropped();
 };
 
 export const switchSession = async (id: string): Promise<void> => {
   const docId = currentDocId();
-  if (isSessionBusy() || !docId || id === agent().sessionId) return;
-  if (isDirty()) await saveLive(docId);
-  await loadStored(id, docId);
+  const current = agent().visibleSessionId;
+  if (!docId || id === current) return;
+  if (isDirty(current)) await saveLive(docId, current);
+  await showById(id, docId);
 };
 
+/** Delete a session; a run still working in it is stopped first. */
 export const removeSession = async (id: string): Promise<void> => {
-  const active = id === agent().sessionId;
-  if (active && isSessionBusy()) return;
+  // Stop it and let its end be written before the delete, so nothing writes it back afterwards.
+  const runs = runsForSession(id);
+  for (const run of runs) cancelRun(run.id);
+  if (runs.length > 0) await untilIdle(id);
+
   useSessionsStore.setState((s) => ({ items: s.items.filter((m) => m.id !== id) }));
   await enqueue(() => deleteSession(id));
-  if (!active) return;
+  saved.delete(id);
+  if (id !== agent().visibleSessionId) {
+    agent().dropSession(id);
+    return;
+  }
   const next = sessions().items[0];
   const docId = currentDocId();
-  // Not switchSession: that would first write the live session back, undoing the delete.
-  if (next && docId) await loadStored(next.id, docId);
+  // Not switchSession: that would first write the deleted session back.
+  if (next && docId) await showById(next.id, docId);
   else showFresh();
+  agent().dropSession(id);
 };
 
 /** Rename a session; an empty title goes back to the one derived from the first prompt. */
@@ -159,9 +230,9 @@ export const renameSession = async (id: string, title: string): Promise<void> =>
   const docId = currentDocId();
   if (!docId) return;
   const custom = title.trim() || null;
-  if (id === agent().sessionId) {
-    agent().setSessionTitle(custom);
-    await saveLive(docId);
+  if (liveOf(id)) {
+    agent().setSessionTitle(id, custom);
+    await saveLive(docId, id);
     return;
   }
   const stored = await enqueue(() => getSession(id));
@@ -178,10 +249,16 @@ export const renameSession = async (id: string, title: string): Promise<void> =>
 export const startSessionSync = (): (() => void) => {
   const unsubscribeAgent = useAgentStore.subscribe((state, prev) => {
     const docId = currentDocId();
-    if (!docId) return;
-    const started = state.log.length > 0 && prev.log.length === 0 && isRunActive(state.status);
-    const ended = isRunFinished(state.status) && !isRunFinished(prev.status);
-    if (started || ended) void saveLive(docId);
+    if (!docId || state.liveSessions === prev.liveSessions) return;
+    // Every live session saves on its own run's start and end, shown or not.
+    for (const live of Object.values(state.liveSessions)) {
+      const before = prev.liveSessions[live.id];
+      if (!before || before === live) continue;
+      const started = live.log.length > 0 && before.log.length === 0 && isRunActive(live.status);
+      const ended = isRunFinished(live.status) && !isRunFinished(before.status);
+      const queueChanged = live.queue !== before.queue;
+      if (started || ended || queueChanged) void saveLive(docId, live.id);
+    }
   });
 
   let lastDocId: string | null = null;
@@ -191,19 +268,24 @@ export const startSessionSync = (): (() => void) => {
     const previous = lastDocId;
     lastDocId = docId;
     if (previous) {
-      // The agent works on the open file; a run must not carry over to the next one. The run's
-      // end is stored under the old file (the sessions store still points at it) before we move.
-      cancelRun();
+      // The agents work on the open file; runs must not carry over to the next one. Their ends
+      // are stored under the old file (the sessions store still points at it) before we move.
+      cancelAllRuns();
       await untilIdle();
       if (lastDocId !== docId) return;
-      if (isDirty()) await saveLive(previous);
+      for (const id of Object.keys(agent().liveSessions)) {
+        if (isDirty(id)) await saveLive(previous, id);
+      }
     }
     await openDoc(docId);
   };
   const unsubscribeDoc = useDocumentStore.subscribe(() => void followDoc());
   void followDoc();
+  // A finished run starts the first message queued behind it.
+  const stopQueueDriver = startQueueDriver();
 
   return () => {
+    stopQueueDriver();
     unsubscribeAgent();
     unsubscribeDoc();
     loadToken++;

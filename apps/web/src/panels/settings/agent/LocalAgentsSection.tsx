@@ -2,10 +2,10 @@ import { LOCAL_AGENT_IDS, type LocalAgentId } from "@pego/agent";
 import { CopyField } from "@pego/ui/components/copy-field";
 import { cn } from "@pego/ui/lib/utils";
 import { findAgentInfo, LOCAL_AGENT_NAMES } from "@/agent/local-agents";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { ModelPicker } from "@/panels/agent/ModelPicker";
 import { StatusDot } from "@/panels/agent/StatusDot";
-import { agentStatus, AGENT_PROVIDER, isRunActive, noteCommand } from "@/panels/agent/agent-format";
+import { agentStatus, AGENT_PROVIDER, noteCommand } from "@/panels/agent/agent-format";
 import { AgentCard, UseButton } from "@/panels/settings/agent/AgentCard";
 import { Section } from "@/panels/settings/agent/Section";
 
@@ -28,7 +28,7 @@ const LocalAgentCard = ({ id }: { id: LocalAgentId }) => {
   const info = useAgentStore((s) => findAgentInfo(s.bridge.agents, id));
   const connected = useAgentStore((s) => s.bridge.connected);
   const active = useAgentStore((s) => s.backend === "local" && s.localAgentId === id);
-  const locked = useAgentStore((s) => isRunActive(s.status));
+  const locked = useAgentStore((s) => selectRunsActive(s) > 0);
   const setLocalAgent = useAgentStore((s) => s.setLocalAgent);
   const setBackend = useAgentStore((s) => s.setBackend);
 
@@ -70,7 +70,7 @@ const LocalAgentCard = ({ id }: { id: LocalAgentId }) => {
           <p
             className={cn(
               "text-[11px] leading-4",
-              installed ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+              installed ? "text-amber-400" : "text-muted-foreground",
             )}
           >
             <NoteText note={info.note} />

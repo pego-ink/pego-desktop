@@ -106,3 +106,43 @@ describe("settleStatus and pruning", () => {
     expect(prunedIds(metas, 10)).toEqual([]);
   });
 });
+
+describe("queued messages", () => {
+  const withQueue = (): SessionState => ({
+    ...emptySession("s1", 10),
+    turns: [turnOf([{ id: "l1", at: 1, kind: "user", text: "hi" }])],
+    queue: [
+      { id: "q1", text: "then this", attachments: [], createdAt: 5 },
+      {
+        id: "q2",
+        text: "with image",
+        attachments: [
+          { id: "att-1", name: "hero.png", mediaType: "image/png", data: "A".repeat(400) },
+        ],
+        createdAt: 6,
+      },
+    ],
+  });
+
+  test("round-trips; images shrink to name and size and come back as a warning", () => {
+    const stored = toStoredSession(withQueue(), "doc", 99);
+    expect(stored.queue?.[1]?.attachments).toEqual([{ name: "hero.png", size: 300 }]);
+    expect(JSON.stringify(stored)).not.toContain("AAAA");
+
+    const restored = fromStoredSession(structuredClone(stored));
+    expect(restored.queue?.map((m) => m.text)).toEqual(["then this", "with image"]);
+    expect(restored.queue?.[1]).toMatchObject({
+      attachments: [],
+      attachmentsMeta: [{ name: "hero.png", size: 300 }],
+    });
+    // Stored again, the lost images keep their record instead of vanishing.
+    expect(toStoredSession(restored, "doc", 100).queue?.[1]?.attachments).toEqual([
+      { name: "hero.png", size: 300 },
+    ]);
+  });
+
+  test("an empty queue is not stored", () => {
+    expect(toStoredSession({ ...withQueue(), queue: [] }, "doc", 1).queue).toBeUndefined();
+    expect(fromStoredSession(toStoredSession(emptySession("e"), "doc", 1)).queue).toBeUndefined();
+  });
+});

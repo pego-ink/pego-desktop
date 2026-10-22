@@ -1,5 +1,12 @@
 import { useId, useState } from "react";
-import { AlertCircleIcon, ChevronRightIcon, ImageIcon, InfoIcon, WrenchIcon } from "lucide-react";
+import {
+  AlertCircleIcon,
+  ChevronRightIcon,
+  CornerDownRightIcon,
+  ImageIcon,
+  InfoIcon,
+  WrenchIcon,
+} from "lucide-react";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
 import type { AgentLogEntry } from "@/agent/use-agent-store";
@@ -83,6 +90,25 @@ const ToolGroupRow = ({
   );
 };
 
+const STEERED_LABELS = {
+  pending: "Sending…",
+  delivered: "Steered",
+  failed: "Not delivered",
+} as const;
+
+/** Small tag on a user bubble that was sent into the running agent. */
+const SteeredLabel = ({ state }: { state: keyof typeof STEERED_LABELS }) => (
+  <span
+    className={cn(
+      "flex items-center gap-1 self-end text-[11px] leading-none text-muted-foreground",
+      state === "failed" && "text-destructive",
+    )}
+  >
+    <CornerDownRightIcon aria-hidden className="size-3" />
+    {STEERED_LABELS[state]}
+  </span>
+);
+
 const Entry = ({
   entry,
   className,
@@ -122,6 +148,7 @@ const Entry = ({
               ))}
             </span>
           ) : null}
+          {entry.steered ? <SteeredLabel state={entry.steered} /> : null}
           <span className="whitespace-pre-wrap">{entry.text}</span>
         </li>
       );

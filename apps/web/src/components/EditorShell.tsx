@@ -1,11 +1,11 @@
 import { PanelRightIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
+import { ZoomControl } from "@/components/ZoomControl";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { PagesPanel } from "@/pages/PagesPanel";
 import { AssetsPanel } from "@/assets/AssetsPanel";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
-import { isRunActive } from "@/panels/agent/agent-format";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { PropertiesPanel } from "@/panels/PropertiesPanel";
 import { FramePresetsPanel } from "@/panels/frame-presets/FramePresetsPanel";
 import { useToolStore } from "@/store/use-tool-store";
@@ -156,7 +156,7 @@ const useProjectsAvailable = () =>
 export const EditorShell = () => {
   const rail = useLayoutStore((s) => s.rail);
   const pressRailTab = useLayoutStore((s) => s.pressRailTab);
-  const working = useAgentStore((s) => isRunActive(s.status));
+  const working = useAgentStore((s) => selectRunsActive(s) > 0);
   const projects = useProjectsAvailable();
   const dashboard = useWorkspaceStore((s) => s.view === "dashboard") && projects;
   usePanelShortcut();
@@ -207,6 +207,7 @@ export const EditorShell = () => {
             <main className="relative min-w-0 flex-1">
               <ShowRightPanelButton />
               <Canvas />
+              <ZoomControl />
             </main>
             <RightColumn />
           </div>

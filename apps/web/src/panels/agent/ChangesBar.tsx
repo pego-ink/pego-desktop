@@ -1,26 +1,42 @@
 import { GitCompareArrowsIcon, Undo2Icon } from "lucide-react";
+import { toast } from "sonner";
 import { findNode } from "@pego/doc";
 import { Button } from "@pego/ui/components/button";
+import { Tooltip } from "@pego/ui/components/tooltip";
 import { canUndoRunChanges, undoRunChanges } from "@/agent/run";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { useAgentStore, useVisibleRun, visibleSession } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { safely } from "@/panels/agent/run-actions";
 
 /** Shown after a run: undo everything it did, or select the nodes it touched. */
 export const ChangesBar = () => {
-  const transactionCount = useAgentStore((s) => s.transactionCount);
-  const focusCount = useAgentStore((s) => s.focusIds.length);
-  // Re-evaluate when the undo stack moves (the run's transactions must still be on top).
-  const pastLength = useDocumentStore((s) => s.history.past.length);
-  const canUndo = pastLength >= 0 && canUndoRunChanges();
+  const runId = useVisibleRun((s) => s.runId);
+  const transactionCount = useVisibleRun((s) => s.transactionCount);
+  const focusCount = useVisibleRun((s) => s.focusIds.length);
+  // Re-evaluate when the document or its history moves (another edit may now conflict).
+  useDocumentStore((s) => s.history);
+  const check = runId ? canUndoRunChanges(runId) : { ok: false };
 
   if (transactionCount === 0 && focusCount === 0) return null;
 
   const review = () => {
-    const { focusIds } = useAgentStore.getState();
+    const { focusIds } = visibleSession(useAgentStore.getState());
     const { doc, select } = useDocumentStore.getState();
     select(focusIds.filter((id) => findNode(doc, id)));
   };
+
+  const undo = () => {
+    if (!runId) return;
+    const result = undoRunChanges(runId);
+    if (!result.ok && result.message) toast.error(result.message);
+  };
+
+  const undoButton = (
+    <Button size="xs" variant="ghost" disabled={!check.ok} onClick={() => void safely(undo)}>
+      <Undo2Icon />
+      Undo all
+    </Button>
+  );
 
   return (
     <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 pl-3">
@@ -28,15 +44,19 @@ export const ChangesBar = () => {
       <span className="min-w-0 flex-1 truncate text-xs text-foreground">
         {transactionCount} {transactionCount === 1 ? "change" : "changes"}
       </span>
-      <Button
-        size="xs"
-        variant="ghost"
-        disabled={!canUndo}
-        onClick={() => void safely(undoRunChanges)}
-      >
-        <Undo2Icon />
-        Undo all
-      </Button>
+      {!check.ok && check.message ? (
+        // A disabled button gets no pointer events: the wrapper carries the reason.
+        <Tooltip content={check.message} side="top">
+          <span
+            tabIndex={0}
+            className="inline-flex rounded-md outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {undoButton}
+          </span>
+        </Tooltip>
+      ) : (
+        undoButton
+      )}
       <Button size="xs" variant="secondary" disabled={focusCount === 0} onClick={review}>
         Review
       </Button>

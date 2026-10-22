@@ -11,11 +11,15 @@ import {
 import { nextAttachmentId } from "@/agent/attachments";
 import {
   emptySession,
+  sessionTitle,
   settleStatus,
   type AttachmentMeta,
+  type QueuedMessage,
   type SessionState,
   type SessionTurn,
 } from "@/agent/sessions/session-model";
+import { pickColorIndex } from "@/agent/run-colors";
+import { isRunActive } from "@/panels/agent/agent-format";
 import {
   loadAgentPrefs,
   saveAgentPrefs,
@@ -23,7 +27,7 @@ import {
   type AgentPrefs,
 } from "@/agent/agent-prefs";
 
-export type { AgentBackend };
+export type { AgentBackend, QueuedMessage };
 
 export type RunStatus =
   "idle" | "planning" | "running" | "awaiting_decision" | "done" | "failed" | "cancelled";
@@ -42,6 +46,11 @@ export type AgentLogEntry = {
   attachments?: RunAttachment[];
   /** Name and size of images attached in a restored session (the image data is not stored). */
   attachmentsMeta?: AttachmentMeta[];
+  /**
+   * A message sent into the running agent (steer), user entries only: "pending" until the agent
+   * took it, "delivered" once it did, "failed" when the run ended first.
+   */
+  steered?: "pending" | "delivered" | "failed";
 };
 
 export type BridgeStatus = {
@@ -72,6 +81,36 @@ export const emptyBridge = (): BridgeStatus => ({
   projectDir: null,
 });
 
+/** One run's live fields: the latest turn of a session (the earlier ones are in `turns`). */
+export type RunFields = {
+  /** Who runs the current/last run, e.g. "Codex · gpt-5" (shown in the run header). */
+  runLabel: string | null;
+  status: RunStatus;
+  runId: string | null;
+  prompt: string;
+  steps: RunStep[];
+  decision: PendingDecision | null;
+  log: AgentLogEntry[];
+  /** Nodes the agent is touching right now (ghost outline on canvas). */
+  focusIds: string[];
+  /** History transactions created by the current/last run (shown as "N changes"). */
+  transactionCount: number;
+  usage: { inputTokens: number; outputTokens: number; costUsd: number };
+};
+
+/**
+ * A chat session held in memory: its finished turns plus the live fields of its latest run. The
+ * visible session is always live; others stay live while they run in the background (or have
+ * queued messages, or finished in the background and were not looked at yet).
+ */
+export type SessionLive = SessionState &
+  RunFields & {
+    /** Palette slot of this session's canvas focus box and cursor (see agent/run-colors). */
+    colorIndex: number;
+    /** Messages for the next run of this session, oldest first (see agent/queue). */
+    queue: QueuedMessage[];
+  };
+
 type AgentState = {
   backend: AgentBackend;
   /** Local agent used when `backend` is "local". */
@@ -94,28 +133,16 @@ type AgentState = {
   selectedStyleId: string | null | undefined;
   /** Images attached in the composer for the next run; moved into the run on send. Never persisted. */
   pendingAttachments: RunAttachment[];
-  /** Chat session shown in the panel (see agent/sessions). Runs append turns to it. */
-  sessionId: string;
-  sessionCreatedAt: number;
-  /** User-typed session title; null = derived from the first prompt. */
-  sessionTitle: string | null;
-  /** Finished turns of the session, oldest first. The run fields below are the latest turn. */
-  turns: SessionTurn[];
-  /** Who runs the current/last run, e.g. "Codex · gpt-5" (shown in the run header). */
-  runLabel: string | null;
-  status: RunStatus;
-  runId: string | null;
-  prompt: string;
-  steps: RunStep[];
-  decision: PendingDecision | null;
-  log: AgentLogEntry[];
-  /** Nodes the agent is touching right now (ghost outline on canvas). */
-  focusIds: string[];
-  /** History transactions created by the current/last run, oldest first (for "Undo all"). */
-  transactionCount: number;
-  usage: { inputTokens: number; outputTokens: number; costUsd: number };
+  /** Chat sessions in memory by id (see `SessionLive`). Always holds `visibleSessionId`. */
+  liveSessions: Record<string, SessionLive>;
+  /** Session shown in the Agent panel. */
+  visibleSessionId: string;
   bridge: BridgeStatus;
 };
+
+type LogInput = Omit<AgentLogEntry, "id" | "at">;
+type UsageInput = { inputTokens: number; outputTokens: number; costUsd?: number };
+type SessionPatch = Partial<SessionLive> | ((live: SessionLive) => Partial<SessionLive>);
 
 type AgentActions = {
   set: (patch: Partial<AgentState>) => void;
@@ -135,22 +162,44 @@ type AgentActions = {
   setModel: (agentId: LocalAgentId, model: string | undefined) => void;
   /** Re-read persisted preferences (done once at store creation). */
   restorePrefs: () => void;
-  /** Show another session (restored, new or empty); resets the latest-run fields. */
-  loadSession: (session: SessionState) => void;
-  setSessionTitle: (title: string | null) => void;
   /**
-   * Start a new run in the current session: the previous run becomes a turn of the session and
-   * the run fields reset (keeps backend and bridge status).
+   * Show a session in the panel. One that is already live (running in the background) keeps its
+   * live state. The previously visible session leaves memory unless it is still needed there.
    */
-  beginRun: (runId: string, prompt: string) => void;
-  setPlan: (steps: PlanStep[]) => void;
-  setStepStatus: (stepId: string, status: StepStatus, summary?: string) => void;
-  appendLog: (entry: Omit<AgentLogEntry, "id" | "at">) => void;
-  addUsage: (usage: { inputTokens: number; outputTokens: number; costUsd?: number }) => void;
+  showSession: (session: SessionState) => void;
+  /** Put a session in memory without showing it (no-op when it is already live). */
+  addSession: (session: SessionState) => void;
+  /** Only `session` stays in memory, shown in the panel (another file was opened). */
+  resetSessions: (session: SessionState) => void;
+  /** Forget a live session (it was deleted). The visible session is never dropped. */
+  dropSession: (sessionId: string) => void;
+  setSessionTitle: (sessionId: string, title: string | null) => void;
+  /**
+   * Start a new run in a session: its previous run becomes a turn and the run fields reset. The
+   * session gets a palette slot no other running session uses.
+   */
+  beginRun: (sessionId: string, runId: string, prompt: string) => void;
+  /** Merge fields into a live session (no-op for an unknown id). */
+  patchSession: (sessionId: string, patch: SessionPatch) => void;
+  setPlan: (sessionId: string, steps: PlanStep[]) => void;
+  setStepStatus: (sessionId: string, stepId: string, status: StepStatus, summary?: string) => void;
+  /** Append a log entry; returns its id. */
+  appendLog: (sessionId: string, entry: LogInput) => string;
+  /** Set the delivery state of a steered user entry. */
+  setSteered: (
+    sessionId: string,
+    entryId: string,
+    steered: "pending" | "delivered" | "failed",
+  ) => void;
+  /** The agent took a steered message: the oldest pending entry with this text becomes delivered. */
+  markSteerDelivered: (sessionId: string, text: string) => void;
+  /** Every still-pending steered entry of the session did not arrive (the run ended). */
+  failPendingSteers: (sessionId: string) => void;
+  addUsage: (sessionId: string, usage: UsageInput) => void;
 };
 
-const idleRun = {
-  status: "idle" as RunStatus,
+const idleRun: RunFields = {
+  status: "idle",
   runId: null,
   prompt: "",
   steps: [],
@@ -162,9 +211,17 @@ const idleRun = {
   runLabel: null,
 };
 
+/** A session as it enters memory: no live run yet. */
+export const liveFromSession = (session: SessionState, colorIndex = 0): SessionLive => ({
+  ...session,
+  ...idleRun,
+  colorIndex,
+  queue: session.queue ?? [],
+});
+
 /** The latest run as a turn, or null when nothing has run since the session was opened. */
 export const currentTurn = (
-  state: Pick<AgentState, "runId" | "status" | "runLabel" | "log" | "usage">,
+  state: Pick<RunFields, "runId" | "status" | "runLabel" | "log" | "usage">,
 ): SessionTurn | null =>
   state.runId === null || state.log.length === 0
     ? null
@@ -176,23 +233,53 @@ export const currentTurn = (
         usage: state.usage,
       };
 
-type TurnSource = Parameters<typeof currentTurn>[0] & Pick<AgentState, "turns">;
+type TurnSource = Parameters<typeof currentTurn>[0] & Pick<SessionState, "turns">;
 
-/** All turns of the live session, oldest first, including the latest run. */
+/** All turns of a live session, oldest first, including the latest run. */
 export const sessionTurns = (state: TurnSource): SessionTurn[] => {
   const latest = currentTurn(state);
   return latest ? [...state.turns, latest] : state.turns;
 };
 
-/** The live session as plain data (for titles, storage and the prompt history). */
+/** A live session as plain data (for titles, storage and the prompt history). */
 export const sessionOf = (
-  state: TurnSource & Pick<AgentState, "sessionId" | "sessionCreatedAt" | "sessionTitle">,
+  state: TurnSource & Pick<SessionState, "id" | "createdAt" | "customTitle" | "queue">,
 ): SessionState => ({
-  id: state.sessionId,
-  createdAt: state.sessionCreatedAt,
-  customTitle: state.sessionTitle,
+  id: state.id,
+  createdAt: state.createdAt,
+  customTitle: state.customTitle,
   turns: sessionTurns(state),
+  queue: state.queue,
 });
+
+/** Cheap title for selectors: avoids copying the whole transcript on every log entry. */
+export const liveTitle = (live: TurnSource & Pick<SessionState, "customTitle">): string => {
+  const latest = live.turns.length === 0 ? currentTurn(live) : null;
+  return sessionTitle({ customTitle: live.customTitle, turns: latest ? [latest] : live.turns });
+};
+
+/** The session shown in the panel. */
+export const visibleSession = (state: Pick<AgentState, "liveSessions" | "visibleSessionId">) =>
+  state.liveSessions[state.visibleSessionId]!;
+
+/** The live session whose latest run is `runId`. */
+export const findRunSession = (
+  state: Pick<AgentState, "liveSessions">,
+  runId: string,
+): SessionLive | undefined =>
+  Object.values(state.liveSessions).find((live) => live.runId === runId);
+
+/** Sessions whose run is working right now. */
+export const runningSessions = (state: Pick<AgentState, "liveSessions">): SessionLive[] =>
+  Object.values(state.liveSessions).filter((live) => isRunActive(live.status));
+
+/** How many runs are working right now (any session). */
+export const selectRunsActive = (state: Pick<AgentState, "liveSessions">): number =>
+  runningSessions(state).length;
+
+/** A session stays in memory while hidden only when something still happens or waits in it. */
+const keepsLiveWhenHidden = (live: SessionLive): boolean =>
+  isRunActive(live.status) || live.queue.length > 0;
 
 const initialSession = emptySession();
 
@@ -211,12 +298,16 @@ export type AgentStoreState = AgentState & AgentActions;
 const createAgentStore = () =>
   create<AgentState & AgentActions>((set, get) => {
     const persist = () => saveAgentPrefs(prefsOf(get()));
+    const patch = (sessionId: string, update: SessionPatch) =>
+      set((state) => {
+        const live = state.liveSessions[sessionId];
+        if (!live) return state;
+        const changes = typeof update === "function" ? update(live) : update;
+        return { liveSessions: { ...state.liveSessions, [sessionId]: { ...live, ...changes } } };
+      });
     return {
-      ...idleRun,
-      sessionId: initialSession.id,
-      sessionCreatedAt: initialSession.createdAt,
-      sessionTitle: null,
-      turns: [],
+      liveSessions: { [initialSession.id]: liveFromSession(initialSession) },
+      visibleSessionId: initialSession.id,
       ...loadAgentPrefs(),
       modelsByAgent: {},
       agentsRefreshing: false,
@@ -225,7 +316,7 @@ const createAgentStore = () =>
       selectedStyleId: undefined,
       pendingAttachments: [],
 
-      set: (patch) => set(patch),
+      set: (next) => set(next),
       setBackend: (backend) => {
         set({ backend, explicit: true });
         persist();
@@ -266,43 +357,94 @@ const createAgentStore = () =>
         persist();
       },
       restorePrefs: () => set(loadAgentPrefs()),
-      loadSession: (session) =>
-        set({
-          ...idleRun,
-          sessionId: session.id,
-          sessionCreatedAt: session.createdAt,
-          sessionTitle: session.customTitle,
-          turns: session.turns,
-        }),
-      setSessionTitle: (sessionTitle) => set({ sessionTitle }),
-      beginRun: (runId, prompt) =>
+      showSession: (session) =>
         set((state) => {
-          const previous = currentTurn(state);
+          const liveSessions = { ...state.liveSessions };
+          const previous = liveSessions[state.visibleSessionId];
+          if (previous && previous.id !== session.id && !keepsLiveWhenHidden(previous)) {
+            delete liveSessions[previous.id];
+          }
+          liveSessions[session.id] ??= liveFromSession(session);
+          return { liveSessions, visibleSessionId: session.id };
+        }),
+      addSession: (session) =>
+        set((state) =>
+          state.liveSessions[session.id]
+            ? state
+            : { liveSessions: { ...state.liveSessions, [session.id]: liveFromSession(session) } },
+        ),
+      resetSessions: (session) =>
+        set({
+          liveSessions: { [session.id]: liveFromSession(session) },
+          visibleSessionId: session.id,
+        }),
+      dropSession: (sessionId) =>
+        set((state) => {
+          if (sessionId === state.visibleSessionId || !state.liveSessions[sessionId]) return state;
+          const liveSessions = { ...state.liveSessions };
+          delete liveSessions[sessionId];
+          return { liveSessions };
+        }),
+      setSessionTitle: (sessionId, customTitle) => patch(sessionId, { customTitle }),
+      beginRun: (sessionId, runId, prompt) => {
+        const used = runningSessions(get())
+          .filter((live) => live.id !== sessionId)
+          .map((live) => live.colorIndex);
+        patch(sessionId, (live) => {
+          const previous = currentTurn(live);
           return {
             ...idleRun,
-            turns: previous ? [...state.turns, previous] : state.turns,
+            turns: previous ? [...live.turns, previous] : live.turns,
             runId,
             prompt,
             status: "planning",
+            colorIndex: pickColorIndex(used),
           };
-        }),
-      setPlan: (steps) => set({ steps: steps.map((step) => ({ ...step, status: "pending" })) }),
-      setStepStatus: (stepId, status, summary) =>
-        set((state) => ({
-          steps: state.steps.map((step) =>
+        });
+      },
+      patchSession: patch,
+      setPlan: (sessionId, steps) =>
+        patch(sessionId, { steps: steps.map((step) => ({ ...step, status: "pending" })) }),
+      setStepStatus: (sessionId, stepId, status, summary) =>
+        patch(sessionId, (live) => ({
+          steps: live.steps.map((step) =>
             step.id === stepId ? { ...step, status, summary: summary ?? step.summary } : step,
           ),
         })),
-      appendLog: (entry) =>
-        set((state) => ({
-          log: [...state.log, { ...entry, id: `log-${++logSeq}`, at: Date.now() }],
+      appendLog: (sessionId, entry) => {
+        const id = `log-${++logSeq}`;
+        patch(sessionId, (live) => ({ log: [...live.log, { ...entry, id, at: Date.now() }] }));
+        return id;
+      },
+      setSteered: (sessionId, entryId, steered) =>
+        patch(sessionId, (live) => ({
+          log: live.log.map((entry) => (entry.id === entryId ? { ...entry, steered } : entry)),
         })),
-      addUsage: (usage) =>
-        set((state) => ({
+      markSteerDelivered: (sessionId, text) =>
+        patch(sessionId, (live) => {
+          const pending = live.log.filter((e) => e.steered === "pending");
+          const target = pending.find((e) => e.text === text) ?? pending[0];
+          if (!target) return {};
+          return {
+            log: live.log.map((e) => (e === target ? { ...e, steered: "delivered" as const } : e)),
+          };
+        }),
+      failPendingSteers: (sessionId) =>
+        patch(sessionId, (live) =>
+          live.log.some((e) => e.steered === "pending")
+            ? {
+                log: live.log.map((e) =>
+                  e.steered === "pending" ? { ...e, steered: "failed" as const } : e,
+                ),
+              }
+            : {},
+        ),
+      addUsage: (sessionId, usage) =>
+        patch(sessionId, (live) => ({
           usage: {
-            inputTokens: state.usage.inputTokens + usage.inputTokens,
-            outputTokens: state.usage.outputTokens + usage.outputTokens,
-            costUsd: state.usage.costUsd + (usage.costUsd ?? 0),
+            inputTokens: live.usage.inputTokens + usage.inputTokens,
+            outputTokens: live.usage.outputTokens + usage.outputTokens,
+            costUsd: live.usage.costUsd + (usage.costUsd ?? 0),
           },
         })),
     };
@@ -319,3 +461,50 @@ export const useAgentStore: ReturnType<typeof createAgentStore> =
 if (import.meta.hot) {
   import.meta.hot.data.agentStore = useAgentStore;
 }
+
+/** Read the visible session's live state in a component (selectors must return stable values). */
+export const useVisibleRun = <T>(selector: (live: SessionLive) => T): T =>
+  useAgentStore((state) => selector(visibleSession(state)));
+
+/**
+ * Writes of one run (or, with `runId` null, of whichever session is visible: Claude Code over
+ * MCP, tests). Each call resolves the run's session afresh, so a run whose session was dropped
+ * writes nowhere instead of into another chat.
+ */
+export type RunScope = {
+  readonly runId: string | null;
+  sessionId: () => string | null;
+  get: () => SessionLive | null;
+  set: (patch: Partial<RunFields>) => void;
+  appendLog: (entry: LogInput) => void;
+  setPlan: (steps: PlanStep[]) => void;
+  setStepStatus: (stepId: string, status: StepStatus, summary?: string) => void;
+  addUsage: (usage: UsageInput) => void;
+};
+
+export const runScope = (runId: string | null): RunScope => {
+  const sessionId = (): string | null => {
+    const state = useAgentStore.getState();
+    if (runId === null) return state.visibleSessionId;
+    return findRunSession(state, runId)?.id ?? null;
+  };
+  const withSession = (write: (id: string) => void) => {
+    const id = sessionId();
+    if (id !== null) write(id);
+  };
+  const store = () => useAgentStore.getState();
+  return {
+    runId,
+    sessionId,
+    get: () => {
+      const id = sessionId();
+      return id === null ? null : (store().liveSessions[id] ?? null);
+    },
+    set: (patch) => withSession((id) => store().patchSession(id, patch)),
+    appendLog: (entry) => withSession((id) => store().appendLog(id, entry)),
+    setPlan: (steps) => withSession((id) => store().setPlan(id, steps)),
+    setStepStatus: (stepId, status, summary) =>
+      withSession((id) => store().setStepStatus(id, stepId, status, summary)),
+    addUsage: (usage) => withSession((id) => store().addUsage(id, usage)),
+  };
+};

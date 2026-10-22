@@ -16,6 +16,12 @@ describe("toolbar groups", () => {
     expect(shownEntry(group("pen"), "pencil", "text").tool).toBe("pencil");
   });
 
+  test("Move and Hand are separate single-tool groups, in that order", () => {
+    expect(TOOL_GROUPS.slice(0, 2).map((g) => g.id)).toEqual(["move", "hand"]);
+    expect(group("move").tools.map((t) => tooltipFor(t))).toEqual(["Move (V)"]);
+    expect(group("hand").tools.map((t) => tooltipFor(t))).toEqual(["Hand (H)"]);
+  });
+
   test("groupHasTool and tooltip", () => {
     expect(groupHasTool(group("shapes"), "polygon")).toBe(true);
     expect(groupHasTool(group("pen"), "polygon")).toBe(false);

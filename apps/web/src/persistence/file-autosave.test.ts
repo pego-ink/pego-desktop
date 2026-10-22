@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { setVisibleStatus } from "@/agent/test-utils";
 import { useDocumentStore } from "@/store/use-document-store";
 import { resetLiveDocument } from "@/workspace/test-reset";
 import {
@@ -50,7 +50,7 @@ beforeEach(() => {
     removeEventListener: () => {},
   });
   resetLiveDocument();
-  useAgentStore.getState().set({ status: "idle" });
+  setVisibleStatus("idle");
   useAutosaveStore.setState({ enabled: true, status: "idle" });
 });
 

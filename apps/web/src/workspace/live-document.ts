@@ -1,10 +1,9 @@
 import { toast } from "sonner";
 import type { History, PegoDocument } from "@pego/doc";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
 import { getLayout } from "@/canvas/layout";
 import type { Camera } from "@/canvas/types";
 import { contentBounds } from "@/interaction/camera";
-import { isRunActive } from "@/panels/agent/agent-format";
 import { createEmptyDocument, isDirty } from "@/persistence/file-format";
 import type { PegoFileHandle } from "@/persistence/fs-access";
 import { useFileStore } from "@/persistence/use-file-store";
@@ -75,7 +74,7 @@ export const documentTitle = (
 
 /** A run of the panel agent edits the live document: replacing it mid-run is not allowed. */
 export const blockedByRun = (): boolean => {
-  if (!isRunActive(useAgentStore.getState().status)) return false;
+  if (selectRunsActive(useAgentStore.getState()) === 0) return false;
   toast.info("Wait for the agent run to finish (or stop it) before switching documents.");
   return true;
 };

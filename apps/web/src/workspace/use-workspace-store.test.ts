@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
-import { useAgentStore } from "@/agent/use-agent-store";
+import { setVisibleStatus } from "@/agent/test-utils";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { captureLive, documentTitle, openDocument } from "./live-document";
@@ -26,7 +26,7 @@ const title = () => {
 
 beforeEach(() => {
   resetLiveDocument();
-  useAgentStore.getState().set({ status: "idle" });
+  setVisibleStatus("idle");
   useWorkspaceStore.setState({
     workspaces: [{ id: SCRATCH_ID, name: "Scratch", dir: null, kind: "scratch", saved: null }],
     liveId: SCRATCH_ID,
@@ -97,7 +97,7 @@ describe("workspaces", () => {
 
   test("switching projects is blocked during a panel agent run", () => {
     openProjectWorkspace(checkout);
-    useAgentStore.getState().set({ status: "running" });
+    setVisibleStatus("running");
     expect(openProjectWorkspace(shop)).toBe(false);
     expect(useWorkspaceStore.getState().liveId).toBe("chk00001");
   });

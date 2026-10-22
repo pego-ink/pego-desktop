@@ -1,7 +1,8 @@
-import type { EditorToBridge, RunAttachment } from "@pego/agent";
+import type { EditorToBridge } from "@pego/agent";
 import { attachmentNote } from "./attachments";
 import { sendToBridge, startBridgeConnection } from "./bridge-client";
-import { setActiveRun, setRunTail } from "./active-run";
+import { getRun, registerRun, unregisterRun } from "./run-registry";
+import type { RunStartOptions } from "./run";
 import { promptWithHistory } from "./sessions/session-context";
 import { findAgentInfo, LOCAL_AGENT_NAMES } from "./local-agents";
 import { resolveRunSkills, skillLogLines, skillPromptPrefix } from "./run-skills";
@@ -43,33 +44,42 @@ export const startLocalAgentRun = async (
   send: (message: EditorToBridge) => boolean = sendToBridge,
   /** Explicit skill for this run: undefined = auto-detect from the prompt, null = core only. */
   skillId?: string | null,
-  options: {
-    bridgeWaitMs?: number;
-    attachments?: readonly RunAttachment[];
-    /** Session memory block (see sessions/session-context); the log keeps only the user's text. */
-    history?: string;
-  } = {},
+  options: RunStartOptions & { bridgeWaitMs?: number } = {},
 ): Promise<void> => {
   const attachments = options.attachments ?? [];
   const waitMs = options.bridgeWaitMs ?? localRunConfig.bridgeWaitMs;
   const agent = useAgentStore.getState();
+  const sessionId = options.sessionId ?? agent.visibleSessionId;
   const { localAgentId: agentId, bridge } = agent;
   const info = findAgentInfo(bridge.agents, agentId);
   const name = info?.name ?? LOCAL_AGENT_NAMES[agentId];
   const model = info?.supportsModels === false ? undefined : agent.modelByAgent[agentId];
 
-  agent.beginRun(runId, prompt);
-  agent.set({ runLabel: describeRunAgent(name, model) });
-  agent.appendLog({
-    kind: "user",
-    text: prompt,
-    ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
+  const shown = options.displayText?.trim() || prompt;
+  agent.beginRun(sessionId, runId, shown);
+  // Registered before any wait so a second start in this session is refused meanwhile.
+  const host = createToolHost({ runId, attachments });
+  const scope = host.run;
+  registerRun({
+    id: runId,
+    sessionId,
+    backend: "local",
+    controller: new AbortController(),
+    host,
+    styleId: options.styleId,
+    steerMode: info?.steer ?? "restart",
   });
-  setRunTail(null);
+  scope.set({ runLabel: describeRunAgent(name, model) });
+  scope.appendLog({
+    kind: "user",
+    text: shown,
+    ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
+    ...(options.steered ? { steered: "delivered" as const } : {}),
+  });
 
   // The CLI loads the skills itself through get_skill; the panel and log keep the user's text.
-  const skills = resolveRunSkills(prompt, skillId);
-  for (const text of skillLogLines(skills)) agent.appendLog({ kind: "info", text });
+  const skills = resolveRunSkills(prompt, skillId, options.styleId);
+  for (const text of skillLogLines(skills)) scope.appendLog({ kind: "info", text });
   // The images travel in run_start; one line names them so the agent knows they exist.
   const prefix = [skillPromptPrefix(skills), attachmentNote(attachments)]
     .filter(Boolean)
@@ -78,31 +88,28 @@ export const startLocalAgentRun = async (
   const agentPrompt = prefix ? `${prefix}\n\n${request}` : request;
 
   const fail = (text: string) => {
-    agent.appendLog({ kind: "error", text });
-    agent.set({ status: "failed" });
+    unregisterRun(runId);
+    scope.appendLog({ kind: "error", text });
+    scope.set({ status: "failed" });
   };
 
   if (!bridge.connected) {
     // The socket may be reconnecting (reload, bridge restart): make sure a connection attempt
     // is running and give it a moment before giving up.
     startBridgeConnection();
-    agent.appendLog({ kind: "info", text: "Connecting to the local bridge…" });
+    scope.appendLog({ kind: "info", text: "Connecting to the local bridge…" });
     if (!(await waitForBridge(waitMs))) {
       return fail(
         "The local bridge is not running. Start it with `bun run dev` or `bun run bridge`.",
       );
     }
   }
+  // Stopped while waiting for the bridge: cancelRun already closed it out.
+  if (!getRun(runId)) return;
   if (info && !info.installed) {
     return fail(`${name} is not installed. ${info.note ?? "Install it, then refresh agents."}`);
   }
 
-  setActiveRun({
-    id: runId,
-    backend: "local",
-    controller: new AbortController(),
-    host: createToolHost({ onTransaction: setRunTail, attachments }),
-  });
   const message: EditorToBridge = {
     type: "run_start",
     runId,
@@ -115,8 +122,9 @@ export const startLocalAgentRun = async (
   // The store said "connected" but the socket was not open (e.g. replaced by a reload):
   // restart the connection, wait for it, and try once more.
   startBridgeConnection();
-  if ((await waitForBridge(waitMs)) && send(message)) return;
-  setActiveRun(null);
+  const reconnected = await waitForBridge(waitMs);
+  if (!getRun(runId)) return;
+  if (reconnected && send(message)) return;
   fail("Could not reach the local bridge. Reload Pego (⌘R) if this keeps happening.");
 };
 

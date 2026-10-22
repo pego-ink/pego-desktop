@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { findNode, type Op } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { contentBounds } from "@/interaction/camera";
+import { ZOOM_STEP, selectionBounds } from "@/interaction/zoom-utils";
 import { useInteractionState } from "@/interaction/interaction-state";
 import { duplicateOps } from "@/interaction/duplicate";
 import { escapeSelection } from "@/interaction/selection";
@@ -11,6 +12,7 @@ import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { getToolHandler } from "@/interaction/tool-handlers";
 import { nudgeStep } from "@/interaction/nudge";
+import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
 import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { desktopApi } from "@/desktop/desktop-api";
@@ -46,7 +48,6 @@ const ARROW_DELTAS: Record<string, [number, number]> = {
   ArrowDown: [0, 1],
 };
 
-const ZOOM_STEP = 1.25;
 const DUPLICATE_OFFSET = 10;
 
 /** Global editor keyboard shortcuts: history, delete, nudge, selection, zoom, space-to-pan. */
@@ -90,6 +91,11 @@ export const useEditorShortcuts = () => {
         viewport.zoomToFit(contentBounds(doc.doc, getLayout(doc.doc), doc.pageId));
         return;
       }
+      if (e.code === "Digit2" && e.shiftKey && !mod) {
+        e.preventDefault();
+        viewport.zoomToFit(selectionBounds(getLayout(doc.doc), doc.selection));
+        return;
+      }
       if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {
         e.preventDefault();
         viewport.zoomCenterBy(e.key === "-" || e.key === "_" ? 1 / ZOOM_STEP : ZOOM_STEP);
@@ -123,6 +129,11 @@ export const useEditorShortcuts = () => {
         if (plan.ops.length === 0) return;
         if (doc.commit(plan.ops, { label: "Duplicate" }))
           useDocumentStore.getState().select(plan.ids);
+        return;
+      }
+      if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
+        e.preventDefault();
+        if (doc.selection.length > 0) useSelectionPrompt.getState().toggle();
         return;
       }
       if (mod) return;

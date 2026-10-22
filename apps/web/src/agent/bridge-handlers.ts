@@ -18,8 +18,8 @@ import {
   snapshotDocumentForBridge,
   switchTabForBridge,
 } from "@/persistence/bridge-documents";
-import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
+import { allRuns, getRun, unregisterRun, type RunEntry } from "./run-registry";
 import { createToolHost } from "./tool-host";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
 
@@ -43,19 +43,27 @@ const applyDefaultAgent = (agents: readonly LocalAgentInfo[]): void => {
   if (id) agent().set({ backend: "local", localAgentId: id });
 };
 
+/** A local (bridge-driven) run the editor knows, or undefined for a stale/foreign id. */
+const localRun = (runId: string): RunEntry | undefined => {
+  const run = getRun(runId);
+  return run?.backend === "local" ? run : undefined;
+};
+
 /** Close out a local agent run: remaining steps resolve according to the final status. */
-const endRun = (status: "done" | "failed" | "cancelled") => {
-  const state = agent();
-  for (const step of state.steps) {
+const endRun = (run: RunEntry, status: "done" | "failed" | "cancelled") => {
+  const scope = run.host.run;
+  for (const step of scope.get()?.steps ?? []) {
     if (step.status === "running") {
-      state.setStepStatus(step.id, status === "done" ? "done" : "failed");
+      scope.setStepStatus(step.id, status === "done" ? "done" : "failed");
     } else if (step.status === "pending" && status !== "done") {
-      state.setStepStatus(step.id, "skipped");
+      scope.setStepStatus(step.id, "skipped");
     }
   }
-  state.set({ status, decision: null, focusIds: [] });
-  cancelPendingDecisions();
-  setActiveRun(null);
+  scope.set({ status, decision: null, focusIds: [] });
+  // A steer the CLI never confirmed did not arrive.
+  agent().failPendingSteers(run.sessionId);
+  cancelPendingDecisions(run.id);
+  unregisterRun(run.id);
 };
 
 /** Cache a `models` reply (even a failed one, so the picker can show the error). */
@@ -100,7 +108,7 @@ export const createBridgeHandlers = ({
     if (message.tool === EDITOR_OPS.loadDocument) {
       const outcome = loadDocumentFromBridge(message.input);
       if (!outcome.isError)
-        agent().appendLog({ kind: "info", text: outcome.content.split("\n")[0]! });
+        mcpHost.run.appendLog({ kind: "info", text: outcome.content.split("\n")[0]! });
       return void reply(outcome.content, outcome.isError);
     }
     if (message.tool === EDITOR_OPS.snapshotDocument) {
@@ -109,7 +117,7 @@ export const createBridgeHandlers = ({
     }
     if (message.tool === EDITOR_OPS.openProject) {
       const outcome = await openProjectForBridge(message.input);
-      if (!outcome.isError) agent().appendLog({ kind: "info", text: outcome.content });
+      if (!outcome.isError) mcpHost.run.appendLog({ kind: "info", text: outcome.content });
       return void reply(outcome.content, outcome.isError);
     }
     if (message.tool === EDITOR_OPS.listTabs) {
@@ -131,11 +139,9 @@ export const createBridgeHandlers = ({
     const { source } = message;
     let host = mcpHost;
     if (source.kind === "run") {
-      const active = getActiveRun();
-      if (!active || active.id !== source.runId || active.backend !== "local") {
-        return void reply("No matching active run in the editor.", true);
-      }
-      host = active.host;
+      const run = localRun(source.runId);
+      if (!run) return void reply("No matching active run in the editor.", true);
+      host = run.host;
     } else if (source.kind === "mcp") {
       const at = now();
       if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) mcpHost.newGroup();
@@ -147,7 +153,7 @@ export const createBridgeHandlers = ({
     try {
       const result = await spec.run(message.input, host);
       if (source.kind === "mcp") {
-        agent().appendLog({
+        mcpHost.run.appendLog({
           kind: "tool",
           text: "",
           tool: { name: message.tool, isError: result.isError },
@@ -160,42 +166,46 @@ export const createBridgeHandlers = ({
   };
 
   const handleRunEvent = (runId: string, event: RunEvent) => {
-    const active = getActiveRun();
-    if (!active || active.id !== runId || active.backend !== "local") return;
-    const state = agent();
-    if (state.status === "planning") state.set({ status: "running" });
+    // Events of a run the editor no longer tracks (cancelled, reloaded) are dropped.
+    const run = localRun(runId);
+    if (!run) return;
+    const scope = run.host.run;
+    if (scope.get()?.status === "planning") scope.set({ status: "running" });
     switch (event.kind) {
       case "text":
-        state.appendLog({ kind: "assistant", text: event.text });
+        scope.appendLog({ kind: "assistant", text: event.text });
         break;
       case "tool":
         if (event.status === "started") {
-          state.appendLog({
+          scope.appendLog({
             kind: "tool",
             text: "",
             tool: { name: event.tool, isError: false },
           });
         } else if (event.isError) {
-          state.appendLog({
+          scope.appendLog({
             kind: "tool",
             text: "",
             tool: { name: event.tool, isError: true },
           });
         }
         break;
+      case "steered":
+        agent().markSteerDelivered(run.sessionId, event.text);
+        break;
       case "usage":
-        state.addUsage({
+        scope.addUsage({
           inputTokens: event.inputTokens,
           outputTokens: event.outputTokens,
           costUsd: event.costUsd,
         });
         break;
       case "done":
-        endRun("done");
+        endRun(run, "done");
         break;
       case "error":
-        state.appendLog({ kind: "error", text: event.message });
-        endRun("failed");
+        scope.appendLog({ kind: "error", text: event.message });
+        endRun(run, "failed");
         break;
     }
   };
@@ -235,9 +245,11 @@ export const createBridgeHandlers = ({
 
   const handleClosed = () => {
     agent().set({ bridge: emptyBridge(), modelsByAgent: {}, agentsRefreshing: false });
-    if (getActiveRun()?.backend === "local") {
-      agent().appendLog({ kind: "error", text: "Lost the connection to the local bridge." });
-      endRun("failed");
+    // Every bridge-driven run dies with the connection; in-browser runs keep going.
+    for (const run of allRuns()) {
+      if (run.backend !== "local") continue;
+      run.host.run.appendLog({ kind: "error", text: "Lost the connection to the local bridge." });
+      endRun(run, "failed");
     }
   };
 
