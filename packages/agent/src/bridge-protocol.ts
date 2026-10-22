@@ -24,7 +24,15 @@ export type EditorToBridge =
   /** This editor was focused or became visible; the bridge routes MCP tool calls to it. */
   | { type: "focus" }
   /** Start a run with a local agent CLI (the user's own login/config for that CLI). */
-  | { type: "run_start"; runId: string; prompt: string; agentId: LocalAgentId; model?: string }
+  | {
+      type: "run_start";
+      runId: string;
+      prompt: string;
+      agentId: LocalAgentId;
+      model?: string;
+      /** Images the user attached in the composer (reference material for the agent). */
+      attachments?: RunAttachment[];
+    }
   /** Re-detect installed agent CLIs; answered with `agents`. */
   | { type: "agents_refresh" }
   /** List models an agent can use; answered with `models`. */
@@ -86,4 +94,29 @@ export type LocalAgentInfo = {
   supportsModels: boolean;
   /** Why it is unavailable or what to do (e.g. "Run `codex login` once"). */
   note?: string;
+};
+
+/** Image types a run attachment may have. */
+export const RUN_ATTACHMENT_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif"] as const;
+export type RunAttachmentType = (typeof RUN_ATTACHMENT_TYPES)[number];
+
+/** Limits shared by the editor (composer) and the bridge (validation). */
+export const RUN_ATTACHMENT_LIMITS = {
+  maxCount: 6,
+  /** Decoded bytes per image. */
+  maxBytes: 5 * 1024 * 1024,
+} as const;
+
+/**
+ * An image attached to a run. `id` is stable within the run ("att-1"…): tools can refer to it
+ * (e.g. `place_image` with src "attachment:att-1") so the agent can put the image on the canvas.
+ */
+export type RunAttachment = {
+  id: string;
+  name: string;
+  mediaType: RunAttachmentType;
+  /** Base64 (no data: prefix). */
+  data: string;
+  width?: number;
+  height?: number;
 };

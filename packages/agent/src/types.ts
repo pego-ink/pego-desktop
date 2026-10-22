@@ -35,6 +35,11 @@ export type ToolHost = {
   focusViewport?: (ids: string[]) => void;
   /** Icon names available to `icon` nodes (lucide, kebab-case). */
   listIcons?: () => string[];
+  /**
+   * Images the user attached to the current run, for `place_image` with src "attachment:<id>".
+   * Returns a data: URL, or undefined for an unknown id.
+   */
+  getAttachment?: (id: string) => { src: string; name: string } | undefined;
   /** Render a node (and its subtree only) to PNG, as drawn on canvas. */
   renderImage?: (
     nodeId: string,
