@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import type { GrDirectContext, Surface } from "canvaskit-wasm";
 import { requestDocumentFonts, useFontStore } from "@/canvas/fonts";
 import { loadCanvasKit } from "@/canvas/load-canvaskit";
+import { CANVAS_BACKGROUND, useThemeStore } from "@/theme/theme";
 import { getLayout } from "@/canvas/layout";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
@@ -81,6 +82,7 @@ export const Canvas = () => {
           renderDocument(res, canvas, doc, layout, camera, {
             hiddenIds,
             pageId: useDocumentStore.getState().pageId,
+            background: CANVAS_BACKGROUND[useThemeStore.getState().resolved],
           });
           const agent = useAgentStore.getState();
           const agentFocusIds = isRunActive(agent.status) ? agent.focusIds : undefined;
@@ -129,6 +131,7 @@ export const Canvas = () => {
             if (state.doc !== prev.doc) requestFonts();
           }),
           useFontStore.subscribe(schedule),
+          useThemeStore.subscribe(schedule),
           useViewportStore.subscribe(schedule),
           useInteractionState.subscribe(schedule),
           useTextEditStore.subscribe(schedule),

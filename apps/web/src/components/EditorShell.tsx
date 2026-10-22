@@ -7,6 +7,7 @@ import { ProjectPanel } from "@/project/ProjectPanel";
 import { TabBar } from "@/tabs/TabBar";
 import { Dashboard } from "@/workspace/Dashboard";
 import { HomeButton } from "@/workspace/HomeButton";
+import { ThemeToggle } from "@/theme/ThemeToggle";
 import { WorkspaceTabs } from "@/workspace/WorkspaceTabs";
 import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
@@ -126,6 +127,7 @@ export const EditorShell = () => {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {view === "editor" ? <HistoryButtons /> : null}
+          <ThemeToggle />
           <Button size="sm" variant="secondary">
             Share
           </Button>
