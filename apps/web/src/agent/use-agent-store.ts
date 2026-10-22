@@ -24,6 +24,8 @@ export type BridgeStatus = {
   /** The bridge found a usable local Claude Code login for Agent SDK runs. */
   claudeCodeAvailable: boolean;
   mcpUrl: string | null;
+  /** Another Pego tab or window is the one connected; this one waits until the user takes over. */
+  replaced: boolean;
 };
 
 type AgentState = {
@@ -70,7 +72,7 @@ let logSeq = 0;
 export const useAgentStore = create<AgentState & AgentActions>((set) => ({
   ...idleRun,
   backend: "api",
-  bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null },
+  bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null, replaced: false },
 
   set: (patch) => set(patch),
   setBackend: (backend) => set({ backend }),

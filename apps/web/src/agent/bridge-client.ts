@@ -1,9 +1,11 @@
 import {
   BRIDGE_DEFAULT_PORT,
   BRIDGE_PROTOCOL_VERSION,
+  BRIDGE_REPLACED_CLOSE_CODE,
   type BridgeToEditor,
   type EditorToBridge,
 } from "@pego/agent";
+import { toast } from "sonner";
 import { DEFAULT_FILE_NAME } from "@/persistence/file-format";
 import { useFileStore } from "@/persistence/use-file-store";
 import { createBridgeHandlers } from "./bridge-handlers";
@@ -14,7 +16,7 @@ export type SocketLike = {
   close: () => void;
   onopen: (() => void) | null;
   onmessage: ((event: { data: unknown }) => void) | null;
-  onclose: (() => void) | null;
+  onclose: ((event?: { code?: number }) => void) | null;
   onerror: (() => void) | null;
 };
 
@@ -25,6 +27,8 @@ export type BridgeClientOptions = {
   /** Called for every valid message from the bridge. */
   onMessage: (message: BridgeToEditor) => void;
   onClosed: () => void;
+  /** Another editor tab took the bridge. The client stays disconnected until `takeOver`. */
+  onReplaced?: () => void;
   /** Reconnect delay for the nth consecutive failure (ms). */
   backoff?: (attempt: number) => number;
   setTimer?: (fn: () => void, ms: number) => unknown;
@@ -66,6 +70,10 @@ export const parseBridgeMessage = (data: unknown): BridgeToEditor | null => {
       return typeof value.runId === "string" && isRecord(value.event)
         ? (value as unknown as BridgeToEditor)
         : null;
+    case "save_file_result":
+      return typeof value.requestId === "string" && typeof value.ok === "boolean"
+        ? (value as unknown as BridgeToEditor)
+        : null;
     default:
       return null;
   }
@@ -77,6 +85,9 @@ export type BridgeClient = {
   /** False when the socket is not open (message dropped). */
   send: (message: EditorToBridge) => boolean;
   isOpen: () => boolean;
+  /** Reconnect after another tab replaced this one (the user picked this tab again). */
+  takeOver: () => void;
+  isReplaced: () => boolean;
 };
 
 /**
@@ -96,9 +107,11 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
   let stopped = true;
   let attempt = 0;
   let timer: unknown = null;
+  /** Set after another tab replaced this one: no automatic reconnects until `takeOver`. */
+  let parked = false;
 
   const scheduleReconnect = () => {
-    if (stopped || timer !== null) return;
+    if (stopped || parked || timer !== null) return;
     timer = setTimer(() => {
       timer = null;
       connect();
@@ -137,12 +150,18 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
     current.onerror = () => {
       // `onclose` always follows; reconnect handling lives there.
     };
-    current.onclose = () => {
+    current.onclose = (event) => {
       if (socket !== current) return;
       const wasOpen = open;
       socket = null;
       open = false;
       if (wasOpen) options.onClosed();
+      if (event?.code === BRIDGE_REPLACED_CLOSE_CODE) {
+        // Reconnecting would kick the other tab, which would kick this one back, forever.
+        parked = true;
+        options.onReplaced?.();
+        return;
+      }
       scheduleReconnect();
     };
   };
@@ -151,9 +170,17 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
     start: () => {
       if (!stopped) return;
       stopped = false;
+      parked = false;
       attempt = 0;
       connect();
     },
+    takeOver: () => {
+      if (stopped || !parked) return;
+      parked = false;
+      attempt = 0;
+      connect();
+    },
+    isReplaced: () => parked,
     stop: () => {
       stopped = true;
       if (timer !== null) clearTimer(timer);
@@ -179,6 +206,33 @@ export const createBridgeClient = (options: BridgeClientOptions): BridgeClient =
 let client: BridgeClient | null = null;
 const handlers = createBridgeHandlers({ send: (message) => client?.send(message) ?? false });
 
+const SAVE_TIMEOUT_MS = 15_000;
+const pendingSaves = new Map<string, (error: string | null) => void>();
+
+/**
+ * Ask the bridge to write a document to `path` on disk (File → Save for documents opened
+ * through Claude Code's open_document). Rejects when the bridge is not connected or fails.
+ */
+export const saveFileViaBridge = (path: string, text: string): Promise<void> =>
+  new Promise((resolve, reject) => {
+    const requestId = crypto.randomUUID();
+    const timer = setTimeout(() => {
+      pendingSaves.delete(requestId);
+      reject(new Error("the Pego bridge did not answer"));
+    }, SAVE_TIMEOUT_MS);
+    pendingSaves.set(requestId, (error) => {
+      clearTimeout(timer);
+      pendingSaves.delete(requestId);
+      if (error) reject(new Error(error));
+      else resolve();
+    });
+    if (!client?.send({ type: "save_file", requestId, path, text })) {
+      pendingSaves.get(requestId)?.(
+        "the Pego bridge is not running (start it with bun run bridge)",
+      );
+    }
+  });
+
 /** Send to the bridge if connected. Used by the Claude Code run (`run_start`/`run_cancel`). */
 export const sendToBridge = (message: EditorToBridge): boolean => client?.send(message) ?? false;
 
@@ -190,8 +244,24 @@ export const sendToBridge = (message: EditorToBridge): boolean => client?.send(m
 export const startBridgeConnection = (): (() => void) => {
   if (!client) {
     client = createBridgeClient({
-      onMessage: (message) => void handlers.handleMessage(message),
+      onMessage: (message) => {
+        if (message.type === "save_file_result") {
+          pendingSaves.get(message.requestId)?.(
+            message.ok ? null : (message.error ?? "save failed"),
+          );
+          return;
+        }
+        void handlers.handleMessage(message);
+      },
       onClosed: handlers.handleClosed,
+      onReplaced: () => {
+        handlers.handleReplaced();
+        toast.info("Claude Code is now connected to another Pego window", {
+          description: "Edits from Claude Code go to that window until you switch back.",
+          action: { label: "Use this window", onClick: () => takeOverBridge() },
+          duration: 15_000,
+        });
+      },
     });
   }
   client.start();
@@ -200,3 +270,6 @@ export const startBridgeConnection = (): (() => void) => {
     started.stop();
   };
 };
+
+/** Make this tab the one Claude Code edits again, after another tab took the bridge. */
+export const takeOverBridge = (): void => client?.takeOver();

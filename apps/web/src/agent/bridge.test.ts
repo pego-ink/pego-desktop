@@ -1,6 +1,6 @@
 /// <reference types="bun" />
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { BridgeToEditor, EditorToBridge } from "@pego/agent";
+import { BRIDGE_REPLACED_CLOSE_CODE, type BridgeToEditor, type EditorToBridge } from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { setActiveRun } from "./active-run";
 import { createBridgeClient, parseBridgeMessage, type SocketLike } from "./bridge-client";
@@ -14,7 +14,7 @@ class FakeSocket implements SocketLike {
   closed = false;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event?: { code?: number }) => void) | null = null;
   onerror: (() => void) | null = null;
   send = (data: string) => void this.sent.push(data);
   close = () => {
@@ -47,6 +47,7 @@ describe("bridge client", () => {
     const timers: { fn: () => void; ms: number }[] = [];
     const messages: BridgeToEditor[] = [];
     let closed = 0;
+    let replaced = 0;
     const client = createBridgeClient({
       url: "ws://test",
       createSocket: () => {
@@ -57,11 +58,19 @@ describe("bridge client", () => {
       documentName: () => "doc.pego",
       onMessage: (m) => messages.push(m),
       onClosed: () => closed++,
+      onReplaced: () => replaced++,
       backoff: (attempt) => 100 * (attempt + 1),
       setTimer: (fn, ms) => timers.push({ fn, ms }),
       clearTimer: () => {},
     });
-    return { client, sockets, timers, messages, closedCount: () => closed };
+    return {
+      client,
+      sockets,
+      timers,
+      messages,
+      closedCount: () => closed,
+      replacedCount: () => replaced,
+    };
   };
 
   test("sends hello on open and forwards valid messages only", () => {
@@ -98,6 +107,24 @@ describe("bridge client", () => {
     sockets[2]!.onopen?.();
     sockets[2]!.onclose?.();
     expect(timers.map((t) => t.ms)).toEqual([100]);
+  });
+
+  test("a tab replaced by another one waits for takeOver instead of reconnecting", () => {
+    const { client, sockets, timers, closedCount, replacedCount } = setup();
+    client.start();
+    sockets[0]!.onopen?.();
+    sockets[0]!.onclose?.({ code: BRIDGE_REPLACED_CLOSE_CODE });
+    expect(closedCount()).toBe(1);
+    expect(replacedCount()).toBe(1);
+    expect(client.isReplaced()).toBe(true);
+    expect(timers).toHaveLength(0);
+    expect(sockets).toHaveLength(1);
+
+    client.takeOver();
+    expect(sockets).toHaveLength(2);
+    expect(client.isReplaced()).toBe(false);
+    sockets[1]!.onopen?.();
+    expect(client.isOpen()).toBe(true);
   });
 
   test("stop closes and never reconnects; send reports a closed socket", () => {
@@ -142,9 +169,13 @@ describe("bridge handlers", () => {
       connected: true,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
+      replaced: false,
     });
     handlers.handleClosed();
     expect(state().bridge.connected).toBe(false);
+    handlers.handleReplaced();
+    expect(state().bridge).toMatchObject({ connected: false, replaced: true });
+    expect(state().log.at(-1)?.text).toMatch(/Another Pego window/);
   });
 
   test("mcp calls: separate transactions after 2s, extended within 2s, labelled Claude Code", async () => {

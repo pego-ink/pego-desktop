@@ -13,7 +13,7 @@ export const resetStores = () => {
   useAgentStore.getState().beginRun("run-test", "prompt");
   useAgentStore.getState().set({
     status: "running",
-    bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null },
+    bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null, replaced: false },
   });
 };
 

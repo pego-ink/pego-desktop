@@ -1,11 +1,31 @@
+import { Button } from "@pego/ui/components/button";
 import { CopyField } from "@pego/ui/components/copy-field";
 import { cn } from "@pego/ui/lib/utils";
+import { takeOverBridge } from "@/agent/bridge-client";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { BRIDGE_COMMAND, MCP_ADD_COMMAND } from "@/panels/agent/agent-format";
 
 export const ClaudeCodeSetup = () => {
   const connected = useAgentStore((s) => s.bridge.connected);
   const available = useAgentStore((s) => s.bridge.claudeCodeAvailable);
+  const replaced = useAgentStore((s) => s.bridge.replaced);
+
+  if (replaced) {
+    return (
+      <div className="grid gap-2">
+        <div className="flex items-center gap-2 text-xs">
+          <span aria-hidden className="size-1.5 rounded-full bg-amber-400" />
+          <span className="text-foreground">Connected in another Pego window</span>
+        </div>
+        <p className="text-[11px] leading-4 text-muted-foreground">
+          Claude Code edits one window at a time. Switch it to this one to use it here.
+        </p>
+        <Button variant="secondary" size="xs" onClick={() => takeOverBridge()}>
+          Use this window
+        </Button>
+      </div>
+    );
+  }
 
   return (
     <div className="grid gap-2">

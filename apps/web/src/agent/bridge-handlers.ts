@@ -1,4 +1,5 @@
 import {
+  EDITOR_OPS,
   toolByName,
   type BridgeToEditor,
   type EditorToBridge,
@@ -6,6 +7,11 @@ import {
   type ToolImage,
   type ToolSpec,
 } from "@pego/agent";
+import {
+  loadDocumentFromBridge,
+  markSavedFromBridge,
+  snapshotDocumentForBridge,
+} from "@/persistence/bridge-documents";
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
 import { createToolHost } from "./tool-host";
@@ -62,6 +68,22 @@ export const createBridgeHandlers = ({
         isError,
         ...(images && images.length > 0 ? { images } : {}),
       });
+
+    // The bridge's file tools: not agent tools, handled by the persistence layer.
+    if (message.tool === EDITOR_OPS.loadDocument) {
+      const outcome = loadDocumentFromBridge(message.input);
+      if (!outcome.isError)
+        agent().appendLog({ kind: "info", text: outcome.content.split("\n")[0]! });
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.snapshotDocument) {
+      const outcome = snapshotDocumentForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.markSaved) {
+      const outcome = markSavedFromBridge(message.input);
+      return void reply(outcome.content, outcome.isError);
+    }
 
     const spec = findTool(message.tool);
     if (!spec) return void reply(`Unknown tool: ${message.tool}`, true);
@@ -146,6 +168,7 @@ export const createBridgeHandlers = ({
             connected: true,
             claudeCodeAvailable: message.claudeCodeAvailable,
             mcpUrl: message.mcpUrl,
+            replaced: false,
           },
         });
         return;
@@ -157,12 +180,23 @@ export const createBridgeHandlers = ({
   };
 
   const handleClosed = () => {
-    agent().set({ bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null } });
+    agent().set({
+      bridge: { connected: false, claudeCodeAvailable: false, mcpUrl: null, replaced: false },
+    });
     if (getActiveRun()?.backend === "claude-code") {
       agent().appendLog({ kind: "error", text: "Lost the connection to the Claude Code bridge." });
       endRun("failed");
     }
   };
 
-  return { handleMessage, handleClosed };
+  /** Another tab took the bridge (always after `handleClosed`). */
+  const handleReplaced = () => {
+    agent().set({ bridge: { ...agent().bridge, replaced: true } });
+    agent().appendLog({
+      kind: "info",
+      text: "Another Pego window connected to the bridge; Claude Code now edits that one.",
+    });
+  };
+
+  return { handleMessage, handleClosed, handleReplaced };
 };
