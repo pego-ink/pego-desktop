@@ -13,10 +13,30 @@ import { getToolHandler } from "@/interaction/tool-handlers";
 import { nudgeStep } from "@/interaction/nudge";
 import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { desktopApi } from "@/desktop/desktop-api";
 
 const isEditable = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+};
+
+/** Select every top-level node on the canvas (never the surrounding UI text). */
+const selectAllNodes = () => {
+  const doc = useDocumentStore.getState();
+  doc.select(doc.doc.children.map((n) => n.id));
+};
+
+/**
+ * Desktop "Select All" menu item: select the text of a focused field, otherwise the canvas
+ * nodes. Behind the settings modal it does nothing.
+ */
+const onMenuSelectAll = () => {
+  if (isEditable(document.activeElement) || isTextEditing()) {
+    document.execCommand("selectAll");
+    return;
+  }
+  if (useSettingsModal.getState().open) return;
+  selectAllNodes();
 };
 
 const ARROW_DELTAS: Record<string, [number, number]> = {
@@ -89,7 +109,7 @@ export const useEditorShortcuts = () => {
       }
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
-        doc.select(doc.doc.children.map((n) => n.id));
+        selectAllNodes();
         return;
       }
       if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
@@ -162,7 +182,11 @@ export const useEditorShortcuts = () => {
     window.addEventListener("keydown", onKeyDown);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("blur", onBlur);
+    const offMenu = desktopApi()?.onMenuCommand?.((command) => {
+      if (command === "select-all") onMenuSelectAll();
+    });
     return () => {
+      offMenu?.();
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("blur", onBlur);
