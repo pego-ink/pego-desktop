@@ -24,7 +24,7 @@ Agentic design tool (Figma alternative). Decisions made 2026-10-22.
 pego/
   apps/
     web/            React + Vite + CanvasKit editor
-    api/            Hono on Workers: auth, files, agent runs (SSE)
+    api/            Hono on Workers: agent runs (SSE) only
   packages/
     doc/            Document schema (Zod), ops, apply/invert, layout engine (flex), validation
     agent/          Tool definitions + prompts shared by api; pure, no I/O
