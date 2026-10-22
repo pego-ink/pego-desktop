@@ -4,6 +4,7 @@ import { LayersPanel } from "@/panels/LayersPanel";
 import { PropertiesPanel } from "@/panels/PropertiesPanel";
 import { useDocumentStore } from "@/store/use-document-store";
 import { Button } from "@pego/ui/components/button";
+import { FileMenu } from "@/persistence/FileMenu";
 
 const HistoryButtons = () => {
   const canUndo = useDocumentStore((s) => s.history.past.length > 0);
@@ -39,7 +40,10 @@ const HistoryButtons = () => {
 export const EditorShell = () => (
   <div className="flex h-full flex-col bg-background text-foreground">
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
-      <span className="text-sm font-semibold">Pego</span>
+      <div className="flex items-center gap-3">
+        <span className="text-sm font-semibold">Pego</span>
+        <FileMenu />
+      </div>
       <div className="flex items-center gap-2">
         <HistoryButtons />
         <Button size="sm" variant="secondary">
