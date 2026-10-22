@@ -169,7 +169,7 @@ export const Dashboard = () => {
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
             <h1 className="text-xl font-semibold text-foreground">Projects</h1>
-            <p className="mt-1 text-xs text-muted-foreground">
+            <p data-selectable className="mt-1 text-xs text-muted-foreground">
               {projectDir
                 ? `Design projects in ${projectDir}`
                 : "Design projects of this repository"}
@@ -230,8 +230,12 @@ export const Dashboard = () => {
 
         {status === "offline" ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
-            Start the bridge with <code className="text-foreground">bun run bridge</code> to see the
-            projects in this repository's design/ folder. Scratch documents work without it.
+            Start the bridge with{" "}
+            <code data-selectable className="text-foreground">
+              bun run bridge
+            </code>{" "}
+            to see the projects in this repository's design/ folder. Scratch documents work without
+            it.
           </div>
         ) : status === "none" ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
