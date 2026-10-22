@@ -4,12 +4,30 @@ import type { GrDirectContext, Surface } from "canvaskit-wasm";
 import { loadCanvasKit } from "@/canvas/load-canvaskit";
 import { getLayout } from "@/canvas/layout";
 import { renderDocument } from "@/canvas/render-document";
-import { DEFAULT_CAMERA } from "@/canvas/types";
+import { renderOverlay } from "@/canvas/render-overlay";
+import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
+import { contentBounds } from "@/interaction/camera";
+import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
+import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { useDocumentStore } from "@/store/use-document-store";
+import { useViewportStore } from "@/store/use-viewport-store";
 
 export const Canvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useCanvasPointer(canvasRef);
+  useEditorShortcuts();
+
+  // Cursor follows interaction state without re-rendering React.
+  useEffect(() => {
+    const apply = () => {
+      const element = canvasRef.current;
+      if (element) element.style.cursor = deriveCursor(useInteractionState.getState());
+    };
+    apply();
+    return useInteractionState.subscribe(apply);
+  }, []);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -19,6 +37,7 @@ export const Canvas = () => {
     let disposed = false;
     let surface: Surface | null = null;
     let grContext: GrDirectContext | null = null;
+    let frame = 0;
     let cleanup = () => {};
 
     void loadCanvasKit()
@@ -31,15 +50,23 @@ export const Canvas = () => {
         if (!grContext) throw new Error("WebGL2 is not available");
 
         const draw = () => {
+          frame = 0;
           if (!surface) return;
           const dpr = window.devicePixelRatio || 1;
           const canvas = surface.getCanvas();
+          const { doc, selection, hoveredId } = useDocumentStore.getState();
+          const { camera } = useViewportStore.getState();
+          const { marquee } = useInteractionState.getState();
+          const layout = getLayout(doc);
           canvas.save();
           canvas.scale(dpr, dpr);
-          const { doc } = useDocumentStore.getState();
-          renderDocument(res, canvas, doc, getLayout(doc), DEFAULT_CAMERA);
+          renderDocument(res, canvas, doc, layout, camera);
+          renderOverlay(res, canvas, { layout, camera, selection, hoveredId, marquee });
           canvas.restore();
           surface.flush();
+        };
+        const schedule = () => {
+          if (!frame) frame = requestAnimationFrame(draw);
         };
 
         const resize = () => {
@@ -51,17 +78,28 @@ export const Canvas = () => {
           element.width = width;
           element.height = height;
           surface = ck.MakeOnScreenGLSurface(grContext, width, height, ck.ColorSpace.SRGB);
+          const viewport = useViewportStore.getState();
+          viewport.setSize(container.clientWidth, container.clientHeight);
+          if (!viewport.fitted) {
+            const { doc } = useDocumentStore.getState();
+            viewport.zoomToFit(contentBounds(doc, getLayout(doc)));
+          }
           draw();
         };
 
         resize();
         const observer = new ResizeObserver(resize);
         observer.observe(container);
-        const unsubscribe = useDocumentStore.subscribe(draw);
+        const unsubscribers = [
+          useDocumentStore.subscribe(schedule),
+          useViewportStore.subscribe(schedule),
+          useInteractionState.subscribe(schedule),
+        ];
 
         cleanup = () => {
           observer.disconnect();
-          unsubscribe();
+          for (const unsubscribe of unsubscribers) unsubscribe();
+          if (frame) cancelAnimationFrame(frame);
           surface?.delete();
           surface = null;
           grContext?.delete();
@@ -81,7 +119,7 @@ export const Canvas = () => {
 
   return (
     <div ref={containerRef} className="relative h-full w-full overflow-hidden">
-      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full" />
+      <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
     </div>
   );
 };
