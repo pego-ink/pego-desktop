@@ -2,6 +2,7 @@ import type { Paragraph } from "canvaskit-wasm";
 import { resolveColor, resolveNumber, resolveString } from "@pego/doc";
 import type { TextMeasurer, TextNode, Variables } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
+import { useFontStore } from "@/canvas/fonts";
 import { createLruCache } from "@/canvas/render-cache";
 
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
@@ -23,14 +24,28 @@ export const getParagraph = (
   variables: Variables,
   wrapWidth: number | undefined,
 ): Paragraph => {
-  const { ck, fontMgr, fontFamily } = res;
+  const { ck, fonts, fontFamily } = res;
   const content = resolveString(node.content, variables);
   const color = resolveColor(node.fill, variables) ?? "#000000";
   const size = resolveNumber(node.fontSize, variables, 14);
   const weight = nearestWeight(resolveNumber(node.fontWeight, variables, 400));
   const align = node.textAlign ?? "left";
-  const family = node.fontFamily ?? fontFamily;
-  const key = JSON.stringify([content, color, size, weight, align, family, wrapWidth]);
+  const family =
+    node.fontFamily === undefined ? fontFamily : resolveString(node.fontFamily, variables);
+  const lineHeight = resolveNumber(node.lineHeight, variables, 0);
+  const letterSpacing = resolveNumber(node.letterSpacing, variables, 0);
+  const key = JSON.stringify([
+    useFontStore.getState().version,
+    content,
+    color,
+    size,
+    weight,
+    align,
+    family,
+    lineHeight,
+    letterSpacing,
+    wrapWidth,
+  ]);
   const cached = paragraphs.get(key);
   if (cached) return cached;
 
@@ -40,10 +55,13 @@ export const getParagraph = (
       fontFamilies: family === fontFamily ? [family] : [family, fontFamily],
       fontSize: size,
       fontStyle: { weight: { value: weight } },
+      // CSS-like line height: the extra leading is split above and below each line.
+      ...(lineHeight > 0 ? { heightMultiplier: lineHeight, halfLeading: true } : {}),
+      ...(letterSpacing !== 0 ? { letterSpacing } : {}),
     },
     textAlign: ck.TextAlign[align === "center" ? "Center" : align === "right" ? "Right" : "Left"],
   });
-  const builder = ck.ParagraphBuilder.Make(style, fontMgr);
+  const builder = ck.ParagraphBuilder.MakeFromFontProvider(style, fonts);
   builder.addText(content);
   const paragraph = builder.build();
   builder.delete();
