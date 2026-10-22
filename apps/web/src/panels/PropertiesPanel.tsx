@@ -1,5 +1,5 @@
 import { useMemo } from "react";
-import { findNode, type PegoNode } from "@pego/doc";
+import { findNode, type PegoNode, type TextNode } from "@pego/doc";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { useDocumentStore } from "@/store/use-document-store";
 import { LayerIcon } from "@/panels/LayerIcon";
@@ -16,7 +16,7 @@ const SingleNodeSections = ({ node }: { node: PegoNode }) => (
     <PositionSection nodes={[node]} />
     <AppearanceSection node={node} />
     {node.type === "frame" ? <LayoutSection node={node} /> : null}
-    {node.type === "text" ? <TextSection node={node} /> : null}
+    {node.type === "text" ? <TextSection nodes={[node]} /> : null}
     {node.type === "icon" ? <IconSection node={node} /> : null}
     {hasFill(node) ? <FillSection node={node} /> : null}
     {hasStroke(node) ? <StrokeSection node={node} /> : null}
@@ -27,6 +27,7 @@ export const PropertiesPanel = () => {
   const doc = useDocumentStore((s) => s.doc);
   const selection = useDocumentStore((s) => s.selection);
   const nodes = useMemo(() => selection.flatMap((id) => findNode(doc, id) ?? []), [doc, selection]);
+  const textNodes = useMemo(() => nodes.filter((n): n is TextNode => n.type === "text"), [nodes]);
   const [first] = nodes;
 
   return (
@@ -52,7 +53,10 @@ export const PropertiesPanel = () => {
         ) : nodes.length === 1 ? (
           <SingleNodeSections key={first.id} node={first} />
         ) : (
-          <PositionSection nodes={nodes} />
+          <>
+            <PositionSection nodes={nodes} />
+            {textNodes.length === nodes.length ? <TextSection nodes={textNodes} /> : null}
+          </>
         )}
       </div>
     </>
