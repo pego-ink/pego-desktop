@@ -319,7 +319,7 @@ const executeStep = async (
       results.push(result);
       agent().appendLog({
         kind: "tool",
-        text: block.name,
+        text: "",
         tool: { name: block.name, isError: result.is_error === true },
       });
     }

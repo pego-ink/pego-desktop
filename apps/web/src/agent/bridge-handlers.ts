@@ -106,7 +106,7 @@ export const createBridgeHandlers = ({
       if (source.kind === "mcp") {
         agent().appendLog({
           kind: "tool",
-          text: `${MCP_LABEL}: ${message.tool}`,
+          text: "",
           tool: { name: message.tool, isError: result.isError },
         });
       }
@@ -129,13 +129,13 @@ export const createBridgeHandlers = ({
         if (event.status === "started") {
           state.appendLog({
             kind: "tool",
-            text: event.tool,
+            text: "",
             tool: { name: event.tool, isError: false },
           });
         } else if (event.isError) {
           state.appendLog({
             kind: "tool",
-            text: `${event.tool} failed`,
+            text: "",
             tool: { name: event.tool, isError: true },
           });
         }

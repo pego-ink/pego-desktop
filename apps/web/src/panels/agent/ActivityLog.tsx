@@ -1,7 +1,77 @@
-import { useEffect, useRef } from "react";
-import { AlertCircleIcon, InfoIcon, WrenchIcon } from "lucide-react";
+import { useEffect, useId, useRef, useState } from "react";
+import { AlertCircleIcon, ChevronRightIcon, InfoIcon, WrenchIcon } from "lucide-react";
+import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
-import type { AgentLogEntry } from "@/agent/use-agent-store";
+import { useAgentStore, type AgentLogEntry } from "@/agent/use-agent-store";
+import {
+  collapseRuns,
+  countFailed,
+  groupLog,
+  summarizeNames,
+  toolName,
+  type ToolGroup,
+} from "@/panels/agent/tool-groups";
+
+const ACTIVE_STATUSES = new Set(["planning", "running", "awaiting_decision"]);
+
+const ToolGroupRow = ({ group, live }: { group: ToolGroup; live: boolean }) => {
+  const [open, setOpen] = useState(false);
+  const listId = useId();
+  const { calls } = group;
+  const failed = countFailed(calls);
+  const latest = calls.at(-1);
+  const showLive = live && !open && latest !== undefined;
+  return (
+    <li className="font-mono text-[11px] leading-4">
+      <button
+        type="button"
+        aria-expanded={open}
+        aria-controls={listId}
+        onClick={() => setOpen((value) => !value)}
+        className="flex w-full items-start gap-1.5 rounded-sm px-1 text-left text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+      >
+        {showLive ? (
+          <Spinner className="mt-0.5 size-3 border-[1.5px]" />
+        ) : (
+          <WrenchIcon className="mt-0.5 size-3 shrink-0" />
+        )}
+        <span className="min-w-0 flex-1 break-words">
+          <span className="font-semibold">
+            {calls.length} {calls.length === 1 ? "tool" : "tools"}
+          </span>
+          {showLive ? <> · running {toolName(latest)}…</> : <> · {summarizeNames(calls)}</>}
+          {failed > 0 ? <span className="text-destructive"> · {failed} failed</span> : null}
+        </span>
+        <ChevronRightIcon
+          className={cn(
+            "mt-0.5 size-3 shrink-0 transition-transform duration-150 ease-out",
+            open && "rotate-90",
+          )}
+        />
+      </button>
+      {open ? (
+        <ul id={listId} className="mt-0.5 ml-[18px] flex flex-col gap-0.5 border-l pl-2">
+          {collapseRuns(calls).map((run) => (
+            <li
+              key={run.key}
+              className={cn(
+                "flex items-start gap-1 break-words",
+                run.failed ? "text-destructive" : "text-muted-foreground",
+              )}
+            >
+              {run.failed ? <AlertCircleIcon className="mt-0.5 size-3 shrink-0" /> : null}
+              <span className="min-w-0">
+                <span className="font-semibold">{run.name}</span>
+                {run.detail ? ` ${run.detail}` : ""}
+                {run.count > 1 ? <span className="tabular-nums"> ×{run.count}</span> : null}
+              </span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </li>
+  );
+};
 
 const Entry = ({ entry }: { entry: AgentLogEntry }) => {
   switch (entry.kind) {
@@ -14,25 +84,6 @@ const Entry = ({ entry }: { entry: AgentLogEntry }) => {
     case "assistant":
       return (
         <li className="px-1 text-xs leading-4 whitespace-pre-wrap text-foreground">{entry.text}</li>
-      );
-    case "tool":
-      return (
-        <li
-          className={cn(
-            "flex items-start gap-1.5 px-1 font-mono text-[11px] leading-4",
-            entry.tool?.isError ? "text-destructive" : "text-muted-foreground",
-          )}
-        >
-          {entry.tool?.isError ? (
-            <AlertCircleIcon className="mt-0.5 size-3 shrink-0" />
-          ) : (
-            <WrenchIcon className="mt-0.5 size-3 shrink-0" />
-          )}
-          <span className="min-w-0 break-words">
-            {entry.tool ? <span className="font-semibold">{entry.tool.name}</span> : null}
-            {entry.text ? ` ${entry.text}` : ""}
-          </span>
-        </li>
       );
     case "error":
       return (
@@ -54,6 +105,8 @@ const Entry = ({ entry }: { entry: AgentLogEntry }) => {
 export const ActivityLog = ({ log }: { log: readonly AgentLogEntry[] }) => {
   const endRef = useRef<HTMLLIElement>(null);
   const count = log.length;
+  const active = useAgentStore((s) => ACTIVE_STATUSES.has(s.status));
+  const items = groupLog(log);
 
   useEffect(() => {
     if (count > 0) endRef.current?.scrollIntoView({ block: "end" });
@@ -62,9 +115,13 @@ export const ActivityLog = ({ log }: { log: readonly AgentLogEntry[] }) => {
   if (count === 0) return null;
   return (
     <ul className="flex flex-col gap-1.5" aria-label="Activity" aria-live="polite">
-      {log.map((entry) => (
-        <Entry key={entry.id} entry={entry} />
-      ))}
+      {items.map((item, index) =>
+        item.type === "tools" ? (
+          <ToolGroupRow key={item.id} group={item} live={active && index === items.length - 1} />
+        ) : (
+          <Entry key={item.entry.id} entry={item.entry} />
+        ),
+      )}
       <li ref={endRef} aria-hidden className="h-0" />
     </ul>
   );
