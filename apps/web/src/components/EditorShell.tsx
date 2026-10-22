@@ -6,6 +6,7 @@ import { PagesPanel } from "@/pages/PagesPanel";
 import { ProjectPanel } from "@/project/ProjectPanel";
 import { TabBar } from "@/tabs/TabBar";
 import { Dashboard } from "@/workspace/Dashboard";
+import { HomeButton } from "@/workspace/HomeButton";
 import { WorkspaceTabs } from "@/workspace/WorkspaceTabs";
 import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
@@ -118,7 +119,7 @@ export const EditorShell = () => {
     <div className="flex h-full flex-col bg-background text-foreground">
       <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
         <div className="flex min-w-0 items-center gap-3">
-          <span className="text-sm font-semibold">Pego</span>
+          <HomeButton />
           {view === "editor" ? <FileMenu /> : null}
           <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
           <WorkspaceTabs />
