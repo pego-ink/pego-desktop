@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { findNode, type Op } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { contentBounds } from "@/interaction/camera";
+import { ZOOM_STEP, selectionBounds } from "@/interaction/zoom-utils";
 import { useInteractionState } from "@/interaction/interaction-state";
 import { duplicateOps } from "@/interaction/duplicate";
 import { escapeSelection } from "@/interaction/selection";
@@ -46,7 +47,6 @@ const ARROW_DELTAS: Record<string, [number, number]> = {
   ArrowDown: [0, 1],
 };
 
-const ZOOM_STEP = 1.25;
 const DUPLICATE_OFFSET = 10;
 
 /** Global editor keyboard shortcuts: history, delete, nudge, selection, zoom, space-to-pan. */
@@ -88,6 +88,11 @@ export const useEditorShortcuts = () => {
       if (e.code === "Digit1" && e.shiftKey && !mod) {
         e.preventDefault();
         viewport.zoomToFit(contentBounds(doc.doc, getLayout(doc.doc)));
+        return;
+      }
+      if (e.code === "Digit2" && e.shiftKey && !mod) {
+        e.preventDefault();
+        viewport.zoomToFit(selectionBounds(getLayout(doc.doc), doc.selection));
         return;
       }
       if (e.key === "+" || e.key === "=" || e.key === "-" || e.key === "_") {

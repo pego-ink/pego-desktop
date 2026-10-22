@@ -100,6 +100,7 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
         ],
       },
       { id: "view.zoom-fit", label: "Zoom to fit", chords: [["shift", "1"]] },
+      { id: "view.zoom-selection", label: "Zoom to selection", chords: [["shift", "2"]] },
       { id: "view.zoom-wheel", label: "Zoom at cursor", chords: [["mod", "Scroll"]] },
       { id: "view.pan", label: "Pan while held", chords: [["Space", "Drag"]] },
       {
