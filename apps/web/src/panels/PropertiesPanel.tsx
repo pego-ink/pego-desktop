@@ -5,10 +5,16 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { LayerIcon } from "@/panels/LayerIcon";
 import { DocumentSummary } from "@/panels/properties/DocumentSummary";
 import { PositionSection } from "@/panels/properties/PositionSection";
-import { AppearanceSection, FillSection, StrokeSection } from "@/panels/properties/StyleSections";
+import {
+  AppearanceSection,
+  EffectsSection,
+  StrokeSection,
+} from "@/panels/properties/StyleSections";
+import { FillSection } from "@/panels/properties/FillSection";
+import { ExportSection } from "@/panels/properties/ExportSection";
 import { LayoutSection } from "@/panels/properties/LayoutSection";
 import { IconSection, RefSection, TextSection } from "@/panels/properties/ContentSections";
-import { hasFill, hasStroke } from "@/panels/properties/node-props";
+import { hasEffects, hasFill, hasStroke } from "@/panels/properties/node-props";
 
 const SingleNodeSections = ({ node }: { node: PegoNode }) => (
   <>
@@ -20,6 +26,8 @@ const SingleNodeSections = ({ node }: { node: PegoNode }) => (
     {node.type === "icon" ? <IconSection node={node} /> : null}
     {hasFill(node) ? <FillSection node={node} /> : null}
     {hasStroke(node) ? <StrokeSection node={node} /> : null}
+    {hasEffects(node) ? <EffectsSection node={node} /> : null}
+    <ExportSection node={node} />
   </>
 );
 

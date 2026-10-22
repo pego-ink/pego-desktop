@@ -92,6 +92,25 @@ export const TextSection = ({ node }: { node: TextNode }) => {
           ))}
         </NativeSelect>
       </PropertyRow>
+      <PropertyRow>
+        <PropNumber
+          nodes={[node]}
+          propKey="lineHeight"
+          label="LH"
+          labelTitle="Line height (multiple of font size, 0 = auto)"
+          min={0}
+          step={0.1}
+          history="Change line height"
+        />
+        <PropNumber
+          nodes={[node]}
+          propKey="letterSpacing"
+          label="LS"
+          labelTitle="Letter spacing"
+          step={0.1}
+          history="Change letter spacing"
+        />
+      </PropertyRow>
       <SegmentedControl
         aria-label="Text alignment"
         value={node.textAlign ?? "left"}
