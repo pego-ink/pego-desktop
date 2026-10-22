@@ -4,18 +4,21 @@ import { PanelHeader } from "@pego/ui/components/panel-header";
 import { useDocumentStore } from "@/store/use-document-store";
 import { LayerIcon } from "@/panels/LayerIcon";
 import { DocumentSummary } from "@/panels/properties/DocumentSummary";
+import { FramePresetSection } from "@/panels/frame-presets/FramePresetSection";
 import { PositionSection } from "@/panels/properties/PositionSection";
 import { AppearanceSection, FillSection, StrokeSection } from "@/panels/properties/StyleSections";
 import { LayoutSection } from "@/panels/properties/LayoutSection";
 import { ImageSection } from "@/panels/properties/ImageSection";
 import { IconSection, RefSection, TextSection } from "@/panels/properties/ContentSections";
 import { PathSection } from "@/panels/properties/PathSection";
+import { ExportSection } from "@/panels/properties/ExportSection";
 import { hasFill, hasStroke } from "@/panels/properties/node-props";
 
 const SingleNodeSections = ({ node }: { node: PegoNode }) => (
   <>
     {node.type === "ref" ? <RefSection node={node} /> : null}
     <PositionSection nodes={[node]} />
+    {node.type === "frame" ? <FramePresetSection node={node} /> : null}
     <AppearanceSection node={node} />
     {node.type === "frame" ? <LayoutSection node={node} /> : null}
     {node.type === "text" ? <TextSection nodes={[node]} /> : null}
@@ -24,6 +27,7 @@ const SingleNodeSections = ({ node }: { node: PegoNode }) => (
     {hasFill(node) ? <FillSection node={node} /> : null}
     {hasStroke(node) ? <StrokeSection node={node} /> : null}
     {node.type === "path" ? <PathSection node={node} /> : null}
+    <ExportSection node={node} />
   </>
 );
 
