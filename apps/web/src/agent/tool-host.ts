@@ -8,9 +8,21 @@ import {
 } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
 import { listIconNames, loadIconData } from "@/canvas/icons";
-import { activePage, useDocumentStore } from "@/store/use-document-store";
+import {
+  activePage,
+  useDocumentStore,
+  type CommitMeta,
+  type DocumentCore,
+} from "@/store/use-document-store";
 import { showPage, showPageOf } from "@/pages/page-actions";
 import { useViewportStore } from "@/store/use-viewport-store";
+import {
+  commitToTarget,
+  extendTarget,
+  isTargetVisible,
+  readTarget,
+  type DocumentTarget,
+} from "@/workspace/document-target";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
 import { generateImage } from "./generate-image";
@@ -34,6 +46,11 @@ export type ToolHostOptions = {
   focusFromOps?: boolean;
   /** Images the user attached to this run, served to `place_image` as "attachment:<id>". */
   attachments?: readonly RunAttachment[];
+  /**
+   * The document this host edits (the run's tab), shown or in the background. Omitted = whatever
+   * the editor shows at each call (Claude Code over MCP, tests).
+   */
+  target?: DocumentTarget;
 };
 
 export type AgentToolHost = ToolHost & {
@@ -41,6 +58,8 @@ export type AgentToolHost = ToolHost & {
   newGroup: () => void;
   /** Where this host's run writes its live state (the runtimes log and report through it). */
   run: RunScope;
+  /** The document this host edits; undefined = the one shown in the editor. */
+  target?: DocumentTarget;
 };
 
 /** Title of the chat a run belongs to, for messages that name another run. */
@@ -51,8 +70,7 @@ const runSessionTitle = (runId: string): string => {
 };
 
 /** Refuse ops that would modify nodes another active run claimed (see run-claims). */
-const assertUnclaimed = (ops: Op[], runId: string) => {
-  const doc = useDocumentStore.getState().doc;
+const assertUnclaimed = (doc: DocumentCore["doc"], ops: Op[], runId: string) => {
   const hit = runClaims.conflict(doc, ops, runId, (owner) => getRun(owner) !== undefined);
   if (!hit) return;
   throw new ToolError(
@@ -74,8 +92,29 @@ const touchedIds = (ops: Op[]): string[] =>
  * transaction: the first `applyOps` commits, later ones extend it, but only while the newest
  * history entry is still the one this host wrote (a user edit in between starts a new one).
  */
+const documentClosed = () =>
+  new ToolError(
+    "document_closed",
+    "The document this run was editing has been closed.",
+    "Stop here and tell the user: the run cannot continue without its document.",
+  );
+
 export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => {
-  const { countTransactions = true, runId } = options;
+  const { countTransactions = true, runId, target } = options;
+
+  /** The state of the document this host edits (the shown one without a target). */
+  const state = (): DocumentCore => {
+    if (!target) return useDocumentStore.getState();
+    const core = readTarget(target);
+    if (!core) throw documentClosed();
+    return core;
+  };
+  /** The host's document is the one in the editor (canvas, selection and camera are its). */
+  const shown = () => !target || isTargetVisible(target);
+  const commit = (ops: Op[], meta: CommitMeta) =>
+    target ? commitToTarget(target, ops, meta) : useDocumentStore.getState().commit(ops, meta);
+  const extend = (ops: Op[]) =>
+    target ? extendTarget(target, ops) : useDocumentStore.getState().extendLast(ops);
   const run = runScope(runId ?? null);
   let lastSeen: Transaction | null = null;
   let currentStepId: string | null = null;
@@ -89,18 +128,18 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
 
   const applyOps = (ops: Op[]) => {
     if (ops.length === 0) return;
-    const documentStore = useDocumentStore.getState();
-    const before = documentStore.doc;
+    const current = state();
+    const before = current.doc;
     // Another run's nodes are off limits; nothing is applied when one is hit.
-    if (runId) assertUnclaimed(ops, runId);
+    if (runId) assertUnclaimed(before, ops, runId);
     // Dry run on the pure op engine so an invalid op surfaces as its own OpError (the store's
     // commit swallows and toasts it) and leaves the document and history untouched.
     applyDocOps(before, ops);
 
-    const extend = lastSeen !== null && documentStore.history.past.at(-1) === lastSeen;
-    const ok = extend
-      ? documentStore.extendLast(ops)
-      : documentStore.commit(ops, {
+    const extending = lastSeen !== null && current.history.past.at(-1) === lastSeen;
+    const ok = extending
+      ? extend(ops)
+      : commit(ops, {
           label: currentLabel(),
           source: "agent",
           ...(runId ? { runId } : {}),
@@ -108,8 +147,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     if (!ok) throw new Error("the document rejected the edit");
     if (runId) runClaims.claim(before, ops, runId);
 
-    lastSeen = useDocumentStore.getState().history.past.at(-1) ?? null;
-    if (!extend && countTransactions) {
+    lastSeen = state().history.past.at(-1) ?? null;
+    if (!extending && countTransactions) {
       run.set({ transactionCount: (run.get()?.transactionCount ?? 0) + 1 });
     }
     if (options.focusFromOps) run.set({ focusIds: touchedIds(ops) });
@@ -137,11 +176,11 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
    * Only the run of the chat in the panel may move the user's selection or camera; a background
    * run must not pull the user away from what they are doing (its focus box still shows).
    */
-  const inView = () => run.sessionId() === useAgentStore.getState().visibleSessionId;
+  const inView = () => shown() && run.sessionId() === useAgentStore.getState().visibleSessionId;
 
   const setSelection = (ids: string[]) => {
     if (!inView()) return;
-    const known = collectDocIds(useDocumentStore.getState().doc);
+    const known = collectDocIds(state().doc);
     useDocumentStore.getState().select([...new Set(ids)].filter((id) => known.has(id)));
   };
 
@@ -163,10 +202,10 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
    */
   let pinnedPageId: string | null = null;
   const getActivePageId = (): string => {
-    const state = useDocumentStore.getState();
+    const current = state();
     const pinned = pinnedPageId;
-    if (pinned !== null && state.doc.children.some((page) => page.id === pinned)) return pinned;
-    return activePage(state).id;
+    if (pinned !== null && current.doc.children.some((page) => page.id === pinned)) return pinned;
+    return activePage(current).id;
   };
   const setActivePage = (pageId: string) => {
     pinnedPageId = pageId;
@@ -184,17 +223,17 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
       import("@/fonts/use-document-fonts"),
     ]);
     // Wait for the document's fonts so the agent judges the real typography.
-    await loadDocumentFonts(useDocumentStore.getState().doc);
-    const doc = useDocumentStore.getState().doc;
+    await loadDocumentFonts(state().doc);
+    const { doc } = state();
     return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
   };
 
   return {
-    getDoc: () => useDocumentStore.getState().doc,
-    getLayout: () => getLayout(useDocumentStore.getState().doc),
+    getDoc: () => state().doc,
+    getLayout: () => getLayout(state().doc),
     getActivePageId,
     setActivePage,
-    getSelection: () => useDocumentStore.getState().selection,
+    getSelection: () => state().selection,
     setSelection,
     focusViewport,
     listIcons: listIconNames,
@@ -210,5 +249,6 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
       lastSeen = null;
     },
     run,
+    ...(target ? { target } : {}),
   };
 };

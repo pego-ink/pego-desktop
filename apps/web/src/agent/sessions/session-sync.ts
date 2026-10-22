@@ -1,8 +1,11 @@
 import { useDocumentStore } from "@/store/use-document-store";
 import { isRunActive, isRunFinished } from "@/panels/agent/agent-format";
-import { cancelAllRuns, cancelRun } from "@/agent/run";
+import { cancelRun } from "@/agent/run";
 import { startQueueDriver } from "@/agent/queue";
-import { runsForSession } from "@/agent/run-registry";
+import { allRuns, runsForSession } from "@/agent/run-registry";
+import { readTarget } from "@/workspace/document-target";
+import { isSwapping } from "@/workspace/live-document";
+import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 import {
   runningSessions,
   sessionOf,
@@ -18,19 +21,39 @@ import {
   sortMetas,
   toStoredSession,
   type SessionMeta,
+  type SessionState,
 } from "./session-model";
+import { forgetSessionHome, sessionHome, setSessionHome } from "./session-home";
 import { useSessionsStore } from "./use-sessions-store";
 
 /**
  * Keeps the live agent sessions and IndexedDB in step. Each session is written on its own when
  * one of its runs starts (its prompt is stored, as cancelled until it ends), when it ends, and on
  * rename; never per token. Sessions with a run keep running (and saving) while another one is
- * shown. Opening or creating a design file shows that file's newest session.
+ * shown, and while another tab is shown: each session belongs to its tab's document (see
+ * session-home), the panel lists the shown document's sessions. Showing a tab shows the session it
+ * showed last (or one still running in it); opening or creating a design file shows that file's
+ * newest session.
  */
 
 const agent = () => useAgentStore.getState();
 const sessions = () => useSessionsStore.getState();
 const liveOf = (id: string): SessionLive | undefined => agent().liveSessions[id];
+
+/** The tab and document shown in the editor. */
+type Visible = { workspaceId: string; docId: string };
+/** `workspaceId` of the document shown while no tab is open. */
+const NO_TAB = "";
+const visibleNow = (): Visible => ({
+  workspaceId: useWorkspaceStore.getState().liveId ?? NO_TAB,
+  docId: useDocumentStore.getState().doc.id,
+});
+const sameVisible = (a: Visible, b: Visible) =>
+  a.workspaceId === b.workspaceId && a.docId === b.docId;
+/** The document a live session stores under: its home, else the one shown. */
+const docOf = (sessionId: string): string | null =>
+  sessionHome(sessionId)?.docId ?? sessions().docId;
+const homeHere = (sessionId: string) => setSessionHome(sessionId, visibleNow());
 
 /** Writes run one after another so an older snapshot never lands after a newer one. */
 let queue: Promise<unknown> = Promise.resolve();
@@ -111,6 +134,7 @@ const saveLive = (docId: string, sessionId: string): Promise<void> => {
 /** Show an empty session next to whatever still runs in the background. */
 const showFresh = () => {
   const fresh = emptySession();
+  homeHere(fresh.id);
   agent().showSession(fresh);
   markSaved(fresh.id);
   forgetDropped();
@@ -134,23 +158,60 @@ const untilIdle = (sessionId?: string, timeoutMs = 3000): Promise<void> =>
     });
   });
 
-/** Open the design file `docId`: newest stored session, or an empty one. */
-const openDoc = async (docId: string) => {
+/** The session each tab showed last, shown again when the tab comes back. */
+const lastShown = new Map<string, { docId: string; sessionId: string }>();
+
+/** Show a session of the visible document (from memory or storage) in the panel. */
+const showHere = (session: SessionState) => {
+  homeHere(session.id);
+  const wasLive = liveOf(session.id) !== undefined;
+  agent().showSession(session);
+  if (!wasLive) markSaved(session.id);
+  forgetDropped();
+};
+
+/**
+ * Sessions nobody can reach any more leave memory: not shown, nothing running or queued, and
+ * their tab closed (or holding another document).
+ */
+const pruneOrphans = () => {
+  const { visibleSessionId, liveSessions } = agent();
+  for (const live of Object.values(liveSessions)) {
+    if (live.id === visibleSessionId || isRunActive(live.status) || live.queue.length > 0) continue;
+    const home = sessionHome(live.id);
+    if (!home || readTarget(home)) continue;
+    agent().dropSession(live.id);
+    forgetSessionHome(live.id);
+  }
+  forgetDropped();
+};
+
+/**
+ * Show the chats of the visible document: a session still in memory for it (the one it showed
+ * last, or one running), else the one it showed last or its newest from storage, else an empty one.
+ */
+const openVisible = async (visible: Visible) => {
+  const { workspaceId, docId } = visible;
   const token = ++loadToken;
   useSessionsStore.setState({ docId, items: [] });
-  const fresh = emptySession();
-  agent().resetSessions(fresh);
-  saved.clear();
-  markSaved(fresh.id);
+  const remembered = lastShown.get(workspaceId);
+  const rememberedId = remembered?.docId === docId ? remembered.sessionId : undefined;
+  const here = Object.values(agent().liveSessions).filter((live) => {
+    const home = sessionHome(live.id);
+    return home !== undefined && sameVisible(home, visible);
+  });
+  const inMemory = here.find((live) => live.id === rememberedId) ?? here[0];
+  if (inMemory) showHere(inMemory);
+  else showFresh();
+  pruneOrphans();
   const stored = await enqueue(() => listSessions(docId));
   if (token !== loadToken) return;
   useSessionsStore.setState({ items: sortMetas(stored.map(metaOf)) });
-  const newest = stored[0];
+  if (inMemory) return;
+  const pick = stored.find((item) => item.id === rememberedId) ?? stored[0];
   // A run started while the list was loading keeps the panel.
-  if (!newest || !visibleIsEmpty()) return;
-  agent().showSession(fromStoredSession(newest));
-  markSaved(newest.id);
-  forgetDropped();
+  if (!pick || !visibleIsEmpty()) return;
+  showHere(fromStoredSession(pick));
 };
 
 const currentDocId = () => sessions().docId;
@@ -161,6 +222,7 @@ const currentDocId = () => sessions().docId;
  */
 export const createSessionInBackground = (): string => {
   const fresh = emptySession();
+  homeHere(fresh.id);
   agent().addSession(fresh);
   markSaved(fresh.id);
   return fresh.id;
@@ -180,8 +242,7 @@ export const startNewSession = async (): Promise<void> => {
 const showById = async (id: string, docId: string): Promise<void> => {
   const live = liveOf(id);
   if (live) {
-    agent().showSession(live);
-    forgetDropped();
+    showHere(live);
     return;
   }
   const stored = await enqueue(() => getSession(id));
@@ -190,9 +251,7 @@ const showById = async (id: string, docId: string): Promise<void> => {
     return;
   }
   if (docId !== currentDocId()) return;
-  agent().showSession(fromStoredSession(stored));
-  markSaved(id);
-  forgetDropped();
+  showHere(fromStoredSession(stored));
 };
 
 export const switchSession = async (id: string): Promise<void> => {
@@ -223,6 +282,7 @@ export const removeSession = async (id: string): Promise<void> => {
   if (next && docId) await showById(next.id, docId);
   else showFresh();
   agent().dropSession(id);
+  forgetSessionHome(id);
 };
 
 /** Rename a session; an empty title goes back to the one derived from the first prompt. */
@@ -248,39 +308,53 @@ export const renameSession = async (id: string, title: string): Promise<void> =>
  */
 export const startSessionSync = (): (() => void) => {
   const unsubscribeAgent = useAgentStore.subscribe((state, prev) => {
-    const docId = currentDocId();
-    if (!docId || state.liveSessions === prev.liveSessions) return;
-    // Every live session saves on its own run's start and end, shown or not.
+    if (state.liveSessions === prev.liveSessions) return;
+    // Every live session saves on its own run's start and end, shown or not, under its document.
     for (const live of Object.values(state.liveSessions)) {
       const before = prev.liveSessions[live.id];
       if (!before || before === live) continue;
       const started = live.log.length > 0 && before.log.length === 0 && isRunActive(live.status);
       const ended = isRunFinished(live.status) && !isRunFinished(before.status);
       const queueChanged = live.queue !== before.queue;
-      if (started || ended || queueChanged) void saveLive(docId, live.id);
+      const docId = docOf(live.id);
+      if (docId && (started || ended || queueChanged)) void saveLive(docId, live.id);
     }
   });
 
-  let lastDocId: string | null = null;
-  const followDoc = async () => {
-    const docId = useDocumentStore.getState().doc.id;
-    if (docId === lastDocId) return;
-    const previous = lastDocId;
-    lastDocId = docId;
+  let last: Visible | null = null;
+  const followVisible = async () => {
+    // Mid-swap the stores hold half of the next tab; the tab change that follows calls again.
+    if (isSwapping()) return;
+    const visible = visibleNow();
+    if (last && sameVisible(last, visible)) return;
+    const previous = last;
+    last = visible;
     if (previous) {
-      // The agents work on the open file; runs must not carry over to the next one. Their ends
-      // are stored under the old file (the sessions store still points at it) before we move.
-      cancelAllRuns();
-      await untilIdle();
-      if (lastDocId !== docId) return;
+      lastShown.set(previous.workspaceId, {
+        docId: previous.docId,
+        sessionId: agent().visibleSessionId,
+      });
+      // Runs keep working in their own tab. Only a run whose document is gone (replaced in its
+      // tab) stops; its end is stored under that document before we move on.
+      const orphaned = allRuns().filter((run) => run.host.target && !readTarget(run.host.target));
+      for (const run of orphaned) cancelRun(run.id);
+      for (const run of orphaned) await untilIdle(run.sessionId);
+      if (!sameVisible(last, visible)) return;
       for (const id of Object.keys(agent().liveSessions)) {
-        if (isDirty(id)) await saveLive(previous, id);
+        const docId = docOf(id);
+        if (docId === previous.docId && isDirty(id)) await saveLive(docId, id);
       }
+      if (!sameVisible(last, visible)) return;
     }
-    await openDoc(docId);
+    await openVisible(visible);
   };
-  const unsubscribeDoc = useDocumentStore.subscribe(() => void followDoc());
-  void followDoc();
+  const unsubscribeDoc = useDocumentStore.subscribe((state, prev) => {
+    if (state.doc.id !== prev.doc.id) void followVisible();
+  });
+  const unsubscribeTabs = useWorkspaceStore.subscribe((state, prev) => {
+    if (state.liveId !== prev.liveId) void followVisible();
+  });
+  void followVisible();
   // A finished run starts the first message queued behind it.
   const stopQueueDriver = startQueueDriver();
 
@@ -288,6 +362,7 @@ export const startSessionSync = (): (() => void) => {
     stopQueueDriver();
     unsubscribeAgent();
     unsubscribeDoc();
+    unsubscribeTabs();
     loadToken++;
   };
 };

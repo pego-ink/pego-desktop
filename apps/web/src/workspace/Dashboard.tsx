@@ -20,7 +20,8 @@ import {
   useDashboardStore,
 } from "./use-dashboard-store";
 import { openProject } from "@/project/use-project-store";
-import { activateWorkspace, SCRATCH_ID, useWorkspaceStore } from "./use-workspace-store";
+import { openFile } from "@/persistence/file-actions";
+import { newDocumentTab, useWorkspaceStore } from "./use-workspace-store";
 
 const ago = (ms: number): string => {
   if (!ms) return "no files yet";
@@ -143,6 +144,9 @@ export const Dashboard = () => {
   const { status, projects, error } = useDashboardStore();
   const connected = useAgentStore((s) => s.bridge.connected);
   const projectDir = useAgentStore((s) => s.bridge.projectDir ?? null);
+  // Projects exist only while a bridge serves a design folder; without one Home is just
+  // "new document" and "open file".
+  const hasBridge = connected && projectDir !== null;
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const openIds = useMemo(() => new Set(workspaces.map((workspace) => workspace.id)), [workspaces]);
   const [query, setQuery] = useState("");
@@ -168,35 +172,48 @@ export const Dashboard = () => {
       <div className="mx-auto flex max-w-5xl flex-col gap-6 px-8 py-10">
         <div className="flex flex-wrap items-end justify-between gap-4">
           <div>
-            <h1 className="text-xl font-semibold text-foreground">Projects</h1>
-            <p data-selectable className="mt-1 text-xs text-muted-foreground">
-              {projectDir
-                ? `Design projects in ${projectDir}`
-                : "Design projects of this repository"}
-            </p>
+            <h1 className="text-xl font-semibold text-foreground">
+              {hasBridge ? "Projects" : "Home"}
+            </h1>
+            {hasBridge ? (
+              <p data-selectable className="mt-1 text-xs text-muted-foreground">
+                Design projects in {projectDir}
+              </p>
+            ) : null}
           </div>
           <div className="flex items-center gap-2">
-            <div className="relative">
-              <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                aria-label="Search projects"
-                placeholder="Search by name or id"
-                className="h-8 w-56 pl-7 text-xs"
-                value={query}
-                onChange={(event) => setQuery(event.target.value)}
-              />
-            </div>
-            <Button size="sm" variant="secondary" onClick={() => activateWorkspace(SCRATCH_ID)}>
-              Scratch
+            {hasBridge ? (
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute top-1/2 left-2 size-3.5 -translate-y-1/2 text-muted-foreground" />
+                <Input
+                  aria-label="Search projects"
+                  placeholder="Search by name or id"
+                  className="h-8 w-56 pl-7 text-xs"
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                />
+              </div>
+            ) : null}
+            <Button size="sm" variant="secondary" onClick={() => void openFile()}>
+              Open file…
             </Button>
-            <Button size="sm" disabled={status !== "ready"} onClick={() => setCreating(true)}>
-              <PlusIcon />
-              New project
+            <Button
+              size="sm"
+              variant={hasBridge ? "secondary" : "default"}
+              onClick={() => newDocumentTab()}
+            >
+              New document
             </Button>
+            {hasBridge ? (
+              <Button size="sm" disabled={status !== "ready"} onClick={() => setCreating(true)}>
+                <PlusIcon />
+                New project
+              </Button>
+            ) : null}
           </div>
         </div>
 
-        {creating ? (
+        {hasBridge && creating ? (
           <form
             className="flex items-center gap-2 rounded-lg border border-border bg-card p-3"
             onSubmit={(event) => {
@@ -228,13 +245,13 @@ export const Dashboard = () => {
           </form>
         ) : null}
 
-        {status === "offline" ? (
+        {!hasBridge ? null : status === "offline" ? (
           <div className="rounded-lg border border-dashed border-border p-6 text-sm text-muted-foreground">
             Start the bridge with{" "}
             <code data-selectable className="text-foreground">
               bun run bridge
             </code>{" "}
-            to see the projects in this repository's design/ folder. Scratch documents work without
+            to see the projects in this repository's design/ folder. Local documents work without
             it.
           </div>
         ) : status === "none" ? (
@@ -260,17 +277,21 @@ export const Dashboard = () => {
           </div>
         )}
 
-        <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-xs text-muted-foreground">
-          <TerminalIcon className="mt-0.5 size-4 shrink-0 text-foreground" />
-          <div className="flex flex-col gap-1">
-            <span className="font-medium text-foreground">Work on a project from Claude Code</span>
-            <span>
-              Say the project name or id, for example "open project Checkout and design the payment
-              screen" or "open project k3m9x0qa". Claude Code uses open_project, then edits that
-              project's files here.
-            </span>
+        {hasBridge ? (
+          <div className="flex items-start gap-3 rounded-lg border border-border bg-card p-4 text-xs text-muted-foreground">
+            <TerminalIcon className="mt-0.5 size-4 shrink-0 text-foreground" />
+            <div className="flex flex-col gap-1">
+              <span className="font-medium text-foreground">
+                Work on a project from Claude Code
+              </span>
+              <span>
+                Say the project name or id, for example "open project Checkout and design the
+                payment screen" or "open project k3m9x0qa". Claude Code uses open_project, then
+                edits that project's files here.
+              </span>
+            </div>
           </div>
-        </div>
+        ) : null}
       </div>
     </div>
   );

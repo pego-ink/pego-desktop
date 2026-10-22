@@ -16,6 +16,10 @@ import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
 import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { desktopApi } from "@/desktop/desktop-api";
+import { tabShortcut } from "@/workspace/tab-bar-model";
+import { runTabAction } from "@/workspace/tab-actions";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
 const isEditable = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false;
@@ -63,6 +67,16 @@ export const useEditorShortcuts = () => {
       }
       // The settings modal owns the keyboard: no tool keys, delete or nudge behind it.
       if (useSettingsModal.getState().open) return;
+      // Tabs: work everywhere, even inside inputs.
+      const tab = tabShortcut(e, isMac);
+      if (tab) {
+        e.preventDefault();
+        // The desktop menu owns Cmd+W (its accelerator would close the window otherwise) and
+        // sends "close-tab"; handling the keydown too would close two tabs.
+        const menuOwnsClose = typeof desktopApi()?.onMenuCommand === "function";
+        if (!(tab.kind === "close" && menuOwnsClose)) runTabAction(tab);
+        return;
+      }
       if (isEditable(e.target) || isTextEditing()) return;
       // The active tool gets first pick (e.g. the pen finishing a path on Enter/Escape).
       if (getToolHandler(useToolStore.getState().tool)?.onKeyDown?.(e)) {
@@ -195,6 +209,9 @@ export const useEditorShortcuts = () => {
     window.addEventListener("blur", onBlur);
     const offMenu = desktopApi()?.onMenuCommand?.((command) => {
       if (command === "select-all") onMenuSelectAll();
+      if (command === "close-tab" && !useSettingsModal.getState().open) {
+        runTabAction({ kind: "close" });
+      }
     });
     return () => {
       offMenu?.();

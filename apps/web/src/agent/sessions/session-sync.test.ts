@@ -15,6 +15,12 @@ import {
 } from "./session-sync";
 import { emptySession } from "./session-model";
 import { useSessionsStore } from "./use-sessions-store";
+import {
+  activateWorkspace,
+  newDocumentTab,
+  useWorkspaceStore,
+} from "@/workspace/use-workspace-store";
+import { getRun } from "@/agent/run-registry";
 
 const agent = () => useAgentStore.getState();
 /** The session shown in the panel, and its id. */
@@ -191,6 +197,44 @@ describe("session sync", () => {
     await settle();
     expect(sid()).toBe(back?.id ?? "");
     expect(sessionTurns(view())[0]?.log[0]?.text).toBe("alpha");
+  });
+
+  test("a run keeps working in a background tab; each tab shows its own chats", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [{ id: "tab-a", kind: "local", name: "A", dir: null, saved: null }],
+      liveId: "tab-a",
+      view: "editor",
+    });
+    await settle();
+    await runTurn("alpha", "a");
+    const alpha = startWorking("run-a", "busy");
+
+    const tabB = newDocumentTab();
+    await settle();
+    const docB = useDocumentStore.getState().doc.id;
+    expect(useSessionsStore.getState()).toMatchObject({ docId: docB, items: [] });
+    expect(sid()).not.toBe(alpha);
+    expect(getRun("run-a")).toBeDefined();
+    expect(agent().liveSessions[alpha]?.status).toBe("running");
+    await runTurn("beta", "b");
+    expect((await listSessions(docB)).map((s) => s.title)).toEqual(["beta"]);
+
+    // Back in A: its running chat is shown again, with A's list.
+    activateWorkspace("tab-a");
+    await settle();
+    expect(sid()).toBe(alpha);
+    expect(useSessionsStore.getState().docId).toBe(docId);
+    expect(useSessionsStore.getState().items.map((i) => i.title)).toEqual(["alpha"]);
+
+    // The run ends while B is shown: stored under A's document, not B's.
+    activateWorkspace(tabB);
+    await settle();
+    runScope("run-a").set({ status: "done" });
+    await settle();
+    expect((await listSessions(docId)).find((s) => s.id === alpha)?.turns.at(-1)).toMatchObject({
+      status: "done",
+    });
+    expect((await listSessions(docB)).some((s) => s.id === alpha)).toBe(false);
   });
 
   test("the queue is stored with the session and survives a reload", async () => {

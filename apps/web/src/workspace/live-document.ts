@@ -1,10 +1,8 @@
-import { toast } from "sonner";
-import type { History, PegoDocument } from "@pego/doc";
-import { selectRunsActive, useAgentStore } from "@/agent/use-agent-store";
+import { emptyHistory, type History, type PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import type { Camera } from "@/canvas/types";
 import { contentBounds } from "@/interaction/camera";
-import { createEmptyDocument, isDirty } from "@/persistence/file-format";
+import { isDirty } from "@/persistence/file-format";
 import type { PegoFileHandle } from "@/persistence/fs-access";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -12,8 +10,9 @@ import { useViewportStore } from "@/store/use-viewport-store";
 
 /**
  * The live document: the one the editor shows, held in the regular stores (document, file,
- * viewport) so the rest of the editor never deals with workspaces. Each workspace (scratch or a
- * bridge project) has exactly one document; the inactive ones keep a snapshot of this state.
+ * viewport) so the rest of the editor never deals with workspaces. Each workspace (a document tab:
+ * a local document or a bridge project) has exactly one document; the background ones keep a
+ * snapshot of this state, which agent runs keep editing (see document-target.ts).
  */
 
 /** Where the document saves (see persistence/document-source.ts) and what was saved last. */
@@ -47,11 +46,56 @@ export const captureLive = (): DocumentSnapshot => {
   };
 };
 
-export const restoreLive = (snapshot: DocumentSnapshot) => {
-  const { doc, history, selection, pageId, camera, file } = snapshot;
-  useDocumentStore.setState({ doc, history, selection, pageId, hoveredId: null });
-  useFileStore.setState(file);
-  useViewportStore.getState().setCamera(camera);
+let swapping = false;
+
+/**
+ * True while another tab's document is being put into the stores: store subscribers that react to
+ * edits or file changes (autosave) must not mistake the swap for one.
+ */
+export const isSwapping = (): boolean => swapping;
+
+/** Run a document swap (one tab's state replacing another's in the stores) flagged as such. */
+export const swap = <T>(run: () => T): T => {
+  const outer = swapping;
+  swapping = true;
+  try {
+    return run();
+  } finally {
+    swapping = outer;
+  }
+};
+
+export const restoreLive = (snapshot: DocumentSnapshot) =>
+  swap(() => {
+    const { doc, history, selection, pageId, camera, file } = snapshot;
+    useDocumentStore.setState({ doc, history, selection, pageId, hoveredId: null });
+    useFileStore.setState(file);
+    useViewportStore.getState().setCamera(camera);
+  });
+
+/** A freshly opened document's state (no history yet; the camera is fitted once it is shown). */
+export const snapshotOf = (
+  doc: PegoDocument,
+  file: Partial<Omit<DocumentFile, "savedDoc">>,
+  saved: boolean,
+): DocumentSnapshot => ({
+  doc,
+  history: emptyHistory(),
+  selection: [],
+  pageId: null,
+  camera: useViewportStore.getState().camera,
+  file: {
+    fileName: file.fileName ?? null,
+    handle: file.handle ?? null,
+    bridgePath: file.bridgePath ?? null,
+    savedDoc: saved ? doc : null,
+  },
+});
+
+/** Fit the live document's first page into the view. */
+export const fitLive = (): void => {
+  const { doc } = useDocumentStore.getState();
+  useViewportStore.getState().zoomToFit(contentBounds(doc, getLayout(doc)));
 };
 
 export const snapshotIsDirty = (snapshot: DocumentSnapshot): boolean =>
@@ -71,25 +115,6 @@ export const documentTitle = (
   doc: PegoDocument,
   file: Pick<DocumentFile, "fileName" | "bridgePath">,
 ): string => (isProjectDesign(file.bridgePath) ? doc.name : (file.fileName ?? "Untitled"));
-
-/** A run of the panel agent edits the live document: replacing it mid-run is not allowed. */
-export const blockedByRun = (): boolean => {
-  if (selectRunsActive(useAgentStore.getState()) === 0) return false;
-  toast.info("Wait for the agent run to finish (or stop it) before switching documents.");
-  return true;
-};
-
-let beforeSwap: () => void = () => {};
-
-/**
- * Called right before another workspace's document replaces the live one, while the outgoing one
- * is still in the stores. File autosave registers here to write a pending change before it is
- * swapped out (opening another document in the same workspace asks about unsaved changes instead).
- */
-export const setBeforeSwap = (hook: () => void): void => {
-  beforeSwap = hook;
-};
-export const runBeforeSwap = (): void => beforeSwap();
 
 /** What to do when the shown document has unsaved changes and another one should replace it. */
 export type UnsavedPolicy = "ask" | "refuse" | "discard";
@@ -111,36 +136,3 @@ export const loadIntoActive = (
   });
   useViewportStore.getState().zoomToFit(contentBounds(loaded, getLayout(loaded)));
 };
-
-/**
- * Show `doc` as the workspace's document (there is one per workspace; screens are pages).
- * Unsaved changes of the current document are asked about ("ask", the user), refused
- * ("refuse", Claude Code: save first) or dropped ("discard"). `saved` marks `doc` as matching
- * its file.
- */
-export const openDocument = (
-  doc: PegoDocument,
-  file: Partial<Omit<DocumentFile, "savedDoc">>,
-  options: { saved?: boolean; unsaved?: UnsavedPolicy } = {},
-): OpenResult => {
-  if (blockedByRun()) return "busy";
-  const live = captureLive();
-  if (snapshotIsDirty(live)) {
-    const policy = options.unsaved ?? "ask";
-    if (policy === "refuse") return "unsaved";
-    if (
-      policy === "ask" &&
-      !window.confirm(
-        `"${documentTitle(live.doc, live.file)}" has unsaved changes. Open the other document anyway?`,
-      )
-    ) {
-      return "unsaved";
-    }
-  }
-  loadIntoActive(doc, file, options.saved ?? true);
-  return "opened";
-};
-
-/** A new empty document in place of the current one (asking about unsaved changes). */
-export const openNewDocument = (): OpenResult =>
-  openDocument(createEmptyDocument(), {}, { saved: true });

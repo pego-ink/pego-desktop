@@ -27,6 +27,7 @@ import { useAgentStore } from "@/agent/use-agent-store";
 import { idsOnPage } from "@/agent/focus-groups";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { sessionShownInEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 
 const PILL_FLIP_MARGIN = 190;
 
@@ -341,8 +342,16 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
   );
 };
 
-/** One cursor per session in memory; each shows only while its agent is working. */
+/**
+ * One cursor per session of the shown document in memory; each shows only while its agent is
+ * working (runs in background tabs edit other documents).
+ */
 export const AgentCursors = () => {
-  const sessionIds = useAgentStore(useShallow((state) => Object.keys(state.liveSessions)));
+  // The shown tab and document decide which sessions are on this canvas.
+  useWorkspaceStore((state) => state.liveId);
+  useDocumentStore((state) => state.doc.id);
+  const sessionIds = useAgentStore(
+    useShallow((state) => Object.keys(state.liveSessions).filter(sessionShownInEditor)),
+  );
   return sessionIds.map((id) => <AgentCursor key={id} sessionId={id} />);
 };

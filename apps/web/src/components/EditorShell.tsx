@@ -16,17 +16,12 @@ import { ResizeHandle } from "@pego/ui/components/resize-handle";
 import { usePanelWidth } from "@/hooks/use-panel-width";
 import { cn } from "@pego/ui/lib/utils";
 import { FileMenu } from "@/persistence/FileMenu";
-import {
-  WINDOW_CONTROLS_GUTTER_CLASS,
-  WINDOW_DRAG_CLASS,
-  useWindowControlsInset,
-} from "@/desktop/window-controls";
 import { IconRail, railPanelId, railTabId } from "@/components/IconRail";
 import { RAIL_TABS, type RailTab } from "@/components/rail-state";
 import { ShowRightPanelButton, usePanelShortcut } from "@/layout/PanelToggles";
 import { ThemeToggle } from "@/theme/ThemeToggle";
 import { Dashboard } from "@/workspace/Dashboard";
-import { WorkspaceTabs } from "@/workspace/WorkspaceTabs";
+import { TabBar } from "@/workspace/TabBar";
 import { showDashboard, useWorkspaceStore } from "@/workspace/use-workspace-store";
 
 const HistoryButtons = () => {
@@ -154,16 +149,12 @@ const RightColumn = () => {
   );
 };
 
-/** Bridge projects (dashboard, project tabs) exist only while a bridge serves a design folder. */
-const useProjectsAvailable = () =>
-  useAgentStore((s) => s.bridge.connected && s.bridge.projectDir !== null);
-
 export const EditorShell = () => {
   const rail = useLayoutStore((s) => s.rail);
   const pressRailTab = useLayoutStore((s) => s.pressRailTab);
   const working = useAgentStore((s) => selectRunsActive(s) > 0);
-  const projects = useProjectsAvailable();
-  const dashboard = useWorkspaceStore((s) => s.view === "dashboard") && projects;
+  // Home shows with the Home view, and whenever no document tab is left (always, bridge or not).
+  const dashboard = useWorkspaceStore((s) => s.view === "dashboard" || s.liveId === null);
   usePanelShortcut();
 
   const press = (tab: RailTab) => {
@@ -175,58 +166,45 @@ export const EditorShell = () => {
     }
     pressRailTab(tab);
   };
-  const windowControls = useWindowControlsInset();
 
   return (
-    <div className="flex h-full bg-background text-foreground">
-      <IconRail
-        state={rail}
-        agentWorking={working}
-        onPress={press}
-        onHome={projects ? showDashboard : undefined}
-        homeActive={dashboard}
-      />
-      {dashboard ? null : <LeftColumn />}
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header
-          className={cn(
-            "flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3",
-            // Without the side panel this row sits right of the rail, under the traffic lights.
-            windowControls && [
-              WINDOW_DRAG_CLASS,
-              (dashboard || !rail.open) && WINDOW_CONTROLS_GUTTER_CLASS,
-            ],
+    <div className="flex h-full flex-col bg-background text-foreground">
+      <TabBar />
+      <div className="flex min-h-0 flex-1">
+        <IconRail
+          state={rail}
+          agentWorking={working}
+          onPress={press}
+          onHome={showDashboard}
+          homeActive={dashboard}
+        />
+        {dashboard ? null : <LeftColumn />}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
+            <div className="flex min-w-0 items-center gap-2">
+              {dashboard ? null : <HistoryButtons />}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {dashboard ? null : <PropertiesToggle />}
+              <ThemeToggle />
+              <Button size="sm" variant="secondary">
+                Share
+              </Button>
+            </div>
+          </header>
+          {dashboard ? (
+            <Dashboard />
+          ) : (
+            <div className="flex min-h-0 flex-1">
+              <main className="relative min-w-0 flex-1">
+                <ShowRightPanelButton />
+                <Canvas />
+                <ZoomControl />
+              </main>
+              <RightColumn />
+            </div>
           )}
-        >
-          <div className="flex min-w-0 items-center gap-2">
-            {dashboard ? null : <HistoryButtons />}
-            {projects ? (
-              <>
-                {dashboard ? null : <span aria-hidden className="h-4 w-px shrink-0 bg-border" />}
-                <WorkspaceTabs />
-              </>
-            ) : null}
-          </div>
-          <div className="flex shrink-0 items-center gap-2">
-            {dashboard ? null : <PropertiesToggle />}
-            <ThemeToggle />
-            <Button size="sm" variant="secondary">
-              Share
-            </Button>
-          </div>
-        </header>
-        {dashboard ? (
-          <Dashboard />
-        ) : (
-          <div className="flex min-h-0 flex-1">
-            <main className="relative min-w-0 flex-1">
-              <ShowRightPanelButton />
-              <Canvas />
-              <ZoomControl />
-            </main>
-            <RightColumn />
-          </div>
-        )}
+        </div>
       </div>
     </div>
   );

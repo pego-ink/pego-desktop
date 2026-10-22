@@ -1,7 +1,6 @@
 import { toast } from "sonner";
 import { importPen, type PegoDocument } from "@pego/doc";
-import { openDocument, openNewDocument } from "@/workspace/live-document";
-import { activateWorkspace, SCRATCH_ID } from "@/workspace/use-workspace-store";
+import { newDocumentTab, openDocument } from "@/workspace/use-workspace-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import {
   DEFAULT_FILE_NAME,
@@ -30,15 +29,14 @@ const MAX_LISTED_WARNINGS = 4;
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-/** Local files (not a bridge project's design) are scratch documents. */
+/** An opened local file gets its own tab. */
 const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => {
-  if (!activateWorkspace(SCRATCH_ID)) return;
   openDocument(doc, { fileName, handle });
 };
 
+/** A new untitled document in a new tab. */
 export const newDocument = () => {
-  if (!activateWorkspace(SCRATCH_ID)) return;
-  openNewDocument();
+  newDocumentTab();
 };
 
 const readTextViaInput = () =>
@@ -81,7 +79,6 @@ const importPenFile = async (file: File) => {
     throw new Error("Not a valid .pen file: the content is not valid JSON.");
   }
   const { doc, warnings } = importPen(raw, base);
-  if (!activateWorkspace(SCRATCH_ID)) return;
   const opened = openDocument(doc, { fileName: `${base}${FILE_EXTENSION}` }, { saved: false });
   if (opened !== "opened") return;
   if (warnings.length === 0) {

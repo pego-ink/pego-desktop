@@ -1,5 +1,7 @@
 import type { RunAttachment } from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
+import { canUndoRunIn, runTargetFor, undoRunIn } from "@/workspace/document-target";
+import { setWorkspaceRunCanceller } from "@/workspace/use-workspace-store";
 import { loadApiKey } from "./api-key";
 import { createAnthropicClient, createCompatClient, runApiAgent } from "./api-runtime";
 import { answerPendingDecision, cancelPendingDecisions, pendingDecisionScope } from "./decisions";
@@ -15,6 +17,7 @@ import {
   unregisterRun,
   type StartBlock,
 } from "./run-registry";
+import { forgetSessionHome, sessionHome } from "./sessions/session-home";
 import { buildHistoryBlock } from "./sessions/session-context";
 import { createSteerInbox } from "./steer-inbox";
 import { createToolHost } from "./tool-host";
@@ -128,7 +131,11 @@ export const startCustomRun = async (
   agent.beginRun(sessionId, runId, shownText(text, options));
   const controller = new AbortController();
   const steering = inBrowserSteering(sessionId, attachments);
-  const host = createToolHost({ runId, attachments: steering.attachments });
+  const host = createToolHost({
+    runId,
+    attachments: steering.attachments,
+    target: runTargetFor(sessionId),
+  });
   const scope = host.run;
   scope.set({ runLabel: "Custom provider" });
   scope.appendLog(userLogEntry(shownText(text, options), attachments, options.steered));
@@ -263,7 +270,11 @@ export const startRun = async (
   agent.beginRun(sessionId, runId, shownText(text, options));
   const controller = new AbortController();
   const steering = inBrowserSteering(sessionId, attachments);
-  const host = createToolHost({ runId, attachments: steering.attachments });
+  const host = createToolHost({
+    runId,
+    attachments: steering.attachments,
+    target: runTargetFor(sessionId),
+  });
   const scope = host.run;
   scope.set({ runLabel: "Anthropic API" });
   scope.appendLog(userLogEntry(shownText(text, options), attachments, options.steered));
@@ -318,10 +329,31 @@ export const cancelRun = (runId: string): void => {
   // API runs finish through `runApiAgent`, which sees the abort and sets "cancelled".
 };
 
-/** Stop every run (another file was opened). */
+/** Stop every run. */
 export const cancelAllRuns = (): void => {
   for (const run of allRuns()) cancelRun(run.id);
 };
+
+/**
+ * A tab is being closed: stop the runs editing its document and forget its chat sessions (their
+ * queued messages would otherwise start runs on a document that is gone). The session shown in the
+ * panel stays until the editor shows another tab's chats; its queue is emptied.
+ */
+setWorkspaceRunCanceller((workspaceId) => {
+  for (const run of allRuns()) {
+    if (run.host.target?.workspaceId === workspaceId) cancelRun(run.id);
+  }
+  const agent = useAgentStore.getState();
+  for (const id of Object.keys(agent.liveSessions)) {
+    if (sessionHome(id)?.workspaceId !== workspaceId) continue;
+    if (id === agent.visibleSessionId) {
+      agent.patchSession(id, { queue: [] });
+      continue;
+    }
+    agent.dropSession(id);
+    forgetSessionHome(id);
+  }
+});
 
 /** Answer a pending decision card; the answer is logged in the session of the run that asked. */
 export const answerDecision = (decisionId: string, choice: string): void => {
@@ -333,16 +365,25 @@ export const answerDecision = (decisionId: string, choice: string): void => {
   scope.appendLog({ kind: "user", text: `→ ${text}` });
 };
 
+/** The document a run edited (its session's tab), when that is known. */
+const runTarget = (runId: string) => {
+  const live = findRunSession(useAgentStore.getState(), runId);
+  return live ? runTargetFor(live.id) : undefined;
+};
+
 /** Whether "Undo all" can revert this run right now, with the reason when it cannot. */
-export const canUndoRunChanges = (runId: string): { ok: boolean; message?: string } =>
-  useDocumentStore.getState().canUndoRun(runId);
+export const canUndoRunChanges = (runId: string): { ok: boolean; message?: string } => {
+  const target = runTarget(runId);
+  return target ? canUndoRunIn(target, runId) : useDocumentStore.getState().canUndoRun(runId);
+};
 
 /**
  * Revert only this run's changes as one new undo step (refused when someone else edited the same
  * layers since). The run's "N changes" bar goes away when it worked.
  */
 export const undoRunChanges = (runId: string): { ok: boolean; message?: string } => {
-  const result = useDocumentStore.getState().undoRun(runId);
+  const target = runTarget(runId);
+  const result = target ? undoRunIn(target, runId) : useDocumentStore.getState().undoRun(runId);
   if (!result.ok) return result;
   const live = findRunSession(useAgentStore.getState(), runId);
   if (live) useAgentStore.getState().patchSession(live.id, { transactionCount: 0, focusIds: [] });

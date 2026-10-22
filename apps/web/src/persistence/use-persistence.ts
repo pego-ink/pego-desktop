@@ -5,9 +5,10 @@ import { useViewportStore } from "@/store/use-viewport-store";
 import { captureLive, snapshotIsDirty, type DocumentSnapshot } from "@/workspace/live-document";
 import {
   anyWorkspaceDirty,
+  newWorkspaceId,
   restoreWorkspaces,
-  SCRATCH_ID,
   useWorkspaceStore,
+  workspaceDocument,
   type SavedWorkspace,
   type Workspace,
 } from "@/workspace/use-workspace-store";
@@ -15,6 +16,7 @@ import { isTextEditing } from "@/store/use-text-edit-store";
 import {
   readAutosave,
   writeAutosave,
+  type AutosaveRecord,
   type AutosavedTab,
   type AutosavedWorkspace,
 } from "./autosave-db";
@@ -34,15 +36,18 @@ const autosavedTab = (state: DocumentSnapshot): AutosavedTab => ({
   handle: state.file.handle,
   bridgePath: state.file.bridgePath,
   dirty: snapshotIsDirty(state),
+  camera: state.camera,
+  pageId: state.pageId,
 });
 
-/** A workspace's one document, from its snapshot or (live) from the stores. */
-const workspaceTabs = (workspace: Workspace): { tabs: AutosavedTab[]; activeIndex: number } => ({
-  tabs: [autosavedTab(workspace.saved ?? captureLive())],
-  activeIndex: 0,
-});
+/** A tab's one document, from its snapshot or (live) from the stores; none before first shown. */
+const workspaceTabs = (workspace: Workspace): { tabs: AutosavedTab[]; activeIndex: number } => {
+  const state = workspaceDocument(workspace.id);
+  return { tabs: state ? [autosavedTab(state)] : [], activeIndex: 0 };
+};
 
-const writeCurrent = async () => {
+/** Every tab (in tab order), the shown one and the view, as the browser autosave stores them. */
+export const buildAutosaveRecord = (): AutosaveRecord => {
   const { workspaces, liveId, view } = useWorkspaceStore.getState();
   const saved: AutosavedWorkspace[] = workspaces.map((workspace) => ({
     id: workspace.id,
@@ -51,21 +56,20 @@ const writeCurrent = async () => {
     kind: workspace.kind,
     ...workspaceTabs(workspace),
   }));
-  const liveIndex = Math.max(
-    0,
-    workspaces.findIndex((workspace) => workspace.id === liveId),
-  );
+  const liveIndex = workspaces.findIndex((workspace) => workspace.id === liveId);
   const live = captureLive();
-  await writeAutosave({
+  return {
     ...autosavedTab(live),
-    tabs: saved[liveIndex]?.tabs,
-    activeIndex: saved[liveIndex]?.activeIndex,
+    tabs: liveIndex >= 0 ? saved[liveIndex]?.tabs : undefined,
+    activeIndex: liveIndex >= 0 ? saved[liveIndex]?.activeIndex : undefined,
     workspaces: saved,
     liveIndex,
     view,
     savedAt: Date.now(),
-  });
+  };
 };
+
+const writeCurrent = () => writeAutosave(buildAutosaveRecord());
 
 const toSnapshot = (tab: AutosavedTab): DocumentSnapshot | null => {
   // Autosaves written by an older Pego hold an older document version.
@@ -75,8 +79,8 @@ const toSnapshot = (tab: AutosavedTab): DocumentSnapshot | null => {
     doc,
     history: emptyHistory(),
     selection: [],
-    pageId: null,
-    camera: useViewportStore.getState().camera,
+    pageId: tab.pageId ?? null,
+    camera: tab.camera ?? useViewportStore.getState().camera,
     file: {
       fileName: tab.fileName,
       handle: tab.handle,
@@ -99,9 +103,10 @@ const toSavedWorkspace = (stored: AutosavedTab[], activeIndex: number): SavedWor
   return snapshot;
 };
 
-const restoreAutosave = async () => {
-  const record = await readAutosave();
-  if (!record) return;
+/** Restore the tabs (and their documents) of an autosave record. */
+export const applyAutosaveRecord = (record: AutosaveRecord): void => {
+  // Every tab was closed: start with the default one.
+  if (record.workspaces?.length === 0) return;
   if (record.workspaces?.length) {
     const saved = record.workspaces.map((workspace) =>
       toSavedWorkspace(workspace.tabs, workspace.activeIndex),
@@ -114,7 +119,7 @@ const restoreAutosave = async () => {
     );
     return;
   }
-  // Older autosaves: one set of tabs (or one document), restored as scratch.
+  // Older autosaves: one set of tabs (or one document), restored as one local tab.
   const stored: AutosavedTab[] = record.tabs ?? [
     {
       doc: record.doc,
@@ -127,11 +132,16 @@ const restoreAutosave = async () => {
   const workspace = toSavedWorkspace(stored, record.activeIndex ?? 0);
   if (!workspace) return;
   restoreWorkspaces(
-    [{ id: SCRATCH_ID, name: "Scratch", dir: null, kind: "scratch" }],
+    [{ id: newWorkspaceId(), name: "Untitled", dir: null, kind: "local" }],
     [workspace],
     0,
     "editor",
   );
+};
+
+const restoreAutosave = async () => {
+  const record = await readAutosave();
+  if (record) applyAutosaveRecord(record);
 };
 
 const handleShortcut = (event: KeyboardEvent) => {

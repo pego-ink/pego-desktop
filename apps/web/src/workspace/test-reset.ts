@@ -2,18 +2,23 @@ import { sampleDoc } from "@pego/doc";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
-import { SCRATCH_ID, useWorkspaceStore } from "./use-workspace-store";
+import { clearSessionHomes } from "@/agent/sessions/session-home";
+import { useWorkspaceStore } from "./use-workspace-store";
+
+/** Id of the one tab tests start with. */
+export const TEST_TAB_ID = "tab-1";
 
 /**
- * The sample document, untitled and untouched, as the live document of the scratch workspace.
+ * The sample document, untitled and untouched, as the live document of the only tab.
  * The viewport has no size, so fits are skipped (another suite's size would make them animate,
  * which needs a real `window.matchMedia`).
  */
 export const resetLiveDocument = () => {
   useViewportStore.setState({ size: { width: 0, height: 0 } });
+  clearSessionHomes();
   useWorkspaceStore.setState({
-    workspaces: [{ id: SCRATCH_ID, name: "Scratch", dir: null, kind: "scratch", saved: null }],
-    liveId: SCRATCH_ID,
+    workspaces: [{ id: TEST_TAB_ID, name: "Untitled", dir: null, kind: "local", saved: null }],
+    liveId: TEST_TAB_ID,
     view: "editor",
   });
   useDocumentStore.getState().load(sampleDoc);

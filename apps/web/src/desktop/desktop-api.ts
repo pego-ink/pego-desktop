@@ -32,7 +32,7 @@ export type PegoDesktopApi = {
   setThemeSource?: (mode: "light" | "dark" | "system") => void;
 };
 
-export type DesktopMenuCommand = "select-all";
+export type DesktopMenuCommand = "select-all" | "close-tab";
 
 export const desktopApi = (): PegoDesktopApi | undefined => {
   const api = (globalThis as { pegoDesktop?: Partial<PegoDesktopApi> }).pegoDesktop;
