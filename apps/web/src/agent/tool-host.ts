@@ -156,6 +156,23 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     if (camera) viewport.animateTo(camera);
   };
 
+  /**
+   * The page this host's agent chose with a page tool. Pinned so the agent keeps working there
+   * even when the user switches pages, and so a background run can work on a page without
+   * showing it. Null = follow the page shown in the editor.
+   */
+  let pinnedPageId: string | null = null;
+  const getActivePageId = (): string => {
+    const state = useDocumentStore.getState();
+    const pinned = pinnedPageId;
+    if (pinned !== null && state.doc.children.some((page) => page.id === pinned)) return pinned;
+    return activePage(state).id;
+  };
+  const setActivePage = (pageId: string) => {
+    pinnedPageId = pageId;
+    if (inView()) showPage(pageId);
+  };
+
   const renderImage: NonNullable<ToolHost["renderImage"]> = async (nodeId, imageOptions) => {
     // Loaded on demand: CanvasKit (and its wasm) only matter once a screenshot is requested.
     const [{ loadCanvasKit }, { renderNodeImage }] = await Promise.all([
@@ -175,8 +192,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
   return {
     getDoc: () => useDocumentStore.getState().doc,
     getLayout: () => getLayout(useDocumentStore.getState().doc),
-    getActivePageId: () => activePage(useDocumentStore.getState()).id,
-    setActivePage: showPage,
+    getActivePageId,
+    setActivePage,
     getSelection: () => useDocumentStore.getState().selection,
     setSelection,
     focusViewport,
