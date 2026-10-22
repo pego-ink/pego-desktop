@@ -8,7 +8,9 @@ import {
   type RunEvent,
 } from "@pego/agent";
 import type { BridgeConfig } from "./config";
+import type { AgentAdapter } from "./agents/types";
 import { NO_EDITOR_MESSAGE } from "./editor-hub";
+import type { RunRequest } from "./runs";
 import { startBridge, type Bridge } from "./server";
 
 const ORIGIN = "http://localhost:5173";
@@ -27,9 +29,19 @@ const baseConfig = (overrides: Partial<BridgeConfig> = {}): BridgeConfig => ({
   ...overrides,
 });
 
+const fakeAdapter = (id: AgentAdapter["id"], installed = true): AgentAdapter => ({
+  id,
+  name: id,
+  supportsModels: true,
+  detect: async () =>
+    installed ? { installed: true, version: "1.0.0" } : { installed: false, note: "not installed" },
+  run: async (ctx) => ctx.emit({ kind: "done" }),
+});
+
 const bridges: Bridge[] = [];
 const start = (overrides: Partial<BridgeConfig> = {}, extra: Record<string, unknown> = {}) => {
-  const bridge = startBridge({ ...baseConfig(overrides), ...extra });
+  // No real agent CLIs unless a test opts in: detection would spawn them on every welcome.
+  const bridge = startBridge({ ...baseConfig(overrides), adapters: [], ...extra });
   bridges.push(bridge);
   return bridge;
 };
@@ -192,14 +204,81 @@ describe("editor socket security", () => {
 });
 
 describe("protocol and tool forwarding", () => {
-  test("welcome carries mcpUrl and claudeCodeAvailable", async () => {
-    const bridge = start({}, { claudeCodeAvailable: () => true });
+  test("welcome carries mcpUrl, detected agents and claudeCodeAvailable", async () => {
+    const bridge = start(
+      {},
+      { adapters: [fakeAdapter("claude-code"), fakeAdapter("codex", false)] },
+    );
     const { editor, welcome } = await greet(bridge);
     expect(welcome).toEqual({
       type: "welcome",
       protocol: BRIDGE_PROTOCOL_VERSION,
       claudeCodeAvailable: true,
       mcpUrl: bridge.mcpUrl,
+      agents: [
+        {
+          id: "claude-code",
+          name: "claude-code",
+          supportsModels: true,
+          installed: true,
+          version: "1.0.0",
+        },
+        {
+          id: "codex",
+          name: "codex",
+          supportsModels: true,
+          installed: false,
+          note: "not installed",
+        },
+      ],
+    });
+    editor.ws.close();
+  });
+
+  test("claudeCodeAvailable is false when claude-code is missing", async () => {
+    const bridge = start({}, { adapters: [fakeAdapter("claude-code", false)] });
+    const { editor, welcome } = await greet(bridge);
+    expect((welcome as { claudeCodeAvailable: boolean }).claudeCodeAvailable).toBe(false);
+    editor.ws.close();
+  });
+
+  test("agents_refresh re-detects and answers with agents; models_request answers with models", async () => {
+    let installed = false;
+    const adapter: AgentAdapter = {
+      ...fakeAdapter("codex"),
+      detect: async () => ({ installed }),
+      listModels: async () => ["m1", "provider/m2(high)"],
+    };
+    const bridge = start({}, { adapters: [adapter] });
+    const { editor } = await greet(bridge);
+    installed = true;
+    editor.send({ type: "agents_refresh" });
+    const agents = (await editor.next("agents")) as Extract<BridgeToEditor, { type: "agents" }>;
+    expect(agents.agents[0]?.installed).toBe(true);
+    editor.send({ type: "models_request", agentId: "codex" });
+    expect(await editor.next("models")).toEqual({
+      type: "models",
+      agentId: "codex",
+      models: ["m1", "provider/m2(high)"],
+    });
+    editor.ws.close();
+  });
+
+  test("models_request reports an error string when listing fails", async () => {
+    const adapter: AgentAdapter = {
+      ...fakeAdapter("opencode"),
+      listModels: async () => {
+        throw new Error("boom");
+      },
+    };
+    const bridge = start({}, { adapters: [adapter] });
+    const { editor } = await greet(bridge);
+    editor.send({ type: "models_request", agentId: "opencode" });
+    expect(await editor.next("models")).toEqual({
+      type: "models",
+      agentId: "opencode",
+      models: [],
+      error: "boom",
     });
     editor.ws.close();
   });
@@ -499,10 +578,11 @@ describe("agent runs", () => {
       {},
       {
         runManagerFactory: ({ emit }: { emit: (id: string, e: RunEvent) => void }) => ({
-          start: (runId: string, prompt: string) => {
+          start: ({ runId, prompt }: RunRequest) => {
             emit(runId, { kind: "text", text: `got ${prompt}` });
             emit(runId, { kind: "done" });
           },
+          resolveRunToken: () => undefined,
           cancel: (runId: string) => void cancelled.push(runId),
           cancelAll: () => undefined,
           isRunning: () => false,
@@ -510,7 +590,7 @@ describe("agent runs", () => {
       },
     );
     const { editor } = await greet(bridge);
-    editor.send({ type: "run_start", runId: "r1", prompt: "make a card" });
+    editor.send({ type: "run_start", runId: "r1", prompt: "make a card", agentId: "codex" });
     const first = await editor.next("run_event");
     expect(first).toEqual({
       type: "run_event",
@@ -521,5 +601,77 @@ describe("agent runs", () => {
     editor.send({ type: "run_cancel", runId: "r1" });
     await Bun.sleep(30);
     expect(cancelled).toEqual(["r1"]);
+  });
+});
+
+describe("run-scoped MCP endpoint", () => {
+  const rpc = (url: string, body: unknown, headers: Record<string, string> = {}) =>
+    fetch(url, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+        accept: "application/json, text/event-stream",
+        ...headers,
+      },
+      body: JSON.stringify(body),
+    });
+  const callGetDocument = (url: string, headers: Record<string, string> = {}) =>
+    rpc(
+      url,
+      {
+        jsonrpc: "2.0",
+        id: 1,
+        method: "tools/call",
+        params: { name: "get_document", arguments: {} },
+      },
+      headers,
+    );
+
+  test("tool calls through the token URL reach the editor with source run; the URL dies with the run", async () => {
+    const urls: string[] = [];
+    let finishRun: () => void = () => undefined;
+    const adapter: AgentAdapter = {
+      ...fakeAdapter("codex"),
+      run: async (ctx) => {
+        urls.push(ctx.mcpUrl);
+        await new Promise<void>((resolve) => (finishRun = resolve));
+        ctx.emit({ kind: "done" });
+      },
+    };
+    const bridge = start({}, { adapters: [adapter] });
+    const { editor } = await greet(bridge);
+    editor.send({ type: "run_start", runId: "run-9", prompt: "go", agentId: "codex" });
+    while (urls.length === 0) await Bun.sleep(5);
+    const url = urls[0] as string;
+    expect(url).toMatch(/^http:\/\/127\.0\.0\.1:\d+\/mcp\/run\/[A-Za-z0-9_-]{43}$/);
+
+    const pending = callGetDocument(url);
+    const call = (await editor.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
+    expect(call.tool).toBe("get_document");
+    expect(call.source).toEqual({ kind: "run", runId: "run-9" });
+    editor.send({ type: "tool_result", callId: call.callId, content: "doc", isError: false });
+    expect((await pending).status).toBe(200);
+
+    // Same protections as /mcp: foreign Host and browser origins are refused.
+    expect((await callGetDocument(url, { host: "evil.example.com" })).status).toBe(403);
+    expect((await callGetDocument(url, { origin: "https://evil.example.com" })).status).toBe(403);
+    // A wrong token of the right shape is just a 404.
+    expect((await callGetDocument(url.replace(/.$/, (c) => (c === "A" ? "B" : "A")))).status).toBe(
+      404,
+    );
+
+    finishRun();
+    await editor.next("run_event");
+    while (bridge.runs.isRunning()) await Bun.sleep(5);
+    expect((await callGetDocument(url)).status).toBe(404);
+    editor.ws.close();
+  });
+
+  test("malformed run tokens are 404", async () => {
+    const bridge = start();
+    for (const path of ["/mcp/run/", "/mcp/run/short", "/mcp/run/../mcp", "/mcp/runx"]) {
+      const response = await rpc(`http://127.0.0.1:${bridge.port}${path}`, {});
+      expect(response.status).toBe(404);
+    }
   });
 });

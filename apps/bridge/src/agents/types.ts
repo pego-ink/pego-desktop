@@ -1,3 +1,4 @@
+import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { LocalAgentId, LocalAgentInfo, RunEvent } from "@pego/agent";
 
 /** What an adapter gets to run one prompt against the open document. */
@@ -16,6 +17,11 @@ export type AgentRunContext = {
   workdir: string;
   /** Environment for the child process (PATH already includes the usual CLI locations). */
   env: Record<string, string>;
+  /**
+   * Build an in-process Pego MCP server bound to this run (same tools and run attribution as
+   * `mcpUrl`). Only adapters that embed their agent (the Claude Agent SDK) need it.
+   */
+  createMcpServer?: () => McpServer;
   signal: AbortSignal;
   emit: (event: RunEvent) => void;
 };

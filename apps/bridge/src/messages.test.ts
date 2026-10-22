@@ -7,14 +7,33 @@ describe("parseEditorMessage", () => {
   test("accepts every valid message type", () => {
     expect(ok({ type: "hello", protocol: 1, documentName: "a" }).ok).toBe(true);
     expect(ok({ type: "tool_result", callId: "c1", content: "x", isError: false }).ok).toBe(true);
-    expect(ok({ type: "run_start", runId: "r1", prompt: "hi" }).ok).toBe(true);
+    expect(ok({ type: "run_start", runId: "r1", prompt: "hi", agentId: "codex" }).ok).toBe(true);
+    expect(
+      ok({
+        type: "run_start",
+        runId: "r1",
+        prompt: "hi",
+        agentId: "opencode",
+        model: "aki/cbai/deepseek-v4.1-flash(high)",
+      }).ok,
+    ).toBe(true);
+    expect(ok({ type: "agents_refresh" }).ok).toBe(true);
+    expect(ok({ type: "models_request", agentId: "gemini" }).ok).toBe(true);
     expect(ok({ type: "run_cancel", runId: "r1" }).ok).toBe(true);
   });
   test("rejects bad shapes", () => {
     expect(ok({ type: "hello", protocol: "1", documentName: "a" }).ok).toBe(false);
     expect(ok({ type: "tool_result", callId: "", content: "x", isError: false }).ok).toBe(false);
     expect(ok({ type: "tool_result", callId: "c", content: 1, isError: false }).ok).toBe(false);
-    expect(ok({ type: "run_start", runId: "r", prompt: "" }).ok).toBe(false);
+    expect(ok({ type: "run_start", runId: "r", prompt: "", agentId: "codex" }).ok).toBe(false);
+    expect(ok({ type: "run_start", runId: "r", prompt: "hi" }).ok).toBe(false);
+    expect(ok({ type: "run_start", runId: "r", prompt: "hi", agentId: "vim" }).ok).toBe(false);
+    expect(ok({ type: "models_request", agentId: "vim" }).ok).toBe(false);
+    for (const model of ["--yolo", "a\nb", "", "x".repeat(201)]) {
+      expect(ok({ type: "run_start", runId: "r", prompt: "hi", agentId: "codex", model }).ok).toBe(
+        false,
+      );
+    }
     expect(ok({ type: "nope" }).ok).toBe(false);
     expect(ok(null).ok).toBe(false);
     expect(ok("str").ok).toBe(false);

@@ -1,21 +1,33 @@
 import { BRIDGE_PROTOCOL_VERSION, type BridgeToEditor, type RunEvent } from "@pego/agent";
 import { MAX_MCP_BODY_BYTES, MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
 import { createEditorHub, type EditorSocket } from "./editor-hub";
-import { isClaudeCodeAvailable } from "./claude-code";
+import { createAgentDetector, type AgentDetector } from "./detection";
+import type { AgentAdapter } from "./agents/types";
 import { handleMcpRequest } from "./mcp";
 import { parseEditorMessage } from "./messages";
-import { createRunManager, type RunManager } from "./runs";
+import { createRunManager, parseRunMcpPath, type RunManager } from "./runs";
 import { isHostAllowed, isOriginAllowed } from "./security";
 
 type SocketData = { greeted: boolean };
 
 export type BridgeOptions = BridgeConfig & {
   /** Overrides for tests. */
-  claudeCodeAvailable?: () => boolean;
+  adapters?: AgentAdapter[];
+  detector?: AgentDetector;
   runManagerFactory?: (deps: {
     callTool: ReturnType<typeof createEditorHub>["callTool"];
     emit: (runId: string, event: RunEvent) => void;
+    mcpOrigin: () => string;
+    adapters?: AgentAdapter[];
   }) => RunManager;
+};
+
+const sendTo = (ws: { send: (data: string) => unknown }, message: BridgeToEditor): void => {
+  try {
+    ws.send(JSON.stringify(message));
+  } catch {
+    // the editor went away while we were detecting
+  }
 };
 
 const text = (status: number, body: string): Response =>
@@ -25,11 +37,16 @@ export const startBridge = (options: BridgeOptions) => {
   const hub = createEditorHub({ toolTimeoutMs: options.toolTimeoutMs });
   const sendRunEvent = (runId: string, event: RunEvent) =>
     void hub.send({ type: "run_event", runId, event });
+  // Resolved lazily: the port is only known once the server is listening (port 0 in tests).
+  const mcpOrigin = () => `http://127.0.0.1:${server.port}`;
   const runs = (options.runManagerFactory ?? createRunManager)({
     callTool: hub.callTool,
     emit: sendRunEvent,
+    mcpOrigin,
+    ...(options.adapters ? { adapters: options.adapters } : {}),
   });
-  const checkClaude = options.claudeCodeAvailable ?? isClaudeCodeAvailable;
+  const detector =
+    options.detector ?? createAgentDetector(options.adapters ? { adapters: options.adapters } : {});
 
   const server = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
@@ -51,14 +68,19 @@ export const startBridge = (options: BridgeOptions) => {
         return text(426, "Upgrade Required");
       }
 
-      if (pathname === "/mcp") {
+      const runToken = parseRunMcpPath(pathname);
+      if (pathname === "/mcp" || pathname.startsWith("/mcp/run/")) {
         // Browsers always send Origin; MCP clients (Claude Code) do not. Reject web pages.
         if (origin !== null && !isOriginAllowed(origin, options.allowedOrigins)) {
           return text(403, "Forbidden: origin not allowed");
         }
         const length = Number(request.headers.get("content-length") ?? 0);
         if (length > MAX_MCP_BODY_BYTES) return text(413, "Payload too large");
-        return handleMcpRequest(request, hub.callTool);
+        if (pathname === "/mcp") return handleMcpRequest(request, hub.callTool);
+        // Run-scoped endpoint: the token is the credential and dies with the run.
+        const run = runToken ? runs.resolveRunToken(runToken) : undefined;
+        if (!run) return text(404, "Not found");
+        return handleMcpRequest(request, hub.callTool, { kind: "run", runId: run.runId });
       }
 
       return text(404, "Not found");
@@ -85,13 +107,16 @@ export const startBridge = (options: BridgeOptions) => {
           }
           ws.data.greeted = true;
           hub.attach(socket, message.documentName);
-          const welcome: BridgeToEditor = {
-            type: "welcome",
-            protocol: BRIDGE_PROTOCOL_VERSION,
-            claudeCodeAvailable: checkClaude(),
-            mcpUrl: `http://127.0.0.1:${server.port}/mcp`,
-          };
-          ws.send(JSON.stringify(welcome));
+          void detector.detectAll().then((agents) => {
+            const welcome: BridgeToEditor = {
+              type: "welcome",
+              protocol: BRIDGE_PROTOCOL_VERSION,
+              claudeCodeAvailable: agents.some((a) => a.id === "claude-code" && a.installed),
+              mcpUrl: `http://127.0.0.1:${server.port}/mcp`,
+              agents,
+            };
+            sendTo(ws, welcome);
+          });
           return;
         }
 
@@ -106,7 +131,21 @@ export const startBridge = (options: BridgeOptions) => {
             ...(message.images?.length ? { images: message.images } : {}),
           });
         } else if (message.type === "run_start") {
-          runs.start(message.runId, message.prompt);
+          runs.start({
+            runId: message.runId,
+            prompt: message.prompt,
+            agentId: message.agentId,
+            ...(message.model ? { model: message.model } : {}),
+          });
+        } else if (message.type === "agents_refresh") {
+          void detector.detectAll(true).then((agents) => sendTo(ws, { type: "agents", agents }));
+        } else if (message.type === "models_request") {
+          const { agentId } = message;
+          void detector
+            .listModels(agentId)
+            .then(({ models, error }) =>
+              sendTo(ws, { type: "models", agentId, models, ...(error ? { error } : {}) }),
+            );
         } else {
           runs.cancel(message.runId);
         }

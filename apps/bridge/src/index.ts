@@ -26,6 +26,8 @@ const shutdown = async () => {
   stopping = true;
   config.log("Shutting down bridge...");
   bridge.stop();
+  // Let an active run kill its CLI process tree and delete its workdir before exiting.
+  await bridge.runs.whenIdle();
   process.exit(0);
 };
 process.on("SIGINT", () => void shutdown());

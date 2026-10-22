@@ -1,7 +1,16 @@
 import { z } from "zod";
-import type { EditorToBridge } from "@pego/agent";
+import { LOCAL_AGENT_IDS, type EditorToBridge } from "@pego/agent";
 
 const id = z.string().min(1).max(128);
+const agentId = z.enum(LOCAL_AGENT_IDS);
+/** Model ids pass through to the CLI unchanged; just keep them printable and never flag-like. */
+const isSafeModelId = (value: string): boolean =>
+  !value.startsWith("-") &&
+  [...value].every((char) => {
+    const code = char.charCodeAt(0);
+    return code > 0x1f && code !== 0x7f;
+  });
+const modelId = z.string().min(1).max(200).refine(isSafeModelId, "invalid model id");
 
 /** Limits for screenshots attached to a `tool_result`. */
 export const MAX_IMAGES_PER_RESULT = 4;
@@ -49,7 +58,15 @@ export const editorMessageSchema = z.discriminatedUnion("type", [
     isError: z.boolean(),
     images: imagesSchema.optional(),
   }),
-  z.object({ type: z.literal("run_start"), runId: id, prompt: z.string().min(1).max(100_000) }),
+  z.object({
+    type: z.literal("run_start"),
+    runId: id,
+    prompt: z.string().min(1).max(100_000),
+    agentId,
+    model: modelId.optional(),
+  }),
+  z.object({ type: z.literal("agents_refresh") }),
+  z.object({ type: z.literal("models_request"), agentId }),
   z.object({ type: z.literal("run_cancel"), runId: id }),
 ]) satisfies z.ZodType<EditorToBridge>;
 

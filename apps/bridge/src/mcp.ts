@@ -109,12 +109,17 @@ const clientNameOf = (request: Request): string | undefined => {
  * Stateless Streamable HTTP: one server + transport per request (the SDK forbids reusing a
  * stateless transport). JSON responses, so no long-lived SSE streams are held open.
  */
-export const handleMcpRequest = async (request: Request, callTool: CallTool): Promise<Response> => {
+export const handleMcpRequest = async (
+  request: Request,
+  callTool: CallTool,
+  /** Fixed attribution for run-scoped endpoints; defaults to the calling MCP client. */
+  fixedSource?: ToolSource,
+): Promise<Response> => {
   const clientName = clientNameOf(request);
   const server = createPegoMcpServer({
     callTool,
     clientName,
-    source: ({ clientName: name }) => ({ kind: "mcp", clientName: name }),
+    source: ({ clientName: name }) => fixedSource ?? { kind: "mcp", clientName: name },
   });
   const transport = new WebStandardStreamableHTTPServerTransport({
     sessionIdGenerator: undefined,
