@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { Button } from "@pego/ui/components/button";
 import { cn } from "@pego/ui/lib/utils";
+import { useAgentStore } from "@/agent/use-agent-store";
 import { resumeAutoSave, retryAutoSave } from "./autosave-actions";
-import { isFileAutosaveSupported } from "./file-autosave";
+import { hasAutosaveTarget, isFileAutosaveSupported } from "./file-autosave";
 import { useAutosaveStore } from "./use-autosave-store";
 import { useFileStore, useIsDirty } from "./use-file-store";
 
@@ -32,14 +33,18 @@ const SR_TEXT = {
 export const AutosaveStatus = () => {
   const status = useAutosaveStore((s) => s.status);
   const enabled = useAutosaveStore((s) => s.enabled);
-  const handle = useFileStore((s) => s.handle);
-  // Without a handle nothing autosaves to disk, unless the browser can only download anyway.
+  // Re-render when the target changes (handle, bridge path) or the bridge comes and goes.
+  useFileStore((s) => s.handle ?? s.bridgePath);
+  useAgentStore((s) => s.bridge.connected);
+  // Without a file nothing autosaves to disk, unless the browser can only download anyway.
   const supported = isFileAutosaveSupported();
-  const untitled = useFileStore((s) => s.handle === null && (s.fileName === null || supported));
+  const untitled = useFileStore(
+    (s) => s.handle === null && s.bridgePath === null && (s.fileName === null || supported),
+  );
   const dirty = useIsDirty();
   const savedMounted = useFadeOut(status === "saved");
 
-  const fileAutosave = enabled && supported && handle !== null && status !== "needs-permission";
+  const fileAutosave = enabled && hasAutosaveTarget() && status !== "needs-permission";
   const showDot = dirty && !(fileAutosave && status !== "paused");
 
   return (

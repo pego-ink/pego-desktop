@@ -234,7 +234,13 @@ describe("local agent prompt", () => {
 
   test("prepends the skills line, keeps the user's text in the log", () => {
     state().set({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents: [info()] },
+      bridge: {
+        connected: true,
+        claudeCodeAvailable: true,
+        mcpUrl: "u",
+        agents: [info()],
+        projectDir: null,
+      },
       localAgentId: "codex",
     });
     const sent: EditorToBridge[] = [];
@@ -250,7 +256,13 @@ describe("local agent prompt", () => {
 
   test("explicit none leaves core only", () => {
     state().set({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents: [info()] },
+      bridge: {
+        connected: true,
+        claudeCodeAvailable: true,
+        mcpUrl: "u",
+        agents: [info()],
+        projectDir: null,
+      },
       localAgentId: "codex",
     });
     const sent: EditorToBridge[] = [];

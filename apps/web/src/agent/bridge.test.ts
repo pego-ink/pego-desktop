@@ -1,6 +1,11 @@
 /// <reference types="bun" />
 import { beforeEach, describe, expect, test } from "bun:test";
-import type { BridgeToEditor, EditorToBridge, LocalAgentInfo } from "@pego/agent";
+import {
+  BRIDGE_PROTOCOL_VERSION,
+  type BridgeToEditor,
+  type EditorToBridge,
+  type LocalAgentInfo,
+} from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { setActiveRun } from "./active-run";
 import { createBridgeClient, parseBridgeMessage, type SocketLike } from "./bridge-client";
@@ -14,7 +19,7 @@ class FakeSocket implements SocketLike {
   closed = false;
   onopen: (() => void) | null = null;
   onmessage: ((event: { data: unknown }) => void) | null = null;
-  onclose: (() => void) | null = null;
+  onclose: ((event?: { code?: number; reason?: string }) => void) | null = null;
   onerror: (() => void) | null = null;
   send = (data: string) => void this.sent.push(data);
   close = () => {
@@ -78,7 +83,7 @@ describe("bridge client", () => {
     sockets[0]!.onopen?.();
     expect(JSON.parse(sockets[0]!.sent[0]!)).toMatchObject({
       type: "hello",
-      protocol: 3,
+      protocol: BRIDGE_PROTOCOL_VERSION,
       documentName: "doc.pego",
     });
     expect(client.isOpen()).toBe(true);
@@ -94,6 +99,32 @@ describe("bridge client", () => {
     sockets[0]!.onmessage?.({ data: "not json" });
     sockets[0]!.onmessage?.({ data: new ArrayBuffer(2) });
     expect(messages.map((m) => m.type)).toEqual(["welcome"]);
+  });
+
+  test("a bridge of another Pego version refusing the editor is reported, then retried", () => {
+    const reasons: string[] = [];
+    const sockets: FakeSocket[] = [];
+    const timers: (() => void)[] = [];
+    const client = createBridgeClient({
+      url: "ws://test",
+      createSocket: () => {
+        const socket = new FakeSocket();
+        sockets.push(socket);
+        return socket;
+      },
+      documentName: () => "doc.pego",
+      onMessage: () => {},
+      onClosed: () => {},
+      onRejected: (reason) => reasons.push(reason),
+      setTimer: (fn) => timers.push(fn),
+      clearTimer: () => {},
+    });
+    client.start();
+    sockets[0]!.onopen?.();
+    sockets[0]!.onclose?.({ code: 4001, reason: "Protocol mismatch" });
+    expect(reasons).toEqual(["Protocol mismatch"]);
+    expect(timers).toHaveLength(1);
+    client.stop();
   });
 
   test("reconnects quietly with growing backoff and resets after a connection", () => {
@@ -218,12 +249,14 @@ describe("bridge handlers", () => {
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
       agents: [CODEX],
+      projectDir: null,
     });
     expect(state().bridge).toEqual({
       connected: true,
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
       agents: [CODEX],
+      projectDir: null,
     });
     handlers.handleClosed();
     expect(state().bridge.connected).toBe(false);

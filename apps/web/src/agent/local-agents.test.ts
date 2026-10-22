@@ -145,6 +145,7 @@ describe("default agent", () => {
       claudeCodeAvailable: false,
       mcpUrl: "http://m",
       agents,
+      projectDir: null,
     });
     useAgentStore.setState({ backend: "api", localAgentId: "claude-code", explicit: false });
     await handlers.handleMessage(
@@ -173,6 +174,7 @@ describe("protocol v3 handling", () => {
       claudeCodeAvailable: true,
       mcpUrl: "http://m",
       agents: [info("claude-code"), info("codex", { installed: false })],
+      projectDir: null,
     };
     await handlers.handleMessage(welcome);
     expect(state().bridge.agents.map((a) => a.id)).toEqual(["claude-code", "codex"]);
@@ -235,8 +237,22 @@ describe("protocol v3 handling", () => {
 describe("local agent runs", () => {
   const connect = (agents: LocalAgentInfo[]) =>
     useAgentStore.setState({
-      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents },
+      bridge: { connected: true, claudeCodeAvailable: true, mcpUrl: "u", agents, projectDir: null },
     });
+
+  test("a run with layers selected tells the agent which ones; the log keeps the user's text", () => {
+    connect([info("codex", { name: "Codex" })]);
+    state().setLocalAgent("codex");
+    const sent: EditorToBridge[] = [];
+    startLocalAgentRun("r9", "make it green", (m) => (sent.push(m), true), null, {
+      selectionContext: 'The user selected this layer on the canvas.\n- card: "Card" (frame)',
+    });
+    const start = sent[0];
+    if (start?.type !== "run_start") throw new Error("expected run_start");
+    expect(start.prompt).toContain('- card: "Card" (frame)');
+    expect(start.prompt).toEndWith("Request: make it green");
+    expect(state().log.find((entry) => entry.kind === "user")?.text).toBe("make it green");
+  });
 
   test("run_start carries agentId and the selected model", () => {
     connect([info("codex", { name: "Codex" })]);

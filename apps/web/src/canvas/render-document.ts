@@ -214,9 +214,11 @@ export const renderDocument = (
      * opacity, clip and corner radius still apply. Draws nothing for an unknown id.
      */
     rootId?: string;
+    /** Backdrop around the frames (the canvas follows the app theme); default the dark one. */
+    background?: string;
   } = {},
 ) => {
-  canvas.clear(res.ck.parseColorString(BACKGROUND));
+  canvas.clear(res.ck.parseColorString(options.background ?? BACKGROUND));
   canvas.save();
   canvas.translate(camera.panX, camera.panY);
   canvas.scale(camera.zoom, camera.zoom);

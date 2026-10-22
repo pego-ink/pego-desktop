@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
-import { newDocument, openFile, saveFile, saveFileAs } from "./file-actions";
-import { DEFAULT_FILE_NAME } from "./file-format";
+import { newDocument, openFile, saveAsProject, saveFile, saveFileAs } from "./file-actions";
+import { useDocumentStore } from "@/store/use-document-store";
+import { documentTitle } from "@/tabs/use-tabs-store";
 import { useFileStore } from "./use-file-store";
 import { AutosaveStatus } from "./AutosaveStatus";
 import { toggleAutoSave } from "./autosave-actions";
@@ -17,6 +18,7 @@ const ITEMS = [
   { label: "Open…", shortcut: `${MOD}O`, run: openFile },
   { label: "Save", shortcut: `${MOD}S`, run: saveFile },
   { label: "Save as…", shortcut: `${SHIFT}${MOD}S`, run: saveFileAs },
+  { label: "Save as project…", shortcut: null, run: saveAsProject },
 ] as const;
 
 export const FileMenu = () => {
@@ -24,9 +26,20 @@ export const FileMenu = () => {
   const rootRef = useRef<HTMLDivElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
-  const fileName = useFileStore((s) => s.fileName) ?? DEFAULT_FILE_NAME;
+  const docName = useDocumentStore((s) => s.doc.name);
+  const fileName = useFileStore((s) => s.fileName);
+  const bridgePath = useFileStore((s) => s.bridgePath);
+  // A project's design shows the project name, other files their file name.
+  const title = documentTitle(
+    { name: docName },
+    {
+      fileName,
+      bridgePath,
+    },
+  );
   const autosaveEnabled = useAutosaveStore((s) => s.enabled);
-  const supported = isFileAutosaveSupported();
+  // Files on disk behind the bridge auto save in any browser.
+  const supported = isFileAutosaveSupported() || bridgePath !== null;
 
   useEffect(() => {
     if (open)
@@ -73,29 +86,26 @@ export const FileMenu = () => {
   };
 
   return (
-    <div
-      ref={rootRef}
-      className="relative flex h-11 shrink-0 flex-col justify-center border-b border-border px-2"
-    >
+    <div ref={rootRef} className="relative flex min-w-0 items-center gap-2">
       <button
         ref={triggerRef}
         type="button"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`File menu, ${fileName}`}
-        title={fileName}
+        aria-label={`File menu, ${title}`}
+        title={bridgePath ?? fileName ?? title}
         onClick={() => setOpen((v) => !v)}
         onKeyDown={(event) => {
           if (event.key !== "ArrowDown") return;
           event.preventDefault();
           setOpen(true);
         }}
-        className="-mx-1 flex h-5 min-w-0 items-center gap-1 self-start rounded-sm px-1 text-[13px] font-medium text-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-accent"
+        className="flex h-7 min-w-0 max-w-56 items-center gap-1 rounded-md px-2 text-[13px] font-medium text-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 aria-expanded:bg-accent"
       >
-        <span className="max-w-full truncate">{fileName}</span>
+        <span className="max-w-full truncate">{title}</span>
         <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
       </button>
-      <div className="flex h-4 items-center">
+      <div className="flex h-4 min-w-0 items-center">
         <AutosaveStatus />
       </div>
       {open ? (
@@ -104,7 +114,7 @@ export const FileMenu = () => {
           role="menu"
           aria-label="File"
           onKeyDown={onMenuKeyDown}
-          className="absolute top-full right-2 left-2 z-50 mt-1 origin-top-left animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] rounded-lg border border-border bg-card p-1 shadow-lg"
+          className="absolute top-full left-0 z-50 mt-1 w-56 origin-top-left animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] rounded-lg border border-border bg-card p-1 shadow-lg"
         >
           {ITEMS.map((item) => (
             <button

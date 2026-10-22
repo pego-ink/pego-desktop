@@ -1,6 +1,10 @@
 import { toast } from "sonner";
 import type { PegoDocument } from "@pego/doc";
+import { requestProject, saveFileViaBridge } from "@/agent/bridge-client";
+import { useAgentStore } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
+import { blockedByRun, loadIntoActive, newTab, openTab } from "@/tabs/use-tabs-store";
+import { activateWorkspace, SCRATCH_ID } from "@/workspace/use-workspace-store";
 import {
   createEmptyDocument,
   DEFAULT_FILE_NAME,
@@ -17,23 +21,23 @@ import {
 } from "./fs-access";
 import { noteManualSave, runExclusiveSave } from "./file-autosave";
 import { ensureWritePermission, writeToHandle } from "./file-permission";
-import { getIsDirty, useFileStore } from "./use-file-store";
+import { useFileStore } from "./use-file-store";
 
 const PICKER_TYPES = [{ description: "Pego file", accept: { [FILE_MIME]: [FILE_EXTENSION] } }];
 
 const errorMessage = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
-const confirmDiscard = (action: string) =>
-  !getIsDirty() || window.confirm(`You have unsaved changes. ${action} anyway?`);
+const fileNameOf = (path: string) => path.split(/[\\/]/).pop() ?? path;
 
+/** Files opened from disk (not a project's design) are scratch documents. */
 const adopt = (doc: PegoDocument, fileName: string | null, handle: PegoFileHandle | null) => {
-  useDocumentStore.getState().load(doc);
-  useFileStore.getState().markSaved(useDocumentStore.getState().doc, fileName, handle);
+  if (!activateWorkspace(SCRATCH_ID)) return;
+  openTab(doc, { fileName, handle });
 };
 
 export const newDocument = () => {
-  if (!confirmDiscard("Create a new document")) return;
-  adopt(createEmptyDocument(), null, null);
+  if (!activateWorkspace(SCRATCH_ID)) return;
+  newTab();
 };
 
 const readTextViaInput = () =>
@@ -47,7 +51,6 @@ const readTextViaInput = () =>
   });
 
 export const openFile = async () => {
-  if (!confirmDiscard("Open another file")) return;
   try {
     let file: File | null;
     let handle: PegoFileHandle | null = null;
@@ -84,6 +87,18 @@ export const writeDocToHandle = (handle: PegoFileHandle, fileName: string) =>
     noteManualSave();
   });
 
+/**
+ * Writes the current doc to a file on disk through the local bridge (a project's design, or a
+ * file Claude Code opened), inside the autosave queue, then marks it clean.
+ */
+export const writeDocToBridgePath = (path: string) =>
+  runExclusiveSave(async () => {
+    const { doc } = useDocumentStore.getState();
+    await saveFileViaBridge(path, serializeDocument(doc));
+    useFileStore.getState().markSaved(doc, fileNameOf(path), null, path);
+    noteManualSave();
+  });
+
 export const saveFileAs = async () => {
   const { doc } = useDocumentStore.getState();
   const text = serializeDocument(doc);
@@ -105,7 +120,15 @@ export const saveFileAs = async () => {
 };
 
 export const saveFile = async () => {
-  const { handle, fileName } = useFileStore.getState();
+  const { handle, fileName, bridgePath } = useFileStore.getState();
+  if (!handle && bridgePath) {
+    try {
+      await writeDocToBridgePath(bridgePath);
+    } catch (error) {
+      toast.error(`Could not save to ${bridgePath}: ${errorMessage(error)}`);
+    }
+    return;
+  }
   if (!handle) return saveFileAs();
   try {
     if (!(await ensureWritePermission(handle))) {
@@ -115,5 +138,48 @@ export const saveFile = async () => {
     await writeDocToHandle(handle, fileName ?? handle.name);
   } catch (error) {
     toast.error(`Could not save file: ${errorMessage(error)}`);
+  }
+};
+
+/** The shown document as a project's design: same content, named after the project. */
+export const asProjectDocument = (doc: PegoDocument, name: string): PegoDocument => ({
+  ...doc,
+  name,
+});
+
+/**
+ * Turn the shown document into a new project: create the project folder through the bridge,
+ * write the document as its project.pego and open the project. A document that was never saved
+ * to a file moves into the project (the scratch area gets a new empty document); one with a
+ * file stays as it is, so this also duplicates a project.
+ */
+export const saveAsProject = async () => {
+  if (!useAgentStore.getState().bridge.connected) {
+    toast.error("Saving as a project needs the Pego bridge (bun run bridge, or the desktop app).");
+    return;
+  }
+  if (blockedByRun()) return;
+  const { doc } = useDocumentStore.getState();
+  const suggested = doc.name && doc.name !== "Untitled" ? doc.name : "";
+  const name = window.prompt("Project name", suggested)?.trim();
+  if (!name) return;
+  try {
+    const { project } = await requestProject("create_project", undefined, name);
+    if (!project) throw new Error("the bridge did not return the project");
+    await saveFileViaBridge(
+      project.mainFile,
+      serializeDocument(asProjectDocument(useDocumentStore.getState().doc, project.name)),
+    );
+    const { handle, bridgePath } = useFileStore.getState();
+    if (!handle && !bridgePath) loadIntoActive(createEmptyDocument(), {}, true);
+    const [{ openProject }, { refreshProjects }] = await Promise.all([
+      import("@/project/use-project-store"),
+      import("@/workspace/use-dashboard-store"),
+    ]);
+    await openProject(project);
+    void refreshProjects();
+    toast.success(`Saved as project ${project.name}`, { description: project.dir });
+  } catch (error) {
+    toast.error(`Could not save as a project: ${errorMessage(error)}`);
   }
 };

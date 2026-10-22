@@ -2,6 +2,10 @@ import { useMemo } from "react";
 import { findNode, type PegoNode, type TextNode } from "@pego/doc";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { useDocumentStore } from "@/store/use-document-store";
+import { HidePanelButton } from "@/layout/PanelToggles";
+import { copySelectionForAgent } from "@/selection/agent-reference";
+import { Button } from "@pego/ui/components/button";
+import { SparklesIcon } from "lucide-react";
 import { LayerIcon } from "@/panels/LayerIcon";
 import { DocumentSummary } from "@/panels/properties/DocumentSummary";
 import { FramePresetSection } from "@/panels/frame-presets/FramePresetSection";
@@ -13,6 +17,9 @@ import { IconSection, RefSection, TextSection } from "@/panels/properties/Conten
 import { PathSection } from "@/panels/properties/PathSection";
 import { ExportSection } from "@/panels/properties/ExportSection";
 import { hasFill, hasStroke } from "@/panels/properties/node-props";
+
+const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
+const COPY_SHORTCUT = isMac ? "⇧⌘C" : "Ctrl+Shift+C";
 
 const SingleNodeSections = ({ node }: { node: PegoNode }) => (
   <>
@@ -54,6 +61,21 @@ export const PropertiesPanel = () => {
         ) : (
           <span>{nodes.length} selected</span>
         )}
+        <span className="flex shrink-0 items-center gap-0.5">
+          {nodes.length > 0 ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Copy for the AI agent"
+              title={`Copy project, file and node ids for the AI agent (${COPY_SHORTCUT})`}
+              className="text-muted-foreground"
+              onClick={() => void copySelectionForAgent()}
+            >
+              <SparklesIcon />
+            </Button>
+          ) : null}
+          <HidePanelButton side="right" />
+        </span>
       </PanelHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {nodes.length === 0 || !first ? (

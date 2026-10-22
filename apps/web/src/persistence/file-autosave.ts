@@ -1,9 +1,11 @@
 import { toast } from "sonner";
+import { saveFileViaBridge } from "@/agent/bridge-client";
+import { useAgentStore } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { canMarkClean, createAutosaveScheduler } from "./autosave-scheduler";
 import { serializeDocument } from "./file-format";
 import { queryWritePermission, writeToHandle } from "./file-permission";
-import { getSaveFilePicker } from "./fs-access";
+import { getSaveFilePicker, type PegoFileHandle } from "./fs-access";
 import { useAutosaveStore } from "./use-autosave-store";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
@@ -29,27 +31,52 @@ const showSaved = () => {
   }, SAVED_VISIBLE_MS);
 };
 
+const bridgeConnected = () => useAgentStore.getState().bridge.connected;
+
+/**
+ * Where auto save writes: the file handle (File System Access), or else the path on disk the
+ * bridge writes (a project's design, a file Claude Code opened). Null when there is none.
+ */
+const autosaveTarget = (): { handle: PegoFileHandle } | { path: string } | null => {
+  const { handle, bridgePath } = useFileStore.getState();
+  if (handle) return isFileAutosaveSupported() ? { handle } : null;
+  return bridgePath ? { path: bridgePath } : null;
+};
+
+/** Identity of the target, to notice it changing while a write is in flight. */
+const targetKey = () => useFileStore.getState().handle ?? useFileStore.getState().bridgePath;
+
+/** True when the document has a file auto save can write to right now. */
+export const hasAutosaveTarget = () => {
+  const target = autosaveTarget();
+  return target !== null && ("handle" in target || bridgeConnected());
+};
+
 /** True when changes are currently being written to the file in the background. */
 export const isFileAutosaveActive = () => {
   const { enabled, status } = useAutosaveStore.getState();
-  return (
-    enabled &&
-    isFileAutosaveSupported() &&
-    useFileStore.getState().handle !== null &&
-    status !== "paused" &&
-    status !== "needs-permission"
-  );
+  return enabled && hasAutosaveTarget() && status !== "paused" && status !== "needs-permission";
 };
 
 const writeLatest = async () => {
-  const { handle, fileName } = useFileStore.getState();
+  const target = autosaveTarget();
+  const { fileName } = useFileStore.getState();
   const { doc } = useDocumentStore.getState();
-  if (!handle || !getIsDirty()) return;
+  if (!target || !getIsDirty()) return;
+  const key = targetKey();
   setStatus("saving");
-  await writeToHandle(handle, serializeDocument(doc));
-  const now = { doc: useDocumentStore.getState().doc, handle: useFileStore.getState().handle };
-  if (canMarkClean({ doc, handle }, now)) {
-    useFileStore.getState().markSaved(doc, fileName ?? handle.name, handle);
+  const text = serializeDocument(doc);
+  if ("handle" in target) await writeToHandle(target.handle, text);
+  else await saveFileViaBridge(target.path, text);
+  const now = { doc: useDocumentStore.getState().doc, handle: targetKey() };
+  if (canMarkClean({ doc, handle: key }, now)) {
+    if ("handle" in target) {
+      useFileStore.getState().markSaved(doc, fileName ?? target.handle.name, target.handle);
+    } else {
+      useFileStore
+        .getState()
+        .markSaved(doc, fileName ?? target.path.split(/[\\/]/).pop() ?? null, null, target.path);
+    }
     showSaved();
   } else if (getStatus() === "saving") {
     // Edited during the write: a newer write is already scheduled.
@@ -89,6 +116,14 @@ export const resumeFileAutosave = () => {
 export const syncPermission = async () => {
   const { enabled } = useAutosaveStore.getState();
   const { handle } = useFileStore.getState();
+  if (enabled && !handle && hasAutosaveTarget()) {
+    // Bridge paths need no permission: the bridge writes them.
+    const status = getStatus();
+    if (status === "needs-permission" || status === "paused") setStatus("idle");
+    scheduler.resume();
+    if (getIsDirty()) scheduler.notifyChange();
+    return;
+  }
   if (!enabled || !handle || !isFileAutosaveSupported()) {
     setStatus("idle");
     return;
@@ -111,15 +146,16 @@ export const isFileWriteInFlight = () => scheduler.isWriting();
 
 /** Wires doc/file/setting changes to the scheduler. Call after the autosave has been restored. */
 export const startFileAutosave = () => {
-  let lastHandle = useFileStore.getState().handle;
+  let lastTarget = targetKey();
 
   const unsubDoc = useDocumentStore.subscribe((state, prev) => {
     if (state.doc !== prev.doc && isFileAutosaveActive()) scheduler.notifyChange();
   });
 
-  const unsubFile = useFileStore.subscribe((state) => {
-    if (state.handle === lastHandle) return;
-    lastHandle = state.handle;
+  const unsubFile = useFileStore.subscribe(() => {
+    const target = targetKey();
+    if (target === lastTarget) return;
+    lastTarget = target;
     // New target file: forget a previous failure and re-check its permission.
     scheduler.cancel();
     scheduler.resume();
@@ -135,11 +171,17 @@ export const startFileAutosave = () => {
     if (state.enabled) void syncPermission();
   });
 
+  // A bridge (re)connect makes project files writable again.
+  const unsubBridge = useAgentStore.subscribe((state, prev) => {
+    if (state.bridge.connected !== prev.bridge.connected) void syncPermission();
+  });
+
   void syncPermission();
   return () => {
     unsubDoc();
     unsubFile();
     unsubSetting();
+    unsubBridge();
     scheduler.cancel();
     clearTimeout(savedTimer);
   };

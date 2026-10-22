@@ -17,6 +17,8 @@ import { deriveCursor, useInteractionState } from "@/interaction/interaction-sta
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { useImageDrop } from "@/interaction/use-image-drop";
 import { AgentCursor } from "@/components/AgentCursor";
+import { SelectionPrompt } from "@/components/SelectionPrompt";
+import { CANVAS_BACKGROUND, useThemeStore } from "@/theme/theme";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { Toolbar } from "@/components/Toolbar";
 import { useDocumentStore } from "@/store/use-document-store";
@@ -38,6 +40,7 @@ type LayerKey = {
   hiddenId: string | null;
   fonts: number;
   layers: number;
+  background: string;
 };
 
 const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
@@ -51,7 +54,8 @@ const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
   a.height === b.height &&
   a.hiddenId === b.hiddenId &&
   a.fonts === b.fonts &&
-  a.layers === b.layers;
+  a.layers === b.layers &&
+  a.background === b.background;
 
 export const Canvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -138,7 +142,7 @@ export const Canvas = () => {
             key.doc,
             key.layout,
             { panX: key.panX, panY: key.panY, zoom: key.zoom },
-            { hiddenIds },
+            { hiddenIds, background: key.background },
           );
           canvas.restore();
         };
@@ -165,6 +169,7 @@ export const Canvas = () => {
             hiddenId,
             fonts: useFontEvents.getState().version,
             layers: useLayerEvents.getState().version,
+            background: CANVAS_BACKGROUND[useThemeStore.getState().resolved],
           };
 
           if (!sameKey(layerKey, key)) {
@@ -271,6 +276,7 @@ export const Canvas = () => {
           useLayerEvents.subscribe(schedule),
           useToolPreview.subscribe(schedule),
           useToolStore.subscribe(schedule),
+          useThemeStore.subscribe(schedule),
           useAgentStore.subscribe((state, prev) => {
             if (state.focusIds !== prev.focusIds || state.status !== prev.status) schedule();
           }),
@@ -303,6 +309,7 @@ export const Canvas = () => {
       <canvas ref={canvasRef} className="absolute inset-0 h-full w-full touch-none" />
       <TextEditorOverlay />
       <AgentCursor />
+      <SelectionPrompt />
       <Toolbar />
     </div>
   );

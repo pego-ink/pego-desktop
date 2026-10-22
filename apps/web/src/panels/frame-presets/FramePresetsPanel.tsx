@@ -3,6 +3,7 @@ import { ChevronRightIcon, SearchIcon } from "lucide-react";
 import { Input } from "@pego/ui/components/input";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { cn } from "@pego/ui/lib/utils";
+import { HidePanelButton } from "@/layout/PanelToggles";
 import {
   formatPresetSize,
   searchFramePresets,
@@ -40,6 +41,7 @@ export const FramePresetsPanel = () => {
     <>
       <PanelHeader>
         <span>Frame</span>
+        <HidePanelButton side="right" />
       </PanelHeader>
       <div className="border-b border-border p-2">
         <div className="relative">

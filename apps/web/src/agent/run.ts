@@ -9,6 +9,7 @@ import { isLocalBaseUrl } from "./provider-url";
 import { listCustomProviders, loadProviderKey } from "./providers/store";
 import { runOpenAiCompatibleAgent } from "./providers/openai-runtime";
 import { setRunStyleId } from "./run-skills";
+import { selectionContext, withSelectionContext } from "./selection-context";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
 
@@ -52,6 +53,8 @@ export const startCustomRun = async (
   skillId: string | null | undefined,
   deps: CustomRunDeps = defaultCustomDeps,
   attachments: readonly RunAttachment[] = [],
+  /** What the model receives (the selection context plus `text`); defaults to `text`. */
+  agentText: string = text,
 ): Promise<void> => {
   const agent = useAgentStore.getState();
   agent.beginRun(runId, text);
@@ -84,7 +87,7 @@ export const startCustomRun = async (
   setActiveRun({ id: runId, backend: "custom", controller, host });
   try {
     if (provider.kind === "openai-compatible") {
-      await deps.runOpenAi(text, {
+      await deps.runOpenAi(agentText, {
         provider,
         apiKey: key,
         host,
@@ -93,7 +96,7 @@ export const startCustomRun = async (
         attachments,
       });
     } else {
-      await deps.runAnthropic(text, {
+      await deps.runAnthropic(agentText, {
         client: createCompatClient({ baseUrl: provider.baseUrl, apiKey: key }),
         provider: {
           baseUrl: provider.baseUrl,
@@ -113,9 +116,19 @@ export const startCustomRun = async (
     if (getActiveRun()?.id === runId) setActiveRun(null);
   }
 };
-export const startRun = async (prompt: string): Promise<void> => {
+/**
+ * Start a run. With layers selected (the canvas prompt, or the panel while something is
+ * selected), the agent is told which layers the request is about; the log shows the user's text.
+ */
+export const startRun = async (
+  prompt: string,
+  options: { selection?: readonly string[] } = {},
+): Promise<void> => {
   const text = prompt.trim();
   if (!text || getActiveRun()) return;
+  const { doc, selection } = useDocumentStore.getState();
+  const context = selectionContext(doc, options.selection ?? selection);
+  const agentText = withSelectionContext(text, context);
 
   const agent = useAgentStore.getState();
   const runId = crypto.randomUUID();
@@ -130,12 +143,15 @@ export const startRun = async (prompt: string): Promise<void> => {
   if (attachments.length > 0) agent.clearAttachments();
 
   if (agent.backend === "local") {
-    await startLocalAgentRun(runId, text, undefined, skillId, { attachments });
+    await startLocalAgentRun(runId, text, undefined, skillId, {
+      attachments,
+      selectionContext: context,
+    });
     return;
   }
 
   if (agent.backend === "custom") {
-    await startCustomRun(runId, text, skillId, undefined, attachments);
+    await startCustomRun(runId, text, skillId, undefined, attachments, agentText);
     return;
   }
 
@@ -158,7 +174,7 @@ export const startRun = async (prompt: string): Promise<void> => {
   const host = createToolHost({ onTransaction: setRunTail, attachments });
   setActiveRun({ id: runId, backend: "api", controller, host });
   try {
-    await runApiAgent(text, {
+    await runApiAgent(agentText, {
       client: createAnthropicClient(apiKey),
       host,
       signal: controller.signal,

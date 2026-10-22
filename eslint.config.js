@@ -17,6 +17,11 @@ export default tseslint.config(
   js.configs.recommended,
   ...tseslint.configs.recommended,
   {
+    // Plain scripts served to the browser as they are (e.g. theme-init.js).
+    files: ["apps/web/public/**/*.js"],
+    languageOptions: { globals: globals.browser },
+  },
+  {
     files: ["**/*.{ts,tsx}"],
     languageOptions: { globals: { ...globals.browser, ...globals.node } },
     rules: {

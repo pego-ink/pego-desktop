@@ -42,6 +42,10 @@ export type BridgeStatus = {
   mcpUrl: string | null;
   /** Local agent CLIs the bridge detected (empty until `welcome`). */
   agents: LocalAgentInfo[];
+  /** The design folder holding the projects, or null when the bridge has none. */
+  projectDir: string | null;
+  /** Why the bridge on the port refused this editor (e.g. an older Pego bridge), until a welcome. */
+  rejectedReason?: string;
 };
 
 /** Cached model list for one local agent (`models_request` / `models`). */
@@ -58,6 +62,7 @@ export const emptyBridge = (): BridgeStatus => ({
   claudeCodeAvailable: false,
   mcpUrl: null,
   agents: [],
+  projectDir: null,
 });
 
 type AgentState = {

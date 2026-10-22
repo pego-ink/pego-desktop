@@ -5,13 +5,41 @@ const DB_NAME = "pego";
 const STORE = "autosave";
 const KEY = "current";
 
+/** One open tab in the autosave. */
+export type AutosavedTab = {
+  doc: PegoDocument;
+  fileName: string | null;
+  handle: PegoFileHandle | null;
+  bridgePath: string | null;
+  dirty: boolean;
+};
+
+/** One open workspace (scratch or a project) with its tabs. */
+export type AutosavedWorkspace = {
+  id: string;
+  name: string;
+  dir: string | null;
+  kind: "scratch" | "project";
+  tabs: AutosavedTab[];
+  activeIndex: number;
+};
+
 export type AutosaveRecord = {
+  /** Every open workspace (newest autosaves); `tabs` below then mirrors the live one. */
+  workspaces?: AutosavedWorkspace[];
+  liveIndex?: number;
+  view?: "dashboard" | "editor";
+  /** Every open tab (newer autosaves). The top-level fields below describe the active one. */
+  tabs?: AutosavedTab[];
+  activeIndex?: number;
   doc: PegoDocument;
   fileName: string | null;
   /** True when the doc had unsaved changes relative to its file at write time. */
   dirty: boolean;
   /** Stored when the browser can structured-clone handles; permission is re-requested on save. */
   handle: PegoFileHandle | null;
+  /** File on disk the bridge opened the document from (see useFileStore.bridgePath). */
+  bridgePath?: string | null;
   savedAt: number;
 };
 

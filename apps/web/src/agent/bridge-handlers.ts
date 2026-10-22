@@ -1,4 +1,5 @@
 import {
+  EDITOR_OPS,
   toolByName,
   type BridgeToEditor,
   type EditorToBridge,
@@ -8,7 +9,22 @@ import {
   type ToolImage,
   type ToolSpec,
 } from "@pego/agent";
+import {
+  listTabsForBridge,
+  loadDocumentFromBridge,
+  markSavedFromBridge,
+  openProjectForBridge,
+  snapshotDocumentForBridge,
+  switchTabForBridge,
+} from "@/persistence/bridge-documents";
 import { pickDefaultAgent } from "./agent-prefs";
+import {
+  createBackgroundToolHost,
+  ensureProjectLoaded,
+  markBackgroundSaved,
+  snapshotBackground,
+} from "./background-host";
+import type { AgentToolHost } from "./tool-host";
 import { getActiveRun, setActiveRun } from "./active-run";
 import { cancelPendingDecisions } from "./decisions";
 import { createToolHost } from "./tool-host";
@@ -71,6 +87,26 @@ export const createBridgeHandlers = ({
     focusFromOps: true,
   });
   let lastMcpCallAt = Number.NEGATIVE_INFINITY;
+  /** Hosts for projects edited in the background (MCP calls with `project`), per project. */
+  const backgroundHosts = new Map<string, { host: AgentToolHost; lastCallAt: number }>();
+
+  /** The background host of a project; a pause in its calls starts a new undo step. */
+  const backgroundHostFor = (projectId: string, projectName: string): AgentToolHost => {
+    const at = now();
+    let entry = backgroundHosts.get(projectId);
+    if (!entry) {
+      entry = { host: createBackgroundToolHost(projectId, () => MCP_LABEL), lastCallAt: at };
+      backgroundHosts.set(projectId, entry);
+      agent().appendLog({
+        kind: "info",
+        text: `${MCP_LABEL} is editing ${projectName} in the background.`,
+      });
+    } else if (at - entry.lastCallAt > MCP_GROUP_WINDOW_MS) {
+      entry.host.newGroup();
+    }
+    entry.lastCallAt = at;
+    return entry.host;
+  };
 
   const handleToolCall = async (message: Extract<BridgeToEditor, { type: "tool_call" }>) => {
     const reply = (content: string, isError: boolean, images?: ToolImage[]) =>
@@ -81,6 +117,53 @@ export const createBridgeHandlers = ({
         isError,
         ...(images && images.length > 0 ? { images } : {}),
       });
+
+    // A call naming a project works on that project, shown or not (it is loaded if needed).
+    let background: { id: string; name: string } | null = null;
+    if (message.target && message.source.kind === "mcp") {
+      const { project } = message.target;
+      try {
+        if ((await ensureProjectLoaded(project)) === "background") {
+          background = { id: project.id, name: project.name };
+        }
+      } catch (error) {
+        return void reply(
+          `Could not load project ${project.name}: ${error instanceof Error ? error.message : String(error)}`,
+          true,
+        );
+      }
+    }
+
+    // The bridge's file tools: not agent tools, handled by the persistence layer.
+    if (message.tool === EDITOR_OPS.loadDocument) {
+      const outcome = loadDocumentFromBridge(message.input);
+      if (!outcome.isError)
+        agent().appendLog({ kind: "info", text: outcome.content.split("\n")[0]! });
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.snapshotDocument) {
+      const outcome = background ? snapshotBackground(background.id) : snapshotDocumentForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.openProject) {
+      const outcome = await openProjectForBridge(message.input);
+      if (!outcome.isError) agent().appendLog({ kind: "info", text: outcome.content });
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.listTabs) {
+      const outcome = listTabsForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.switchTab) {
+      const outcome = switchTabForBridge(message.input);
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.markSaved) {
+      const outcome = background
+        ? markBackgroundSaved(background.id, message.input)
+        : markSavedFromBridge(message.input);
+      return void reply(outcome.content, outcome.isError);
+    }
 
     const spec = findTool(message.tool);
     if (!spec) return void reply(`Unknown tool: ${message.tool}`, true);
@@ -93,6 +176,8 @@ export const createBridgeHandlers = ({
         return void reply("No matching active run in the editor.", true);
       }
       host = active.host;
+    } else if (source.kind === "mcp" && background) {
+      host = backgroundHostFor(background.id, background.name);
     } else if (source.kind === "mcp") {
       const at = now();
       if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) mcpHost.newGroup();
@@ -167,6 +252,7 @@ export const createBridgeHandlers = ({
             claudeCodeAvailable: message.claudeCodeAvailable,
             mcpUrl: message.mcpUrl,
             agents: message.agents,
+            projectDir: message.projectDir ?? null,
           },
           // A new bridge session may have different CLIs: drop cached model lists.
           modelsByAgent: {},

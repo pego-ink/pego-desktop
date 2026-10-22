@@ -1,4 +1,10 @@
-import { applyOps as applyDocOps, collectDocIds, type Op, type Transaction } from "@pego/doc";
+import {
+  applyOps as applyDocOps,
+  collectDocIds,
+  type Op,
+  type PegoDocument,
+  type Transaction,
+} from "@pego/doc";
 import type { PlanStep, RunAttachment, StepStatus, ToolHost } from "@pego/agent";
 import { getLayout } from "@/canvas/layout";
 import { listIconNames, loadIconData } from "@/canvas/icons";
@@ -26,6 +32,26 @@ export type ToolHostOptions = {
 export type AgentToolHost = ToolHost & {
   /** Next `applyOps` starts a new undo transaction instead of extending the last one. */
   newGroup: () => void;
+};
+
+/** Render a node of `doc` to PNG on an offscreen surface (screenshots, any workspace). */
+export const renderDocNodeImage = async (
+  doc: PegoDocument,
+  nodeId: string,
+  imageOptions?: { scale?: number; maxSize?: number },
+) => {
+  // Loaded on demand: CanvasKit (and its wasm) only matter once a screenshot is requested.
+  const [{ loadCanvasKit }, { renderNodeImage }, { collectFontFaces }, { ensureFontFace }] =
+    await Promise.all([
+      import("@/canvas/load-canvaskit"),
+      import("@/canvas/render-image"),
+      import("@/fonts/use-document-fonts"),
+      import("@/fonts/font-service"),
+    ]);
+  const res = await loadCanvasKit();
+  // The document's fonts first, so the agent judges the real typography.
+  await Promise.all(collectFontFaces(doc).map(ensureFontFace));
+  return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
 };
 
 const touchedIds = (ops: Op[]): string[] =>
@@ -107,16 +133,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     if (camera) viewport.animateTo(camera);
   };
 
-  const renderImage: NonNullable<ToolHost["renderImage"]> = async (nodeId, imageOptions) => {
-    // Loaded on demand: CanvasKit (and its wasm) only matter once a screenshot is requested.
-    const [{ loadCanvasKit }, { renderNodeImage }] = await Promise.all([
-      import("@/canvas/load-canvaskit"),
-      import("@/canvas/render-image"),
-    ]);
-    const res = await loadCanvasKit();
-    const doc = useDocumentStore.getState().doc;
-    return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
-  };
+  const renderImage: NonNullable<ToolHost["renderImage"]> = (nodeId, imageOptions) =>
+    renderDocNodeImage(useDocumentStore.getState().doc, nodeId, imageOptions);
 
   return {
     getDoc: () => useDocumentStore.getState().doc,

@@ -1,3 +1,4 @@
+import { withSelectionContext } from "./selection-context";
 import type { EditorToBridge, RunAttachment } from "@pego/agent";
 import { attachmentNote } from "./attachments";
 import { sendToBridge, startBridgeConnection } from "./bridge-client";
@@ -42,7 +43,12 @@ export const startLocalAgentRun = async (
   send: (message: EditorToBridge) => boolean = sendToBridge,
   /** Explicit skill for this run: undefined = auto-detect from the prompt, null = core only. */
   skillId?: string | null,
-  options: { bridgeWaitMs?: number; attachments?: readonly RunAttachment[] } = {},
+  options: {
+    bridgeWaitMs?: number;
+    attachments?: readonly RunAttachment[];
+    /** What the selected layers are (see selection-context.ts); goes before the prompt. */
+    selectionContext?: string;
+  } = {},
 ): Promise<void> => {
   const attachments = options.attachments ?? [];
   const waitMs = options.bridgeWaitMs ?? localRunConfig.bridgeWaitMs;
@@ -68,7 +74,8 @@ export const startLocalAgentRun = async (
   const prefix = [skillPromptPrefix(skills), attachmentNote(attachments)]
     .filter(Boolean)
     .join("\n\n");
-  const agentPrompt = prefix ? `${prefix}\n\n${prompt}` : prompt;
+  const scoped = withSelectionContext(prompt, options.selectionContext ?? "");
+  const agentPrompt = prefix ? `${prefix}\n\n${scoped}` : scoped;
 
   const fail = (text: string) => {
     agent.appendLog({ kind: "error", text });

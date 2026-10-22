@@ -10,6 +10,7 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { getToolHandler } from "@/interaction/tool-handlers";
+import { copySelectionForAgent } from "@/selection/agent-reference";
 import { useViewportStore } from "@/store/use-viewport-store";
 
 const isEditable = (target: EventTarget | null): boolean => {
@@ -79,6 +80,11 @@ export const useEditorShortcuts = () => {
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
         doc.select(doc.doc.children.map((n) => n.id));
+        return;
+      }
+      if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        void copySelectionForAgent();
         return;
       }
       if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
