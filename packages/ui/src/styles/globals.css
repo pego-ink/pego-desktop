@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `dark:` follows the theme class on <html>, not the OS setting. */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* Mono dark palette, derived from design/html/editor.html (default). html.light switches to the
    light palette below; apps/web/src/theme picks one (light, dark or the system setting). */
 :root {
@@ -24,6 +27,7 @@
   --success: #0e7c5a;
   --success-surface: #14211b;
   --violet: #b79cff;
+  --violet-foreground: #1b1230;
   --radius: 0.5rem;
   color-scheme: dark;
 }
@@ -50,6 +54,7 @@ html.light {
   --success: #0e7c5a;
   --success-surface: #e5f3ec;
   --violet: #7a5af8;
+  --violet-foreground: #ffffff;
   color-scheme: light;
 }
 
@@ -75,6 +80,7 @@ html.light {
   --color-success: var(--success);
   --color-success-surface: var(--success-surface);
   --color-violet: var(--violet);
+  --color-violet-foreground: var(--violet-foreground);
   --radius-sm: calc(var(--radius) - 4px);
   --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);

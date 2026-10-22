@@ -123,7 +123,7 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
                 {item.id === "agent" && agentWorking && !selected ? (
                   <span
                     aria-hidden
-                    className="absolute top-1 right-1 size-1.5 rounded-full bg-[#B79CFF] motion-safe:animate-pulse"
+                    className="absolute top-1 right-1 size-1.5 rounded-full bg-violet motion-safe:animate-pulse"
                   />
                 ) : null}
               </button>

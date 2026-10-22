@@ -70,7 +70,7 @@ const LocalAgentCard = ({ id }: { id: LocalAgentId }) => {
           <p
             className={cn(
               "text-[11px] leading-4",
-              installed ? "text-amber-400" : "text-muted-foreground",
+              installed ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
             )}
           >
             <NoteText note={info.note} />

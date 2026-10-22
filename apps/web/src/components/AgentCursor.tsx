@@ -25,7 +25,7 @@ import { useAgentStore } from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
-const ACCENT = "#B79CFF";
+const ACCENT = "var(--violet)";
 const PILL_FLIP_MARGIN = 190;
 
 type Mode = "target" | "wander" | "park";
@@ -292,7 +292,7 @@ export const AgentCursor = () => {
         <svg width="20" height="22" viewBox="0 0 20 22" fill="none">
           <path
             d="M1.5 1.2 L1.5 16.4 L5.6 12.7 L8.3 19.1 L11.1 17.9 L8.4 11.6 L14 11.6 Z"
-            fill={ACCENT}
+            style={{ fill: ACCENT }}
             stroke="#fff"
             strokeWidth="1.4"
             strokeLinejoin="round"
@@ -304,7 +304,7 @@ export const AgentCursor = () => {
         className="absolute top-[18px] left-[14px] rounded-full px-2 py-[3px] text-[11px] leading-4 font-medium whitespace-nowrap"
         style={{
           background: ACCENT,
-          color: "#1B1230",
+          color: "var(--violet-foreground)",
           boxShadow: "0 0 0 1px rgb(255 255 255 / 0.35), 0 2px 8px rgb(0 0 0 / 0.3)",
         }}
       >
