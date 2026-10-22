@@ -61,6 +61,8 @@ type AgentState = {
   localAgentId: LocalAgentId;
   /** Selected model per local agent; undefined = the CLI's default. */
   modelByAgent: Partial<Record<LocalAgentId, string>>;
+  /** Custom provider used when `backend` is "custom" (see agent/providers). */
+  customProviderId: string | null;
   /** The user picked the backend/agent; until then a ready local agent is chosen automatically. */
   explicit: boolean;
   modelsByAgent: Partial<Record<LocalAgentId, ModelsEntry>>;
@@ -71,6 +73,8 @@ type AgentState = {
    * only), string = that skill id. Cleared when a run starts; never persisted.
    */
   selectedSkillId: string | null | undefined;
+  /** Same for the style skill (Bauhaus, Swiss…): undefined = auto, null = no style. */
+  selectedStyleId: string | null | undefined;
   /** Who runs the current/last run, e.g. "Codex · gpt-5" (shown in the run header). */
   runLabel: string | null;
   status: RunStatus;
@@ -91,7 +95,12 @@ type AgentActions = {
   set: (patch: Partial<AgentState>) => void;
   setBackend: (backend: AgentBackend) => void;
   setLocalAgent: (agentId: LocalAgentId) => void;
+  /** Select a custom provider: sets backend "custom" and remembers the id. */
+  setCustomProvider: (providerId: string) => void;
+  /** The selected custom provider no longer exists: fall back to `backend`. */
+  clearCustomProvider: (backend: Exclude<AgentBackend, "custom">) => void;
   setSelectedSkill: (skillId: string | null | undefined) => void;
+  setSelectedStyle: (styleId: string | null | undefined) => void;
   /** Select a model for an agent; undefined/empty restores the CLI default. */
   setModel: (agentId: LocalAgentId, model: string | undefined) => void;
   /** Re-read persisted preferences (done once at store creation). */
@@ -121,6 +130,7 @@ const prefsOf = (state: AgentPrefs): AgentPrefs => ({
   backend: state.backend,
   localAgentId: state.localAgentId,
   modelByAgent: state.modelByAgent,
+  customProviderId: state.customProviderId,
   explicit: state.explicit,
 });
 
@@ -136,6 +146,7 @@ const createAgentStore = () =>
       agentsRefreshing: false,
       bridge: emptyBridge(),
       selectedSkillId: undefined,
+      selectedStyleId: undefined,
 
       set: (patch) => set(patch),
       setBackend: (backend) => {
@@ -143,8 +154,17 @@ const createAgentStore = () =>
         persist();
       },
       setSelectedSkill: (selectedSkillId) => set({ selectedSkillId }),
+      setSelectedStyle: (selectedStyleId) => set({ selectedStyleId }),
       setLocalAgent: (localAgentId) => {
         set({ localAgentId, explicit: true });
+        persist();
+      },
+      setCustomProvider: (customProviderId) => {
+        set({ backend: "custom", customProviderId, explicit: true });
+        persist();
+      },
+      clearCustomProvider: (backend) => {
+        set({ backend, customProviderId: null });
         persist();
       },
       setModel: (agentId, model) => {

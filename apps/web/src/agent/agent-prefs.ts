@@ -11,6 +11,8 @@ export type AgentPrefs = {
   localAgentId: LocalAgentId;
   /** Selected model per local agent; a missing key means the CLI's default. */
   modelByAgent: Partial<Record<LocalAgentId, string>>;
+  /** Custom provider used when `backend` is "custom". */
+  customProviderId: string | null;
   /** The user picked the backend/agent themselves; until then Pego picks a ready local agent. */
   explicit: boolean;
 };
@@ -21,6 +23,7 @@ export const defaultAgentPrefs = (): AgentPrefs => ({
   backend: "local",
   localAgentId: DEFAULT_LOCAL_AGENT,
   modelByAgent: {},
+  customProviderId: null,
   explicit: false,
 });
 
@@ -59,9 +62,16 @@ export const parseAgentPrefs = (raw: string | null): AgentPrefs => {
   prefs.explicit = record.explicit === true;
   // Before `explicit` existed every save was an explicit pick, except the untouched "api" default.
   if (record.explicit === undefined && record.backend === "local") prefs.explicit = true;
+  const customId =
+    typeof record.customProviderId === "string" && record.customProviderId.trim()
+      ? record.customProviderId
+      : null;
+  prefs.customProviderId = customId;
   if (prefs.explicit && (record.backend === "api" || record.backend === "local")) {
     prefs.backend = record.backend;
   }
+  // "custom" is only valid with a provider id; otherwise keep the default backend.
+  if (prefs.explicit && record.backend === "custom" && customId) prefs.backend = "custom";
   if (prefs.explicit && isLocalAgentId(record.localAgentId))
     prefs.localAgentId = record.localAgentId;
   if (typeof record.modelByAgent === "object" && record.modelByAgent !== null) {

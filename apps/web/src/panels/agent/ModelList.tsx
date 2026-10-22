@@ -17,26 +17,45 @@ const MAX_VISIBLE = 150;
 const optionClass =
   "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none hover:bg-accent focus-visible:bg-accent";
 
-type ModelListProps = {
-  agentId: LocalAgentId;
-  /** Called with the chosen model id, or undefined for the CLI default. */
+type ModelOptionsProps = {
+  models: readonly string[];
+  selected: string | undefined;
+  /** Called with the chosen model id, or undefined for the default row. */
   onPick: (model: string | undefined) => void;
+  /** Show a "Default" row (local CLIs have one; custom providers always need a model). */
+  allowDefault: boolean;
+  /** Label next to the default row. */
+  defaultHint?: string;
+  loading?: boolean;
+  error?: string;
+  loaded?: boolean;
+  onRetry?: () => void;
+  /** Where the empty note points the user. */
+  emptyNote: string;
+  /** Reject a typed id (hides the "Use ..." row for it). */
+  acceptCustom?: (id: string) => boolean;
 };
 
-/** Searchable model options for one agent: Default, a free-text custom id, then the CLI's list. */
-export const ModelList = ({ agentId, onPick }: ModelListProps) => {
-  const selected = useAgentStore((s) => s.modelByAgent[agentId]);
-  const entry = useAgentStore((s) => s.modelsByAgent[agentId]);
+/** Searchable model options: optional Default, a free-text custom id, then the given list. */
+export const ModelOptions = ({
+  models,
+  selected,
+  onPick,
+  allowDefault,
+  defaultHint,
+  loading,
+  error,
+  loaded,
+  onRetry,
+  emptyNote,
+  acceptCustom,
+}: ModelOptionsProps) => {
   const [query, setQuery] = useState("");
 
-  useEffect(() => {
-    requestModels(agentId);
-  }, [agentId]);
-
-  const models = entry?.models ?? [];
   const matches = filterModels(models, query);
   const visible = matches.slice(0, MAX_VISIBLE);
-  const custom = customModelCandidate(models, query);
+  const candidate = customModelCandidate(models, query);
+  const custom = candidate && (!acceptCustom || acceptCustom(candidate)) ? candidate : null;
 
   const onInputKeyDown = (event: KeyboardEvent<HTMLInputElement>) => {
     if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
@@ -61,18 +80,20 @@ export const ModelList = ({ agentId, onPick }: ModelListProps) => {
         className="h-7 px-2 text-[13px] md:text-[13px]"
       />
       <div role="listbox" aria-label="Models" className="max-h-52 overflow-y-auto">
-        <button
-          data-nav
-          type="button"
-          role="option"
-          aria-selected={!selected}
-          onClick={() => onPick(undefined)}
-          className={optionClass}
-        >
-          <span className="min-w-0 flex-1 truncate">{MODEL_DEFAULT_LABEL}</span>
-          <span className="text-[11px] text-muted-foreground">CLI default</span>
-          {selected ? null : <CheckIcon className="size-3.5 shrink-0" />}
-        </button>
+        {allowDefault ? (
+          <button
+            data-nav
+            type="button"
+            role="option"
+            aria-selected={!selected}
+            onClick={() => onPick(undefined)}
+            className={optionClass}
+          >
+            <span className="min-w-0 flex-1 truncate">{MODEL_DEFAULT_LABEL}</span>
+            <span className="text-[11px] text-muted-foreground">{defaultHint}</span>
+            {selected ? null : <CheckIcon className="size-3.5 shrink-0" />}
+          </button>
+        ) : null}
         {custom ? (
           <button
             data-nav
@@ -106,30 +127,61 @@ export const ModelList = ({ agentId, onPick }: ModelListProps) => {
             {matches.length - visible.length} more. Refine the search.
           </p>
         ) : null}
-        {entry?.loading ? (
+        {loading ? (
           <p role="status" className="px-2 py-1.5 text-[11px] text-muted-foreground">
             Loading models…
           </p>
         ) : null}
-        {entry?.error ? (
+        {error ? (
           <div className="flex items-center gap-2 px-2 py-1.5 text-[11px]">
-            <span className="min-w-0 flex-1 text-destructive">{entry.error}</span>
-            <button
-              data-nav
-              type="button"
-              onClick={() => requestModels(agentId, true)}
-              className="shrink-0 rounded-sm text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-            >
-              Retry
-            </button>
+            <span className="min-w-0 flex-1 text-destructive">{error}</span>
+            {onRetry ? (
+              <button
+                data-nav
+                type="button"
+                onClick={onRetry}
+                className="shrink-0 rounded-sm text-foreground underline underline-offset-2 outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+              >
+                Retry
+              </button>
+            ) : null}
           </div>
         ) : null}
-        {entry?.loaded && !entry.error && models.length === 0 ? (
-          <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
-            No model list from this CLI. Type a model id above.
-          </p>
+        {loaded && !error && models.length === 0 ? (
+          <p className="px-2 py-1.5 text-[11px] text-muted-foreground">{emptyNote}</p>
         ) : null}
       </div>
     </div>
+  );
+};
+
+type ModelListProps = {
+  agentId: LocalAgentId;
+  /** Called with the chosen model id, or undefined for the CLI default. */
+  onPick: (model: string | undefined) => void;
+};
+
+/** Model options for one local agent: Default, a free-text custom id, then the CLI's list. */
+export const ModelList = ({ agentId, onPick }: ModelListProps) => {
+  const selected = useAgentStore((s) => s.modelByAgent[agentId]);
+  const entry = useAgentStore((s) => s.modelsByAgent[agentId]);
+
+  useEffect(() => {
+    requestModels(agentId);
+  }, [agentId]);
+
+  return (
+    <ModelOptions
+      models={entry?.models ?? []}
+      selected={selected}
+      onPick={onPick}
+      allowDefault
+      defaultHint="CLI default"
+      loading={entry?.loading}
+      error={entry?.error}
+      loaded={entry?.loaded}
+      onRetry={() => requestModels(agentId, true)}
+      emptyNote="No model list from this CLI. Type a model id above."
+    />
   );
 };

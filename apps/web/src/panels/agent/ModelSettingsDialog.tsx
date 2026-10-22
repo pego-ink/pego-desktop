@@ -16,6 +16,7 @@ import { findAgentInfo, LOCAL_AGENT_NAMES, refreshAgents } from "@/agent/local-a
 import { useAgentStore } from "@/agent/use-agent-store";
 import { ApiKeyDialog } from "@/panels/agent/ApiKeyDialog";
 import { BridgeSetup } from "@/panels/agent/BridgeSetup";
+import { CustomProvidersSection } from "@/panels/agent/custom-provider/CustomProvidersSection";
 import { ModelPicker } from "@/panels/agent/ModelPicker";
 import { ProviderLogo } from "@/panels/agent/ProviderLogo";
 import { StatusDot } from "@/panels/agent/StatusDot";
@@ -29,7 +30,8 @@ import {
   noteCommand,
 } from "@/panels/agent/agent-format";
 
-export type SettingsSection = "top" | "add-provider" | "bridge";
+/** "custom-provider" opens the dialog with the add-provider form already showing. */
+export type SettingsSection = "top" | "add-provider" | "custom-provider" | "bridge";
 
 /** Splits `code` spans out of an agent note so commands read as commands. */
 const NoteText = ({ note }: { note: string }) => (
@@ -210,7 +212,7 @@ const LocalAgentCard = ({ id }: { id: LocalAgentId }) => {
       ) : null}
       {!installed && connected ? (
         <p className="text-[11px] leading-4 text-muted-foreground">
-          Not installed. See Add provider below.
+          Not installed. See Install an agent below.
         </p>
       ) : null}
     </Card>
@@ -299,7 +301,8 @@ export const ModelSettingsDialog = ({
         <DialogHeader>
           <DialogTitle>Model settings</DialogTitle>
           <DialogDescription id="ms-description">
-            Choose who runs the agent. Local CLIs use your own login on this machine.
+            Choose who runs the agent. Local CLIs use your own login on this machine; custom
+            providers use your own key.
           </DialogDescription>
         </DialogHeader>
         <div className="-mx-1 grid max-h-[65vh] gap-4 overflow-y-auto px-1 py-1 [overscroll-behavior:contain]">
@@ -328,8 +331,9 @@ export const ModelSettingsDialog = ({
               <LocalAgentCard key={id} id={id} />
             ))}
           </div>
-          <section ref={addRef} aria-label="Add provider" className="grid gap-2">
-            <SectionHeading>Add provider</SectionHeading>
+          <CustomProvidersSection startAdding={section === "custom-provider"} />
+          <section ref={addRef} aria-label="Install an agent" className="grid gap-2">
+            <SectionHeading>Install an agent</SectionHeading>
             <AddProvider />
           </section>
         </div>

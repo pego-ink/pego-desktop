@@ -58,6 +58,7 @@ describe("agent prefs persistence", () => {
       backend: "local",
       localAgentId: "codex",
       modelByAgent: { codex: "gpt-5", opencode: "anthropic/claude-sonnet" },
+      customProviderId: null,
       explicit: true,
     });
 
@@ -85,7 +86,13 @@ describe("agent prefs persistence", () => {
           modelByAgent: { bogus: "m", codex: 3 },
         }),
       ),
-    ).toEqual({ backend: "local", localAgentId: "claude-code", modelByAgent: {}, explicit: false });
+    ).toEqual({
+      backend: "local",
+      localAgentId: "claude-code",
+      modelByAgent: {},
+      customProviderId: null,
+      explicit: false,
+    });
     const throwing = {
       getItem: () => {
         throw new Error("blocked");
