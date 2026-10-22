@@ -2,6 +2,7 @@ import { tokens, type StylePreset } from "./types";
 
 const roomy = [4, 8, 16, 32, 64] as const;
 const dense = [4, 6, 12, 20, 32] as const;
+const airy = [4, 8, 20, 40, 80] as const;
 
 export const stylePresets: StylePreset[] = [
   {
@@ -10,6 +11,7 @@ export const stylePresets: StylePreset[] = [
     mood: "Calm, exact, near-monochrome. One cobalt accent, hairline borders, almost no shadow.",
     bestFor: "Productivity apps, docs, settings-heavy tools, B2B landing pages",
     fonts: { heading: "Geist", body: "Geist", mono: "Geist Mono" },
+    weights: { heading: [500, 600], body: [400, 500], mono: [400] },
     typeScale: { caption: 12, body: 15, lead: 18, h3: 20, h2: 28, h1: 40, display: 64 },
     variables: tokens(
       {
@@ -25,6 +27,15 @@ export const stylePresets: StylePreset[] = [
       },
       { radius: [4, 8, 12], space: [...roomy] },
     ),
+    layout: {
+      grid: "12-column, content max 1120px; one main column plus an optional narrow side rail.",
+      density: "Comfortable. Row height 40-44px, 16-24px card padding.",
+      corners:
+        "Small and consistent: 4 on chips, 8 on inputs and buttons, 12 on cards and dialogs.",
+      imagery:
+        "Real product screenshots in a 1px-bordered frame; no stock photos or illustrations.",
+      icons: "Thin 1.5px stroke line icons in $text-muted.",
+    },
     stroke: "1px $border on cards and inputs; no stroke on the page background",
     elevation: "Flat. At most one soft shadow on floating layers (menus, dialogs).",
     dos: [
@@ -43,6 +54,7 @@ export const stylePresets: StylePreset[] = [
     mood: "Magazine-like and human. Cream paper, ink text, one terracotta accent, serif headlines.",
     bestFor: "Content sites, newsletters, portfolios, craft and food brands, essays",
     fonts: { heading: "Newsreader", body: "Hanken Grotesk", mono: "IBM Plex Mono" },
+    weights: { heading: [400, 500], body: [400, 500], mono: [400] },
     typeScale: { caption: 13, body: 17, lead: 21, h3: 24, h2: 36, h1: 56, display: 88 },
     variables: tokens(
       {
@@ -58,6 +70,13 @@ export const stylePresets: StylePreset[] = [
       },
       { radius: [2, 4, 8], space: [...roomy] },
     ),
+    layout: {
+      grid: "Asymmetric 12-column: a 7-8 column text measure next to a 3-4 column note or image.",
+      density: "Airy. Long vertical rhythm, 64px+ before each new section.",
+      corners: "Nearly square: 2-4 on everything, 8 only on large images.",
+      imagery: "Large cropped photography with a caption line beneath; warm, natural light.",
+      icons: "Few icons; use small text labels and arrows in the serif or sans instead.",
+    },
     stroke: "1px $border rules between sections; images and cards stay unframed",
     elevation: "None. Depth comes from paper tones ($bg vs $surface-2).",
     dos: [
@@ -76,6 +95,7 @@ export const stylePresets: StylePreset[] = [
     mood: "Focused dark UI for software people live in. Deep neutral surfaces, one teal accent.",
     bestFor: "Developer and AI tools, analytics apps, SaaS dashboards, product marketing for them",
     fonts: { heading: "Manrope", body: "Inter", mono: "Geist Mono" },
+    weights: { heading: [600, 700], body: [400, 500], mono: [400, 500] },
     typeScale: { caption: 12, body: 14, lead: 18, h3: 20, h2: 28, h1: 44, display: 72 },
     variables: tokens(
       {
@@ -91,6 +111,13 @@ export const stylePresets: StylePreset[] = [
       },
       { radius: [6, 10, 16], space: [...roomy] },
     ),
+    layout: {
+      grid: "App shell: 240px sidebar plus a fluid content area capped near 1200px.",
+      density: "Medium. 14px body, 36px controls, 16px panel padding.",
+      corners: "Soft but controlled: 6 on controls, 10 on panels, 16 on dialogs.",
+      imagery: "Product UI captures on dark surfaces; no photography, no abstract art.",
+      icons: "1.5px stroke line icons in $text-muted; $accent only on the active item.",
+    },
     stroke: "1px $border; selected rows and inputs get a 1px $accent stroke",
     elevation: "Layer by lightness: $bg < $surface < $surface-2. No drop shadows.",
     dos: [
@@ -109,6 +136,7 @@ export const stylePresets: StylePreset[] = [
     mood: "Hacker-clean and technical. Near-black, monospaced headings, phosphor green used sparingly.",
     bestFor: "CLIs, infra and security products, API docs, hackathon and open-source sites",
     fonts: { heading: "IBM Plex Mono", body: "IBM Plex Sans", mono: "IBM Plex Mono" },
+    weights: { heading: [500, 600], body: [400, 500], mono: [400, 500] },
     typeScale: { caption: 12, body: 15, lead: 18, h3: 20, h2: 28, h1: 40, display: 64 },
     variables: tokens(
       {
@@ -124,6 +152,13 @@ export const stylePresets: StylePreset[] = [
       },
       { radius: [0, 2, 4], space: [...dense] },
     ),
+    layout: {
+      grid: "Single centered column up to 880px for docs; two equal panes for command and output.",
+      density: "Dense. 12-20px gaps, line-based rows, 15px body.",
+      corners: "Square to 4. Panels read as windows, not cards.",
+      imagery: "No images. Real commands, flags and output set in text are the illustration.",
+      icons: "Avoid icons; use text glyphs like > $ and [ ] in the mono face.",
+    },
     stroke: "1px $border everywhere; panels read as outlined terminals",
     elevation: "None. Separation by borders only.",
     dos: [
@@ -139,9 +174,10 @@ export const stylePresets: StylePreset[] = [
   {
     name: "soft-bento",
     title: "Soft Bento",
-    mood: "Friendly and tactile. Rounded white tiles of different sizes on a warm sand page.",
+    mood: "Friendly and tactile. Rounded white tiles of different sizes on a warm sand page, one plum accent.",
     bestFor: "Consumer apps, feature showcases, personal finance, wellness, onboarding",
     fonts: { heading: "Outfit", body: "DM Sans", mono: "DM Sans" },
+    weights: { heading: [500, 600], body: [400, 500], mono: [400] },
     typeScale: { caption: 13, body: 16, lead: 20, h3: 22, h2: 32, h1: 48, display: 72 },
     variables: tokens(
       {
@@ -151,12 +187,19 @@ export const stylePresets: StylePreset[] = [
         border: "#D8D4C7",
         text: "#1D1C1A",
         textMuted: "#625F57",
-        accent: "#C23B22",
+        accent: "#8E3A9E",
         onAccent: "#FFFFFF",
         danger: "#B42318",
       },
       { radius: [12, 20, 28], space: [...roomy] },
     ),
+    layout: {
+      grid: "4-column bento on desktop, 2 on tablet, 1 on phone; tiles span 1x1, 2x1 or 2x2 with 12-16px gaps.",
+      density: "Comfortable. 20-28px tile padding, one idea per tile.",
+      corners: "Generous: 12 on controls, 20 on tiles, 28 on the hero tile.",
+      imagery: "Rounded product crops or a single simple shape per tile; no stock people.",
+      icons: "2px rounded-stroke icons, 24px, inside a $surface-2 circle at most once per tile.",
+    },
     stroke: "None on tiles; 1px $border only on inputs",
     elevation: "Tiles are separated by 12-16px gaps on $bg, not by shadows.",
     dos: [
@@ -172,9 +215,10 @@ export const stylePresets: StylePreset[] = [
   {
     name: "bold-block",
     title: "Bold Block",
-    mood: "Loud and playful. Flat saturated yellow, thick black strokes, hard offset shapes.",
+    mood: "Loud and playful. Flat saturated yellow, thick black strokes, hard offset shapes, one violet block.",
     bestFor: "Creator tools, youth and event brands, launch pages that should be remembered",
     fonts: { heading: "Archivo Black", body: "Archivo", mono: "Space Mono" },
+    weights: { heading: [400], body: [400, 600], mono: [400, 700] },
     typeScale: { caption: 13, body: 16, lead: 20, h3: 24, h2: 40, h1: 64, display: 112 },
     variables: tokens(
       {
@@ -184,12 +228,19 @@ export const stylePresets: StylePreset[] = [
         border: "#000000",
         text: "#000000",
         textMuted: "#3A3A3A",
-        accent: "#D42612",
+        accent: "#5B2EE6",
         onAccent: "#FFFFFF",
         danger: "#D42612",
       },
       { radius: [0, 4, 8], space: [...roomy] },
     ),
+    layout: {
+      grid: "Chunky 6-column blocks with visible gutters; sections snap to full-width bands.",
+      density: "Loose and large. Oversized headlines, 24-32px card padding.",
+      corners: "Square to 8; sharp corners on hero blocks.",
+      imagery: "Flat cutout shapes, stickers and screenshots with a 2px black outline.",
+      icons: "Heavy 2.5px stroke icons in black, never tinted.",
+    },
     stroke: "2px $border on every card, button and input",
     elevation: "Hard offset: a solid black rectangle 4-6px right and down behind a card, no blur.",
     dos: [
@@ -208,6 +259,7 @@ export const stylePresets: StylePreset[] = [
     mood: "Grounded and trustworthy. Pale sage backgrounds, deep green accent, soft serif headings.",
     bestFor: "Wellness, sustainability, finance for individuals, healthcare, education",
     fonts: { heading: "Fraunces", body: "Karla", mono: "Space Mono" },
+    weights: { heading: [500, 600], body: [400, 500], mono: [400] },
     typeScale: { caption: 13, body: 16, lead: 20, h3: 24, h2: 34, h1: 52, display: 80 },
     variables: tokens(
       {
@@ -223,6 +275,13 @@ export const stylePresets: StylePreset[] = [
       },
       { radius: [8, 14, 22], space: [...roomy] },
     ),
+    layout: {
+      grid: "8-column centered layout, 960px max; single column text at 60-70 characters.",
+      density: "Relaxed. 24px card padding, short copy blocks.",
+      corners: "Soft: 8 on controls, 14 on cards, 22 on feature images.",
+      imagery: "Real nature or people photography, or plain sage color fields; no clip-art.",
+      icons: "Rounded 1.75px stroke icons in $accent or $text-muted.",
+    },
     stroke: "1px $border on inputs; cards use $surface on $bg instead of a stroke",
     elevation: "Tonal: $surface-2 for the active or secondary area. No shadows.",
     dos: [
@@ -241,6 +300,7 @@ export const stylePresets: StylePreset[] = [
     mood: "Compact, data-first, instrument-panel dark gray with an orange signal color.",
     bestFor: "Dashboards, admin panels, trading, monitoring, tables and logs",
     fonts: { heading: "Inter", body: "Inter", mono: "Geist Mono" },
+    weights: { heading: [600], body: [400, 500], mono: [400, 500] },
     typeScale: { caption: 11, body: 13, lead: 15, h3: 16, h2: 20, h1: 28, display: 40 },
     variables: tokens(
       {
@@ -256,6 +316,13 @@ export const stylePresets: StylePreset[] = [
       },
       { radius: [3, 6, 10], space: [...dense] },
     ),
+    layout: {
+      grid: "Full-bleed panel grid on a 12-column base; one dominant panel, small supporting panels.",
+      density: "Very high. 28-32px rows, 8-12px padding, 13px body.",
+      corners: "Tight: 3 on controls, 6 on panels.",
+      imagery: "None. Charts, sparklines and tables are the visuals.",
+      icons: "1.25px stroke 16px icons, $text-muted, only where a label is too long.",
+    },
     stroke: "1px $border between panels; rows separated by 1px lines, not gaps",
     elevation: "None. Panels are $surface on $bg; headers and hovered rows use $surface-2.",
     dos: [
@@ -266,6 +333,523 @@ export const stylePresets: StylePreset[] = [
     donts: [
       "No decorative stat cards with invented numbers or fake trend deltas.",
       "Do not use more than 13px for table body text.",
+    ],
+  },
+  {
+    name: "swiss-grid",
+    title: "Swiss Grid",
+    mood: "Rational and poster-like. White page, black type, hairline rules, one signal red.",
+    bestFor:
+      "Studios, agencies, cultural and event sites, annual reports, portfolios with a point of view",
+    fonts: { heading: "Instrument Sans", body: "Instrument Sans", mono: "JetBrains Mono" },
+    weights: { heading: [600, 700], body: [400, 500], mono: [400] },
+    typeScale: { caption: 12, body: 16, lead: 22, h3: 24, h2: 40, h1: 72, display: 128 },
+    variables: tokens(
+      {
+        bg: "#FFFFFF",
+        surface: "#F5F5F4",
+        surface2: "#E9E9E7",
+        border: "#111111",
+        text: "#111111",
+        textMuted: "#595959",
+        accent: "#DB1B1B",
+        onAccent: "#FFFFFF",
+        danger: "#8F1D1D",
+      },
+      { radius: [0, 0, 0], space: [...roomy] },
+    ),
+    layout: {
+      grid: "Strict 12-column grid with a visible baseline; text flush left, ragged right, aligned to column edges.",
+      density: "Structured. Large type against empty columns; numbered sections.",
+      corners: "Always 0. No rounded shapes anywhere.",
+      imagery:
+        "Black-and-white or single-color photography cropped to grid columns, captioned in small type.",
+      icons: "Avoid icons; use numerals, arrows set as type, and rules.",
+    },
+    stroke: "1px $border rules above sections and between table rows; no boxes",
+    elevation: "None. Hierarchy comes from scale, weight and the grid.",
+    dos: [
+      "Set huge headlines flush left on the grid and leave neighboring columns empty on purpose.",
+      "Use $accent for one word, one shape or one number per screen.",
+      "Number sections (01, 02) in the mono face as navigation.",
+    ],
+    donts: [
+      "No centered layouts, drop shadows, rounded corners or gradients.",
+      "Do not use a second accent color or tint the page background.",
+    ],
+  },
+  {
+    name: "newsprint",
+    title: "Newsprint",
+    mood: "Dense and editorial like a broadsheet. Gray-beige stock, black ink, serif body, navy accent.",
+    bestFor: "News and media, long-form reading apps, magazines, archives, research publications",
+    fonts: { heading: "Libre Franklin", body: "Source Serif 4", mono: "IBM Plex Mono" },
+    weights: { heading: [700, 800], body: [400, 600], mono: [400] },
+    typeScale: { caption: 12, body: 17, lead: 20, h3: 22, h2: 32, h1: 48, display: 72 },
+    variables: tokens(
+      {
+        bg: "#E9E5D9",
+        surface: "#F3F0E6",
+        surface2: "#DDD8C9",
+        border: "#A9A28C",
+        text: "#1A1814",
+        textMuted: "#4F4B40",
+        accent: "#1F3A5F",
+        onAccent: "#FFFFFF",
+        danger: "#A61B1B",
+      },
+      { radius: [0, 2, 4], space: [...dense] },
+    ),
+    layout: {
+      grid: "3-5 narrow newspaper columns with 1px vertical rules; a lead story spans 2 columns.",
+      density: "High. 17px serif body with 1.45 line height, tight 12-20px gutters.",
+      corners: "Square to 4.",
+      imagery: "Grayscale halftone-style photos with a small caption and credit line.",
+      icons: "Almost none; use small-caps labels and thin rules as section markers.",
+    },
+    stroke: "1px $border column rules and a 2px $text rule under the masthead",
+    elevation: "None. Contrast of ink on stock does the work.",
+    dos: [
+      "Heavy sans headlines (Libre Franklin 800), serif body, uppercase small labels for sections.",
+      "Run a bylined masthead and dateline row; use columns instead of cards.",
+      "Use $accent only for links and the kicker above the lead story.",
+    ],
+    donts: [
+      "No rounded cards, shadows or colored panels.",
+      "Do not use color photography or bright accents; stay in ink, stock and navy.",
+    ],
+  },
+  {
+    name: "studio-minimal",
+    title: "Studio Minimal",
+    mood: "Gallery-quiet and spacious. Warm off-white, soft charcoal text, a single olive-lime accent.",
+    bestFor:
+      "Design studios, architects and photographers, product launches with few words, boutique brands",
+    fonts: { heading: "Bricolage Grotesque", body: "Hanken Grotesk", mono: "DM Mono" },
+    weights: { heading: [500, 600], body: [400, 500], mono: [400] },
+    typeScale: { caption: 12, body: 16, lead: 20, h3: 24, h2: 36, h1: 60, display: 96 },
+    variables: tokens(
+      {
+        bg: "#F6F6F3",
+        surface: "#FFFFFF",
+        surface2: "#ECECE7",
+        border: "#D9D9D2",
+        text: "#1C1C1A",
+        textMuted: "#5E5E58",
+        accent: "#4D7C0F",
+        onAccent: "#FFFFFF",
+        danger: "#B3261E",
+      },
+      { radius: [2, 6, 10], space: [...airy] },
+    ),
+    layout: {
+      grid: "Wide margins, 12 columns with content using only 6-8; work is shown one item per viewport.",
+      density: "Very low. Large gaps (80px+), few elements per screen.",
+      corners: "Small: 2 on buttons, 6 on inputs, 10 on image frames.",
+      imagery: "Full-bleed or large single images with generous padding; muted, natural color.",
+      icons: "Almost none; text links with a small underline do the navigation.",
+    },
+    stroke: "1px $border only where a boundary is needed; most blocks are unframed",
+    elevation: "None. Separation by space.",
+    dos: [
+      "Show one idea per screen with a lot of empty space around it.",
+      "Use medium-weight headlines at large size and muted captions under images.",
+      "Use $accent for the cursor-style highlight: one link, one status dot.",
+    ],
+    donts: [
+      "No cards stacked in grids, badges or decorative dividers.",
+      "Do not fill empty space; whitespace is the design.",
+    ],
+  },
+  {
+    name: "warm-craft",
+    title: "Warm Craft",
+    mood: "Handmade and cozy. Kraft-paper tones, burgundy accent, chunky serif, stamped details.",
+    bestFor:
+      "Bakeries, ceramics and maker shops, coffee and food brands, small local businesses, gift stores",
+    fonts: { heading: "Young Serif", body: "Nunito", mono: "Courier Prime" },
+    weights: { heading: [400], body: [400, 600], mono: [400, 700] },
+    typeScale: { caption: 13, body: 17, lead: 21, h3: 26, h2: 38, h1: 56, display: 84 },
+    variables: tokens(
+      {
+        bg: "#F3E9DA",
+        surface: "#FBF5EA",
+        surface2: "#E8D9C0",
+        border: "#CDB896",
+        text: "#2B1D14",
+        textMuted: "#6A5443",
+        accent: "#7E2A33",
+        onAccent: "#FFFFFF",
+        danger: "#B42318",
+      },
+      { radius: [6, 12, 18], space: [...roomy] },
+    ),
+    layout: {
+      grid: "Centered 960px column with alternating image/text rows; labels and price tags as small tickets.",
+      density: "Relaxed and warm. 20-24px padding, short copy.",
+      corners:
+        "Medium rounded: 6 on tags, 12 on cards, 18 on photos; stamps and tags may be pill-shaped.",
+      imagery:
+        "Close-up product and hands-at-work photography on kraft tones; paper-grain color fields are fine.",
+      icons: "Hand-drawn feeling 2px rounded icons or simple stamp marks; keep them few.",
+    },
+    stroke: "1.5px dashed or solid $border on tags and tickets; cards stay tonal",
+    elevation: "Flat with a tonal layer ($surface on $bg); a faint 2px shadow only on tickets.",
+    dos: [
+      "Use the chunky serif for headlines and prices; Nunito for everything else.",
+      "Style details like a shop: price tags, stamps, ticket-edge dividers made from borders.",
+      "Use $accent for the stamp, the primary button and sale text only.",
+    ],
+    donts: [
+      "No cold grays or neon; every neutral stays warm.",
+      "Do not use fake textures that reduce text contrast.",
+    ],
+  },
+  {
+    name: "clinical-light",
+    title: "Clinical Light",
+    mood: "Clean, reassuring, precise. Cool white, soft blue-gray, one teal accent.",
+    bestFor:
+      "Healthcare and lab software, insurance, compliance tools, scheduling, accessibility-first products",
+    fonts: { heading: "Public Sans", body: "Public Sans", mono: "IBM Plex Mono" },
+    weights: { heading: [600, 700], body: [400, 500], mono: [400] },
+    typeScale: { caption: 13, body: 16, lead: 19, h3: 22, h2: 30, h1: 44, display: 64 },
+    variables: tokens(
+      {
+        bg: "#F4F8F9",
+        surface: "#FFFFFF",
+        surface2: "#E6EEF0",
+        border: "#C3D2D7",
+        text: "#10242B",
+        textMuted: "#46606A",
+        accent: "#0F766E",
+        onAccent: "#FFFFFF",
+        danger: "#B42318",
+      },
+      { radius: [4, 8, 12], space: [...roomy] },
+    ),
+    layout: {
+      grid: "12-column, forms in a single 560px column; summary data in a right rail.",
+      density:
+        "Comfortable. 44-48px touch targets, 16px minimum text, clear label above every field.",
+      corners: "Small and even: 4 on chips, 8 on controls, 12 on cards.",
+      imagery: "Calm real photography with people in context, or none; diagrams in 2 tones max.",
+      icons: "2px solid-stroke icons paired with a text label; never icon-only for key actions.",
+    },
+    stroke: "1px $border on cards, 1.5px on inputs so they read as fields",
+    elevation: "Flat. One subtle shadow on dialogs and popovers.",
+    dos: [
+      "Pair every status color with text or an icon; never rely on color alone.",
+      "Keep labels visible above inputs and errors in $danger with a sentence of help.",
+      "Use $accent for the primary action and focus rings.",
+    ],
+    donts: [
+      "No decorative gradients, glass or tiny low-contrast text.",
+      "Do not use red for anything but errors and destructive actions.",
+    ],
+  },
+  {
+    name: "data-dense-dark",
+    title: "Data Dense Dark",
+    mood: "Cool navy-black analytics workspace for long sessions. Blue-gray panels, one electric blue accent.",
+    bestFor:
+      "BI and analytics, observability, finance terminals, ops consoles, ML experiment trackers",
+    fonts: { heading: "Inter Tight", body: "Inter", mono: "JetBrains Mono" },
+    weights: { heading: [600, 700], body: [400, 500], mono: [400, 500] },
+    typeScale: { caption: 11, body: 13, lead: 15, h3: 17, h2: 22, h1: 30, display: 44 },
+    variables: tokens(
+      {
+        bg: "#0C1118",
+        surface: "#131A23",
+        surface2: "#1B2430",
+        border: "#2B3746",
+        text: "#E6EBF2",
+        textMuted: "#95A3B6",
+        accent: "#5B9BFF",
+        onAccent: "#04142E",
+        danger: "#FF7A7A",
+      },
+      { radius: [3, 6, 8], space: [...dense] },
+    ),
+    layout: {
+      grid: "Resizable panel layout: left filters, main chart plus table, optional right inspector.",
+      density: "Very high. 28px rows, 11-13px type, 8px gaps; show 20+ rows without scrolling.",
+      corners: "Tight: 3 on controls, 6 on panels.",
+      imagery: "Charts only. Use categorical hues sparingly and always with direct labels.",
+      icons: "16px 1.25px-stroke icons; tooltips on every icon-only control.",
+    },
+    stroke: "1px $border on panels and table rows; focus uses a 2px $accent ring",
+    elevation: "Layered by lightness only. Popovers get $surface-2 with a 1px border.",
+    dos: [
+      "Use tabular numerals in the mono face and right-align every numeric column.",
+      "Make filters and time range the first row; sticky table headers.",
+      "Use $accent for selection and the primary series; keep other series neutral.",
+    ],
+    donts: [
+      "No decorative gradients under charts or full-color rainbow series.",
+      "Do not hide key numbers behind hover.",
+    ],
+  },
+  {
+    name: "playful-rounded",
+    title: "Playful Rounded",
+    mood: "Cheerful and bubbly. Soft pink canvas, aubergine text, fuchsia accent, very round shapes.",
+    bestFor:
+      "Kids and family apps, learning products, social and community apps, casual games, creator tools for teens",
+    fonts: { heading: "Fredoka", body: "Nunito", mono: "Space Mono" },
+    weights: { heading: [500, 600], body: [400, 700], mono: [400] },
+    typeScale: { caption: 13, body: 16, lead: 20, h3: 24, h2: 34, h1: 52, display: 80 },
+    variables: tokens(
+      {
+        bg: "#FFF5FA",
+        surface: "#FFFFFF",
+        surface2: "#FFE3F0",
+        border: "#F0B8D3",
+        text: "#2B1233",
+        textMuted: "#6A4772",
+        accent: "#C0187F",
+        onAccent: "#FFFFFF",
+        danger: "#C62828",
+      },
+      { radius: [14, 24, 36], space: [...roomy] },
+    ),
+    layout: {
+      grid: "Large tappable cards in 2 columns on phones; centered 1040px max on desktop.",
+      density: "Spacious. 56px buttons, 20-24px padding, big touch targets.",
+      corners: "Very round: 14 on controls, 24 on cards, 36 and full pills on buttons.",
+      imagery:
+        "Friendly flat illustrations with rounded shapes and 2-3 colors, tied to the actual content.",
+      icons: "Chunky 2.5px rounded icons inside colored circles, at most one color per screen.",
+    },
+    stroke: "2px $border on cards and inputs; active elements get a 2px $accent stroke",
+    elevation: "A chunky 0/4px solid shadow in $border under buttons and cards, no blur.",
+    dos: [
+      "Use pill buttons with the $accent fill and a bouncy press state.",
+      "Give each section one illustration or mascot moment instead of decorating everything.",
+      "Keep copy short, in plain words, and large.",
+    ],
+    donts: [
+      "No sharp corners, thin lines or small gray text.",
+      "Do not mix more than the one $accent plus its tints.",
+    ],
+  },
+  {
+    name: "architectural",
+    title: "Architectural",
+    mood: "Monumental and exacting. Charcoal concrete, hairline drafting lines, one signal yellow.",
+    bestFor:
+      "Architecture and construction, industrial design, hardware products, galleries, premium real estate",
+    fonts: { heading: "Jost", body: "Work Sans", mono: "DM Mono" },
+    weights: { heading: [300, 500], body: [400, 500], mono: [400] },
+    typeScale: { caption: 12, body: 16, lead: 20, h3: 24, h2: 40, h1: 68, display: 120 },
+    variables: tokens(
+      {
+        bg: "#1A1A1A",
+        surface: "#232323",
+        surface2: "#2D2D2D",
+        border: "#4A4A4A",
+        text: "#F2F0EB",
+        textMuted: "#B0ADA6",
+        accent: "#F5C518",
+        onAccent: "#1A1500",
+        danger: "#FF7B6B",
+      },
+      { radius: [0, 0, 2], space: [...airy] },
+    ),
+    layout: {
+      grid: "Wide modular grid with fixed axes; images and text sit on shared column lines and align to edges.",
+      density:
+        "Low. Big margins, large scale shifts between a huge number or title and tiny labels.",
+      corners: "Always 0 (2 at most on large images).",
+      imagery:
+        "Large full-bleed photos of structure, shadow and material; drawings and plans as thin white lines.",
+      icons: "Almost none; use plan-style crosses, dimension lines and coordinates as ornaments.",
+    },
+    stroke: "1px $border hairlines and dimension-line style rules; no boxes with fills",
+    elevation: "None. Planes are separated by tone ($bg, $surface) and rules.",
+    dos: [
+      "Set labels as small uppercase mono with coordinates, dates and project numbers.",
+      "Use light-weight (300) huge headlines against dense captions.",
+      "Use $accent for one marker per screen: a dot, a line or one number.",
+    ],
+    donts: [
+      "No rounded buttons, shadows, gradients or decorative icons.",
+      "Do not use yellow for body text or large fills.",
+    ],
+  },
+  {
+    name: "botanical",
+    title: "Botanical",
+    mood: "Lush and elegant. Deep fern green, cream text, dusty-rose accent, delicate serif.",
+    bestFor:
+      "Plant shops, skincare and tea brands, restaurants, weddings, spas, slow-living lifestyle brands",
+    fonts: { heading: "Cormorant Garamond", body: "Mulish", mono: "DM Mono" },
+    weights: { heading: [500, 600], body: [400, 600], mono: [400] },
+    typeScale: { caption: 13, body: 17, lead: 22, h3: 28, h2: 42, h1: 64, display: 96 },
+    variables: tokens(
+      {
+        bg: "#10261C",
+        surface: "#173226",
+        surface2: "#1F4031",
+        border: "#386350",
+        text: "#F3EEDF",
+        textMuted: "#B4C4B5",
+        accent: "#EE9FB5",
+        onAccent: "#2A0F18",
+        danger: "#FF9A8A",
+      },
+      { radius: [4, 10, 24], space: [...airy] },
+    ),
+    layout: {
+      grid: "Centered, symmetrical, 1040px max; hero text overlays a large botanical image with a dark scrim.",
+      density: "Low and elegant. Big margins, 20px+ paddings, short copy.",
+      corners: "Mixed: 4 on controls, 10 on cards, 24 on arched or oval image masks.",
+      imagery:
+        "Macro plant and product photography with natural shadows; arch-shaped crops; line-drawn leaves as dividers.",
+      icons: "Thin 1.25px line icons in $accent or $text-muted; botanical line art as ornaments.",
+    },
+    stroke: "1px $border; buttons are outlined in $accent or filled with $accent",
+    elevation: "Tonal layering ($bg < $surface < $surface-2); no drop shadows.",
+    dos: [
+      "Set headlines in Cormorant at large sizes, with italic for one emphasized word.",
+      "Use $accent only on buttons, links and one botanical illustration color.",
+      "Let photographs carry the brand; use arch or oval masks.",
+    ],
+    donts: [
+      "No bright green or lime; the greens stay deep.",
+      "Do not set the body in Cormorant below 20px; use Mulish.",
+    ],
+  },
+  {
+    name: "nordic-calm",
+    title: "Nordic Calm",
+    mood: "Quiet, cool and functional. Pale blue-gray, slate text, slate-blue accent, simple geometry.",
+    bestFor:
+      "Wellness and meditation, home and furniture, fintech for individuals, meeting and calendar tools, sleep and health",
+    fonts: { heading: "Albert Sans", body: "Albert Sans", mono: "DM Mono" },
+    weights: { heading: [500, 600], body: [400, 500], mono: [400] },
+    typeScale: { caption: 13, body: 16, lead: 20, h3: 22, h2: 30, h1: 46, display: 68 },
+    variables: tokens(
+      {
+        bg: "#EEF2F5",
+        surface: "#F9FBFC",
+        surface2: "#E0E7ED",
+        border: "#C5D0D9",
+        text: "#1E2A33",
+        textMuted: "#51606C",
+        accent: "#4B6A94",
+        onAccent: "#FFFFFF",
+        danger: "#B3392F",
+      },
+      { radius: [6, 12, 18], space: [...roomy] },
+    ),
+    layout: {
+      grid: "Centered 8-column layout at 880px; plenty of gutter; cards in 2-3 columns.",
+      density: "Calm. 24px padding, soft rhythm, 16px body.",
+      corners: "Gentle: 6 on controls, 12 on cards, 18 on large panels.",
+      imagery:
+        "Daylight interior and landscape photography in cool tones; simple geometric shapes at low contrast.",
+      icons: "Simple 1.75px rounded line icons in $text-muted.",
+    },
+    stroke: "1px $border on inputs and secondary buttons; cards separate by tone",
+    elevation: "A single faint shadow (0 1px 2px, 8% opacity) on cards that lift; otherwise flat.",
+    dos: [
+      "Use $surface-2 for quiet secondary areas and $accent for one action.",
+      "Keep text short and left-aligned; large calm gaps between groups.",
+      "Prefer soft daylight photos and plain shapes over icons.",
+    ],
+    donts: [
+      "No saturated colors, harsh black text or heavy borders.",
+      "Do not use pure white backgrounds; keep the cool gray cast.",
+    ],
+  },
+  {
+    name: "high-contrast-mono",
+    title: "High Contrast Mono",
+    mood: "Uncompromising black on white, built for legibility. Thick outlines, no hue accent.",
+    bestFor:
+      "Accessibility-first products, government and civic services, documentation, print-like tools, utilitarian apps",
+    fonts: {
+      heading: "Atkinson Hyperlegible",
+      body: "Atkinson Hyperlegible",
+      mono: "Atkinson Hyperlegible Mono",
+    },
+    weights: { heading: [700], body: [400, 700], mono: [400, 500] },
+    typeScale: { caption: 14, body: 18, lead: 22, h3: 26, h2: 34, h1: 48, display: 72 },
+    variables: tokens(
+      {
+        bg: "#FFFFFF",
+        surface: "#F2F2F2",
+        surface2: "#E0E0E0",
+        border: "#000000",
+        text: "#000000",
+        textMuted: "#404040",
+        accent: "#000000",
+        onAccent: "#FFFFFF",
+        danger: "#B00020",
+      },
+      { radius: [2, 4, 6], space: [...roomy] },
+    ),
+    layout: {
+      grid: "Single column up to 720px for reading; forms and lists are full-width stacked rows.",
+      density: "Generous targets. 48px controls, 18px body, 1.6 line height.",
+      corners: "Small: 2-6. Shape is communicated by outlines.",
+      imagery: "High-contrast black-and-white diagrams and photos with text alternatives.",
+      icons: "Bold 2.5px icons always paired with a text label.",
+    },
+    stroke: "2px $border on every control and card; 3px focus ring in $border with 2px offset",
+    elevation: "None. Hierarchy from outlines, size and weight.",
+    dos: [
+      "Use filled $accent (black) buttons with $on-accent text and outlined secondary buttons.",
+      "Mark state with text, underline or icon, never color alone.",
+      "Underline links and keep a visible focus ring everywhere.",
+    ],
+    donts: [
+      "No gray text on gray, translucent layers, gradients or color-coded meaning.",
+      "Do not set body text below 18px.",
+    ],
+  },
+  {
+    name: "sunlit-pastel",
+    title: "Sunlit Pastel",
+    mood: "Warm, airy and optimistic. Peach and cream washes, cocoa text, one mustard accent.",
+    bestFor:
+      "Lifestyle and food apps, community and events, newsletters, ice cream and cafe brands, early-stage consumer products",
+    fonts: { heading: "Poppins", body: "Nunito Sans", mono: "DM Mono" },
+    weights: { heading: [600, 700], body: [400, 600], mono: [400] },
+    typeScale: { caption: 13, body: 16, lead: 20, h3: 24, h2: 34, h1: 54, display: 80 },
+    variables: tokens(
+      {
+        bg: "#FFF8F0",
+        surface: "#FFFFFF",
+        surface2: "#FDE6D3",
+        border: "#EFCFB5",
+        text: "#3A2622",
+        textMuted: "#6E5148",
+        accent: "#7A6200",
+        onAccent: "#FFFFFF",
+        danger: "#B3261E",
+      },
+      { radius: [10, 18, 28], space: [...roomy] },
+    ),
+    layout: {
+      grid: "Sections as soft color bands (peach, butter, cream) in a centered 1080px column; 2-3 card columns.",
+      density: "Comfortable and open. 24px padding, friendly copy.",
+      corners: "Round: 10 on controls, 18 on cards, 28 on feature panels.",
+      imagery:
+        "Sunny photography with warm shadows and pastel props; simple blob shapes as backdrop, one per section.",
+      icons: "Rounded 2px icons in cocoa $text; $accent for the active one.",
+    },
+    stroke: "1px $border on cards and inputs; pastel bands carry sections without strokes",
+    elevation: "A soft low shadow (0 4px 16px, 8% cocoa) on at most one card per view.",
+    dos: [
+      "Alternate sections between $bg, $surface-2 and $surface to create rhythm.",
+      "Use $accent for buttons and key numbers; text stays cocoa.",
+      "Write warm, short copy; use photos with natural light.",
+    ],
+    donts: [
+      "No pastel text on pastel backgrounds; text always uses $text or $text-muted.",
+      "Do not add rainbow gradients or more than one accent hue.",
     ],
   },
 ];
