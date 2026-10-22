@@ -1,16 +1,23 @@
 import { useEffect } from "react";
-import { emptyHistory, loadDocument } from "@pego/doc";
+import { createId, emptyHistory, loadDocument } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { captureLive, tabIsDirty, useTabsStore, type TabSnapshot } from "@/tabs/use-tabs-store";
 import {
-  restoreTabs,
-  tabIsDirty,
-  tabState,
-  useTabsStore,
-  type TabSnapshot,
-} from "@/tabs/use-tabs-store";
+  restoreWorkspaces,
+  SCRATCH_ID,
+  useWorkspaceStore,
+  type SavedWorkspace,
+  type Workspace,
+} from "@/workspace/use-workspace-store";
 import { isTextEditing } from "@/store/use-text-edit-store";
-import { readAutosave, writeAutosave, type AutosavedTab } from "./autosave-db";
+import {
+  readAutosave,
+  writeAutosave,
+  type AutosavedTab,
+  type AutosavedWorkspace,
+} from "./autosave-db";
+import { isDirty } from "./file-format";
 import { openFile, saveFile, saveFileAs } from "./file-actions";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
@@ -19,28 +26,52 @@ const AUTOSAVE_DELAY_MS = 800;
 /** True while a debounced autosave is scheduled or being written. */
 let autosavePending = false;
 
-const writeCurrent = async () => {
-  const { tabs, activeId } = useTabsStore.getState();
-  const saved = tabs.map((tab): AutosavedTab => {
-    const state = tabState(tab);
-    return {
-      doc: state.doc,
-      fileName: state.file.fileName,
-      handle: state.file.handle,
-      bridgePath: state.file.bridgePath,
-      dirty: tabIsDirty(tab),
-    };
+const autosavedTab = (state: TabSnapshot, dirty: boolean, keepHandle: boolean): AutosavedTab => ({
+  doc: state.doc,
+  fileName: state.file.fileName,
+  // Handles may not be cloneable: only the live tab keeps one (autosave-db retries without it).
+  handle: keepHandle ? state.file.handle : null,
+  bridgePath: state.file.bridgePath,
+  dirty,
+});
+
+/** Tabs of a workspace from its saved copy, or from the live stores. */
+const workspaceTabs = (workspace: Workspace): { tabs: AutosavedTab[]; activeIndex: number } => {
+  const source = workspace.saved ?? { ...useTabsStore.getState(), live: captureLive() };
+  const tabs = source.tabs.map((tab) => {
+    const state = tab.snapshot ?? source.live;
+    return autosavedTab(state, isDirty(state.doc, state.file.savedDoc), false);
   });
-  const activeIndex = Math.max(
+  return {
+    tabs,
+    activeIndex: Math.max(
+      0,
+      source.tabs.findIndex((tab) => tab.id === source.activeId),
+    ),
+  };
+};
+
+const writeCurrent = async () => {
+  const { workspaces, liveId, view } = useWorkspaceStore.getState();
+  const saved: AutosavedWorkspace[] = workspaces.map((workspace) => ({
+    id: workspace.id,
+    name: workspace.name,
+    dir: workspace.dir,
+    kind: workspace.kind,
+    ...workspaceTabs(workspace),
+  }));
+  const liveIndex = Math.max(
     0,
-    tabs.findIndex((tab) => tab.id === activeId),
+    workspaces.findIndex((workspace) => workspace.id === liveId),
   );
-  const active = saved[activeIndex]!;
-  // Handles may not be cloneable: autosave-db retries without the active one; drop the rest.
+  const live = captureLive();
   await writeAutosave({
-    ...active,
-    tabs: saved.map((tab, i) => (i === activeIndex ? tab : { ...tab, handle: null })),
-    activeIndex,
+    ...autosavedTab(live, getIsDirty(), true),
+    tabs: saved[liveIndex]?.tabs,
+    activeIndex: saved[liveIndex]?.activeIndex,
+    workspaces: saved,
+    liveIndex,
+    view,
     savedAt: Date.now(),
   });
 };
@@ -64,9 +95,38 @@ const toSnapshot = (tab: AutosavedTab): TabSnapshot | null => {
   };
 };
 
+/** A workspace's saved tabs, or null when none of them is readable. */
+const toSavedWorkspace = (stored: AutosavedTab[], activeIndex: number): SavedWorkspace | null => {
+  const snapshots = stored.map(toSnapshot);
+  const valid = snapshots.filter((snapshot): snapshot is TabSnapshot => snapshot !== null);
+  if (valid.length < snapshots.length) {
+    console.warn("autosave: some tabs were ignored (invalid or from a newer Pego)");
+  }
+  if (valid.length === 0) return null;
+  const index = Math.min(snapshots.slice(0, activeIndex).filter(Boolean).length, valid.length - 1);
+  const tabs = valid.map((snapshot, i) => ({
+    id: createId(),
+    snapshot: i === index ? null : snapshot,
+  }));
+  return { tabs, activeId: tabs[index]!.id, live: valid[index]! };
+};
+
 const restoreAutosave = async () => {
   const record = await readAutosave();
   if (!record) return;
+  if (record.workspaces?.length) {
+    const saved = record.workspaces.map((workspace) =>
+      toSavedWorkspace(workspace.tabs, workspace.activeIndex),
+    );
+    restoreWorkspaces(
+      record.workspaces.map(({ id, name, dir, kind }) => ({ id, name, dir, kind })),
+      saved,
+      record.liveIndex ?? 0,
+      record.view ?? "editor",
+    );
+    return;
+  }
+  // Older autosaves: one set of tabs (or one document), restored as scratch.
   const stored: AutosavedTab[] = record.tabs ?? [
     {
       doc: record.doc,
@@ -76,14 +136,14 @@ const restoreAutosave = async () => {
       dirty: record.dirty,
     },
   ];
-  const snapshots = stored.map(toSnapshot);
-  const valid = snapshots.filter((snapshot): snapshot is TabSnapshot => snapshot !== null);
-  if (valid.length < snapshots.length) {
-    console.warn("autosave: some tabs were ignored (invalid or from a newer Pego)");
-  }
-  if (valid.length === 0) return;
-  const activeIndex = snapshots.slice(0, record.activeIndex ?? 0).filter(Boolean).length;
-  restoreTabs(valid, activeIndex);
+  const workspace = toSavedWorkspace(stored, record.activeIndex ?? 0);
+  if (!workspace) return;
+  restoreWorkspaces(
+    [{ id: SCRATCH_ID, name: "Scratch", dir: null, kind: "scratch" }],
+    [workspace],
+    0,
+    "editor",
+  );
 };
 
 const handleShortcut = (event: KeyboardEvent) => {
@@ -132,10 +192,12 @@ export const usePersistence = () => {
       });
       const unsubFile = useFileStore.subscribe(schedule);
       const unsubTabs = useTabsStore.subscribe(schedule);
+      const unsubWorkspaces = useWorkspaceStore.subscribe(schedule);
       unsubscribe = () => {
         unsubDoc();
         unsubFile();
         unsubTabs();
+        unsubWorkspaces();
       };
     });
 

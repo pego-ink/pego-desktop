@@ -11,6 +11,7 @@ import {
   listTabsForBridge,
   loadDocumentFromBridge,
   markSavedFromBridge,
+  openProjectForBridge,
   snapshotDocumentForBridge,
   switchTabForBridge,
 } from "@/persistence/bridge-documents";
@@ -80,6 +81,11 @@ export const createBridgeHandlers = ({
     }
     if (message.tool === EDITOR_OPS.snapshotDocument) {
       const outcome = snapshotDocumentForBridge();
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.openProject) {
+      const outcome = openProjectForBridge(message.input);
+      if (!outcome.isError) agent().appendLog({ kind: "info", text: outcome.content });
       return void reply(outcome.content, outcome.isError);
     }
     if (message.tool === EDITOR_OPS.listTabs) {

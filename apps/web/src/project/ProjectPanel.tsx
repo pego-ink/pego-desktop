@@ -5,6 +5,7 @@ import { PanelHeader } from "@pego/ui/components/panel-header";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useFileStore } from "@/persistence/use-file-store";
+import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 import {
   createProjectFile,
   openProjectFile,
@@ -18,11 +19,15 @@ export const ProjectPanel = () => {
   const connected = useAgentStore((s) => s.bridge.connected);
   const projectDir = useAgentStore((s) => s.bridge.projectDir ?? null);
   const openPath = useFileStore((s) => s.bridgePath);
+  const liveId = useWorkspaceStore((s) => s.liveId);
+  const project = useWorkspaceStore((s) =>
+    s.workspaces.find((workspace) => workspace.id === s.liveId),
+  );
   const savedDoc = useFileStore((s) => s.savedDoc);
   const [creating, setCreating] = useState(false);
 
   // List again when the bridge (re)connects, and when the window regains focus.
-  useEffect(() => void refreshProject(), [connected, projectDir]);
+  useEffect(() => void refreshProject(), [connected, projectDir, liveId]);
   // A save to a design file may have created it: list again.
   useEffect(() => {
     if (openPath && savedDoc) void refreshProject();
@@ -36,9 +41,11 @@ export const ProjectPanel = () => {
   return (
     <div className="flex max-h-64 shrink-0 flex-col border-b border-border">
       <PanelHeader>
-        <span className="truncate" title={projectDir ?? undefined}>
-          Project{" "}
-          {status === "ready" ? <span className="text-muted-foreground">· design/</span> : null}
+        <span className="truncate" title={project?.dir ?? projectDir ?? undefined}>
+          {project?.kind === "project" ? project.name : "Design files"}
+          {status === "ready" && project?.kind !== "project" ? (
+            <span className="text-muted-foreground"> · design/</span>
+          ) : null}
         </span>
         {status === "ready" || status === "loading" ? (
           <span className="flex items-center gap-0.5">

@@ -14,7 +14,21 @@ export type AutosavedTab = {
   dirty: boolean;
 };
 
+/** One open workspace (scratch or a project) with its tabs. */
+export type AutosavedWorkspace = {
+  id: string;
+  name: string;
+  dir: string | null;
+  kind: "scratch" | "project";
+  tabs: AutosavedTab[];
+  activeIndex: number;
+};
+
 export type AutosaveRecord = {
+  /** Every open workspace (newest autosaves); `tabs` below then mirrors the live one. */
+  workspaces?: AutosavedWorkspace[];
+  liveIndex?: number;
+  view?: "dashboard" | "editor";
   /** Every open tab (newer autosaves). The top-level fields below describe the active one. */
   tabs?: AutosavedTab[];
   activeIndex?: number;

@@ -5,6 +5,9 @@ import { LayersPanel } from "@/panels/LayersPanel";
 import { PagesPanel } from "@/pages/PagesPanel";
 import { ProjectPanel } from "@/project/ProjectPanel";
 import { TabBar } from "@/tabs/TabBar";
+import { Dashboard } from "@/workspace/Dashboard";
+import { WorkspaceTabs } from "@/workspace/WorkspaceTabs";
+import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { useAgentStore } from "@/agent/use-agent-store";
@@ -109,31 +112,40 @@ const LeftColumn = () => {
   );
 };
 
-export const EditorShell = () => (
-  <div className="flex h-full flex-col bg-background text-foreground">
-    <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
-      <div className="flex items-center gap-3">
-        <span className="text-sm font-semibold">Pego</span>
-        <FileMenu />
-      </div>
-      <div className="flex items-center gap-2">
-        <HistoryButtons />
-        <Button size="sm" variant="secondary">
-          Share
-        </Button>
-      </div>
-    </header>
-    <div className="flex min-h-0 flex-1">
-      <LeftColumn />
-      <main className="flex min-w-0 flex-1 flex-col">
-        <TabBar />
-        <div className="min-h-0 flex-1">
-          <Canvas />
+export const EditorShell = () => {
+  const view = useWorkspaceStore((s) => s.view);
+  return (
+    <div className="flex h-full flex-col bg-background text-foreground">
+      <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
+        <div className="flex min-w-0 items-center gap-3">
+          <span className="text-sm font-semibold">Pego</span>
+          {view === "editor" ? <FileMenu /> : null}
+          <span aria-hidden className="h-4 w-px shrink-0 bg-border" />
+          <WorkspaceTabs />
         </div>
-      </main>
-      <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
-        <PropertiesPanel />
-      </aside>
+        <div className="flex shrink-0 items-center gap-2">
+          {view === "editor" ? <HistoryButtons /> : null}
+          <Button size="sm" variant="secondary">
+            Share
+          </Button>
+        </div>
+      </header>
+      {view === "dashboard" ? (
+        <Dashboard />
+      ) : (
+        <div className="flex min-h-0 flex-1">
+          <LeftColumn />
+          <main className="flex min-w-0 flex-1 flex-col">
+            <TabBar />
+            <div className="min-h-0 flex-1">
+              <Canvas />
+            </div>
+          </main>
+          <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
+            <PropertiesPanel />
+          </aside>
+        </div>
+      )}
     </div>
-  </div>
-);
+  );
+};
