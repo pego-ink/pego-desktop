@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { SparklesIcon } from "lucide-react";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { cn } from "@pego/ui/lib/utils";
 import { useAgentStore } from "@/agent/use-agent-store";
@@ -8,10 +7,9 @@ import { AgentComposer } from "@/panels/agent/AgentComposer";
 import { AgentEmptyState } from "@/panels/agent/AgentEmptyState";
 import { ChangesBar } from "@/panels/agent/ChangesBar";
 import { DecisionCard } from "@/panels/agent/DecisionCard";
-import { PlanList } from "@/panels/agent/PlanList";
+import { PlanPill } from "@/panels/agent/PlanPill";
 import { WorkingIndicator } from "@/panels/agent/WorkingIndicator";
 import {
-  countDoneSteps,
   formatUsage,
   isRunActive,
   isRunFinished,
@@ -20,72 +18,44 @@ import {
 
 const RunHeader = () => {
   const status = useAgentStore((s) => s.status);
-  const steps = useAgentStore((s) => s.steps);
-  const prompt = useAgentStore((s) => s.prompt);
   const runLabel = useAgentStore((s) => s.runLabel);
   const active = isRunActive(status);
   return (
-    <PanelHeader className="h-auto min-h-11 py-1.5">
-      <div className="flex min-w-0 flex-1 flex-col justify-center">
-        <span className="w-full truncate" title={prompt || undefined}>
-          {prompt || "Agent"}
+    <PanelHeader>
+      {status === "idle" ? (
+        <span className="truncate">Agent</span>
+      ) : (
+        <span
+          className={cn(
+            "flex min-w-0 items-center gap-1.5",
+            status === "failed" && "text-destructive",
+          )}
+        >
+          {active ? (
+            <span
+              aria-hidden
+              className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground"
+            />
+          ) : null}
+          <span className="shrink-0">{runStatusLabel(status, [])}</span>
+          {runLabel ? (
+            <span className="min-w-0 truncate font-normal text-muted-foreground" title={runLabel}>
+              · {runLabel}
+            </span>
+          ) : null}
         </span>
-        {status === "idle" ? null : (
-          <span
-            className={cn(
-              "flex min-w-0 items-center gap-1.5 text-[11px] font-normal",
-              status === "failed" ? "text-destructive" : "text-muted-foreground",
-            )}
-          >
-            {active ? (
-              <span
-                aria-hidden
-                className="size-1.5 shrink-0 animate-pulse rounded-full bg-foreground"
-              />
-            ) : null}
-            <span className="shrink-0">{runStatusLabel(status, steps)}</span>
-            {runLabel ? (
-              <span className="min-w-0 truncate" title={runLabel}>
-                · {runLabel}
-              </span>
-            ) : null}
-          </span>
-        )}
-      </div>
+      )}
     </PanelHeader>
   );
 };
 
 const RunView = () => {
-  const prompt = useAgentStore((s) => s.prompt);
-  const steps = useAgentStore((s) => s.steps);
   const log = useAgentStore((s) => s.log);
-  const status = useAgentStore((s) => s.status);
   const usage = useAgentStore((s) => s.usage);
-  const done = countDoneSteps(steps);
   const showUsage = usage.inputTokens + usage.outputTokens > 0 || usage.costUsd > 0;
 
   return (
     <div className="flex flex-col gap-3">
-      {prompt ? (
-        <p className="rounded-lg bg-muted px-3 py-2 text-xs leading-5 whitespace-pre-wrap">
-          {prompt}
-        </p>
-      ) : null}
-      {steps.length > 0 ? (
-        <section className="flex flex-col gap-1">
-          <h3 className="flex items-center gap-1.5 px-1 text-xs font-medium">
-            <SparklesIcon className="size-3.5" />
-            Pego Agent
-            <span className="font-normal text-muted-foreground">
-              {isRunFinished(status) || done > 0
-                ? `${done}/${steps.length} done`
-                : `${steps.length} steps`}
-            </span>
-          </h3>
-          <PlanList steps={steps} />
-        </section>
-      ) : null}
       <ActivityLog log={log} />
       <WorkingIndicator />
       {showUsage ? (
@@ -101,17 +71,27 @@ export const AgentPanel = () => {
   );
   const decision = useAgentStore((s) => s.decision);
   const status = useAgentStore((s) => s.status);
+  const hasPlan = useAgentStore((s) => s.steps.length > 0);
   const [seed, setSeed] = useState({ text: "", key: 0 });
 
   return (
     <div className="flex h-full min-h-0 flex-col">
       <RunHeader />
-      <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        {hasRun ? (
-          <RunView />
-        ) : (
-          <AgentEmptyState onPick={(text) => setSeed((prev) => ({ text, key: prev.key + 1 }))} />
-        )}
+      <div className="relative min-h-0 flex-1">
+        <div className={cn("h-full overflow-y-auto px-3 pb-3", hasPlan ? "pt-12" : "pt-3")}>
+          {hasRun ? (
+            <RunView />
+          ) : (
+            <AgentEmptyState onPick={(text) => setSeed((prev) => ({ text, key: prev.key + 1 }))} />
+          )}
+        </div>
+        {hasPlan ? (
+          <div
+            aria-hidden
+            className="pointer-events-none absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-background from-65% to-transparent"
+          />
+        ) : null}
+        <PlanPill />
       </div>
       <div className="flex shrink-0 flex-col gap-2 px-3 pb-3">
         {decision ? <DecisionCard decision={decision} /> : null}
