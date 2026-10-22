@@ -5,6 +5,7 @@ import { MENU_COMMAND_CHANNEL, type MenuCommand } from "@/menu-channels";
  * Minimal native menu. Edit roles make copy/paste work in text inputs. File and zoom shortcuts
  * are handled by the web app (keydown), so there is deliberately no File or zoom menu here.
  *
+ * Close Tab replaces the window menu's Cmd+W "close" role so the shortcut reaches the page.
  * Select All is not the native role: a menu accelerator fires even when the page calls
  * preventDefault, and the role would select every piece of UI text. The page decides instead
  * (text in a focused input, otherwise the canvas nodes).
@@ -47,7 +48,24 @@ export const installMenu = (isDev: boolean): void => {
         { role: "togglefullscreen" },
       ],
     },
-    { role: "windowMenu" },
+    {
+      label: "Window",
+      submenu: [
+        { role: "minimize" },
+        { role: "zoom" },
+        { type: "separator" },
+        // Cmd+W closes the current tab in the page, never the window (Cmd+Shift+W does).
+        {
+          label: "Close Tab",
+          accelerator: "CmdOrCtrl+W",
+          click: (_item, window) => sendCommand(window, "close-tab"),
+        },
+        { label: "Close Window", accelerator: "CmdOrCtrl+Shift+W", role: "close" },
+        ...(process.platform === "darwin"
+          ? ([{ type: "separator" }, { role: "front" }] as MenuItemConstructorOptions[])
+          : []),
+      ],
+    },
   ];
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 };

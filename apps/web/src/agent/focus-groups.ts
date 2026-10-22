@@ -1,5 +1,6 @@
 import { collectIds, type PageNode } from "@pego/doc";
 import { isRunActive } from "@/panels/agent/agent-format";
+import { sessionShownInEditor } from "@/workspace/use-workspace-store";
 import { runColor } from "./run-colors";
 import { liveTitle, type SessionLive } from "./use-agent-store";
 
@@ -20,12 +21,18 @@ export const focusLabel = (title: string, max: number = FOCUS_LABEL_CHARS): stri
   return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
 };
 
-/** Focus groups of every running session that is touching nodes, in session order. */
+/**
+ * Focus groups of every running session that is touching nodes of the shown document (runs in
+ * background tabs edit other documents), in session order.
+ */
 export const focusGroupsOf = (
   liveSessions: Readonly<Record<string, SessionLive>>,
 ): AgentFocusGroup[] =>
   Object.values(liveSessions)
-    .filter((live) => isRunActive(live.status) && live.focusIds.length > 0)
+    .filter(
+      (live) =>
+        isRunActive(live.status) && live.focusIds.length > 0 && sessionShownInEditor(live.id),
+    )
     .map((live) => ({
       key: live.runId ?? live.id,
       ids: live.focusIds,

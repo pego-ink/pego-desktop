@@ -1,4 +1,5 @@
 import type { EditorToBridge } from "@pego/agent";
+import { runTargetFor } from "@/workspace/document-target";
 import { attachmentNote } from "./attachments";
 import { sendToBridge, startBridgeConnection } from "./bridge-client";
 import { getRun, registerRun, unregisterRun } from "./run-registry";
@@ -58,7 +59,7 @@ export const startLocalAgentRun = async (
   const shown = options.displayText?.trim() || prompt;
   agent.beginRun(sessionId, runId, shown);
   // Registered before any wait so a second start in this session is refused meanwhile.
-  const host = createToolHost({ runId, attachments });
+  const host = createToolHost({ runId, attachments, target: runTargetFor(sessionId) });
   const scope = host.run;
   registerRun({
     id: runId,

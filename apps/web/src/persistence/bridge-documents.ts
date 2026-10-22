@@ -4,19 +4,17 @@ import { contentBounds } from "@/interaction/camera";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { FILE_EXTENSION, parseDocumentFile, serializeDocument } from "./file-format";
-import {
-  captureLive,
-  documentTitle,
-  openDocument,
-  snapshotIsDirty,
-  type UnsavedPolicy,
-} from "@/workspace/live-document";
+import { documentTitle, snapshotIsDirty, type UnsavedPolicy } from "@/workspace/live-document";
 import {
   activateWorkspace,
   findWorkspaceByPath,
   liveProject,
+  markWorkspaceSaved,
+  openDocument,
   showEditor,
   useWorkspaceStore,
+  workspaceDocument,
+  workspaceRunning,
 } from "@/workspace/use-workspace-store";
 import { getIsDirty, useFileStore } from "./use-file-store";
 
@@ -60,23 +58,21 @@ const unsavedOutcome = (policy: UnsavedPolicy): OpOutcome =>
       }
     : { content: "Kept the current document (it has unsaved changes).", isError: false };
 
-/**
- * Show the workspace that holds the file at `path` (each workspace has one document). True when
- * it is shown now, false when it is not open, "busy" while a panel run blocks switching.
- */
-const showOpenFile = (path: string): boolean | "busy" => {
-  if (useFileStore.getState().bridgePath === path) return true;
+/** Show the tab that holds the file at `path`. False when it is not open. */
+const showOpenFile = (path: string): boolean => {
+  const { liveId } = useWorkspaceStore.getState();
+  if (liveId !== null && useFileStore.getState().bridgePath === path) return true;
   const workspace = findWorkspaceByPath(path);
-  if (!workspace) return false;
-  return activateWorkspace(workspace.id) ? true : "busy";
+  return workspace ? activateWorkspace(workspace.id) : false;
 };
 
 /**
- * Show a design file's text (read from disk by the bridge) as the workspace's document. A file
- * already open is shown again and reloaded from disk unless it has unsaved changes (or `reload`
- * is false). `.pen` files import as an unsaved document that saves next to them as `.pego`.
- * `unsaved` says what happens to unsaved changes of another document shown now. `documentId`
- * gives the document that id (a project's design takes its project id).
+ * Show a design file's text (read from disk by the bridge). A file already open shows its tab and
+ * is reloaded from disk unless it has unsaved changes (or `reload` is false; never while a run
+ * edits it). Other files open in a new tab, or with `place: "replace"` in the shown tab (a
+ * project's tab loading its design), where `unsaved` says what happens to unsaved changes of the
+ * document shown now. `.pen` files import as an unsaved document that saves next to them as
+ * `.pego`. `documentId` gives the document that id (a project's design takes its project id).
  */
 export const openDocumentText = (
   text: string,
@@ -86,18 +82,18 @@ export const openDocumentText = (
     discardUnsaved?: boolean;
     unsaved?: UnsavedPolicy;
     documentId?: string;
+    place?: "tab" | "replace";
   } = {},
 ): OpOutcome => {
   const policy: UnsavedPolicy = options.discardUnsaved ? "discard" : (options.unsaved ?? "ask");
+  const place = options.place ?? "tab";
   const name = fileNameOf(path);
   try {
     if (path.toLowerCase().endsWith(".pen")) {
       const base = name.replace(/\.pen$/i, "");
       // The .pen file is never written; saving goes to a .pego next to it.
       const target = path.replace(/\.pen$/i, FILE_EXTENSION);
-      const shown = showOpenFile(target);
-      if (shown === "busy") return BUSY;
-      if (shown) {
+      if (showOpenFile(target)) {
         return {
           content: `${fileNameOf(target)} is already open (from ${name}); showing it.`,
           isError: false,
@@ -107,7 +103,7 @@ export const openDocumentText = (
       const result = openDocument(
         doc,
         { fileName: `${base}${FILE_EXTENSION}`, bridgePath: target },
-        { saved: false, unsaved: policy },
+        { saved: false, unsaved: policy, place },
       );
       if (result === "busy") return BUSY;
       if (result === "unsaved") return unsavedOutcome(policy);
@@ -127,9 +123,7 @@ export const openDocumentText = (
         : parsed;
     // Saved means "matches the file": an adopted id is a change the next save writes.
     const saved = doc === parsed;
-    const shown = showOpenFile(path);
-    if (shown === "busy") return BUSY;
-    if (shown) {
+    if (showOpenFile(path)) {
       if (getIsDirty() && !options.discardUnsaved) {
         return {
           content: `${path} is already open with unsaved changes; keeping them (pass discardUnsaved: true to reload it from disk).`,
@@ -137,6 +131,8 @@ export const openDocumentText = (
         };
       }
       if (options.reload === false) return { content: `Showing ${path}.`, isError: false };
+      const { liveId } = useWorkspaceStore.getState();
+      if (liveId !== null && workspaceRunning(liveId)) return BUSY;
       useDocumentStore.getState().load(doc);
       const loaded = useDocumentStore.getState().doc;
       useFileStore.getState().markSaved(saved ? loaded : parsed, name, null, path);
@@ -146,7 +142,7 @@ export const openDocumentText = (
     const result = openDocument(
       doc,
       { fileName: name, bridgePath: path },
-      { unsaved: policy, saved },
+      { unsaved: policy, saved, place },
     );
     if (result === "busy") return BUSY;
     if (result === "unsaved") return unsavedOutcome(policy);
@@ -173,13 +169,16 @@ export const loadDocumentFromBridge = (input: unknown): OpOutcome => {
   });
 };
 
-/** The last snapshot handed to the bridge, so mark_saved records exactly what was written. */
-let pendingSnapshot: { id: string; doc: PegoDocument } | null = null;
+/**
+ * The last snapshot handed to the bridge (and its tab), so mark_saved records exactly what was
+ * written, in the tab it came from even when another one is shown by then.
+ */
+let pendingSnapshot: { id: string; doc: PegoDocument; workspaceId: string | null } | null = null;
 
 export const snapshotDocumentForBridge = (): OpOutcome => {
   const doc = useDocumentStore.getState().doc;
   const { fileName, bridgePath } = useFileStore.getState();
-  pendingSnapshot = { id: createId(), doc };
+  pendingSnapshot = { id: createId(), doc, workspaceId: useWorkspaceStore.getState().liveId };
   return {
     content: JSON.stringify({
       text: serializeDocument(doc),
@@ -200,15 +199,17 @@ export const markSavedFromBridge = (input: unknown): OpOutcome => {
   ) {
     return { content: "No matching snapshot to mark as saved.", isError: true };
   }
-  const { doc } = pendingSnapshot;
+  const { doc, workspaceId } = pendingSnapshot;
   pendingSnapshot = null;
-  useFileStore.getState().markSaved(doc, fileNameOf(input.path), null, input.path);
+  const file = { fileName: fileNameOf(input.path), handle: null, bridgePath: input.path };
+  if (workspaceId === null) useFileStore.getState().markSaved(doc, file.fileName, null, input.path);
+  else markWorkspaceSaved(workspaceId, doc, file);
   return { content: "ok", isError: false };
 };
 
 /**
- * Editor side of list_documents: the open documents, one per workspace (scratch and each open
- * project). The wire format keeps the `tabs` name of the EDITOR_OPS contract.
+ * Editor side of list_documents: the open documents, one per tab (local documents and projects).
+ * The wire format keeps the `tabs` name of the EDITOR_OPS contract.
  */
 export const listTabsForBridge = (): OpOutcome => {
   const { workspaces, liveId } = useWorkspaceStore.getState();
@@ -216,8 +217,9 @@ export const listTabsForBridge = (): OpOutcome => {
   return {
     content: JSON.stringify({
       project: project ? { id: project.id, name: project.name, dir: project.dir } : null,
-      tabs: workspaces.map((workspace) => {
-        const state = workspace.saved ?? captureLive();
+      tabs: workspaces.flatMap((workspace) => {
+        const state = workspaceDocument(workspace.id);
+        if (!state) return [];
         return {
           title: documentTitle(state.doc, state.file),
           path: state.file.bridgePath,
@@ -235,9 +237,8 @@ export const switchTabForBridge = (input: unknown): OpOutcome => {
   if (!isObject(input) || typeof input.path !== "string") {
     return { content: "Invalid switch request.", isError: true };
   }
-  const shown = showOpenFile(input.path);
-  if (shown === "busy") return BUSY;
-  if (!shown) return { content: `not_open: ${input.path} is not open.`, isError: true };
+  if (!showOpenFile(input.path))
+    return { content: `not_open: ${input.path} is not open.`, isError: true };
   showEditor();
   return { content: `Showing ${input.path}.`, isError: false };
 };

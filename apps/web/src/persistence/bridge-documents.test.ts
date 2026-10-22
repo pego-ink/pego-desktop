@@ -44,20 +44,46 @@ describe("bridge documents", () => {
     expect(titles()).toEqual(["app.pego"]);
   });
 
-  test("Claude Code never drops unsaved work unless it says so", () => {
+  test("another file opens in its own tab; unsaved work stays in its tab", () => {
     loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
     useDocumentStore.getState().commit([{ op: "update", id: "frame-1", props: { x: 5 } }]);
-    const refused = loadDocumentFromBridge({ text: pegoText, path: "/repo/design/b.pego" });
+    const opened = loadDocumentFromBridge({ text: pegoText, path: "/repo/design/b.pego" });
+    expect(opened.isError).toBe(false);
+    expect(titles()).toEqual(["b.pego"]);
+    const listed = JSON.parse(listTabsForBridge().content) as {
+      tabs: { path: string; dirty: boolean; active: boolean }[];
+    };
+    expect(listed.tabs).toEqual([
+      expect.objectContaining({ path: "/repo/design/a.pego", dirty: true, active: false }),
+      expect.objectContaining({ path: "/repo/design/b.pego", dirty: false, active: true }),
+    ]);
+    expect(switchTabForBridge({ path: "/repo/design/a.pego" }).isError).toBe(false);
+    expect(getIsDirty()).toBe(true);
+  });
+
+  test("replacing the shown document refuses unsaved work unless told to drop it", () => {
+    loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
+    useDocumentStore.getState().commit([{ op: "update", id: "frame-1", props: { x: 5 } }]);
+    const replace = (discardUnsaved: boolean) =>
+      openDocumentText(pegoText, "/repo/design/b.pego", {
+        unsaved: "refuse",
+        discardUnsaved,
+        place: "replace",
+      });
+    const refused = replace(false);
     expect(refused.isError).toBe(true);
     expect(refused.content).toContain("has unsaved changes. Call save_document first");
     expect(useFileStore.getState().bridgePath).toBe("/repo/design/a.pego");
-    const dropped = loadDocumentFromBridge({
-      text: pegoText,
-      path: "/repo/design/b.pego",
-      discardUnsaved: true,
-    });
-    expect(dropped.isError).toBe(false);
+    expect(replace(true).isError).toBe(false);
     expect(titles()).toEqual(["b.pego"]);
+  });
+
+  test("a file a run is editing is not reloaded under it", () => {
+    loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
+    setVisibleStatus("running");
+    const busy = loadDocumentFromBridge({ text: pegoText, path: "/repo/design/a.pego" });
+    expect(busy.content).toContain("busy with an agent run");
+    setVisibleStatus("idle");
   });
 
   test("the shown file is reloaded when clean, kept when it has unsaved changes", () => {

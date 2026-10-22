@@ -28,10 +28,7 @@ type DocumentState = {
   pageId: string | null;
 
   /** Apply ops as one undo step. Returns false (and toasts) when an op does not fit the doc. */
-  commit: (
-    ops: Op[],
-    meta?: { label?: string; source?: TransactionSource; runId?: string },
-  ) => boolean;
+  commit: (ops: Op[], meta?: CommitMeta) => boolean;
   /**
    * Fold ops into the last undo step, for continuous gestures (drag, resize, scrubbing).
    * Start the gesture with `commit`, then call this on every further change.
@@ -70,15 +67,73 @@ const onShownPage = (doc: PegoDocument, pageId: string | null, ops: Op[]): Op[] 
 export const activePage = (state: { doc: PegoDocument; pageId: string | null }) =>
   pageOrFirst(state.doc, state.pageId);
 
+/**
+ * The editable core of a document's state. The store holds the visible document's; a background
+ * tab keeps the same fields in its snapshot (see workspace/document-target.ts), so both go
+ * through the pure transitions below.
+ */
+export type DocumentCore = {
+  doc: PegoDocument;
+  history: History;
+  selection: string[];
+  hoveredId: string | null;
+  pageId: string | null;
+};
+
+export type CommitMeta = { label?: string; source?: TransactionSource; runId?: string };
+
+/** `ops` as one new undo step. Throws `OpError` when an op does not fit the document. */
+export const commitCore = (state: DocumentCore, ops: Op[], meta?: CommitMeta) => {
+  const { doc, history, selection, hoveredId, pageId } = state;
+  const next = commitOps(doc, history, onShownPage(doc, pageId, ops), {
+    source: meta?.source ?? "user",
+    label: meta?.label,
+    ...(meta?.runId ? { runId: meta.runId } : {}),
+  });
+  return {
+    doc: next.doc,
+    history: next.history,
+    ...pruneSelection(next.doc, selection, hoveredId),
+  };
+};
+
+/** `ops` folded into the last undo step. Throws `OpError` when an op does not fit. */
+export const extendCore = (state: DocumentCore, ops: Op[]) => {
+  const { doc, history, selection, hoveredId, pageId } = state;
+  const next = extendLastOps(doc, history, onShownPage(doc, pageId, ops));
+  return {
+    doc: next.doc,
+    history: next.history,
+    ...pruneSelection(next.doc, selection, hoveredId),
+  };
+};
+
+type RunUndoCheck = { ok: boolean; message?: string };
+const checkCache = new WeakMap<History, { doc: PegoDocument; byRun: Map<string, RunUndoCheck> }>();
+
+/** Can one run's changes be reverted in this state (cached per history and document)? */
+export const checkRunUndo = (
+  state: Pick<DocumentCore, "doc" | "history">,
+  runId: string,
+): RunUndoCheck => {
+  const { doc, history } = state;
+  const cached = checkCache.get(history);
+  const entry = cached?.doc === doc ? cached : { doc, byRun: new Map<string, RunUndoCheck>() };
+  checkCache.set(history, entry);
+  const hit = entry.byRun.get(runId);
+  if (hit) return hit;
+  const plan = planRunUndo(doc, history, runId);
+  const result: RunUndoCheck = plan.ok ? { ok: true } : { ok: false, message: plan.message };
+  entry.byRun.set(runId, result);
+  return result;
+};
+
 const reportOpError = (error: unknown): false => {
   if (!(error instanceof OpError)) throw error;
   console.warn(error);
   toast.error(error.message);
   return false;
 };
-
-type RunUndoCheck = { ok: boolean; message?: string };
-const checkCache = new WeakMap<History, { doc: PegoDocument; byRun: Map<string, RunUndoCheck> }>();
 
 export const useDocumentStore = create<DocumentState>((set, get) => ({
   doc: showcaseDoc,
@@ -88,18 +143,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   pageId: null,
 
   commit: (ops, meta) => {
-    const { doc, history, selection, hoveredId, pageId } = get();
     try {
-      const next = commitOps(doc, history, onShownPage(doc, pageId, ops), {
-        source: meta?.source ?? "user",
-        label: meta?.label,
-        ...(meta?.runId ? { runId: meta.runId } : {}),
-      });
-      set({
-        doc: next.doc,
-        history: next.history,
-        ...pruneSelection(next.doc, selection, hoveredId),
-      });
+      set(commitCore(get(), ops, meta));
       return true;
     } catch (error) {
       return reportOpError(error);
@@ -107,14 +152,8 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
   },
 
   extendLast: (ops) => {
-    const { doc, history, selection, hoveredId, pageId } = get();
     try {
-      const next = extendLastOps(doc, history, onShownPage(doc, pageId, ops));
-      set({
-        doc: next.doc,
-        history: next.history,
-        ...pruneSelection(next.doc, selection, hoveredId),
-      });
+      set(extendCore(get(), ops));
       return true;
     } catch (error) {
       return reportOpError(error);
@@ -129,18 +168,7 @@ export const useDocumentStore = create<DocumentState>((set, get) => ({
     return ok ? { ok } : { ok, message: "Could not apply the undo" };
   },
 
-  canUndoRun: (runId) => {
-    const { doc, history } = get();
-    const cached = checkCache.get(history);
-    const entry = cached?.doc === doc ? cached : { doc, byRun: new Map<string, RunUndoCheck>() };
-    checkCache.set(history, entry);
-    const hit = entry.byRun.get(runId);
-    if (hit) return hit;
-    const plan = planRunUndo(doc, history, runId);
-    const result: RunUndoCheck = plan.ok ? { ok: true } : { ok: false, message: plan.message };
-    entry.byRun.set(runId, result);
-    return result;
-  },
+  canUndoRun: (runId) => checkRunUndo(get(), runId),
 
   undo: () => {
     const { doc, history, selection, hoveredId } = get();

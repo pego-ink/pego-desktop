@@ -134,6 +134,25 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
     ],
   },
   {
+    id: "tabs",
+    label: "Tabs",
+    entries: [
+      { id: "tabs.new", label: "New tab", chords: [["mod", "T"]] },
+      { id: "tabs.close", label: "Close tab", chords: [["mod", "W"]] },
+      { id: "tabs.next", label: "Next tab", chords: [["ctrl", "Tab"]] },
+      { id: "tabs.prev", label: "Previous tab", chords: [["ctrl", "shift", "Tab"]] },
+      { id: "tabs.goto", label: "Go to tab 1-8 (9 is the last tab)", chords: [["mod", "1–9"]] },
+      {
+        id: "tabs.move",
+        label: "Move the focused tab",
+        chords: [
+          ["alt", "shift", "←"],
+          ["alt", "shift", "→"],
+        ],
+      },
+    ],
+  },
+  {
     id: "drawing",
     label: "Drawing",
     entries: [
@@ -183,8 +202,8 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
 ];
 
 const MODIFIERS = {
-  mac: { mod: "⌘", shift: "⇧", alt: "⌥" },
-  other: { mod: "Ctrl", shift: "Shift", alt: "Alt" },
+  mac: { mod: "⌘", shift: "⇧", alt: "⌥", ctrl: "⌃" },
+  other: { mod: "Ctrl", shift: "Shift", alt: "Alt", ctrl: "Ctrl" },
 } as const;
 
 /** Display label for one key token on the given platform. */

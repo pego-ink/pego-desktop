@@ -1,4 +1,5 @@
 import type { PegoDocument } from "@pego/doc";
+import type { Camera } from "@/canvas/types";
 import type { PegoFileHandle } from "./fs-access";
 
 const DB_NAME = "pego";
@@ -12,21 +13,28 @@ export type AutosavedTab = {
   handle: PegoFileHandle | null;
   bridgePath: string | null;
   dirty: boolean;
+  /** Where the tab's view was (newer autosaves). */
+  camera?: Camera;
+  pageId?: string | null;
 };
 
-/** One open workspace (scratch or a project) with its tabs. */
+/**
+ * One open document tab: a local document or a project. Older autosaves held several tabs per
+ * workspace (the active one is restored) and called local tabs "scratch".
+ */
 export type AutosavedWorkspace = {
   id: string;
   name: string;
   dir: string | null;
-  kind: "scratch" | "project";
+  kind: "local" | "scratch" | "project";
   tabs: AutosavedTab[];
   activeIndex: number;
 };
 
 export type AutosaveRecord = {
-  /** Every open workspace (newest autosaves); `tabs` below then mirrors the live one. */
+  /** Every open tab in tab order (newest autosaves); `tabs` below then mirrors the live one. */
   workspaces?: AutosavedWorkspace[];
+  /** Index of the shown tab in `workspaces`; -1 when none is open. */
   liveIndex?: number;
   view?: "dashboard" | "editor";
   /** Every open tab (newer autosaves). The top-level fields below describe the active one. */

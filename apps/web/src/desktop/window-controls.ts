@@ -17,16 +17,24 @@ export const reservesWindowControls = (
  */
 export const WINDOW_DRAG_CLASS = "[-webkit-app-region:drag] [&>*]:[-webkit-app-region:no-drag]";
 
-/**
- * Left padding for the first toolbar row right of the 44px icon rail: the traffic lights end at
- * x ≈ 68, so 48px starts the row's content at x ≈ 92, a 24px gap.
- */
-export const WINDOW_CONTROLS_GUTTER_CLASS = "pl-12";
+/** Opts an interactive element of a drag region back out, so it stays clickable. */
+export const WINDOW_NO_DRAG_CLASS = "[-webkit-app-region:no-drag]";
+
+/** Left padding of the full-width tab bar: the traffic lights end at x ≈ 68, plus a 16px gap. */
+export const WINDOW_CONTROLS_INSET_CLASS = "pl-[84px]";
 
 /** Whether the traffic lights currently sit over the editor (false in a browser). */
-export const useWindowControlsInset = (): boolean => {
+export const useTrafficLightsInset = (): boolean => {
   const api = desktopApi();
   const [fullScreen, setFullScreen] = useState(false);
   useEffect(() => api?.onFullScreenChange?.(setFullScreen), [api]);
   return reservesWindowControls(api, fullScreen);
 };
+
+/**
+ * Legacy exports for the file header, which used to sit next to the traffic lights. They now live
+ * in the full-width tab bar, so the file header keeps its plain layout: always false.
+ * TODO(persistence owner): drop these with the header's inset branches in FileMenu.
+ */
+export const WINDOW_CONTROLS_GUTTER_CLASS = "pl-12";
+export const useWindowControlsInset = (): boolean => false;

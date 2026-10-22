@@ -6,12 +6,12 @@ import { useAgentStore } from "@/agent/use-agent-store";
 import { openDocumentText } from "@/persistence/bridge-documents";
 import { saveFile } from "@/persistence/file-actions";
 import { useFileStore } from "@/persistence/use-file-store";
-import { openDocument, PROJECT_DESIGN_FILE, type UnsavedPolicy } from "@/workspace/live-document";
-import { openProjectWorkspace } from "@/workspace/use-workspace-store";
+import { PROJECT_DESIGN_FILE, type UnsavedPolicy } from "@/workspace/live-document";
+import { openDocument, openProjectWorkspace } from "@/workspace/use-workspace-store";
 
 /**
- * Open a project: show its workspace and its design (project.pego), creating the file
- * when the project has none yet. Resolves false when the workspace could not be shown.
+ * Open a project: show its tab and its design (project.pego), creating the file when the project
+ * has none yet. Resolves false when the tab could not be shown.
  * The design's document id is the project id, so chat sessions (keyed by document id) follow
  * the project; an older file with another id adopts it (an unsaved change that autosave writes).
  */
@@ -29,6 +29,7 @@ export const openProject = async (
       reload: false,
       unsaved,
       documentId: project.id,
+      place: "replace",
     });
     if (outcome.isError) toast.error(outcome.content);
     return true;
@@ -38,7 +39,7 @@ export const openProject = async (
     const result = openDocument(
       starterDocument(project.name, project.id),
       { fileName: PROJECT_DESIGN_FILE, bridgePath: mainFile },
-      { saved: false, unsaved },
+      { saved: false, unsaved, place: "replace" },
     );
     if (result !== "opened") return true;
     await saveFile();
