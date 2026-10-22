@@ -19,4 +19,9 @@ export type Skill = {
   styles: string[];
   /** True for the core skill that applies to every design. */
   core?: boolean;
+  /**
+   * "design" (default): what to build (landing page, dashboard…). "style": a visual language
+   * from design history or practice (Bauhaus, Swiss, Dieter Rams…). A run uses at most one of each.
+   */
+  category?: "design" | "style";
 };

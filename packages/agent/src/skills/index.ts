@@ -1,11 +1,12 @@
 import { buildSkills } from "./build-skills";
+import { styleSkills } from "./style-skills";
 import { systemSkills } from "./system-skills";
 import type { Skill } from "./types";
 
 export type { Skill } from "./types";
 
 /** Every built-in skill; the core skill (if any) first. */
-export const skills: Skill[] = [...systemSkills, ...buildSkills].sort(
+export const skills: Skill[] = [...systemSkills, ...buildSkills, ...styleSkills].sort(
   (a, b) => Number(b.core === true) - Number(a.core === true),
 );
 

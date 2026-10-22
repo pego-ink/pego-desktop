@@ -1,7 +1,8 @@
 import { LOCAL_AGENT_IDS, type LocalAgentId, type LocalAgentInfo } from "@pego/agent";
 
 /** Which engine runs the panel's agent. `local` goes through the bridge to a local agent CLI. */
-export type AgentBackend = "api" | "local";
+/** "custom" runs a user-added OpenAI- or Anthropic-compatible provider (see providers/). */
+export type AgentBackend = "api" | "local" | "custom";
 
 export const DEFAULT_LOCAL_AGENT: LocalAgentId = "claude-code";
 
