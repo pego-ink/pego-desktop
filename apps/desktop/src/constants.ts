@@ -19,7 +19,8 @@ export const CONTENT_SECURITY_POLICY = [
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: blob:",
   "font-src 'self' data:",
-  `connect-src 'self' https://api.anthropic.com ws://${BRIDGE_HOST}:${BRIDGE_PORT} http://${BRIDGE_HOST}:${BRIDGE_PORT}`,
+  // Fonts for document text come from Fontsource (canvas/fonts.ts).
+  `connect-src 'self' https://api.anthropic.com https://api.fontsource.org https://cdn.jsdelivr.net ws://${BRIDGE_HOST}:${BRIDGE_PORT} http://${BRIDGE_HOST}:${BRIDGE_PORT}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
   "base-uri 'none'",
