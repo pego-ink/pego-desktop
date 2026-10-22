@@ -73,4 +73,5 @@ contextBridge.exposeInMainWorld("pegoDesktop", {
   onUpdateStatus,
   onMenuCommand,
   onFullScreenChange,
+  setThemeSource: (mode: unknown): void => ipcRenderer.send(WINDOW_CHANNELS.themeSource, mode),
 });

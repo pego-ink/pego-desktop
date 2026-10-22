@@ -4,7 +4,14 @@ import type { BrowserWindowConstructorOptions } from "electron";
 export const WINDOW_CHANNELS = {
   getFullScreen: "pego:window:get-full-screen",
   fullScreen: "pego:window:full-screen",
+  themeSource: "pego:window:theme-source",
 } as const;
+
+/** The editor's theme modes; each maps straight onto `nativeTheme.themeSource`. */
+export type ThemeSource = "light" | "dark" | "system";
+
+export const isThemeSource = (value: unknown): value is ThemeSource =>
+  value === "light" || value === "dark" || value === "system";
 
 type WindowChromeOptions = Pick<
   BrowserWindowConstructorOptions,

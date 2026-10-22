@@ -1,4 +1,4 @@
-import { app, BrowserWindow, nativeTheme, session, shell } from "electron";
+import { app, BrowserWindow, session, shell } from "electron";
 import { join } from "node:path";
 import { APP_ORIGIN, APP_URL } from "@/constants";
 import { startBridge, stopBridge } from "@/bridge";
@@ -110,8 +110,6 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     app.setName("Pego");
-    // The editor is dark only; keep native dialogs, menus and the traffic lights dark to match.
-    nativeTheme.themeSource = "dark";
     hardenSession();
     installMenu(isDev);
     if (!isDev) registerAppProtocol(webRoot());

@@ -1,12 +1,19 @@
-import { BrowserWindow, ipcMain } from "electron";
+import { BrowserWindow, ipcMain, nativeTheme } from "electron";
 import { isTrustedSender } from "@/update-status";
-import { WINDOW_CHANNELS } from "@/window-chrome";
+import { isThemeSource, WINDOW_CHANNELS } from "@/window-chrome";
 
-/** Answers the editor's full screen query; only the app's own origin may ask. */
+/**
+ * Answers the editor's full screen query and follows its theme mode, so the traffic lights,
+ * dialogs and menus match the editor. Only the app's own origin may use either.
+ */
 export const registerWindowIpc = (appOrigin: string): void => {
   ipcMain.handle(WINDOW_CHANNELS.getFullScreen, (event): boolean => {
     if (!isTrustedSender(event.senderFrame?.url, appOrigin)) throw new Error("untrusted sender");
     return BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false;
+  });
+  ipcMain.on(WINDOW_CHANNELS.themeSource, (event, mode: unknown) => {
+    if (!isTrustedSender(event.senderFrame?.url, appOrigin) || !isThemeSource(mode)) return;
+    nativeTheme.themeSource = mode;
   });
 };
 

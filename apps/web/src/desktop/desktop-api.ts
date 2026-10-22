@@ -28,6 +28,8 @@ export type PegoDesktopApi = {
    * function. Missing in desktop builds that still draw the native title bar.
    */
   onFullScreenChange?: (listener: (fullScreen: boolean) => void) => () => void;
+  /** Point the native theme (traffic lights, dialogs, menus) at the editor's theme mode. */
+  setThemeSource?: (mode: "light" | "dark" | "system") => void;
 };
 
 export type DesktopMenuCommand = "select-all";
