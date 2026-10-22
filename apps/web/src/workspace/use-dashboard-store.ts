@@ -3,7 +3,7 @@ import { create } from "zustand";
 import type { ProjectInfo } from "@pego/agent";
 import { requestProject } from "@/agent/bridge-client";
 import { useAgentStore } from "@/agent/use-agent-store";
-import { openProjectWorkspace } from "./use-workspace-store";
+import { openProject } from "@/project/use-project-store";
 
 /** Projects of the repository (design/<project>/project.json), as listed by the bridge. */
 type DashboardState = {
@@ -40,7 +40,7 @@ export const refreshProjects = async (): Promise<void> => {
 export const createProjectFromDashboard = async (name: string): Promise<void> => {
   try {
     const response = await requestProject("create_project", undefined, name);
-    if (response.project) openProjectWorkspace(response.project);
+    if (response.project) await openProject(response.project);
     await refreshProjects();
   } catch (error) {
     toast.error(`Could not create the project: ${errorMessage(error)}`);

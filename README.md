@@ -27,8 +27,8 @@ bun run dev
 Open http://localhost:5173. This also starts `apps/api` (Hono on Workers via wrangler), which the editor does not
 need; to run only the editor: `bun run --cwd apps/web dev`.
 
-Pego opens on the **Dashboard**: the projects of this repository (`design/<project>/` with a `project.json`,
-listed by the bridge). Open a project to get its own tab in the header with its files in the left panel; documents
+Pego opens on the **Dashboard**: the projects of this repository (`design/<project>/` with a `project.json` and
+the design itself, `project.pego`, listed by the bridge with a preview). Open a project to get its own tab in the header with its files in the left panel; documents
 open as tabs above the canvas and autosave in the browser (IndexedDB). **Scratch** holds documents outside any
 project. Use **File → Save / Open** (`⌘S`, `⌘O`) for `.pego` files anywhere on disk.
 

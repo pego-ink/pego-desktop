@@ -3,6 +3,7 @@ import { existsSync } from "node:fs";
 import { mkdir, readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, sep } from "node:path";
 import type { ProjectInfo } from "@pego/agent";
+import { serializePegoFile, starterDocument } from "@pego/doc";
 import { listDesignFiles } from "./project";
 
 /**
@@ -12,6 +13,8 @@ import { listDesignFiles } from "./project";
  */
 
 export const PROJECT_FILE = "project.json";
+/** The project's design document. */
+export const PROJECT_DESIGN = "project.pego";
 const ID_ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
 
 const newProjectId = (): string =>
@@ -51,10 +54,13 @@ const describeProject = async (
   meta: { id: string; name: string; createdAt: string },
 ): Promise<ProjectInfo> => {
   const files = await listDesignFiles(dir);
+  const mainFile = join(dir, PROJECT_DESIGN);
   return {
     id: meta.id,
     name: meta.name,
     dir,
+    mainFile,
+    hasMainFile: existsSync(mainFile),
     relativeDir: relative(root, dir).split(sep).join("/"),
     fileCount: files.length,
     modifiedAt: files.reduce((latest, file) => Math.max(latest, file.modifiedAt), 0),
@@ -75,7 +81,7 @@ export const listProjects = async (root: string): Promise<ProjectInfo[]> => {
   return projects.sort((a, b) => b.modifiedAt - a.modifiedAt || a.name.localeCompare(b.name));
 };
 
-/** Create design/<slug>/project.json (a new slug when the folder exists). */
+/** Create design/<slug>/ with project.json and a starter project.pego (a new slug when taken). */
 export const createProject = async (root: string, name: string): Promise<ProjectInfo> => {
   const trimmed = name.trim();
   if (!trimmed) throw new Error("A project needs a name.");
@@ -85,6 +91,7 @@ export const createProject = async (root: string, name: string): Promise<Project
   await mkdir(dir);
   const meta = { id: newProjectId(), name: trimmed, createdAt: new Date().toISOString() };
   await writeFile(join(dir, PROJECT_FILE), `${JSON.stringify(meta, null, 2)}\n`, "utf8");
+  await writeFile(join(dir, PROJECT_DESIGN), serializePegoFile(starterDocument(trimmed)), "utf8");
   return describeProject(root, dir, meta);
 };
 

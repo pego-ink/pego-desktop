@@ -1,13 +1,14 @@
 import { toast } from "sonner";
 import { create } from "zustand";
-import type { ProjectFile } from "@pego/agent";
+import type { ProjectFile, ProjectInfo } from "@pego/agent";
+import { starterDocument } from "@pego/doc";
 import { requestProject } from "@/agent/bridge-client";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { openDocumentText } from "@/persistence/bridge-documents";
 import { saveFile } from "@/persistence/file-actions";
 import { FILE_EXTENSION, createEmptyDocument } from "@/persistence/file-format";
-import { findTabByPath, openTab, switchTab } from "@/tabs/use-tabs-store";
-import { liveProject } from "@/workspace/use-workspace-store";
+import { findTabByPath, openTab, PROJECT_DESIGN_FILE, switchTab } from "@/tabs/use-tabs-store";
+import { liveProject, openProjectWorkspace } from "@/workspace/use-workspace-store";
 
 /** The design folder of the project, as listed by the local bridge. */
 type ProjectState = {
@@ -105,4 +106,41 @@ export const createProjectFile = async (input: string): Promise<void> => {
   }
   await saveFile();
   await refreshProject();
+};
+
+/**
+ * Open a project: show its workspace and its design (project.pego) in a tab, creating the file
+ * when the project has none yet. Resolves false when the workspace could not be shown.
+ */
+export const openProject = async (
+  project: Pick<ProjectInfo, "id" | "name" | "dir"> & { mainFile?: string },
+): Promise<boolean> => {
+  if (!openProjectWorkspace(project)) return false;
+  const mainFile = project.mainFile ?? `${project.dir}/${PROJECT_DESIGN_FILE}`;
+  const open = findTabByPath(mainFile);
+  if (open) {
+    switchTab(open.id);
+    return true;
+  }
+  try {
+    const response = await requestProject("read", mainFile);
+    const outcome = openDocumentText(response.text ?? "", mainFile, { reload: false });
+    if (outcome.isError) toast.error(outcome.content);
+    return true;
+  } catch {
+    // No project.pego yet (projects made before it existed): start one and save it.
+    if (!useAgentStore.getState().bridge.connected) return true;
+    if (
+      !openTab(
+        starterDocument(project.name),
+        { fileName: PROJECT_DESIGN_FILE, bridgePath: mainFile },
+        { saved: false },
+      )
+    ) {
+      return true;
+    }
+    await saveFile();
+    await refreshProject();
+    return true;
+  }
 };

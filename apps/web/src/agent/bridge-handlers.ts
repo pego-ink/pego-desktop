@@ -84,7 +84,7 @@ export const createBridgeHandlers = ({
       return void reply(outcome.content, outcome.isError);
     }
     if (message.tool === EDITOR_OPS.openProject) {
-      const outcome = openProjectForBridge(message.input);
+      const outcome = await openProjectForBridge(message.input);
       if (!outcome.isError) agent().appendLog({ kind: "info", text: outcome.content });
       return void reply(outcome.content, outcome.isError);
     }

@@ -93,7 +93,7 @@ let queue: Promise<unknown> = Promise.resolve();
  * one at a time so a dashboard full of projects does not spike WASM memory.
  */
 export const getProjectPreview = (
-  project: Pick<ProjectInfo, "id" | "dir" | "modifiedAt" | "fileCount">,
+  project: Pick<ProjectInfo, "id" | "dir" | "modifiedAt" | "fileCount"> & { mainFile?: string },
   theme: ResolvedTheme,
 ): Promise<ProjectPreview> => {
   const key = `${project.id}:${project.modifiedAt}:${theme}`;
@@ -102,7 +102,10 @@ export const getProjectPreview = (
   const job = (async (): Promise<ProjectPreview> => {
     if (project.fileCount === 0) return { image: null, file: null };
     const listing = await requestProject("list", project.dir);
-    const file = previewFile(listing.files ?? []);
+    const files = listing.files ?? [];
+    // The project's design first; otherwise its most recently changed file.
+    const file =
+      files.find((candidate) => candidate.path === project.mainFile) ?? previewFile(files);
     if (!file) return { image: null, file: null };
     const read = await requestProject("read", file.path);
     const image = await renderPreview(parse(read.text ?? "", file.path), theme);

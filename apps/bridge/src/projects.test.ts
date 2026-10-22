@@ -15,7 +15,15 @@ describe("projects", () => {
   test("create writes project.json in a fresh folder; list finds them with file counts", async () => {
     const shop = await createProject(root, "Kirimi Shop");
     const again = await createProject(root, "kirimi shop!");
-    expect(shop).toMatchObject({ name: "Kirimi Shop", relativeDir: "kirimi-shop", fileCount: 0 });
+    expect(shop).toMatchObject({
+      name: "Kirimi Shop",
+      relativeDir: "kirimi-shop",
+      fileCount: 1,
+      hasMainFile: true,
+      mainFile: join(shop.dir, "project.pego"),
+    });
+    const design = JSON.parse(await readFile(shop.mainFile, "utf8"));
+    expect(design).toMatchObject({ format: "pego", version: 2, document: { name: "Kirimi Shop" } });
     expect(again.relativeDir).toBe("kirimi-shop-2");
     expect(shop.id).toMatch(/^[a-z0-9]{8}$/);
     const meta = JSON.parse(await readFile(join(shop.dir, "project.json"), "utf8"));
@@ -25,7 +33,7 @@ describe("projects", () => {
     await mkdir(join(root, "assets"));
     const projects = await listProjects(root);
     expect(projects.map((p) => p.name)).toEqual(["Kirimi Shop", "kirimi shop!"]);
-    expect(projects[0]!.fileCount).toBe(1);
+    expect(projects[0]!.fileCount).toBe(2);
   });
 
   test("find by id, by name, by prefix; ambiguity returns the matches", async () => {
@@ -54,6 +62,8 @@ describe("projects", () => {
       root,
     );
     expect(open.content).toStartWith("Opened project Kirimi Shop");
+    expect(open.content).toContain("project.pego is the active tab");
+    expect(open.content).toContain("Other design files in the project:");
     expect(open.content).toContain("home.pego");
     expect(opened[0]).toMatchObject({ name: "Kirimi Shop" });
     const missing = await runFileTool("open_project", { project: "nope" }, callTool, source, root);

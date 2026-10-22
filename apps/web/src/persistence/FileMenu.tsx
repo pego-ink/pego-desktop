@@ -2,7 +2,8 @@ import { useEffect, useRef, useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import { newDocument, openFile, saveFile, saveFileAs } from "./file-actions";
-import { DEFAULT_FILE_NAME } from "./file-format";
+import { useDocumentStore } from "@/store/use-document-store";
+import { documentTitle } from "@/tabs/use-tabs-store";
 import { useFileStore, useIsDirty } from "./use-file-store";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -19,7 +20,10 @@ const ITEMS = [
 export const FileMenu = () => {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
-  const fileName = useFileStore((s) => s.fileName) ?? DEFAULT_FILE_NAME;
+  const doc = useDocumentStore((s) => s.doc);
+  const fileName = useFileStore((s) => s.fileName);
+  const bridgePath = useFileStore((s) => s.bridgePath);
+  const title = documentTitle(doc, { fileName, bridgePath });
   const dirty = useIsDirty();
 
   useEffect(() => {
@@ -50,8 +54,11 @@ export const FileMenu = () => {
         File
         <ChevronDownIcon />
       </Button>
-      <span className="flex items-center gap-1.5 text-sm text-muted-foreground" title={fileName}>
-        <span className="max-w-56 truncate">{fileName}</span>
+      <span
+        className="flex items-center gap-1.5 text-sm text-muted-foreground"
+        title={bridgePath ?? fileName ?? title}
+      >
+        <span className="max-w-56 truncate">{title}</span>
         {dirty ? (
           <span
             role="status"
