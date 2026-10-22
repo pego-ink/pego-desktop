@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Redo2Icon, SparklesIcon, Undo2Icon } from "lucide-react";
+import { PanelRightIcon, Redo2Icon, SparklesIcon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
 import { LayersPanel } from "@/panels/LayersPanel";
 import { AgentPanel } from "@/panels/agent/AgentPanel";
@@ -7,6 +7,7 @@ import { isRunActive } from "@/panels/agent/agent-format";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { PropertiesPanel } from "@/panels/PropertiesPanel";
 import { useDocumentStore } from "@/store/use-document-store";
+import { showProperties, useLayoutStore } from "@/store/use-layout-store";
 import { Button } from "@pego/ui/components/button";
 import { ResizeHandle } from "@pego/ui/components/resize-handle";
 import { usePanelWidth } from "@/hooks/use-panel-width";
@@ -123,6 +124,37 @@ const LeftColumn = () => {
   );
 };
 
+const PropertiesToggle = () => {
+  const pinned = useLayoutStore((s) => s.propertiesPinned);
+  const toggle = useLayoutStore((s) => s.togglePropertiesPinned);
+  const label = pinned ? "Hide properties when nothing is selected" : "Always show properties";
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={label}
+      aria-pressed={pinned}
+      title={label}
+      onClick={toggle}
+      className={cn(pinned && "bg-muted text-foreground")}
+    >
+      <PanelRightIcon />
+    </Button>
+  );
+};
+
+/** Properties column: hidden while nothing is selected unless the user pinned it open. */
+const RightColumn = () => {
+  const hasSelection = useDocumentStore((s) => s.selection.length > 0);
+  const pinned = useLayoutStore((s) => s.propertiesPinned);
+  if (!showProperties(hasSelection ? 1 : 0, pinned)) return null;
+  return (
+    <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
+      <PropertiesPanel />
+    </aside>
+  );
+};
+
 export const EditorShell = () => (
   <div className="flex h-full flex-col bg-background text-foreground">
     <header className="flex h-12 shrink-0 items-center justify-between border-b border-border bg-card px-3">
@@ -132,6 +164,7 @@ export const EditorShell = () => (
       </div>
       <div className="flex items-center gap-2">
         <HistoryButtons />
+        <PropertiesToggle />
         <Button size="sm" variant="secondary">
           Share
         </Button>
@@ -142,9 +175,7 @@ export const EditorShell = () => (
       <main className="min-w-0 flex-1">
         <Canvas />
       </main>
-      <aside className="flex w-72 shrink-0 flex-col border-l border-border bg-card">
-        <PropertiesPanel />
-      </aside>
+      <RightColumn />
     </div>
   </div>
 );
