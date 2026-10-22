@@ -7,7 +7,7 @@ import type { DecisionRequest, PlanStep, StepStatus } from "./types";
  * document the same way.
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
-export const BRIDGE_PROTOCOL_VERSION = 2;
+export const BRIDGE_PROTOCOL_VERSION = 3;
 
 /** Messages the editor sends to the bridge. */
 export type EditorToBridge =
@@ -21,13 +21,25 @@ export type EditorToBridge =
       /** Base64 PNGs (e.g. get_screenshot); the bridge maps them to MCP image content. */
       images?: { mediaType: "image/png"; data: string; width: number; height: number }[];
     }
-  /** Start a Claude Agent SDK run with the user's local Claude Code login. */
-  | { type: "run_start"; runId: string; prompt: string }
+  /** Start a run with a local agent CLI (the user's own login/config for that CLI). */
+  | { type: "run_start"; runId: string; prompt: string; agentId: LocalAgentId; model?: string }
+  /** Re-detect installed agent CLIs; answered with `agents`. */
+  | { type: "agents_refresh" }
+  /** List models an agent can use; answered with `models`. */
+  | { type: "models_request"; agentId: LocalAgentId }
   | { type: "run_cancel"; runId: string };
 
 /** Messages the bridge sends to the editor. */
 export type BridgeToEditor =
-  | { type: "welcome"; protocol: number; claudeCodeAvailable: boolean; mcpUrl: string }
+  | {
+      type: "welcome";
+      protocol: number;
+      claudeCodeAvailable: boolean;
+      mcpUrl: string;
+      agents: LocalAgentInfo[];
+    }
+  | { type: "agents"; agents: LocalAgentInfo[] }
+  | { type: "models"; agentId: LocalAgentId; models: string[]; error?: string }
   /** Execute a shared tool by name in the editor and answer with `tool_result`. */
   | {
       type: "tool_call";
@@ -48,3 +60,28 @@ export type RunEvent =
   | { kind: "error"; message: string };
 
 export type { DecisionRequest, PlanStep, StepStatus };
+
+/** Local coding-agent CLIs the bridge can run against the open document. */
+export const LOCAL_AGENT_IDS = [
+  "claude-code",
+  "codex",
+  "opencode",
+  "qwen",
+  "gemini",
+  "cursor",
+] as const;
+export type LocalAgentId = (typeof LOCAL_AGENT_IDS)[number];
+
+export type LocalAgentInfo = {
+  id: LocalAgentId;
+  /** Display name, e.g. "Claude Code". */
+  name: string;
+  installed: boolean;
+  version?: string;
+  /** Resolved executable path. */
+  path?: string;
+  /** The agent accepts a model choice (`models_request` returns options). */
+  supportsModels: boolean;
+  /** Why it is unavailable or what to do (e.g. "Run `codex login` once"). */
+  note?: string;
+};
