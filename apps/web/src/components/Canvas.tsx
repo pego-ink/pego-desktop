@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import type { Layout, PegoDocument } from "@pego/doc";
+import { pageOrFirst, type Layout, type PegoDocument } from "@pego/doc";
 import { prefersReducedMotion } from "@pego/ui/lib/motion";
 import type { GrDirectContext, Image as SkImage, Surface } from "canvaskit-wasm";
 import { loadCanvasKit } from "@/canvas/load-canvaskit";
@@ -10,7 +10,7 @@ import { useLayerEvents } from "@/canvas/layer-events";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
 import { timeFrame } from "@/canvas/frame-perf";
-import { createFocusGroupsSelector, type AgentFocusGroup } from "@/agent/focus-groups";
+import { createFocusGroupsSelector, focusOnPage, type AgentFocusGroup } from "@/agent/focus-groups";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
@@ -195,7 +195,11 @@ export const Canvas = () => {
 
           canvas.save();
           canvas.scale(dpr, dpr);
-          const agentFocus = selectFocusGroups(useAgentStore.getState());
+          // Runs may work on another page: only boxes on the shown page are drawn.
+          const agentFocus = focusOnPage(
+            selectFocusGroups(useAgentStore.getState()),
+            pageOrFirst(doc, pageId),
+          );
           const focusAnimated = agentFocus.length > 0 && !prefersReducedMotion();
           const toolHandler = getToolHandler(useToolStore.getState().tool);
           renderOverlay(res, canvas, {

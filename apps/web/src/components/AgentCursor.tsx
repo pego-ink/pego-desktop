@@ -24,10 +24,15 @@ import {
 import { docToScreen, screenToDoc } from "@/canvas/types";
 import { runColor, RUN_INK } from "@/agent/run-colors";
 import { useAgentStore } from "@/agent/use-agent-store";
-import { useDocumentStore } from "@/store/use-document-store";
+import { idsOnPage } from "@/agent/focus-groups";
+import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
 const PILL_FLIP_MARGIN = 190;
+
+/** Focus ids on the shown page: a run working on another page makes the cursor wander here. */
+const shownFocusIds = (ids: readonly string[]): readonly string[] =>
+  idsOnPage(activePage(useDocumentStore.getState()), ids);
 
 type Mode = "target" | "wander" | "park";
 type Aim = { kind: "box"; anchor: Fraction } | { kind: "point"; point: Point };
@@ -103,7 +108,9 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       const { camera } = useViewportStore.getState();
       const { doc } = useDocumentStore.getState();
       if (current.mode === "target" && current.aim.kind === "box") {
-        const { union } = focusInfo(doc, live()?.focusIds ?? [], () => getLayout(doc));
+        const { union } = focusInfo(doc, shownFocusIds(live()?.focusIds ?? []), () =>
+          getLayout(doc),
+        );
         if (union) {
           const raw = pointInRect(union, current.aim.anchor);
           const screen = clampToSize(docToScreen(camera, raw.x, raw.y), size);
@@ -158,7 +165,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       const reduced = prefersReducedMotion();
 
       const doc = useDocumentStore.getState().doc;
-      const focus = focusInfo(doc, agent.focusIds, () => getLayout(doc));
+      const focus = focusInfo(doc, shownFocusIds(agent.focusIds), () => getLayout(doc));
       const mode: Mode =
         agent.status === "awaiting_decision"
           ? "park"

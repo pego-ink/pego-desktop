@@ -1,3 +1,4 @@
+import { collectIds, type PageNode } from "@pego/doc";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { runColor } from "./run-colors";
 import { liveTitle, type SessionLive } from "./use-agent-store";
@@ -55,4 +56,32 @@ export const createFocusGroupsSelector = () => {
     if (!sameGroups(next, last)) last = next;
     return last;
   };
+};
+
+/** Every node id on a page, cached per page object (pages are immutable). */
+const pageIdCache = new WeakMap<PageNode, Set<string>>();
+const idsOf = (page: PageNode): Set<string> => {
+  let ids = pageIdCache.get(page);
+  if (!ids) pageIdCache.set(page, (ids = collectIds(page)));
+  return ids;
+};
+
+/** The ids that sit on `page` (a run may work on another page than the one shown). */
+export const idsOnPage = (page: PageNode, ids: readonly string[]): readonly string[] => {
+  if (ids.length === 0) return ids;
+  const onPage = idsOf(page);
+  return ids.every((id) => onPage.has(id)) ? ids : ids.filter((id) => onPage.has(id));
+};
+
+/** Focus groups limited to the shown page; groups with nothing on it are dropped. */
+export const focusOnPage = (
+  groups: readonly AgentFocusGroup[],
+  page: PageNode,
+): readonly AgentFocusGroup[] => {
+  if (groups.length === 0) return groups;
+  return groups.flatMap((group) => {
+    const ids = idsOnPage(page, group.ids);
+    if (ids.length === 0) return [];
+    return [ids === group.ids ? group : { ...group, ids }];
+  });
 };
