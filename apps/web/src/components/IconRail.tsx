@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ComponentType, type KeyboardEvent, type SVGProps } from "react";
-import { LayersIcon, SparklesIcon } from "lucide-react";
+import { LayersIcon, SettingsIcon, SparklesIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import { Tooltip } from "@pego/ui/components/tooltip";
 import {
@@ -9,6 +9,7 @@ import {
   type RailState,
   type RailTab,
 } from "@/components/rail-state";
+import { useSettingsModal } from "@/store/use-settings-store";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const ALT = isMac ? "⌥" : "Alt+";
@@ -117,6 +118,21 @@ export const IconRail = ({ state, agentWorking, onPress }: Props) => {
           );
         })}
       </div>
+      <Tooltip content="Settings" shortcut={`${isMac ? "⌘" : "Ctrl+"},`}>
+        <button
+          type="button"
+          aria-label="Settings"
+          aria-keyshortcuts="Control+, Meta+,"
+          aria-haspopup="dialog"
+          onClick={() => {
+            const { tab, openSettings } = useSettingsModal.getState();
+            openSettings(tab);
+          }}
+          className="mt-auto flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4"
+        >
+          <SettingsIcon />
+        </button>
+      </Tooltip>
     </nav>
   );
 };

@@ -21,6 +21,9 @@ import {
 } from "@/interaction/create-node";
 import { applyAll, duplicateOps } from "@/interaction/duplicate";
 import { hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
+import { useSettingsStore } from "@/store/use-settings-store";
+import { wheelAction } from "@/interaction/wheel-behavior";
+import { snapEnabled } from "@/interaction/snap";
 import { isDiscreteWheel, wheelNotchFactor } from "@/interaction/camera";
 import { useInteractionState } from "@/interaction/interaction-state";
 import {
@@ -134,14 +137,17 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const dx = e.deltaX * unit;
       const dy = e.deltaY * unit;
       const viewport = useViewportStore.getState();
-      if (e.ctrlKey || e.metaKey) {
+      const action = wheelAction(useSettingsStore.getState().wheelBehavior, e);
+      if (action === "zoom") {
         const p = local(e);
         // Notched wheels ease toward a clamped step; trackpad pinch stays 1:1.
         if (isDiscreteWheel(e)) viewport.wheelZoomBy(wheelNotchFactor(dy), p.x, p.y);
         else viewport.zoomBy(Math.exp(-dy * 0.01), p.x, p.y);
         return;
       }
-      viewport.panBy(-dx, -dy);
+      // Shift+wheel: browsers may already report the delta as deltaX, otherwise use deltaY.
+      if (action === "pan-horizontal") viewport.panBy(-(dx || dy), 0);
+      else viewport.panBy(-dx, -dy);
     };
 
     const onPointerDown = (e: PointerEvent) => {
@@ -303,7 +309,11 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
           Math.hypot(p.x - gesture.startX, p.y - gesture.startY) < DRAG_THRESHOLD
         )
           return;
-        const box = drawBox(gesture.start, toDoc(p.x, p.y), { shift: e.shiftKey, alt: e.altKey });
+        const box = drawBox(gesture.start, toDoc(p.x, p.y), {
+          shift: e.shiftKey,
+          alt: e.altKey,
+          snap: snapEnabled(),
+        });
         if (!gesture.started) {
           gesture.started = true;
           const ok = store.commit(
@@ -359,7 +369,10 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
           ? constrainAxis(screenDx / zoom, screenDy / zoom)
           : { dx: screenDx / zoom, dy: screenDy / zoom };
         ok = apply(
-          [...copyOps, ...moveOps(gesture.startDoc, gesture.ids, delta.dx, delta.dy)],
+          [
+            ...copyOps,
+            ...moveOps(gesture.startDoc, gesture.ids, delta.dx, delta.dy, snapEnabled()),
+          ],
           copyOps.length > 0 ? "Duplicate" : "Move",
         );
         if (ok && copyOps.length > 0) store.select(gesture.ids);
@@ -367,8 +380,12 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
         const next = resizeBox(gesture.startBox, gesture.handle, screenDx / zoom, screenDy / zoom, {
           shift: e.shiftKey,
           alt: e.altKey,
+          snap: snapEnabled(),
         });
-        ok = apply(resizeOps(gesture.startDoc, gesture.id, gesture.startBox, next), "Resize");
+        ok = apply(
+          resizeOps(gesture.startDoc, gesture.id, gesture.startBox, next, snapEnabled()),
+          "Resize",
+        );
       }
       if (!ok) endGesture();
     };

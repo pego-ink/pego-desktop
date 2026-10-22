@@ -1,5 +1,6 @@
 // Image tool: activating it opens a file picker; the next click or drag on the canvas places
 // the chosen image (click = natural size capped at 800 px, drag = the dragged box).
+import { roundPx, snapEnabled } from "@/interaction/snap";
 import { getLayout } from "@/canvas/layout";
 import { drawUpdateOps, drawBox } from "@/interaction/create-node";
 import {
@@ -53,8 +54,8 @@ registerToolHandler("image", {
     const start = p.doc;
     const natural = placementSize(asset);
     const node = buildImageNode(store.doc, asset, placement, {
-      x: Math.round(start.x),
-      y: Math.round(start.y),
+      x: roundPx(start.x, snapEnabled()),
+      y: roundPx(start.y, snapEnabled()),
       ...natural,
     });
     if (

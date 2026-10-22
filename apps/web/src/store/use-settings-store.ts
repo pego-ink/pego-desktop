@@ -20,12 +20,28 @@ export const DEFAULT_SETTINGS: EditorSettings = {
 
 const KEY = "pego:settings.v1";
 
+const isStep = (value: unknown): value is number =>
+  typeof value === "number" && Number.isFinite(value) && value > 0 && value <= 1000;
+
+/** Merge a stored/partial value over the defaults, dropping anything invalid. */
+export const mergeSettings = (raw: unknown): EditorSettings => {
+  if (typeof raw !== "object" || raw === null) return DEFAULT_SETTINGS;
+  const v = raw as Partial<Record<keyof EditorSettings, unknown>>;
+  return {
+    nudgeSmall: isStep(v.nudgeSmall) ? v.nudgeSmall : DEFAULT_SETTINGS.nudgeSmall,
+    nudgeLarge: isStep(v.nudgeLarge) ? v.nudgeLarge : DEFAULT_SETTINGS.nudgeLarge,
+    wheelBehavior:
+      v.wheelBehavior === "pan" || v.wheelBehavior === "zoom"
+        ? v.wheelBehavior
+        : DEFAULT_SETTINGS.wheelBehavior,
+    snapToPixel: typeof v.snapToPixel === "boolean" ? v.snapToPixel : DEFAULT_SETTINGS.snapToPixel,
+  };
+};
+
 const load = (): EditorSettings => {
   try {
     const raw = globalThis.localStorage?.getItem(KEY);
-    return raw
-      ? { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<EditorSettings>) }
-      : DEFAULT_SETTINGS;
+    return raw ? mergeSettings(JSON.parse(raw)) : DEFAULT_SETTINGS;
   } catch {
     return DEFAULT_SETTINGS;
   }
