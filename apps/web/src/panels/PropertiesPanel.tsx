@@ -1,6 +1,7 @@
 import { useMemo } from "react";
 import { findNode, type PegoNode } from "@pego/doc";
 import { PanelHeader } from "@pego/ui/components/panel-header";
+import { HidePanelButton } from "@/layout/PanelToggles";
 import { useDocumentStore } from "@/store/use-document-store";
 import { LayerIcon } from "@/panels/LayerIcon";
 import { DocumentSummary } from "@/panels/properties/DocumentSummary";
@@ -53,6 +54,7 @@ export const PropertiesPanel = () => {
         ) : (
           <span>{nodes.length} selected</span>
         )}
+        <HidePanelButton side="right" />
       </PanelHeader>
       <div className="min-h-0 flex-1 overflow-y-auto">
         {nodes.length === 0 || !first ? (
