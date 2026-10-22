@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { drillTarget, escapeSelection, marqueeSelect, pickAt, toggleSelection } from "./selection";
 import { fixtureDoc as doc, fixtureLayout as layout } from "./test-doc";
+import type { Layout, PegoDocument } from "@pego/doc";
 
 describe("pickAt", () => {
   test("empty canvas -> null", () => expect(pickAt(doc, layout, 500, 500, [], false)).toBeNull());
@@ -46,4 +47,25 @@ describe("selection helpers", () => {
     expect(escapeSelection(doc, ["f1"])).toEqual([]);
     expect(escapeSelection(doc, ["r1", "flexchild"])).toEqual([]);
   });
+});
+
+describe("marqueeSelect with rotation", () => {
+  // 100x10 bar rotated 90° counter-clockwise around its top-left: drawn over x 0..10, y -100..0.
+  const rotatedDoc: PegoDocument = {
+    version: 0,
+    id: "d",
+    name: "d",
+    variables: {},
+    children: [{ type: "rectangle", id: "bar", x: 0, y: 0, width: 100, height: 10, rotation: 90 }],
+  };
+  const rotatedLayout: Layout = new Map([["bar", { x: 0, y: 0, width: 100, height: 10 }]]);
+
+  test("misses the unrotated footprint", () =>
+    expect(marqueeSelect(rotatedDoc, rotatedLayout, { x: 50, y: 2, width: 10, height: 6 })).toEqual(
+      [],
+    ));
+  test("hits the rotated shape", () =>
+    expect(
+      marqueeSelect(rotatedDoc, rotatedLayout, { x: 2, y: -60, width: 6, height: 10 }),
+    ).toEqual(["bar"]));
 });

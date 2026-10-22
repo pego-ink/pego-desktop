@@ -1,5 +1,5 @@
 import type { Layout, PegoDocument } from "@pego/doc";
-import { boxesIntersect, getNodeIndex, hitPath } from "./hit-test";
+import { getNodeIndex, hitPath, rotationOf, type Point } from "./hit-test";
 import type { Box } from "@pego/doc";
 
 /**
@@ -70,11 +70,51 @@ export const drillTarget = (
 export const toggleSelection = (selection: readonly string[], id: string): string[] =>
   selection.includes(id) ? selection.filter((s) => s !== id) : [...selection, id];
 
-/** Top-level nodes whose box intersects the marquee. */
+/** Corners of `box` as drawn: rotated counter-clockwise by `rotation` degrees around its top-left. */
+const rotatedCorners = (box: Box, rotation: number): Point[] => {
+  const rad = (rotation * Math.PI) / 180;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+  const local = [
+    [0, 0],
+    [box.width, 0],
+    [box.width, box.height],
+    [0, box.height],
+  ] as const;
+  // Inverse of hit-test's toLocal: world = top-left + rotate(-rotation) * local.
+  return local.map(([lx, ly]) => ({
+    x: box.x + lx * cos + ly * sin,
+    y: box.y - lx * sin + ly * cos,
+  }));
+};
+
+const project = (points: readonly Point[], axis: Point) => {
+  const dots = points.map((p) => p.x * axis.x + p.y * axis.y);
+  return { min: Math.min(...dots), max: Math.max(...dots) };
+};
+
+/** Separating axis test for two convex quads; touching edges count as intersecting. */
+const convexIntersect = (a: readonly Point[], b: readonly Point[]): boolean => {
+  const axes = [a, b].flatMap((poly) =>
+    poly.map((p, i) => {
+      const next = poly[(i + 1) % poly.length]!;
+      return { x: -(next.y - p.y), y: next.x - p.x };
+    }),
+  );
+  return axes.every((axis) => {
+    const pa = project(a, axis);
+    const pb = project(b, axis);
+    return pa.max >= pb.min && pb.max >= pa.min;
+  });
+};
+
+/** Top-level nodes whose drawn (rotated) shape intersects the marquee. */
 export const marqueeSelect = (doc: PegoDocument, layout: Layout, rect: Box): string[] =>
   doc.children.flatMap((node) => {
     const box = layout.get(node.id);
-    return box && boxesIntersect(box, rect) ? [node.id] : [];
+    if (!box) return [];
+    const shape = rotatedCorners(box, rotationOf(doc, node));
+    return convexIntersect(shape, rotatedCorners(rect, 0)) ? [node.id] : [];
   });
 
 export const normalizeRect = (x1: number, y1: number, x2: number, y2: number): Box => ({

@@ -14,12 +14,12 @@ export const pointInBox = (box: Box, x: number, y: number): boolean =>
 export const boxesIntersect = (a: Box, b: Box): boolean =>
   a.x <= b.x + b.width && a.x + a.width >= b.x && a.y <= b.y + b.height && a.y + a.height >= b.y;
 
-type Point = { x: number; y: number };
+export type Point = { x: number; y: number };
 
 const ORIGIN: Box = { x: 0, y: 0, width: 0, height: 0 };
 
 /** Rotation (degrees, counter-clockwise) the renderer applies to a node. Refs use their resolved instance root. */
-const rotationOf = (doc: PegoDocument, node: PegoNode): number => {
+export const rotationOf = (doc: PegoDocument, node: PegoNode): number => {
   const resolved = node.type === "ref" ? resolveInstance(doc, node) : node;
   return resolveNumber(resolved?.rotation, doc.variables, 0);
 };
