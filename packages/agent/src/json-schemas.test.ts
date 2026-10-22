@@ -4,7 +4,8 @@ import { nodeJsonSchema, propsJsonSchema } from "./json-schemas";
 
 describe("node json schema", () => {
   test("offers the image type and its props", () => {
-    const type = nodeJsonSchema.properties?.type as { enum: string[] };
+    const properties = nodeJsonSchema.properties as Record<string, { enum?: string[] }>;
+    const type = properties.type as { enum: string[] };
     expect(type.enum).toContain("image");
     for (const key of [
       "src",

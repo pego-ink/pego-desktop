@@ -40,6 +40,18 @@ export type ToolHost = {
     nodeId: string,
     options?: { scale?: number; maxSize?: number },
   ) => Promise<ToolImage>;
+  /**
+   * Generate a bitmap with the user's image model. Resolves with a `data:image/...;base64,` URL
+   * (or an https URL) and optional alt text; rejects with a user-readable message. Missing when the host
+   * cannot generate images at all: `generate_image` then returns `unsupported`. A host that has the
+   * capability but no provider configured may reject with an Error named `ImageUnsupportedError`
+   * to get the same `unsupported` result with its own message.
+   */
+  generateImage?: (request: {
+    prompt: string;
+    width: number;
+    height: number;
+  }) => Promise<{ src: string; alt?: string }>;
 };
 
 /** Base64 PNG attached to a tool result (screenshots). */

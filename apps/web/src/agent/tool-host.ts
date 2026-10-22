@@ -5,6 +5,7 @@ import { listIconNames, loadIconData } from "@/canvas/icons";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { focusCamera } from "./focus-camera";
+import { generateImage } from "./generate-image";
 import { requestDecision } from "./decisions";
 import { useAgentStore } from "./use-agent-store";
 
@@ -122,6 +123,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     focusViewport,
     listIcons: listIconNames,
     renderImage,
+    generateImage,
     applyOps,
     setFocus: (ids) => useAgentStore.getState().set({ focusIds: ids }),
     reportPlan,
