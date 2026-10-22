@@ -18,9 +18,6 @@ import {
   runStatusLabel,
 } from "@/panels/agent/agent-format";
 
-// TODO(bridge): mount the bridge connection starter from "@/agent/bridge-client" once exported
-// (call it once for the app lifetime, e.g. in a useEffect here or in EditorShell).
-
 const RunHeader = () => {
   const status = useAgentStore((s) => s.status);
   const steps = useAgentStore((s) => s.steps);
