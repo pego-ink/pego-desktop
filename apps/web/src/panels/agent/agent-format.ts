@@ -134,6 +134,20 @@ export const customModelCandidate = (models: readonly string[], query: string): 
 
 export const MODEL_DEFAULT_LABEL = "Default";
 
+export type PillModel = { label: string; isDefault: boolean };
+
+/** Composer pill model text: the chosen model id, or a muted "Default" when none is chosen. */
+export const pillModel = (model: string | null | undefined): PillModel => {
+  const id = model?.trim();
+  return !id || id.toLowerCase() === "default"
+    ? { label: MODEL_DEFAULT_LABEL, isDefault: true }
+    : { label: id, isDefault: false };
+};
+
+/** Tooltip and accessible-name text for the pill: "Agent · model". */
+export const pillTitle = (agentName: string, model: PillModel): string =>
+  `${agentName} · ${model.label}`;
+
 export const EXAMPLE_PROMPTS = [
   "Design a login screen with email, password and a primary button",
   "Make the selected frame a mobile pricing card with three tiers",

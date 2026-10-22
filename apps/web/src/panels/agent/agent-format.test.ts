@@ -6,6 +6,8 @@ import {
   agentStatus,
   AGENT_PROVIDER,
   noteCommand,
+  pillModel,
+  pillTitle,
   customModelCandidate,
   filterModels,
   INSTALL_HINTS,
@@ -128,6 +130,19 @@ describe("agent-format", () => {
     expect(noteCommand("Run `codex login` once")).toBe("codex login");
     expect(noteCommand("Not signed in")).toBeNull();
     expect(noteCommand(undefined)).toBeNull();
+  });
+
+  test("pillModel falls back to a muted Default", () => {
+    expect(pillModel(undefined)).toEqual({ label: "Default", isDefault: true });
+    expect(pillModel(null).isDefault).toBe(true);
+    expect(pillModel("  ").isDefault).toBe(true);
+    expect(pillModel("default").isDefault).toBe(true);
+    expect(pillModel("gpt-5")).toEqual({ label: "gpt-5", isDefault: false });
+  });
+
+  test("pillTitle joins agent and model", () => {
+    expect(pillTitle("Codex", pillModel("gpt-5"))).toBe("Codex · gpt-5");
+    expect(pillTitle("Codex", pillModel(undefined))).toBe("Codex · Default");
   });
 
   test("every local agent has a provider", () => {

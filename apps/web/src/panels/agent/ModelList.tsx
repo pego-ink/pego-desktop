@@ -15,7 +15,7 @@ import {
 const MAX_VISIBLE = 150;
 
 const optionClass =
-  "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs outline-none hover:bg-accent focus-visible:bg-accent";
+  "flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none hover:bg-accent focus-visible:bg-accent";
 
 type ModelListProps = {
   agentId: LocalAgentId;
@@ -47,7 +47,7 @@ export const ModelList = ({ agentId, onPick }: ModelListProps) => {
   };
 
   return (
-    <div className="grid gap-1" onKeyDown={navigateList}>
+    <div className="grid gap-0.5" onKeyDown={navigateList}>
       <Input
         data-nav
         autoFocus
@@ -58,8 +58,9 @@ export const ModelList = ({ agentId, onPick }: ModelListProps) => {
         value={query}
         onChange={(event) => setQuery(event.target.value)}
         onKeyDown={onInputKeyDown}
+        className="h-7 px-2 text-[13px] md:text-[13px]"
       />
-      <div role="listbox" aria-label="Models" className="max-h-56 overflow-y-auto">
+      <div role="listbox" aria-label="Models" className="max-h-52 overflow-y-auto">
         <button
           data-nav
           type="button"
@@ -70,7 +71,7 @@ export const ModelList = ({ agentId, onPick }: ModelListProps) => {
         >
           <span className="min-w-0 flex-1 truncate">{MODEL_DEFAULT_LABEL}</span>
           <span className="text-[11px] text-muted-foreground">CLI default</span>
-          {selected ? null : <CheckIcon className="size-3.5" />}
+          {selected ? null : <CheckIcon className="size-3.5 shrink-0" />}
         </button>
         {custom ? (
           <button
