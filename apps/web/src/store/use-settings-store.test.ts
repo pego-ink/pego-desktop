@@ -37,6 +37,10 @@ describe("mergeSettings", () => {
         snapToPixel: 1,
       }),
     ).toEqual(store.DEFAULT_SETTINGS));
+  test("toolbar position: a known side is kept, anything else falls back to bottom", () => {
+    expect(store.mergeSettings({ toolbarPosition: "left" }).toolbarPosition).toBe("left");
+    expect(store.mergeSettings({ toolbarPosition: "middle" }).toolbarPosition).toBe("bottom");
+  });
   test("valid wheel behaviour and snap kept", () =>
     expect(store.mergeSettings({ wheelBehavior: "zoom", snapToPixel: false })).toMatchObject({
       wheelBehavior: "zoom",

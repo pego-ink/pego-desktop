@@ -5,6 +5,7 @@ import {
   normalizeCustomNames,
   type AgentNameSet,
 } from "@/agent/agent-names";
+import { isToolbarPosition, type ToolbarPosition } from "@/components/toolbar-position";
 
 /** Editor preferences, persisted per browser/app install. */
 export type EditorSettings = {
@@ -19,6 +20,8 @@ export type EditorSettings = {
   agentNameSet: AgentNameSet;
   /** The "custom" set, one name per slot (may hold blanks while being edited). */
   customAgentNames: string[];
+  /** Where the floating tool picker sits on the canvas. */
+  toolbarPosition: ToolbarPosition;
 };
 
 export const DEFAULT_SETTINGS: EditorSettings = {
@@ -28,6 +31,7 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   snapToPixel: true,
   agentNameSet: "pego",
   customAgentNames: [...DEFAULT_CUSTOM_AGENT_NAMES],
+  toolbarPosition: "bottom",
 };
 
 const KEY = "pego:settings.v1";
@@ -49,6 +53,9 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
     snapToPixel: typeof v.snapToPixel === "boolean" ? v.snapToPixel : DEFAULT_SETTINGS.snapToPixel,
     agentNameSet: isAgentNameSet(v.agentNameSet) ? v.agentNameSet : DEFAULT_SETTINGS.agentNameSet,
     customAgentNames: normalizeCustomNames(v.customAgentNames),
+    toolbarPosition: isToolbarPosition(v.toolbarPosition)
+      ? v.toolbarPosition
+      : DEFAULT_SETTINGS.toolbarPosition,
   };
 };
 

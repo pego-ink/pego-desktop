@@ -13,6 +13,11 @@ import { toggleAutoSave } from "@/persistence/autosave-actions";
 import { isFileAutosaveSupported } from "@/persistence/file-autosave";
 import { useAutosaveStore } from "@/persistence/use-autosave-store";
 import { useSettingsStore, type EditorSettings } from "@/store/use-settings-store";
+import {
+  TOOLBAR_POSITION_LABELS,
+  TOOLBAR_POSITIONS,
+  type ToolbarPosition,
+} from "@/components/toolbar-position";
 import { SettingRow, SettingsSection } from "./SettingRow";
 
 const WHEEL_OPTIONS = [
@@ -29,6 +34,12 @@ const THEME_OPTIONS = [
   { value: "light", label: "Light", title: "Always use the light theme" },
   { value: "dark", label: "Dark", title: "Always use the dark theme" },
 ] as const satisfies readonly { value: ThemeMode; label: string; title: string }[];
+
+const TOOLBAR_OPTIONS = TOOLBAR_POSITIONS.map((value) => ({
+  value,
+  label: TOOLBAR_POSITION_LABELS[value],
+  title: `Tools at the ${value} of the canvas`,
+})) satisfies { value: ToolbarPosition; label: string; title: string }[];
 
 const NUDGE_LIMITS = { min: 0.1, max: 1000 } as const;
 
@@ -64,6 +75,7 @@ export const GeneralSettingsTab = () => {
   const nudgeLarge = useSettingsStore((s) => s.nudgeLarge);
   const wheelBehavior = useSettingsStore((s) => s.wheelBehavior);
   const snapToPixel = useSettingsStore((s) => s.snapToPixel);
+  const toolbarPosition = useSettingsStore((s) => s.toolbarPosition);
   const themeMode = useThemeStore((s) => s.mode);
   const update = useSettingsStore((s) => s.update);
   const reset = useSettingsStore((s) => s.reset);
@@ -78,6 +90,20 @@ export const GeneralSettingsTab = () => {
               value={themeMode}
               options={THEME_OPTIONS}
               onChange={setThemeMode}
+              className="w-56"
+            />
+          )}
+        </SettingRow>
+        <SettingRow
+          title="Toolbar position"
+          description="Where the tools (Move, Hand, shapes, pen, text) float on the canvas. Right-click the toolbar to move it too."
+        >
+          {() => (
+            <SegmentedControl
+              aria-label="Toolbar position"
+              value={toolbarPosition}
+              options={TOOLBAR_OPTIONS}
+              onChange={(next) => update({ toolbarPosition: next })}
               className="w-56"
             />
           )}
