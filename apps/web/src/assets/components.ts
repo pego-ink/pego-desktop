@@ -35,3 +35,63 @@ export const instanceOp = (
     y: Math.round(at.y),
   },
 });
+
+/** Drag data of a component dragged from the Assets panel onto the canvas. */
+export const COMPONENT_MIME = "application/x-pego-component";
+
+/** Components of one page (a library page shows the library's name). */
+export type ComponentSection = {
+  pageId: string;
+  title: string;
+  library: boolean;
+  entries: ComponentEntry[];
+};
+
+/** Lowercase without accents, for matching typed words. */
+const fold = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+
+/**
+ * Components grouped by page, in page order, keeping those whose name has every typed word
+ * (case and accents ignored). Pages with none left are dropped.
+ */
+export const componentSections = (
+  doc: PegoDocument,
+  entries: readonly ComponentEntry[],
+  query: string,
+): ComponentSection[] => {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  const matches = (entry: ComponentEntry) => {
+    const name = fold(entry.name);
+    return words.every((word) => name.includes(word));
+  };
+  return doc.children.flatMap((page): ComponentSection[] => {
+    const list = entries.filter((entry) => entry.pageId === page.id && matches(entry));
+    if (list.length === 0) return [];
+    return [
+      {
+        pageId: page.id,
+        title: page.library ? page.library.name : page.name,
+        library: page.library !== undefined,
+        entries: list,
+      },
+    ];
+  });
+};
+
+/**
+ * An instance of `component` dropped at canvas point `at`: centered there, inside the deepest
+ * frame under the point (`frameId`, with its box), else at the top level of the page.
+ */
+export const dropInstanceOp = (
+  component: Pick<ComponentEntry, "id" | "name">,
+  size: { width: number; height: number },
+  at: { x: number; y: number },
+  pageId: string,
+  frame: { id: string; x: number; y: number } | null,
+): InsertOp => {
+  const op = instanceOp(component, pageId, {
+    x: at.x - size.width / 2 - (frame?.x ?? 0),
+    y: at.y - size.height / 2 - (frame?.y ?? 0),
+  });
+  return frame ? { ...op, parentId: frame.id } : op;
+};
