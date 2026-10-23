@@ -272,9 +272,15 @@ type Action = "screenshot" | "import";
 const ActionBar = () => {
   const hasPage = useBrowserStore((s) => s.state.url !== "" && !s.state.error);
   const hasPicked = useBrowserStore((s) => s.hasPicked);
+  const pickedSelector = useBrowserStore((s) => s.picked?.selector);
   const [busy, setBusy] = useState<Action | null>(null);
   const subject = hasPicked ? "selection" : "page";
-  const target: BrowserTarget = hasPicked ? { kind: "selection" } : { kind: "full-page" };
+  // The picked element by its unique selector, so a screenshot of it can be refreshed later.
+  const target: BrowserTarget = pickedSelector
+    ? { kind: "query", selector: pickedSelector }
+    : hasPicked
+      ? { kind: "selection" }
+      : { kind: "full-page" };
 
   const run = async (action: Action) => {
     setBusy(action);

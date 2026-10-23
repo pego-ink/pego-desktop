@@ -1,8 +1,10 @@
 import { useMemo } from "react";
+import { ExternalLinkIcon, GlobeIcon, RefreshCwIcon } from "lucide-react";
 import type { ImageNode } from "@pego/doc";
 import { Button } from "@pego/ui/components/button";
 import { NativeSelect } from "@pego/ui/components/native-select";
 import { PropertyRow, PropertySection } from "@pego/ui/components/property-section";
+import { openSource, refreshSnapshot } from "@/browser/refresh-snapshot";
 import { getImageNaturalSize } from "@/canvas/render-image-node";
 import { pickImageFile, readImageFile } from "@/interaction/image-file";
 import { useToolPreview } from "@/interaction/tool-handlers";
@@ -50,6 +52,34 @@ export const ImageSection = ({ node }: { node: ImageNode }) => {
           Replace
         </Button>
       </PropertyRow>
+      {node.source ? (
+        <div className="flex h-7 items-center gap-1 rounded-md bg-muted pr-1 pl-2 text-xs">
+          <GlobeIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          <span className="min-w-0 flex-1 truncate" title={node.source.url}>
+            {node.source.selector
+              ? `${node.source.url} · ${node.source.selector}`
+              : node.source.url}
+          </span>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Open the page"
+            title="Open the page"
+            onClick={() => void openSource(node.source!)}
+          >
+            <ExternalLinkIcon />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Refresh from the page"
+            title="Take the screenshot again from the live page"
+            onClick={() => void refreshSnapshot(node.id)}
+          >
+            <RefreshCwIcon />
+          </Button>
+        </div>
+      ) : null}
       <PropertyRow>
         <PropNumber
           nodes={nodes}
