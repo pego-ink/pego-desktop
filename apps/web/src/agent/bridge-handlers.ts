@@ -1,5 +1,6 @@
 import {
   EDITOR_OPS,
+  toolAnnotations,
   toolByName,
   type BridgeToEditor,
   type EditorToBridge,
@@ -21,6 +22,7 @@ import {
 import { cancelPendingDecisions } from "./decisions";
 import { allRuns, getRun, unregisterRun, type RunEntry } from "./run-registry";
 import { createToolHost } from "./tool-host";
+import { showEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
 
 /** Consecutive Claude Code (MCP) calls arriving within this window share one undo step. */
@@ -143,6 +145,12 @@ export const createBridgeHandlers = ({
       if (!run) return void reply("No matching active run in the editor.", true);
       host = run.host;
     } else if (source.kind === "mcp") {
+      // The app opens on Home: an edit from Claude Code shows the editor first (a new tab when
+      // none is open), so it never lands in a document nobody can see.
+      const { view, liveId } = useWorkspaceStore.getState();
+      if (!toolAnnotations(message.tool).readOnlyHint && (view !== "editor" || liveId === null)) {
+        showEditor();
+      }
       const at = now();
       if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) mcpHost.newGroup();
       lastMcpCallAt = at;
