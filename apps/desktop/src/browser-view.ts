@@ -6,6 +6,7 @@ import {
   parsePageMessage,
   type BrowserBounds,
 } from "@/browser-cdp";
+import { type BrowserEmulation } from "@/browser-emulation";
 import { normalizeBrowserUrl } from "@/browser-url";
 
 /** Mirrors `DesktopBrowserState` in apps/web/src/desktop/desktop-api.ts. */
@@ -31,6 +32,7 @@ export type BrowserView = {
   reload: () => void;
   stop: () => void;
   cdp: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+  setEmulation: (emulation: BrowserEmulation | null) => void;
   getState: () => BrowserState;
 };
 
@@ -83,6 +85,23 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
   };
   const pushState = (): void => editorSend(BROWSER_CHANNELS.state, getState());
 
+  let emulation: BrowserEmulation | null = null;
+  const applyEmulation = (wc: WebContents): void => {
+    if (wc.isDestroyed()) return;
+    if (!emulation) return wc.disableDeviceEmulation();
+    wc.enableDeviceEmulation({
+      // "mobile" ignores the page's meta viewport here (pages lay out at 980 px), so phones and
+      // tablets use "desktop" too: the layout viewport is then exactly the device width, which
+      // is what responsive CSS keys on. Touch is emulated separately over CDP.
+      screenPosition: "desktop",
+      screenSize: { width: emulation.screenWidth, height: emulation.screenHeight },
+      viewPosition: { x: 0, y: 0 },
+      deviceScaleFactor: 0,
+      viewSize: { width: emulation.width, height: emulation.height },
+      scale: emulation.scale,
+    });
+  };
+
   let debuggerAttached = false;
   const ensureDebugger = (wc: WebContents): void => {
     if (debuggerAttached && wc.debugger.isAttached()) return;
@@ -133,6 +152,11 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
       pushState();
     });
     wc.on("did-stop-loading", pushState);
+    // Chromium may reset the emulation on a new page: apply the remembered one again.
+    wc.on("did-finish-load", () => {
+      if (emulation) applyEmulation(wc);
+    });
+    if (emulation) applyEmulation(wc);
     wc.on("did-navigate", pushState);
     wc.on("did-navigate-in-page", pushState);
     wc.on("page-title-updated", pushState);
@@ -214,7 +238,19 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
     if (!isAllowedCdpMethod(method)) throw new Error(`CDP method not allowed: ${method}`);
     const wc = ensureView().webContents;
     ensureDebugger(wc);
-    return wc.debugger.sendCommand(method, params);
+    if (method !== "Page.captureScreenshot") return wc.debugger.sendCommand(method, params);
+    // A capture beyond the viewport resizes the page and drops the device emulation afterwards:
+    // put it back so the panel keeps showing the chosen device.
+    try {
+      return await wc.debugger.sendCommand(method, params);
+    } finally {
+      if (emulation) applyEmulation(wc);
+    }
+  };
+
+  const setEmulation = (next: BrowserEmulation | null): void => {
+    emulation = next;
+    if (view && !view.webContents.isDestroyed()) applyEmulation(view.webContents);
   };
 
   win.on("closed", () => {
@@ -235,6 +271,7 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
     reload: withHistory((wc) => wc.reload()),
     stop: withHistory((wc) => wc.stop()),
     cdp,
+    setEmulation,
     getState,
   };
 };
