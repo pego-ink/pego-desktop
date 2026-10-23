@@ -90,12 +90,37 @@ describe("contrast math", () => {
 describe("check_layout rules", () => {
   test("clean document has no issues", () => {
     const issues = issuesOf([
-      frame("page", { layout: "vertical", width: 400, padding: 16, gap: 8, fill: "#ffffff" }, [
-        text("t", "Hello", { fill: "#111111" }),
-        rect("r", { width: "fill_container", height: 40, fill: "#eeeeee" }),
-      ]),
+      frame(
+        "page",
+        { name: "Card", layout: "vertical", width: 400, padding: 16, gap: 8, fill: "#ffffff" },
+        [
+          text("t", "Hello", { fill: "#111111" }),
+          rect("r", { width: "fill_container", height: 40, fill: "#eeeeee" }),
+        ],
+      ),
     ]);
     expect(issues).toEqual([]);
+  });
+
+  test("loose layers at the top level of a page are flagged; unnamed top-level frames too", () => {
+    const issues = issuesOf([
+      frame("cloud", { name: "Cloud", width: 120, height: 60, layout: "none" }, [
+        { type: "ellipse", id: "puff", x: 0, y: 0, width: 60, height: 40, fill: "#ffffff" },
+      ]),
+      { type: "ellipse", id: "stray", x: 300, y: 0, width: 60, height: 40, fill: "#ffffff" },
+      text("caption", "Sky", { x: 300, y: 80, fill: "#111111" }),
+      frame("nameless", { width: 50, height: 50, fill: "#eeeeee" }),
+    ]);
+    const byId = (id: string) => issues.filter((i) => i.nodeId === id);
+    expect(byId("stray")).toMatchObject([
+      { severity: "warning", issue: "ellipse sits loose at the top level of the page" },
+    ]);
+    expect(byId("caption")[0]?.hint).toContain("wrap it together with the layers");
+    expect(byId("nameless")).toMatchObject([
+      { severity: "info", issue: "top-level frame has no name" },
+    ]);
+    expect(byId("cloud")).toEqual([]);
+    expect(byId("puff")).toEqual([]);
   });
 
   test("child overflowing a non-clipping parent is a warning, a clipping parent an error", () => {
@@ -246,8 +271,10 @@ describe("check_layout rules", () => {
   test("sorted by severity, capped at 50, scoped by nodeId", () => {
     const many = Array.from({ length: 70 }, (_, i) => rect(`z${i}`, { fill: "#000000" }));
     const doc = makeDoc([
-      frame("p", { width: 100, height: 100, layout: "none" }, many),
-      frame("q", { width: 100, height: 100, layout: "none" }, [rect("only", { fill: "#000000" })]),
+      frame("p", { name: "P", width: 100, height: 100, layout: "none" }, many),
+      frame("q", { name: "Q", width: 100, height: 100, layout: "none" }, [
+        rect("only", { fill: "#000000" }),
+      ]),
     ]);
     const report = checkLayout(doc, layoutOf(doc));
     expect(report.total).toBe(71);
