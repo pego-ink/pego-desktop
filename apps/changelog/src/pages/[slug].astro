@@ -1,0 +1,36 @@
+---
+import type { GetStaticPaths } from "astro";
+import Base from "@/layouts/Base.astro";
+import Entry from "@/components/Entry.astro";
+import { getEntries } from "@/lib/entries";
+import { SITE_NAME, SITE_URL } from "@/lib/site";
+
+export const getStaticPaths = (async () => {
+  const entries = await getEntries();
+  return entries.map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}) satisfies GetStaticPaths;
+
+const { entry } = Astro.props;
+const { title, summary, date } = entry.data;
+const url = `${SITE_URL}/${entry.id}`;
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "BlogPosting",
+  headline: title,
+  description: summary,
+  datePublished: date.toISOString(),
+  dateModified: date.toISOString(),
+  inLanguage: "en",
+  mainEntityOfPage: url,
+  url,
+  author: { "@type": "Organization", name: SITE_NAME },
+  publisher: { "@type": "Organization", name: SITE_NAME, url: "https://pego.ink" },
+};
+---
+
+<Base title={`${title} | Pego changelog`} description={summary} type="article" publishedTime={date} jsonLd={jsonLd}>
+  <a class="back" href="/">All changes</a>
+  <div class="entry-page">
+    <Entry entry={entry} variant="page" />
+  </div>
+</Base>

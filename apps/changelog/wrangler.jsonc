@@ -1,0 +1,14 @@
+// The public changelog: a static-assets Worker (no script) serving the Astro build.
+// Deployed by .github/workflows/deploy-changelog.yml; build first with `bun run --cwd apps/changelog build`.
+{
+  "name": "pego-changelog",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "404-page",
+  },
+  // Production lives on changelog.pego.ink; workers.dev stays on because preview aliases need it.
+  "routes": [{ "pattern": "changelog.pego.ink", "custom_domain": true }],
+  "workers_dev": true,
+  "preview_urls": true,
+}
