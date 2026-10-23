@@ -280,6 +280,20 @@ describe("check_layout rules", () => {
     expect(hit?.severity).toBe("error");
   });
 
+  test("cross-axis fill in a hugging row stretches; it is not circular", () => {
+    const issues = issuesOf([
+      frame("row", { layout: "horizontal", width: 600, gap: 16 }, [
+        frame("a", { layout: "vertical", height: "fill_container", fill: "#FFFFFF", padding: 20 }, [
+          text("t1", "Short"),
+        ]),
+        frame("b", { layout: "vertical", height: "fill_container", fill: "#FFFFFF", padding: 20 }, [
+          text("t2", "Taller", { fontSize: 40 }),
+        ]),
+      ]),
+    ]);
+    expect(issues.find((i) => i.issue.includes("circular"))).toBeUndefined();
+  });
+
   test("mixed fill and fixed children are fine", () => {
     const issues = issuesOf([
       frame("hug", { layout: "vertical" }, [

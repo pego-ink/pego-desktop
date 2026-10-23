@@ -300,11 +300,16 @@ const checkNode = (
   }
 
   // fill_container where the parent hugs and every child fills (nothing gives the parent a size).
+  // On the cross axis of a flex frame that is the equal-size idiom: the frame hugs the largest
+  // child and layout stretches the others to it, so only a size of 0 is a problem there.
   if (node.type === "frame" && children.length > 0) {
+    const cross =
+      node.layout === "horizontal" ? "height" : node.layout === "vertical" ? "width" : undefined;
     for (const axis of ["width", "height"] as const) {
       if (!isHugging(node, axis)) continue;
       if (!children.every((child) => child[axis] === "fill_container")) continue;
       const parentSize = box ? box[axis] : undefined;
+      if (axis === cross && parentSize !== undefined && parentSize > EPSILON) continue;
       report(
         ctx,
         parentSize !== undefined && parentSize <= EPSILON ? "error" : "warning",
