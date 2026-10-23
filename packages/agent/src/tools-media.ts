@@ -237,7 +237,7 @@ const placeImage = defineTool({
     sourceUrl: z
       .string()
       .max(2000)
-      .regex(/^https?:\/\//i, "must be an http(s) URL")
+      .regex(/^https:\/\//i, "must be an https URL")
       .optional(),
   }),
   inputHint:

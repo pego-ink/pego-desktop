@@ -134,7 +134,8 @@ export const ImageSearchSection = () => {
         >
           Openverse
         </a>
-        . Each placed photo keeps its credit and license on the layer.
+        . Each placed photo keeps its credit and license on the layer. Photos are linked, not
+        embedded, so they need a connection to show.
       </p>
     </div>
   );
