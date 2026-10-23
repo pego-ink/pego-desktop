@@ -75,7 +75,19 @@ describe("frame corners and handles", () => {
     // Half-side 4 rotated 45deg reaches ~5.6 along screen x but only ~2.8 along the diagonal
     // of an axis-aligned square: a point 5 right hits, 3.5 diagonal misses.
     expect(hitFrameHandle(rot, 100, 100, 5, 0, 4)).toBe("nw");
-    expect(hitFrameHandle(rot, 100, 100, 3.5, 3.5, 4)).toBeNull();
+    // (3.5, 3.5) lies on the rotated top edge, beyond the corner square: an edge resize.
+    expect(hitFrameHandle(rot, 100, 100, 3.5, 3.5, 4)).toBe("n");
+    expect(hitFrameHandle(rot, 100, 100, -3.5, -3.5, 4)).toBeNull();
+  });
+
+  test("edges resize along their whole length, corners win where they meet", () => {
+    const id = { a: 1, b: 0, c: 0, d: 1, e: 0, f: 0 };
+    expect(hitFrameHandle(id, 200, 100, 30, 2, 4)).toBe("n");
+    expect(hitFrameHandle(id, 200, 100, 198, 70, 4)).toBe("e");
+    expect(hitFrameHandle(id, 200, 100, 150, 103, 4)).toBe("s");
+    expect(hitFrameHandle(id, 200, 100, -3, 20, 4)).toBe("w");
+    expect(hitFrameHandle(id, 200, 100, 1, 1, 4)).toBe("nw");
+    expect(hitFrameHandle(id, 200, 100, 100, 50, 4)).toBeNull();
   });
 });
 

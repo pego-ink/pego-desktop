@@ -2,23 +2,14 @@ import { collectIds, type PageNode } from "@pego/doc";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { sessionShownInEditor } from "@/workspace/use-workspace-store";
 import { runColor } from "./run-colors";
-import { liveTitle, type SessionLive } from "./use-agent-store";
+import type { SessionLive } from "./use-agent-store";
 
-/** One running session's focus box on the canvas: its nodes, tint and session title. */
+/** One running session's focus box on the canvas: its nodes and tint. */
 export type AgentFocusGroup = {
   /** Run id (session id when the run has none yet); stable while the run works. */
   key: string;
   ids: readonly string[];
   color: string;
-  label: string;
-};
-
-export const FOCUS_LABEL_CHARS = 24;
-
-/** Session title on one line, cut with an ellipsis so the canvas tag stays small. */
-export const focusLabel = (title: string, max: number = FOCUS_LABEL_CHARS): string => {
-  const line = title.replace(/\s+/g, " ").trim();
-  return line.length <= max ? line : `${line.slice(0, max - 1).trimEnd()}…`;
 };
 
 /**
@@ -37,19 +28,13 @@ export const focusGroupsOf = (
       key: live.runId ?? live.id,
       ids: live.focusIds,
       color: runColor(live.colorIndex),
-      label: focusLabel(liveTitle(live)),
     }));
 
 const sameGroups = (a: readonly AgentFocusGroup[], b: readonly AgentFocusGroup[]) =>
   a.length === b.length &&
   a.every((group, index) => {
     const other = b[index]!;
-    return (
-      group.key === other.key &&
-      group.ids === other.ids &&
-      group.color === other.color &&
-      group.label === other.label
-    );
+    return group.key === other.key && group.ids === other.ids && group.color === other.color;
   });
 
 /**
