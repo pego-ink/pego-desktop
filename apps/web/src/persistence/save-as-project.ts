@@ -112,17 +112,20 @@ export const saveAsProject = async (
   }
   let edited = false;
   if (moves && origin) {
-    // The tab is a snapshot now (the project is shown): compare it with what was saved.
-    edited = workspaceDocument(origin.id)?.doc !== captured;
+    // The tab is a snapshot now (the project is shown): compare it with what was saved. A tab
+    // that changed meanwhile, or where an agent run started, stays open and keeps its chat.
+    edited = workspaceDocument(origin.id)?.doc !== captured || workspaceRunning(origin.id);
     if (!edited) {
       forceCloseWorkspace(origin.id);
       forgetSessionHomesIn(origin.id);
+    } else if (sessionsMoved) {
+      await moveSessions(project.id, captured.id);
     }
   }
   void refreshProjects();
   toast.success(`Saved as project ${project.name}`, {
     description: edited
-      ? "The original tab changed meanwhile and stays open; the project has the earlier state."
+      ? "The original tab changed meanwhile (or an agent is working in it) and stays open with its chat; the project has the earlier state."
       : project.dir,
   });
   return true;

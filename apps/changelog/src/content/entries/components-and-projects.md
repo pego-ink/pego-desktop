@@ -11,7 +11,7 @@ Your components now live in one panel, grouped by page, with live thumbnails and
 
 ## Save as project
 
-**File › Save as project** turns the document you are looking at into a new project. The chat that built it comes along.
+**File › Save as project** turns the document you are looking at into a new project. If it wasn't saved to a file yet, the chat that built it comes along.
 
 ## Copy for AI
 

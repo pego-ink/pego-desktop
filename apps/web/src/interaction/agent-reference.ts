@@ -22,7 +22,27 @@ const isAbsolutePath = (file: string) => file.startsWith("/") || /^[a-z]:[\\/]/i
  * Text to paste into Claude Code (or another agent with the Pego MCP server): which project and
  * file the nodes are in, and their ids, so an instruction can target exactly them.
  */
-export const formatAgentReference = ({ project, file, documentName, nodes }: AgentReference) => {
+/** A project id safe to quote in an instruction (ids are createId-like); null otherwise. */
+const safeProjectId = (id: string): string | null => (/^[A-Za-z0-9_-]{1,64}$/.test(id) ? id : null);
+
+/** A file path safe to quote: no control characters, quotes or backticks, sane length. */
+const safePath = (path: string | null): string | null => {
+  if (!path || path.length > 1024 || /["`]/.test(path)) return null;
+  for (let i = 0; i < path.length; i++) {
+    const code = path.charCodeAt(i);
+    if (code < 0x20 || code === 0x7f) return null;
+  }
+  return path;
+};
+
+export const formatAgentReference = ({
+  project,
+  file: rawFile,
+  documentName,
+  nodes,
+}: AgentReference) => {
+  const file = safePath(rawFile);
+  const projectId = project ? safeProjectId(project.id) : null;
   // Names (and ids) come from the file, which may be someone else's: keep each on one line.
   const lines = [
     project
@@ -41,8 +61,8 @@ export const formatAgentReference = ({ project, file, documentName, nodes }: Age
     if (nodes.length > MAX_LISTED) lines.push(`- ... and ${nodes.length - MAX_LISTED} more`);
   }
   lines.push(
-    project
-      ? `With the pego MCP tools: pass project "${project.id}" to every tool call (no need to open it in the window), then edit these nodes by id.`
+    projectId
+      ? `With the pego MCP tools: pass project "${projectId}" to every tool call (no need to open it in the window), then edit these nodes by id.`
       : file && isAbsolutePath(file)
         ? `With the pego MCP tools: open_document "${file}" first, then edit these nodes by id.`
         : "With the pego MCP tools: the nodes are in the document shown in the Pego editor.",
