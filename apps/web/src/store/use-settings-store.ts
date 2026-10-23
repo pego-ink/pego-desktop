@@ -6,6 +6,7 @@ import {
   type AgentNameSet,
 } from "@/agent/agent-names";
 import { isToolbarPosition, type ToolbarPosition } from "@/components/toolbar-position";
+import { isInterfaceStyle, type InterfaceStyle } from "@/layout/interface-style";
 
 /** Editor preferences, persisted per browser/app install. */
 export type EditorSettings = {
@@ -22,6 +23,8 @@ export type EditorSettings = {
   customAgentNames: string[];
   /** Where the floating tool picker sits on the canvas. */
   toolbarPosition: ToolbarPosition;
+  /** Docked columns, or floating cards over the canvas (layout/interface-style). */
+  interfaceStyle: InterfaceStyle;
 };
 
 export const DEFAULT_SETTINGS: EditorSettings = {
@@ -32,6 +35,7 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   agentNameSet: "pego",
   customAgentNames: [...DEFAULT_CUSTOM_AGENT_NAMES],
   toolbarPosition: "bottom",
+  interfaceStyle: "docked",
 };
 
 const KEY = "pego:settings.v1";
@@ -56,6 +60,9 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
     toolbarPosition: isToolbarPosition(v.toolbarPosition)
       ? v.toolbarPosition
       : DEFAULT_SETTINGS.toolbarPosition,
+    interfaceStyle: isInterfaceStyle(v.interfaceStyle)
+      ? v.interfaceStyle
+      : DEFAULT_SETTINGS.interfaceStyle,
   };
 };
 

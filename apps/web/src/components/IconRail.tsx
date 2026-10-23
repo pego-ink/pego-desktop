@@ -42,10 +42,19 @@ type Props = {
   onHome?: () => void;
   /** The dashboard is shown: the logo is the current page and no tab is selected. */
   homeActive?: boolean;
+  /** Extra classes for the rail (the floating layout drops its edge when it stands alone). */
+  className?: string;
 };
 
 /** Narrow vertical tab rail: Agent, Layers, Assets and (desktop) Browser. The active tab toggles the side panel. */
-export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = false }: Props) => {
+export const IconRail = ({
+  state,
+  agentWorking,
+  onPress,
+  onHome,
+  homeActive = false,
+  className,
+}: Props) => {
   const listRef = useRef<HTMLDivElement>(null);
   const tabs = useMemo(() => railTabsFor(hasDesktopBrowser()), []);
 
@@ -77,7 +86,10 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
   return (
     <nav
       aria-label="Editor sidebar"
-      className="flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5"
+      className={cn(
+        "flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5",
+        className,
+      )}
     >
       {onHome ? (
         <Tooltip content="Projects">

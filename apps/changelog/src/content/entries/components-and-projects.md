@@ -34,3 +34,7 @@ The menu also ends with **Settings**, even on empty canvas: turn snapping to who
 ## Put the toolbar where you like
 
 The tools (Move, Hand, frame, shapes, pen, text) can now sit at the bottom, top, left or right of the canvas. Right-click the toolbar to move it, or pick a side in **Settings › General › Toolbar position**. On the left or right it becomes a column, and its menus open toward the canvas.
+
+## A floating interface
+
+**Settings › General › Interface › Floating** turns the panels into cards that float over the canvas, like pen.dev: the side panel and its icons are one card, the properties another, and undo, redo and Share become small pills at the top. Docked stays the default.
