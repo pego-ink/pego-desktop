@@ -8,14 +8,27 @@ import type { DecisionRequest, PlanStep, StepStatus, ToolImage } from "./types";
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
 /**
+ * v8 = v7 + `project` on an MCP tool call's source (edit a named project in a background tab).
  * v7 = v6 + `trash_project` (editor only, never an MCP tool). v6 = v4 (local agents, several editors,
  * parallel runs, run_steer) + v5 (projects, file tools).
  * Several editors connect at once; MCP calls go to the focused one (see apps/bridge editor-hub).
  */
-export const BRIDGE_PROTOCOL_VERSION = 7;
+export const BRIDGE_PROTOCOL_VERSION = 8;
 
 /** Local agent runs the bridge executes at the same time (one per chat session). */
 export const MAX_CONCURRENT_RUNS = 3;
+
+/**
+ * The project an MCP tool call targets (resolved by the bridge from its id or name).
+ * `hasMainFile` is false while project.pego does not exist yet, so the editor may start a new design.
+ */
+export type ProjectTarget = {
+  id: string;
+  name: string;
+  dir: string;
+  mainFile: string;
+  hasMainFile: boolean;
+};
 
 /**
  * A project: a folder in the design folder with a project.json (id, name) and its design,
@@ -137,8 +150,14 @@ export type BridgeToEditor =
       callId: string;
       tool: string;
       input: unknown;
-      /** Who is calling: an Agent SDK run started from the panel, or Claude Code over MCP. */
-      source: { kind: "run"; runId: string } | { kind: "mcp"; clientName?: string };
+      /**
+       * Who is calling: an Agent SDK run started from the panel, or Claude Code over MCP. An MCP
+       * call naming a `project` edits that project's design, in a background tab when another
+       * one is shown.
+       */
+      source:
+        | { kind: "run"; runId: string }
+        | { kind: "mcp"; clientName?: string; project?: ProjectTarget };
     }
   /** Progress of an Agent SDK run (assistant text, tool activity, completion). */
   | { type: "run_event"; runId: string; event: RunEvent }
