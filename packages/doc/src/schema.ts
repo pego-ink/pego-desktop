@@ -108,6 +108,8 @@ const baseNode = z.object({
   opacity: numberValueSchema.optional(),
   /** Marks the node as a component that `ref` nodes can instantiate. */
   reusable: z.boolean().optional(),
+  /** `false` hides the node and its children: not drawn, not hit, no room in a flex layout, not exported. */
+  visible: z.boolean().optional(),
 });
 
 const paintedNode = baseNode.extend({

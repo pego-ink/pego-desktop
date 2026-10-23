@@ -30,14 +30,90 @@ const keys = (...parts: ("mod" | "alt" | "shift" | string)[]) =>
     ? parts.map((part) => ({ mod: "⌘", alt: "⌥", shift: "⇧" })[part] ?? part).join("")
     : parts.map((part) => ({ mod: "Ctrl", alt: "Alt", shift: "Shift" })[part] ?? part).join("+");
 
+/** The selection's actions, shared by the canvas and the layers panel right-click menus. */
+export const SelectionMenuContent = () => {
+  const doc = useDocumentStore((s) => s.doc);
+  const selection = useDocumentStore((s) => s.selection);
+  const single = selection.length === 1 ? findNode(doc, selection[0]!) : null;
+  const containers = selection.some((id) => {
+    const node = findNode(doc, id);
+    return (node?.type === "group" || node?.type === "frame") && !node.reusable;
+  });
+  const components = allComponents(doc, selection);
+  const instance = single?.type === "ref" ? single : null;
+
+  return (
+    <ContextMenuContent className="min-w-56">
+      <ContextMenuItem
+        shortcut={keys("mod", "K")}
+        onSelect={() => useSelectionPrompt.getState().setOpen(true)}
+      >
+        Ask Pego about this
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem shortcut={keys("mod", "C")} onSelect={() => document.execCommand("copy")}>
+        Copy layer IDs
+      </ContextMenuItem>
+      <ContextMenuItem shortcut={keys("mod", "D")} onSelect={() => runDuplicate()}>
+        Duplicate
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem shortcut="]" onSelect={() => runStructure("front")}>
+        Bring to front
+      </ContextMenuItem>
+      <ContextMenuItem shortcut="[" onSelect={() => runStructure("back")}>
+        Send to back
+      </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem shortcut={keys("mod", "G")} onSelect={() => runStructure("group")}>
+        Group selection
+      </ContextMenuItem>
+      <ContextMenuItem shortcut={keys("mod", "alt", "G")} onSelect={() => runStructure("frame")}>
+        Frame selection
+      </ContextMenuItem>
+      {containers ? (
+        <ContextMenuItem
+          shortcut={keys("mod", "shift", "G")}
+          onSelect={() => runStructure("ungroup")}
+        >
+          Ungroup
+        </ContextMenuItem>
+      ) : null}
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        shortcut={keys("mod", "alt", "K")}
+        onSelect={() => runStructure("component")}
+      >
+        {components ? "Detach component" : "Create component"}
+      </ContextMenuItem>
+      {instance ? (
+        <>
+          <ContextMenuItem
+            shortcut={keys("mod", "alt", "X")}
+            onSelect={() => runStructure("detach-instance")}
+          >
+            Detach instance
+          </ContextMenuItem>
+          {componentOf(doc, instance.id) ? (
+            <ContextMenuItem onSelect={() => goToComponent(instance.id)}>
+              Go to component
+            </ContextMenuItem>
+          ) : null}
+        </>
+      ) : null}
+      <ContextMenuSeparator />
+      <ContextMenuItem shortcut="⌫" destructive onSelect={() => runDelete()}>
+        Delete
+      </ContextMenuItem>
+    </ContextMenuContent>
+  );
+};
+
 /**
  * Right-click menu of the canvas. A right-click first selects what is under the pointer (like a
  * click; ⌘/Ctrl goes deep) unless it is already selected; on empty canvas nothing opens.
  */
 export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
-  const doc = useDocumentStore((s) => s.doc);
-  const selection = useDocumentStore((s) => s.selection);
-
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     const state = useDocumentStore.getState();
     const rect = event.currentTarget.getBoundingClientRect();
@@ -57,82 +133,12 @@ export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
     if (!hit && state.selection.length === 0) event.preventDefault();
   };
 
-  const single = selection.length === 1 ? findNode(doc, selection[0]!) : null;
-  const containers = selection.some((id) => {
-    const node = findNode(doc, id);
-    return (node?.type === "group" || node?.type === "frame") && !node.reusable;
-  });
-  const components = allComponents(doc, selection);
-  const instance = single?.type === "ref" ? single : null;
-
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild onContextMenu={onContextMenu}>
         {children}
       </ContextMenuTrigger>
-      <ContextMenuContent className="min-w-56">
-        <ContextMenuItem
-          shortcut={keys("mod", "K")}
-          onSelect={() => useSelectionPrompt.getState().setOpen(true)}
-        >
-          Ask Pego about this
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem shortcut={keys("mod", "C")} onSelect={() => document.execCommand("copy")}>
-          Copy layer IDs
-        </ContextMenuItem>
-        <ContextMenuItem shortcut={keys("mod", "D")} onSelect={() => runDuplicate()}>
-          Duplicate
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem shortcut="]" onSelect={() => runStructure("front")}>
-          Bring to front
-        </ContextMenuItem>
-        <ContextMenuItem shortcut="[" onSelect={() => runStructure("back")}>
-          Send to back
-        </ContextMenuItem>
-        <ContextMenuSeparator />
-        <ContextMenuItem shortcut={keys("mod", "G")} onSelect={() => runStructure("group")}>
-          Group selection
-        </ContextMenuItem>
-        <ContextMenuItem shortcut={keys("mod", "alt", "G")} onSelect={() => runStructure("frame")}>
-          Frame selection
-        </ContextMenuItem>
-        {containers ? (
-          <ContextMenuItem
-            shortcut={keys("mod", "shift", "G")}
-            onSelect={() => runStructure("ungroup")}
-          >
-            Ungroup
-          </ContextMenuItem>
-        ) : null}
-        <ContextMenuSeparator />
-        <ContextMenuItem
-          shortcut={keys("mod", "alt", "K")}
-          onSelect={() => runStructure("component")}
-        >
-          {components ? "Detach component" : "Create component"}
-        </ContextMenuItem>
-        {instance ? (
-          <>
-            <ContextMenuItem
-              shortcut={keys("mod", "alt", "X")}
-              onSelect={() => runStructure("detach-instance")}
-            >
-              Detach instance
-            </ContextMenuItem>
-            {componentOf(doc, instance.id) ? (
-              <ContextMenuItem onSelect={() => goToComponent(instance.id)}>
-                Go to component
-              </ContextMenuItem>
-            ) : null}
-          </>
-        ) : null}
-        <ContextMenuSeparator />
-        <ContextMenuItem shortcut="⌫" destructive onSelect={() => runDelete()}>
-          Delete
-        </ContextMenuItem>
-      </ContextMenuContent>
+      <SelectionMenuContent />
     </ContextMenu>
   );
 };

@@ -2,9 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } fro
 import { findNode, isContainer } from "@pego/doc";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { useDocumentStore } from "@/store/use-document-store";
-import { LayerRow } from "@/panels/LayerRow";
+import { ContextMenu, ContextMenuTrigger } from "@pego/ui/components/context-menu";
+import { SelectionMenuContent } from "@/components/CanvasContextMenu";
+import { LayerRow, type SelectMode } from "@/panels/LayerRow";
 import { buildMoveOp, dropZoneAt, type DropZone } from "@/panels/drop-position";
-import { ancestorIds, flattenLayers, layerLabel } from "@/panels/layer-rows";
+import { ancestorIds, flattenLayers, layerLabel, rangeIds } from "@/panels/layer-rows";
+
+/** How long a drag rests on a collapsed folder before it opens. */
+const OPEN_ON_DRAG_MS = 800;
 
 type DropTarget = { id: string; zone: DropZone };
 
@@ -52,10 +57,28 @@ export const LayersPanel = () => {
     [],
   );
 
-  const onSelect = useCallback((id: string, additive: boolean) => {
-    const { selection: current, select } = useDocumentStore.getState();
-    if (!additive) return select([id]);
-    select(current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+  // The row a Shift-click range starts from: the last row clicked without Shift.
+  const anchor = useRef<string | null>(null);
+  const onSelect = useCallback(
+    (id: string, mode: SelectMode) => {
+      const { selection: current, select } = useDocumentStore.getState();
+      if (mode === "range")
+        return select(rangeIds(rows, anchor.current ?? current.at(-1) ?? null, id));
+      anchor.current = id;
+      if (mode === "replace") return select([id]);
+      select(current.includes(id) ? current.filter((x) => x !== id) : [...current, id]);
+    },
+    [rows],
+  );
+
+  const onToggleVisible = useCallback((id: string) => {
+    const { doc: current, commit } = useDocumentStore.getState();
+    const node = findNode(current, id);
+    if (!node) return;
+    const hide = node.visible !== false;
+    commit([{ op: "update", id, props: { visible: hide ? false : null } }], {
+      label: hide ? "Hide layer" : "Show layer",
+    });
   }, []);
 
   const onHover = useCallback(
@@ -73,9 +96,12 @@ export const LayersPanel = () => {
     commit([{ op: "update", id, props: { name: trimmed } }], { label: "Rename layer" });
   }, []);
 
+  const openTimer = useRef<{ id: string; timer: ReturnType<typeof setTimeout> } | null>(null);
   const clearDrag = useCallback(() => {
     setDragId(null);
     setDropTarget(null);
+    if (openTimer.current) clearTimeout(openTimer.current.timer);
+    openTimer.current = null;
   }, []);
 
   const onDragStartRow = useCallback((id: string, event: DragEvent<HTMLElement>) => {
@@ -91,6 +117,20 @@ export const LayersPanel = () => {
       const target = findNode(current, id);
       if (!target) return;
       const zone = dropZoneAt(ratio, isContainer(target));
+      // Resting on a collapsed folder opens it, so the drop can go deeper.
+      if (zone === "inside" && collapsed.has(id)) {
+        if (openTimer.current?.id !== id) {
+          if (openTimer.current) clearTimeout(openTimer.current.timer);
+          const timer = setTimeout(() => {
+            openTimer.current = null;
+            setCollapsed((prev) => new Set([...prev].filter((x) => x !== id)));
+          }, OPEN_ON_DRAG_MS);
+          openTimer.current = { id, timer };
+        }
+      } else if (openTimer.current) {
+        clearTimeout(openTimer.current.timer);
+        openTimer.current = null;
+      }
       if (!buildMoveOp(current, dragId, id, zone)) {
         setDropTarget((prev) => (prev ? null : prev));
         return;
@@ -99,7 +139,7 @@ export const LayersPanel = () => {
       event.dataTransfer.dropEffect = "move";
       setDropTarget((prev) => (prev?.id === id && prev.zone === zone ? prev : { id, zone }));
     },
-    [dragId],
+    [dragId, collapsed],
   );
 
   const onDropRow = useCallback(
@@ -118,48 +158,65 @@ export const LayersPanel = () => {
   return (
     <>
       <PanelHeader>Layers</PanelHeader>
-      <div
-        ref={listRef}
-        role="tree"
-        aria-label="Layers"
-        aria-multiselectable
-        className="min-h-0 flex-1 overflow-y-auto py-1.5"
-        onClick={(event) => {
-          if (event.target === event.currentTarget) useDocumentStore.getState().select([]);
-        }}
-        onDragLeave={(event) => {
-          if (!event.currentTarget.contains(event.relatedTarget as Node | null))
-            setDropTarget(null);
-        }}
-      >
-        {rows.length === 0 ? (
-          <p className="px-3 py-2 text-xs text-muted-foreground">No layers yet.</p>
-        ) : null}
-        {rows.map((row) => (
-          <LayerRow
-            key={row.node.id}
-            node={row.node}
-            label={layerLabel(doc, row.node)}
-            depth={row.depth}
-            hasChildren={row.hasChildren}
-            expanded={row.expanded}
-            selected={selected.has(row.node.id)}
-            hovered={hoveredId === row.node.id}
-            renaming={renamingId === row.node.id}
-            drop={dropTarget?.id === row.node.id ? dropTarget.zone : null}
-            dragging={dragId === row.node.id}
-            onToggle={onToggle}
-            onSelect={onSelect}
-            onHover={onHover}
-            onStartRename={setRenamingId}
-            onEndRename={onEndRename}
-            onDragStartRow={onDragStartRow}
-            onDragOverRow={onDragOverRow}
-            onDropRow={onDropRow}
-            onDragEndRow={clearDrag}
-          />
-        ))}
-      </div>
+      <ContextMenu>
+        <ContextMenuTrigger
+          asChild
+          onContextMenu={(event) => {
+            // Right-click on a row acts on it (selecting it first unless it is part of the selection).
+            const row = (event.target as HTMLElement).closest<HTMLElement>("[data-layer-id]");
+            const id = row?.dataset.layerId;
+            const state = useDocumentStore.getState();
+            if (id && !state.selection.includes(id)) state.select([id]);
+            if (!id && state.selection.length === 0) event.preventDefault();
+          }}
+        >
+          <div
+            ref={listRef}
+            role="tree"
+            aria-label="Layers"
+            aria-multiselectable
+            className="min-h-0 flex-1 overflow-y-auto py-1.5"
+            onClick={(event) => {
+              if (event.target === event.currentTarget) useDocumentStore.getState().select([]);
+            }}
+            onDragLeave={(event) => {
+              if (!event.currentTarget.contains(event.relatedTarget as Node | null))
+                setDropTarget(null);
+            }}
+          >
+            {rows.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted-foreground">No layers yet.</p>
+            ) : null}
+            {rows.map((row) => (
+              <LayerRow
+                key={row.node.id}
+                node={row.node}
+                label={layerLabel(doc, row.node)}
+                depth={row.depth}
+                hasChildren={row.hasChildren}
+                expanded={row.expanded}
+                hidden={row.hidden}
+                selected={selected.has(row.node.id)}
+                hovered={hoveredId === row.node.id}
+                renaming={renamingId === row.node.id}
+                drop={dropTarget?.id === row.node.id ? dropTarget.zone : null}
+                dragging={dragId === row.node.id}
+                onToggle={onToggle}
+                onSelect={onSelect}
+                onToggleVisible={onToggleVisible}
+                onHover={onHover}
+                onStartRename={setRenamingId}
+                onEndRename={onEndRename}
+                onDragStartRow={onDragStartRow}
+                onDragOverRow={onDragOverRow}
+                onDropRow={onDropRow}
+                onDragEndRow={clearDrag}
+              />
+            ))}
+          </div>
+        </ContextMenuTrigger>
+        <SelectionMenuContent />
+      </ContextMenu>
     </>
   );
 };

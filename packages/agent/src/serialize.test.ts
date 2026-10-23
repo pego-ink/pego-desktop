@@ -257,4 +257,17 @@ describe("serializeDocument fills", () => {
     expect(text).toContain("fill=linear(90,#000000 0,$accent 1)");
     expect(text).toContain("fill=image(cover,3KB)");
   });
+
+  test("hidden layers are marked", () => {
+    const doc = {
+      ...sampleDoc,
+      children: [
+        {
+          ...sampleDoc.children[0]!,
+          children: [{ type: "rectangle" as const, id: "r", x: 0, y: 0, visible: false }],
+        },
+      ],
+    };
+    expect(serializeDocument(doc)).toContain("rectangle#r [hidden]");
+  });
 });

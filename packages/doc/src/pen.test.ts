@@ -17,6 +17,13 @@ describe("importPen", () => {
     expect(() => importPen("x")).toThrow(PenImportError);
   });
 
+  test("a layer pen hides (enabled: false) stays hidden", () => {
+    expect(only([{ type: "rectangle", id: "r", enabled: false }])).toMatchObject({
+      visible: false,
+    });
+    expect(pen([{ type: "rectangle", id: "r", enabled: true }]).warnings).toEqual([]);
+  });
+
   test("frames without layout become horizontal rows", () => {
     expect(only([{ type: "frame", id: "f", gap: 8 }])).toMatchObject({ layout: "horizontal" });
     expect(only([{ type: "frame", id: "f", layout: "none" }])).toMatchObject({ layout: "none" });
