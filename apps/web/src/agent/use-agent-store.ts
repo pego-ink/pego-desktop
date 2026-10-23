@@ -5,6 +5,7 @@ import {
   type LocalAgentId,
   type LocalAgentInfo,
   type PlanStep,
+  type PromptPart,
   type RunAttachment,
   type StepStatus,
 } from "@pego/agent";
@@ -44,6 +45,8 @@ export type AgentLogEntry = {
   tool?: { name: string; isError: boolean };
   /** Images the user attached (user entries only). */
   attachments?: RunAttachment[];
+  /** The prompt with its mention chips (user entries with mentions only). */
+  parts?: PromptPart[];
   /** Name and size of images attached in a restored session (the image data is not stored). */
   attachmentsMeta?: AttachmentMeta[];
   /**

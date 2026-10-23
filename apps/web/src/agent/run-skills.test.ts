@@ -283,4 +283,25 @@ describe("manual skill choice lasts one run", () => {
     expect(state().selectedStyleId).toBeUndefined();
     expect(visible().log.some((e) => e.text === "Using style: Fakeswiss")).toBe(true);
   });
+
+  test("a style picked by a mention wins over the chip; the bubble shows the chips", async () => {
+    state().set({ backend: "local", bridge: emptyBridge() });
+    state().setSelectedStyle("fakeswiss");
+    runScope(null).set({ status: "idle" });
+    const parts = [
+      { kind: "text" as const, text: "page in " },
+      { kind: "mention" as const, mention: "style" as const, label: "Fakehaus" },
+    ];
+    await startRun('buat zzfoo page in "Fakehaus" [style fakehaus]', {
+      displayText: "page in @Fakehaus",
+      parts,
+      styleId: "fakehaus",
+    });
+    expect(state().selectedStyleId).toBeUndefined();
+    expect(visible().log.some((e) => e.text === "Using style: Fakehaus")).toBe(true);
+    expect(visible().log.find((e) => e.kind === "user")).toMatchObject({
+      text: "page in @Fakehaus",
+      parts,
+    });
+  });
 });

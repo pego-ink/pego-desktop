@@ -21,11 +21,10 @@ import { useAgentStore, type QueuedMessage } from "./use-agent-store";
 export type SubmitResult = "started" | "queued" | "refused";
 export type SteerResult = "steered" | "started" | "queued" | "refused";
 
-type SubmitOptions = {
-  attachments?: RunAttachment[];
-  /** Shown in the user bubble and the session title; `text` is what the agent receives. */
-  displayText?: string;
-};
+/** How a prompt is shown and which skills its mentions pick; `text` is what the agent receives. */
+export type PromptDisplay = Pick<QueuedMessage, "displayText" | "parts" | "skillId" | "styleId">;
+
+type SubmitOptions = PromptDisplay & { attachments?: RunAttachment[] };
 
 /** What the queue reaches out to; tests replace these with fakes. */
 export const queueDeps = { startRun, cancelRun, sendToBridge };
@@ -42,11 +41,14 @@ const reportFailure = (error: unknown) =>
 const makeMessage = (
   text: string,
   attachments: RunAttachment[] = [],
-  displayText?: string,
+  display: PromptDisplay = {},
 ): QueuedMessage => ({
   id: crypto.randomUUID(),
   text,
-  ...(displayText?.trim() ? { displayText: displayText.trim() } : {}),
+  ...(display.displayText?.trim() ? { displayText: display.displayText.trim() } : {}),
+  ...(display.parts?.some((part) => part.kind === "mention") ? { parts: display.parts } : {}),
+  ...(display.skillId ? { skillId: display.skillId } : {}),
+  ...(display.styleId ? { styleId: display.styleId } : {}),
   attachments,
   createdAt: Date.now(),
 });
@@ -60,7 +62,7 @@ const enqueue = (sessionId: string, message: QueuedMessage) =>
 /** Start a run for a message; the run registers synchronously, so the session is busy right away. */
 const launch = (
   sessionId: string,
-  message: Pick<QueuedMessage, "text" | "attachments" | "displayText">,
+  message: Pick<QueuedMessage, "text" | "attachments"> & PromptDisplay,
   steered = false,
 ) => {
   waitingForSlot.delete(sessionId);
@@ -71,6 +73,9 @@ const launch = (
       attachments: message.attachments,
       steered,
       displayText: message.displayText,
+      parts: message.parts,
+      skillId: message.skillId,
+      styleId: message.styleId,
     })
     .catch(reportFailure);
 };
@@ -87,7 +92,7 @@ export const submitPrompt = (
 ): SubmitResult => {
   const trimmed = text.trim();
   if (!trimmed || !liveOf(sessionId)) return "refused";
-  const message = makeMessage(trimmed, options.attachments ?? [], options.displayText);
+  const message = makeMessage(trimmed, options.attachments ?? [], options);
   const block = startBlock(allRuns(), sessionId);
   if (!block) {
     launch(sessionId, message);
@@ -109,8 +114,9 @@ export const editQueued = (sessionId: string, id: string, text: string): boolean
   setQueue(sessionId, (queue) =>
     queue.map((message) => {
       if (message.id !== id) return message;
-      // An edit replaces what the agent gets too; the context prefix is gone with the old text.
-      return { ...message, text: trimmed, displayText: undefined };
+      // An edit replaces what the agent gets too; the context prefix and chips go with the old
+      // text (skills picked by mentions stay: the edited text still names them).
+      return { ...message, text: trimmed, displayText: undefined, parts: undefined };
     }),
   );
   return true;
@@ -151,23 +157,27 @@ const adoptAttachments = (
  *   until the bridge reports `steered`.
  * - Other local CLIs: the run is cancelled and a new run starts in the same session with this
  *   message (the session history rides along; canvas changes stay).
- * With no run in the session it behaves like `submitPrompt`.
+ * With no run in the session it behaves like `submitPrompt`. `display` is how the bubble shows the
+ * message (a run that restarts for it also takes its mention skills).
  */
 export const steerNow = (
   sessionId: string,
   text: string,
   attachments: RunAttachment[] = [],
+  display: PromptDisplay = {},
 ): SteerResult => {
   const trimmed = text.trim();
   if (!trimmed || !liveOf(sessionId)) return "refused";
   const run = runsForSession(sessionId)[0];
-  if (!run) return submitPrompt(sessionId, trimmed, { attachments });
+  if (!run) return submitPrompt(sessionId, trimmed, { ...display, attachments });
 
+  const parts = display.parts?.some((part) => part.kind === "mention") ? display.parts : undefined;
   const logSteer = (shown: RunAttachment[]) =>
     agent().appendLog(sessionId, {
       kind: "user",
-      text: trimmed,
+      text: display.displayText?.trim() || trimmed,
       steered: "pending",
+      ...(parts ? { parts } : {}),
       ...(shown.length > 0 ? { attachments: shown } : {}),
     });
 
@@ -189,7 +199,7 @@ export const steerNow = (
     return "steered";
   }
 
-  void restartWith(sessionId, run.id, trimmed, attachments);
+  void restartWith(sessionId, run.id, trimmed, attachments, display);
   return "steered";
 };
 
@@ -199,21 +209,22 @@ const restartWith = async (
   runId: string,
   text: string,
   attachments: RunAttachment[],
+  display: PromptDisplay,
 ): Promise<void> => {
   queueDeps.cancelRun(runId);
   if (!(await untilSessionFree(sessionId))) {
     // The old run would not stop: keep the message rather than losing it.
-    enqueue(sessionId, makeMessage(text, attachments));
+    enqueue(sessionId, makeMessage(text, attachments, display));
     return;
   }
   if (!liveOf(sessionId)) return;
   const block = startBlock(allRuns(), sessionId);
   if (block) {
-    enqueue(sessionId, makeMessage(text, attachments));
+    enqueue(sessionId, makeMessage(text, attachments, display));
     if (block.reason === "too_many_runs") waitingForSlot.add(sessionId);
     return;
   }
-  launch(sessionId, { text, attachments }, true);
+  launch(sessionId, { ...display, text, attachments }, true);
 };
 
 /** Take a queued message out of the queue and steer the running agent with it. */
@@ -221,7 +232,7 @@ export const steerQueued = (sessionId: string, id: string): SteerResult => {
   const message = liveOf(sessionId)?.queue.find((item) => item.id === id);
   if (!message) return "refused";
   removeQueued(sessionId, id);
-  const result = steerNow(sessionId, message.text, message.attachments);
+  const result = steerNow(sessionId, message.text, message.attachments, message);
   // Nothing took it (empty text cannot happen here): put it back where it was.
   if (result === "refused") enqueue(sessionId, message);
   return result;

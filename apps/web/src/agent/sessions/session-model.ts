@@ -1,4 +1,4 @@
-import type { RunAttachment } from "@pego/agent";
+import type { PromptPart, RunAttachment } from "@pego/agent";
 import type { AgentLogEntry, RunStatus } from "@/agent/use-agent-store";
 
 /**
@@ -23,6 +23,11 @@ export type QueuedMessage = {
   text: string;
   /** What the chip and, once run, the user bubble show instead of `text` (which the agent gets). */
   displayText?: string;
+  /** The prompt with its mention chips, for the chip and the user bubble. */
+  parts?: PromptPart[];
+  /** Skill and style picked by mentions (one run, like the skill chip). */
+  skillId?: string;
+  styleId?: string;
   attachments: RunAttachment[];
   /** Name and size of images the message had before a reload (the image data is gone). */
   attachmentsMeta?: AttachmentMeta[];
@@ -51,6 +56,9 @@ export type StoredQueuedMessage = {
   id: string;
   text: string;
   displayText?: string;
+  parts?: PromptPart[];
+  skillId?: string;
+  styleId?: string;
   createdAt: number;
   attachments: AttachmentMeta[];
 };
@@ -126,10 +134,18 @@ const restoreEntry = (entry: StoredLogEntry): AgentLogEntry => {
   return attachments?.length ? { ...rest, attachmentsMeta: attachments } : rest;
 };
 
+/** The optional mention fields of a queued message, copied only when set. */
+const mentionFields = (message: Pick<QueuedMessage, "parts" | "skillId" | "styleId">) => ({
+  ...(message.parts ? { parts: message.parts } : {}),
+  ...(message.skillId ? { skillId: message.skillId } : {}),
+  ...(message.styleId ? { styleId: message.styleId } : {}),
+});
+
 const stripQueued = (message: QueuedMessage): StoredQueuedMessage => ({
   id: message.id,
   text: message.text,
   ...(message.displayText ? { displayText: message.displayText } : {}),
+  ...mentionFields(message),
   createdAt: message.createdAt,
   attachments:
     message.attachments.length > 0
@@ -141,6 +157,7 @@ const restoreQueued = (message: StoredQueuedMessage): QueuedMessage => ({
   id: message.id,
   text: message.text,
   ...(message.displayText ? { displayText: message.displayText } : {}),
+  ...mentionFields(message),
   createdAt: message.createdAt,
   attachments: [],
   ...(message.attachments.length > 0 ? { attachmentsMeta: message.attachments } : {}),

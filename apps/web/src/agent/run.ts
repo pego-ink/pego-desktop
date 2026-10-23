@@ -1,4 +1,4 @@
-import type { RunAttachment } from "@pego/agent";
+import type { PromptPart, RunAttachment } from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { canUndoRunIn, runTargetFor, undoRunIn } from "@/workspace/document-target";
 import { setWorkspaceRunCanceller } from "@/workspace/use-workspace-store";
@@ -59,6 +59,10 @@ export type RunStartOptions = {
   steered?: boolean;
   /** What the user bubble and the session title show; `text` (with extra context) goes to the agent. */
   displayText?: string;
+  /** The prompt with its mention chips, for the user bubble. */
+  parts?: readonly PromptPart[];
+  /** Design skill picked by a mention; wins over the skill chip for this run. */
+  skillId?: string;
 };
 
 const shownText = (text: string, options: RunStartOptions): string =>
@@ -67,16 +71,18 @@ const shownText = (text: string, options: RunStartOptions): string =>
 const sessionFor = (options: RunStartOptions): string =>
   options.sessionId ?? useAgentStore.getState().visibleSessionId;
 
-/** The user bubble of the activity log (carries the attached images, if any). */
+/** The user bubble of the activity log (carries the attached images and chips, if any). */
 export const userLogEntry = (
   text: string,
   attachments: readonly RunAttachment[],
   steered = false,
+  parts?: readonly PromptPart[],
 ) => ({
   kind: "user" as const,
   text,
   ...(attachments.length > 0 ? { attachments: [...attachments] } : {}),
   ...(steered ? { steered: "delivered" as const } : {}),
+  ...(parts?.some((part) => part.kind === "mention") ? { parts: [...parts] } : {}),
 });
 
 /**
@@ -138,7 +144,9 @@ export const startCustomRun = async (
   });
   const scope = host.run;
   scope.set({ runLabel: "Custom provider" });
-  scope.appendLog(userLogEntry(shownText(text, options), attachments, options.steered));
+  scope.appendLog(
+    userLogEntry(shownText(text, options), attachments, options.steered, options.parts),
+  );
   registerRun({ id: runId, sessionId, backend: "custom", controller, host, styleId, ...steering });
 
   const fail = (message: string) => {
@@ -222,7 +230,10 @@ const showStartBlock = (sessionId: string, text: string, block: StartBlock) => {
  */
 export const startRun = async (
   prompt: string,
-  options: Pick<RunStartOptions, "sessionId" | "attachments" | "steered" | "displayText"> = {},
+  options: Pick<
+    RunStartOptions,
+    "sessionId" | "attachments" | "steered" | "displayText" | "parts" | "skillId" | "styleId"
+  > = {},
 ): Promise<string | null> => {
   const text = prompt.trim();
   if (!text) return null;
@@ -233,18 +244,18 @@ export const startRun = async (
   if (!live) return null;
   const block = startBlock(allRuns(), sessionId);
   if (block) {
-    showStartBlock(sessionId, text, block);
+    showStartBlock(sessionId, shownText(text, options), block);
     return null;
   }
 
   const runId = crypto.randomUUID();
   // Memory of this session, read before `beginRun` moves the previous run into the transcript.
   const history = buildHistoryBlock(sessionTurns(live));
-  // A manual skill choice applies to this run only; the next one goes back to auto.
-  const skillId = agent.selectedSkillId;
-  if (skillId !== undefined) agent.setSelectedSkill(undefined);
-  const styleId = agent.selectedStyleId;
-  if (styleId !== undefined) agent.setSelectedStyle(undefined);
+  // A manual skill choice (chip or mention) applies to this run only; the next one is auto.
+  const skillId = options.skillId ?? agent.selectedSkillId;
+  if (agent.selectedSkillId !== undefined) agent.setSelectedSkill(undefined);
+  const styleId = options.styleId ?? agent.selectedStyleId;
+  if (agent.selectedStyleId !== undefined) agent.setSelectedStyle(undefined);
   // Images from the composer move into this run; the composer starts empty again.
   const attachments = options.attachments ?? agent.pendingAttachments;
   if (!options.attachments && attachments.length > 0) agent.clearAttachments();
@@ -255,6 +266,7 @@ export const startRun = async (
     history,
     steered: options.steered,
     displayText: options.displayText,
+    parts: options.parts,
   };
 
   if (agent.backend === "local") {
@@ -277,7 +289,9 @@ export const startRun = async (
   });
   const scope = host.run;
   scope.set({ runLabel: "Anthropic API" });
-  scope.appendLog(userLogEntry(shownText(text, options), attachments, options.steered));
+  scope.appendLog(
+    userLogEntry(shownText(text, options), attachments, options.steered, options.parts),
+  );
   registerRun({ id: runId, sessionId, backend: "api", controller, host, styleId, ...steering });
 
   try {
