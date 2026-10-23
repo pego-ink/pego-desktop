@@ -140,6 +140,10 @@ const nodeLine = (node: PegoNode, indent: number, showPosition: boolean, summary
   if (node.reusable) parts.push("[component]");
   // Hidden layers are not on the canvas; set visible: true (update_node) to show one again.
   if (node.visible === false) parts.push("[hidden]");
+  // A slot: instances may fill it (descendants[slotId].children), ideally with these components.
+  if (node.type === "frame" && node.slot) {
+    parts.push(node.slot.length > 0 ? `[slot: ${node.slot.join(", ")}]` : "[slot]");
+  }
   parts.push(...propTokens(node, showPosition));
   if (summary) parts.push(summary);
   return parts.join(" ");

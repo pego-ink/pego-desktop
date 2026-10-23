@@ -127,6 +127,11 @@ const frameShape = paintedNode.extend({
   padding: sidesSchema.optional(),
   justifyContent: justifyContentSchema.optional(),
   alignItems: alignItemsSchema.optional(),
+  /**
+   * Marks a frame inside a component as a slot: each instance may fill it with its own content
+   * (see resolveInstance). Lists the components recommended for it (may be empty).
+   */
+  slot: z.array(z.string().min(1)).max(50).optional(),
 });
 const groupShape = baseNode.extend({ type: z.literal("group") });
 /**
