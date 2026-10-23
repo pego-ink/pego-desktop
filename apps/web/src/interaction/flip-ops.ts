@@ -37,6 +37,13 @@ export const flippableIds = (doc: PegoDocument, ids: readonly string[]): string[
     return !!node && node.type !== "page";
   });
 
+/** An angle in degrees folded into (-180, 180], rounded to 1/100°. */
+export const normalizeAngle = (degrees: number): number => {
+  const folded = ((((degrees + 180) % 360) + 360) % 360) - 180;
+  const angle = folded === -180 ? 180 : folded;
+  return Math.round(angle * 100) / 100 || 0;
+};
+
 /**
  * `update` ops that toggle flipX / flipY on the selected nodes. A multi-selection is mirrored as
  * a whole: each node also moves to the mirrored position inside the selection's bounds (measured
@@ -73,6 +80,10 @@ export const flipOps = (
     const props: Record<string, unknown> = {
       [key]: next ? true : node.type === "ref" ? false : null,
     };
+    // A visual mirror of R(r)·F is R(-r)·(M·F): a rotated layer also negates its rotation, or
+    // an arrow rotated 30° would end up pointing at 210° instead of 150°.
+    const rotation = resolveNumber(node.rotation, doc.variables, 0);
+    if (rotation % 360 !== 0) props.rotation = normalizeAngle(-rotation);
 
     const span = spans[i];
     if (targets.length > 1 && span && frame && !isFlexChild(doc, id)) {

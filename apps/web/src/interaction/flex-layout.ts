@@ -234,7 +234,12 @@ export const removeFlexLayout = (
     if (!frameBox) continue;
     for (const child of frame.children) {
       const box = layout.get(child.id);
-      if (!box) continue;
+      if (!box) {
+        // Hidden layers have no box: pin them explicitly so showing them later is predictable.
+        const at = (value: unknown) => (typeof value === "number" ? value : 0);
+        ops.push({ op: "update", id: child.id, props: { x: at(child.x), y: at(child.y) } });
+        continue;
+      }
       const props: Record<string, unknown> = {
         x: round2(box.x - frameBox.x),
         y: round2(box.y - frameBox.y),

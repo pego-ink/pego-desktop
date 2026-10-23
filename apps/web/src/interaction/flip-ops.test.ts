@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { applyOps, computeLayout, findNode, type PegoDocument, type PegoNode } from "@pego/doc";
-import { flipOps, flippableIds, mirrorShift } from "./flip-ops";
+import { flipOps, flippableIds, mirrorShift, normalizeAngle } from "./flip-ops";
 
 const doc: PegoDocument = {
   version: 5,
@@ -88,5 +88,48 @@ describe("flipOps", () => {
 
   test("a child of a selected frame is not flipped twice", () => {
     expect(flippableIds(doc, ["flex", "kid"])).toEqual(["flex"]);
+  });
+});
+
+describe("flip of a rotated layer", () => {
+  const rotated: PegoDocument = {
+    ...doc,
+    children: [
+      {
+        type: "page",
+        id: "page-1",
+        name: "Page 1",
+        x: 0,
+        y: 0,
+        children: [
+          {
+            type: "path",
+            id: "arrow",
+            geometry: "M0 0 L20 5 L0 10 Z",
+            width: 20,
+            height: 10,
+            rotation: 30,
+          },
+        ],
+      },
+    ],
+  };
+  const rotatedLayout = computeLayout(rotated, () => ({ width: 10, height: 10 }));
+
+  test("negates the rotation so the result is a visual mirror (30° arrow → 150°, not 210°)", () => {
+    expect(flipOps(rotated, rotatedLayout, ["arrow"], "x")).toEqual([
+      { op: "update", id: "arrow", props: { flipX: true, rotation: -30 } },
+    ]);
+    expect(flipOps(rotated, rotatedLayout, ["arrow"], "y")[0]).toMatchObject({
+      props: { flipY: true, rotation: -30 },
+    });
+  });
+
+  test("normalizeAngle folds into (-180, 180]", () => {
+    expect(normalizeAngle(-30)).toBe(-30);
+    expect(normalizeAngle(190)).toBe(-170);
+    expect(normalizeAngle(-180)).toBe(180);
+    expect(normalizeAngle(360)).toBe(0);
+    expect(normalizeAngle(-0)).toBe(0);
   });
 });
