@@ -877,7 +877,8 @@ export const stylePresets: StylePreset[] = [
     ),
     layout: {
       grid: "A device face: a side panel of numbered keys next to a main area; pages center their content at 1120px.",
-      density: "Compact and orderly. 8px between keys, 12-24px panel padding, 15px body.",
+      density:
+        "Compact and orderly. 8px between keys, 8px padding on panels with keys at their corners, 12-24px on content panels, 15px body.",
       corners:
         "4 on keys and small screens, 12 on panels with 8 padding so corners nest; web buttons are pills.",
       imagery:

@@ -121,6 +121,13 @@ describe("style presets", () => {
     expect(findStyle("Field Instrument")?.name).toBe("field-instrument");
   });
 
+  test("field-instrument gives panels with corner keys the padding that keeps corners nested", () => {
+    const { density, corners } = findStyle("field-instrument")!.layout;
+    expect(density).toContain("8px padding on panels with keys at their corners");
+    expect(density).not.toContain("12-24px panel padding");
+    expect(corners).toContain("8 padding");
+  });
+
   test("variables parse and share the same token names", () => {
     const keys = Object.keys(stylePresets[0]!.variables).sort();
     for (const style of stylePresets) {

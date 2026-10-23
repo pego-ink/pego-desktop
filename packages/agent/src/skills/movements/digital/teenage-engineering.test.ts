@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { variablesSchema } from "@pego/doc";
 import { contrastBetweenHex } from "../../../inspect/color";
 import { findStyle } from "../../../styles/index";
+import { suggestStyle } from "../../select";
 import { teenageEngineeringSkill as skill } from "./teenage-engineering";
 
 const BLACK_EDITION = "Black edition tokens:";
@@ -60,6 +61,55 @@ describe("teenage-engineering style skill", () => {
       ),
     };
     expect(variablesSchema.safeParse(swapped).success).toBe(true);
+  });
+
+  test("is picked by its preset name and product names written without hyphens", () => {
+    for (const prompt of [
+      "dashboard in the Field Instrument style",
+      "gaya field instrument",
+      "kayak op1",
+      "post instagram ala EP133",
+      "TX6 mixer ui",
+    ]) {
+      expect([prompt, suggestStyle(prompt)?.id]).toEqual([prompt, "teenage-engineering"]);
+    }
+  });
+
+  test("is not picked by component lists or car and cockpit dashboards", () => {
+    for (const prompt of [
+      "design system: buttons, input field, system alerts",
+      "mobile app settings: name field, system theme toggle",
+      "EV car dashboard with instrument panel and speedometer",
+      "cockpit instrument panel for a flight sim",
+    ]) {
+      expect([prompt, suggestStyle(prompt)?.id]).not.toEqual([prompt, "teenage-engineering"]);
+    }
+  });
+
+  test("black edition names the role of each token so dark keys stay dark", () => {
+    const line = skill.content.split("\n").find((l) => l.startsWith("Black edition roles:")) ?? "";
+    expect(line).toContain("keys $surface-2");
+    expect(line).toContain("#000000 key shadow");
+    expect(line).toContain("screens #0F0E12 with #F5F5F5 numbers");
+    const dark = blackEdition();
+    const ratio = (fg: string, bg: string) => contrastBetweenHex(fg, bg) ?? 0;
+    // Keys on panels: labels and numbers stay readable, and the key is lighter than the body.
+    expect(ratio(dark["text-muted"]!, dark["surface-2"]!)).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(dark.text!, dark["surface-2"]!)).toBeGreaterThanOrEqual(7);
+    // The screen recipe names a number color that reads on the black screen in both editions.
+    expect(skill.content).toMatch(/Screen:[^\n]*number #F5F5F5/);
+  });
+
+  test("katakana guidance only allows grounds where orange text passes contrast", () => {
+    const light = findStyle("field-instrument")!.variables;
+    const hex = (name: string) => light[name]?.value as string;
+    const ratio = (fg: string, bg: string) => contrastBetweenHex(fg, bg) ?? 0;
+    expect(skill.content).not.toContain("on dark or large");
+    expect(skill.content).toContain("on black");
+    expect(skill.content).toContain("large and only on $surface");
+    expect(ratio(hex("accent"), "#0F0E12")).toBeGreaterThanOrEqual(4.5);
+    expect(ratio(hex("accent"), hex("surface"))).toBeGreaterThanOrEqual(3);
+    expect(ratio(hex("accent"), hex("bg"))).toBeLessThan(3);
   });
 
   test("names the Pego limits the dev-app check ran into", () => {
