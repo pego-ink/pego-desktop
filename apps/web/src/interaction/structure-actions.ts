@@ -7,10 +7,13 @@ import { duplicateOps } from "./duplicate";
 import { topmostSelected } from "./transform";
 import { showPage } from "@/pages/page-actions";
 import { selectionBounds } from "./zoom-utils";
+import { addFlexLayout, removeFlexLayout } from "./flex-layout";
 import {
   componentOf,
   detachInstances,
   restack,
+  toggleClip,
+  toggleVisible,
   toggleComponent,
   ungroupSelection,
   wrapSelection,
@@ -18,7 +21,17 @@ import {
 } from "./structure";
 
 export type StructureAction =
-  "group" | "frame" | "ungroup" | "component" | "detach-instance" | "front" | "back";
+  | "group"
+  | "frame"
+  | "ungroup"
+  | "component"
+  | "detach-instance"
+  | "front"
+  | "back"
+  | "add-flex"
+  | "remove-flex"
+  | "toggle-visible"
+  | "toggle-clip";
 
 const planFor = (action: StructureAction): StructureResult => {
   const { doc, selection } = useDocumentStore.getState();
@@ -34,6 +47,14 @@ const planFor = (action: StructureAction): StructureResult => {
       return toggleComponent(doc, layout, selection);
     case "detach-instance":
       return detachInstances(doc, selection);
+    case "add-flex":
+      return addFlexLayout(doc, layout, selection);
+    case "remove-flex":
+      return removeFlexLayout(doc, layout, selection);
+    case "toggle-visible":
+      return toggleVisible(doc, selection);
+    case "toggle-clip":
+      return toggleClip(doc, selection);
     case "front":
     case "back":
       return restack(doc, selection, action);

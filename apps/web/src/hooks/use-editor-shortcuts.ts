@@ -12,6 +12,8 @@ import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store
 import { getToolHandler } from "@/interaction/tool-handlers";
 import { nudgeStep } from "@/interaction/nudge";
 import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
+import { runPasteReplace } from "@/interaction/clipboard-actions";
+import { flipSelection } from "@/interaction/flip";
 import {
   runDelete,
   runDuplicate,
@@ -33,13 +35,15 @@ const isEditable = (target: EventTarget | null): boolean => {
 
 /**
  * Group ⌘G, Frame ⌘⌥G, Ungroup ⌘⇧G, Create/Detach component ⌘⌥K, Detach instance ⌘⌥X,
- * Bring to front ] and Send to back [.
+ * Bring to front ] and Send to back [, Add flex layout ⇧A, Remove flex layout ⇧⌥A, Hide/Show ⇧⌘H.
  */
 const structureShortcut = (e: KeyboardEvent, mod: boolean): StructureAction | null => {
   if (mod && e.code === "KeyG") {
     if (e.altKey) return e.shiftKey ? null : "frame";
     return e.shiftKey ? "ungroup" : "group";
   }
+  if (mod && e.shiftKey && !e.altKey && e.code === "KeyH") return "toggle-visible";
+  if (!mod && e.shiftKey && e.code === "KeyA") return e.altKey ? "remove-flex" : "add-flex";
   if (mod && e.altKey && !e.shiftKey && e.code === "KeyK") return "component";
   if (mod && e.altKey && !e.shiftKey && e.code === "KeyX") return "detach-instance";
   if (!mod && !e.altKey && !e.shiftKey && e.code === "BracketRight") return "front";
@@ -171,6 +175,16 @@ export const useEditorShortcuts = () => {
       if (structure) {
         e.preventDefault();
         if (doc.selection.length > 0) runStructure(structure);
+        return;
+      }
+      if (mod && e.shiftKey && !e.altKey && e.code === "KeyR") {
+        e.preventDefault();
+        if (doc.selection.length > 0) void runPasteReplace();
+        return;
+      }
+      if (!mod && !e.altKey && e.shiftKey && (e.code === "KeyH" || e.code === "KeyV")) {
+        e.preventDefault();
+        if (doc.selection.length > 0) flipSelection(e.code === "KeyH" ? "x" : "y");
         return;
       }
       if (mod) return;

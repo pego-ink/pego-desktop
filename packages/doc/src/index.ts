@@ -12,6 +12,7 @@ export {
   collectIds,
   findLocation,
   findNode,
+  flipOf,
   isContainer,
   pageOf,
   pageOrFirst,

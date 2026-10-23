@@ -112,7 +112,15 @@ const baseNode = z.object({
   visible: z.boolean().optional(),
 });
 
-const paintedNode = baseNode.extend({
+/** Every node that renders (everything but pages): adds the mirror flags. */
+const renderedNode = baseNode.extend({
+  /** Mirror left-right around the node's own box center (applied before rotation). */
+  flipX: z.boolean().optional(),
+  /** Mirror top-bottom around the node's own box center (applied before rotation). */
+  flipY: z.boolean().optional(),
+});
+
+const paintedNode = renderedNode.extend({
   fill: fillSchema.optional(),
   stroke: strokeSchema.optional(),
   effects,
@@ -133,7 +141,7 @@ const frameShape = paintedNode.extend({
    */
   slot: z.array(z.string().min(1)).max(50).optional(),
 });
-const groupShape = baseNode.extend({ type: z.literal("group") });
+const groupShape = renderedNode.extend({ type: z.literal("group") });
 /**
  * A page: the top level of a document. Pages sit only at the document root and hold the
  * canvas content (screens, components). Their x/y are unused.
@@ -179,7 +187,7 @@ const pathSchema = paintedNode.extend({
  * Bitmap image. `src` is a data: URL (embedded, travels with the .pego file) or an https URL.
  * `fit`: fill = cover the box (crop overflow), fit = contain, crop = no scaling, tile = repeat.
  */
-const imageSchema = baseNode.extend({
+const imageSchema = renderedNode.extend({
   type: z.literal("image"),
   src: z.string().min(1),
   fit: z.enum(["fill", "fit", "crop", "tile"]).optional(),
@@ -202,7 +210,7 @@ const imageSchema = baseNode.extend({
     })
     .optional(),
 });
-const textSchema = baseNode.extend({
+const textSchema = renderedNode.extend({
   type: z.literal("text"),
   content: z.union([z.string(), variableRef]),
   /** Family name or a $variable (string). */
@@ -218,14 +226,14 @@ const textSchema = baseNode.extend({
   fill: colorValueSchema.optional(),
   effects,
 });
-const iconSchema = baseNode.extend({
+const iconSchema = renderedNode.extend({
   type: z.literal("icon"),
   iconSet: z.string().default("lucide"),
   iconName: z.string().min(1),
   fill: colorValueSchema.optional(),
   effects,
 });
-const refSchema = baseNode.extend({
+const refSchema = renderedNode.extend({
   type: z.literal("ref"),
   /** Id of the reusable node this instance points at. */
   ref: z.string().min(1),
@@ -313,7 +321,7 @@ export const variableSchema = z.discriminatedUnion("type", [
 export const variablesSchema = z.record(z.string(), variableSchema);
 
 /** Current document format version; older documents go through `migrateDocument` first. */
-export const DOCUMENT_VERSION = 4;
+export const DOCUMENT_VERSION = 5;
 
 export const documentSchema = z.object({
   version: z.literal(DOCUMENT_VERSION),

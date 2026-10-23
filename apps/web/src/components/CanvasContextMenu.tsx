@@ -1,24 +1,31 @@
-import type { MouseEvent, ReactElement } from "react";
+import { useState, type MouseEvent, type ReactElement } from "react";
 import { findNode } from "@pego/doc";
 import {
   ContextMenu,
+  ContextMenuCheckboxItem,
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@pego/ui/components/context-menu";
 import { getLayout } from "@/canvas/layout";
 import { screenToDoc } from "@/canvas/types";
+import { runCopyAs } from "@/interaction/copy-as";
+import { runPasteHere, runPasteReplace } from "@/interaction/clipboard-actions";
+import { flipSelection } from "@/interaction/flip";
 import { HIT_TOLERANCE_PX } from "@/interaction/hit-test";
 import { pickAt } from "@/interaction/selection";
-import { allComponents, componentOf } from "@/interaction/structure";
+import { allClipped, allComponents, allVisible, componentOf } from "@/interaction/structure";
 import {
   goToComponent,
   runDelete,
   runDuplicate,
   runStructure,
 } from "@/interaction/structure-actions";
-import { useDocumentStore } from "@/store/use-document-store";
+import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
@@ -30,22 +37,30 @@ const keys = (...parts: ("mod" | "alt" | "shift" | string)[]) =>
     ? parts.map((part) => ({ mod: "⌘", alt: "⌥", shift: "⇧" })[part] ?? part).join("")
     : parts.map((part) => ({ mod: "Ctrl", alt: "Alt", shift: "Shift" })[part] ?? part).join("+");
 
+type DocPoint = { x: number; y: number };
+
 /** The selection's actions, shared by the canvas and the layers panel right-click menus. */
-export const SelectionMenuContent = () => {
+export const SelectionMenuContent = ({ point }: { point?: DocPoint | null }) => {
   const doc = useDocumentStore((s) => s.doc);
   const selection = useDocumentStore((s) => s.selection);
   const single = selection.length === 1 ? findNode(doc, selection[0]!) : null;
-  const containers = selection.some((id) => {
-    const node = findNode(doc, id);
-    return (node?.type === "group" || node?.type === "frame") && !node.reusable;
-  });
+  const nodes = selection.flatMap((id) => findNode(doc, id) ?? []);
+  const containers = nodes.some(
+    (node) => (node.type === "group" || node.type === "frame") && !node.reusable,
+  );
+  const flexFrame = nodes.some((node) => node.type === "frame" && node.layout !== "none");
+  const alreadyFlex = single?.type === "frame" && single.layout !== "none";
+  const hasFrame = nodes.some((node) => node.type === "frame");
   const components = allComponents(doc, selection);
   const instance = single?.type === "ref" ? single : null;
+  const none = selection.length === 0;
+  const oneLayer = selection.length === 1;
 
   return (
     <ContextMenuContent className="min-w-56">
       <ContextMenuItem
         shortcut={keys("mod", "K")}
+        disabled={none}
         onSelect={() => useSelectionPrompt.getState().setOpen(true)}
       >
         Ask Pego about this
@@ -57,34 +72,84 @@ export const SelectionMenuContent = () => {
       <ContextMenuItem shortcut={keys("mod", "C")} onSelect={() => document.execCommand("copy")}>
         Copy
       </ContextMenuItem>
-      <ContextMenuItem shortcut={keys("mod", "D")} onSelect={() => runDuplicate()}>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger disabled={none}>Copy as</ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          <ContextMenuItem disabled={!oneLayer} onSelect={() => void runCopyAs("svg")}>
+            SVG
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!oneLayer} onSelect={() => void runCopyAs("png")}>
+            PNG
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!oneLayer} onSelect={() => void runCopyAs("react-tailwind")}>
+            React + Tailwind
+          </ContextMenuItem>
+          <ContextMenuItem disabled={!oneLayer} onSelect={() => void runCopyAs("html-css")}>
+            HTML/CSS
+          </ContextMenuItem>
+          <ContextMenuItem onSelect={() => void runCopyAs("json")}>JSON</ContextMenuItem>
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+      <ContextMenuItem onSelect={() => void runPasteHere(point ?? undefined)}>
+        Paste here
+      </ContextMenuItem>
+      <ContextMenuItem
+        shortcut={keys("mod", "shift", "R")}
+        disabled={none}
+        onSelect={() => void runPasteReplace()}
+      >
+        Paste to replace
+      </ContextMenuItem>
+      <ContextMenuItem shortcut={keys("mod", "D")} disabled={none} onSelect={() => runDuplicate()}>
         Duplicate
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem shortcut="]" onSelect={() => runStructure("front")}>
+      <ContextMenuItem shortcut="]" disabled={none} onSelect={() => runStructure("front")}>
         Bring to front
       </ContextMenuItem>
-      <ContextMenuItem shortcut="[" onSelect={() => runStructure("back")}>
+      <ContextMenuItem shortcut="[" disabled={none} onSelect={() => runStructure("back")}>
         Send to back
       </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem shortcut={keys("mod", "G")} onSelect={() => runStructure("group")}>
+      <ContextMenuItem
+        shortcut={keys("mod", "G")}
+        disabled={none}
+        onSelect={() => runStructure("group")}
+      >
         Group selection
       </ContextMenuItem>
-      <ContextMenuItem shortcut={keys("mod", "alt", "G")} onSelect={() => runStructure("frame")}>
+      <ContextMenuItem
+        shortcut={keys("mod", "alt", "G")}
+        disabled={none}
+        onSelect={() => runStructure("frame")}
+      >
         Frame selection
       </ContextMenuItem>
-      {containers ? (
-        <ContextMenuItem
-          shortcut={keys("mod", "shift", "G")}
-          onSelect={() => runStructure("ungroup")}
-        >
-          Ungroup
-        </ContextMenuItem>
-      ) : null}
+      <ContextMenuItem
+        shortcut={keys("mod", "shift", "G")}
+        disabled={!containers}
+        onSelect={() => runStructure("ungroup")}
+      >
+        Ungroup
+      </ContextMenuItem>
+      <ContextMenuItem
+        shortcut={keys("shift", "A")}
+        disabled={none || alreadyFlex}
+        onSelect={() => runStructure("add-flex")}
+      >
+        Add flex layout
+      </ContextMenuItem>
+      <ContextMenuItem
+        shortcut={keys("shift", "alt", "A")}
+        disabled={!flexFrame}
+        onSelect={() => runStructure("remove-flex")}
+      >
+        Remove flex layout
+      </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuItem
         shortcut={keys("mod", "alt", "K")}
+        disabled={none}
         onSelect={() => runStructure("component")}
       >
         {components ? "Detach component" : "Create component"}
@@ -104,36 +169,92 @@ export const SelectionMenuContent = () => {
           ) : null}
         </>
       ) : null}
+      <ContextMenuItem
+        shortcut={keys("shift", "H")}
+        disabled={none}
+        onSelect={() => flipSelection("x")}
+      >
+        Flip horizontal
+      </ContextMenuItem>
+      <ContextMenuItem
+        shortcut={keys("shift", "V")}
+        disabled={none}
+        onSelect={() => flipSelection("y")}
+      >
+        Flip vertical
+      </ContextMenuItem>
       <ContextMenuSeparator />
-      <ContextMenuItem shortcut="⌫" destructive onSelect={() => runDelete()}>
+      <ContextMenuItem shortcut="⌫" destructive disabled={none} onSelect={() => runDelete()}>
         Delete
       </ContextMenuItem>
+      <ContextMenuSeparator />
+      <ContextMenuSub>
+        <ContextMenuSubTrigger disabled={none}>Settings</ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          <ContextMenuItem
+            shortcut={keys("mod", "shift", "H")}
+            onSelect={() => runStructure("toggle-visible")}
+          >
+            {allVisible(doc, selection) ? "Hide layer" : "Show layer"}
+          </ContextMenuItem>
+          <ContextMenuCheckboxItem
+            checked={allClipped(doc, selection)}
+            disabled={!hasFrame}
+            onCheckedChange={() => runStructure("toggle-clip")}
+          >
+            Clip content
+          </ContextMenuCheckboxItem>
+        </ContextMenuSubContent>
+      </ContextMenuSub>
     </ContextMenuContent>
   );
 };
 
+/** Right-click menu on empty canvas: paste at the pointer, or select everything. */
+const EmptyMenuContent = ({ point }: { point: DocPoint | null }) => (
+  <ContextMenuContent className="min-w-48">
+    <ContextMenuItem onSelect={() => void runPasteHere(point ?? undefined)}>
+      Paste here
+    </ContextMenuItem>
+    <ContextMenuItem
+      shortcut={keys("mod", "A")}
+      onSelect={() => {
+        const state = useDocumentStore.getState();
+        state.select(activePage(state).children.map((node) => node.id));
+      }}
+    >
+      Select all
+    </ContextMenuItem>
+  </ContextMenuContent>
+);
+
 /**
  * Right-click menu of the canvas. A right-click first selects what is under the pointer (like a
- * click; ⌘/Ctrl goes deep) unless it is already selected; on empty canvas nothing opens.
+ * click; ⌘/Ctrl goes deep) unless it is already selected; on empty canvas it clears the selection
+ * and opens a short menu. Paste here lands at the pointer.
  */
 export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
+  const [point, setPoint] = useState<DocPoint | null>(null);
+  const [empty, setEmpty] = useState(false);
+
   const onContextMenu = (event: MouseEvent<HTMLElement>) => {
     const state = useDocumentStore.getState();
     const rect = event.currentTarget.getBoundingClientRect();
     const { camera } = useViewportStore.getState();
-    const point = screenToDoc(camera, event.clientX - rect.left, event.clientY - rect.top);
+    const at = screenToDoc(camera, event.clientX - rect.left, event.clientY - rect.top);
     const hit = pickAt(
       state.doc,
       getLayout(state.doc),
-      point.x,
-      point.y,
+      at.x,
+      at.y,
       state.selection,
       event.metaKey || event.ctrlKey,
       { tolerance: HIT_TOLERANCE_PX / camera.zoom, pageId: state.pageId },
     );
-    if (hit && !state.selection.includes(hit)) state.select([hit]);
-    // Nothing to act on: no menu (and no browser menu either).
-    if (!hit && state.selection.length === 0) event.preventDefault();
+    setPoint(at);
+    setEmpty(!hit);
+    if (!hit) state.select([]);
+    else if (!state.selection.includes(hit)) state.select([hit]);
   };
 
   return (
@@ -141,7 +262,7 @@ export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
       <ContextMenuTrigger asChild onContextMenu={onContextMenu}>
         {children}
       </ContextMenuTrigger>
-      <SelectionMenuContent />
+      {empty ? <EmptyMenuContent point={point} /> : <SelectionMenuContent point={point} />}
     </ContextMenu>
   );
 };

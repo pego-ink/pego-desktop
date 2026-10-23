@@ -24,7 +24,7 @@ const PAGE = "page";
 
 /** A one-page document holding `children` at its top level. */
 const onPage = (children: PegoNode[]): PegoDocument => ({
-  version: 4,
+  version: 5,
   id: "d",
   name: "d",
   variables: {},

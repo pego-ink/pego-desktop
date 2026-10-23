@@ -301,7 +301,7 @@ export const planDrag = (input: DragInput): DragPlan => {
   if (!targetInverse) return { ops: [], flexParentId: null };
   const place = ordered.flatMap((id): Op[] => {
     const path = findNodePath(startDoc, id);
-    const origin = path && nodeToDocAffine(startDoc, startLayout, path);
+    const origin = path && nodeToDocAffine(startDoc, startLayout, path, false);
     if (!origin) return [];
     const local = applyAffine(targetInverse, origin.e + dx, origin.f + dy);
     return [{ op: "update", id, props: { x: roundPx(local.x, snap), y: roundPx(local.y, snap) } }];

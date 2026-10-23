@@ -22,7 +22,7 @@ describe("hitPath", () => {
 });
 
 const makeDoc = (children: PegoNode[]): PegoDocument => ({
-  version: 4,
+  version: 5,
   id: "d",
   name: "d",
   variables: {},
@@ -149,4 +149,31 @@ describe("hitPath tolerance for thin paths", () => {
     const l: Layout = new Map([["r", { x: 0, y: 0, width: 10, height: 10 }]]);
     expect(hitPath(doc, l, 12, 5, { tolerance: 4 })).toBeNull();
   });
+});
+
+describe("hitPath with flip", () => {
+  const doc = makeDoc([
+    {
+      type: "frame",
+      id: "fr",
+      x: 0,
+      y: 0,
+      width: 200,
+      height: 100,
+      layout: "none",
+      flipX: true,
+      children: [{ type: "rectangle", id: "c", x: 10, y: 10, width: 20, height: 20 }],
+    },
+  ]);
+  const layout: Layout = new Map([
+    ["fr", { x: 0, y: 0, width: 200, height: 100 }],
+    ["c", { x: 10, y: 10, width: 20, height: 20 }],
+  ]);
+
+  test("a child is picked at its mirrored position", () => {
+    expect(hitPath(doc, layout, 180, 20)).toEqual(["fr", "c"]);
+    expect(hitPath(doc, layout, 20, 20)).toEqual(["fr"]);
+  });
+  test("the flipped node's own box does not move", () =>
+    expect(hitPath(doc, layout, 100, 90)).toEqual(["fr"]));
 });

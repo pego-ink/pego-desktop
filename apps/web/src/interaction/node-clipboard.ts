@@ -8,6 +8,7 @@ import {
   nodeSchema,
   resolveInstance,
   resolveNumber,
+  type Layout,
   type Op,
   variablesSchema,
   type PegoDocument,
@@ -184,6 +185,25 @@ const centered = (doc: PegoDocument, nodes: PegoNode[], center: { x: number; y: 
   );
 };
 
+/** The payload's layers as fresh copies (detached when they cannot keep their components), plus
+ * the op that adds the variables another document is missing. Null for an empty payload. */
+const prepareCopies = (
+  doc: PegoDocument,
+  payload: NodesPayload,
+): { copies: PegoNode[]; ops: Op[] } | null => {
+  const sameDoc = payload.docId === doc.id;
+  const source = payload.nodes.map((node, index) =>
+    sameDoc && allRefsResolve(doc, node) ? node : (payload.detached?.[index] ?? node),
+  );
+  if (source.length === 0) return null;
+  const ops: Op[] = [];
+  const missing = Object.entries(payload.variables).filter(([name]) => !doc.variables[name]);
+  if (!sameDoc && missing.length > 0) {
+    ops.push({ op: "setVariables", variables: Object.fromEntries(missing) });
+  }
+  return { copies: source.map((node) => cloneWithFreshIds(node)), ops };
+};
+
 /**
  * Copies of the payload's layers, as ops. In the same document each copy goes right after its
  * original, shifted a little (like Duplicate); with one frame or group selected the copies go in
@@ -196,17 +216,9 @@ export const pasteNodes = (
   target: PasteTarget,
 ): PastePlan | null => {
   const sameDoc = payload.docId === doc.id;
-  const source = payload.nodes.map((node, index) =>
-    sameDoc && allRefsResolve(doc, node) ? node : (payload.detached?.[index] ?? node),
-  );
-  if (source.length === 0) return null;
-  const copies = source.map((node) => cloneWithFreshIds(node));
-  const ops: Op[] = [];
-
-  const missing = Object.entries(payload.variables).filter(([name]) => !doc.variables[name]);
-  if (!sameDoc && missing.length > 0) {
-    ops.push({ op: "setVariables", variables: Object.fromEntries(missing) });
-  }
+  const prepared = prepareCopies(doc, payload);
+  if (!prepared) return null;
+  const { copies, ops } = prepared;
 
   const into = containerTarget(doc, target.selection);
   const besideOriginals =
@@ -297,4 +309,92 @@ export const pasteText = (
     select: [placed.id],
     label: "Paste text",
   };
+};
+
+/** Top-left corner of the layers' bounds, in their own coordinates. */
+const topLeftOf = (doc: PegoDocument, nodes: readonly PegoNode[]) => ({
+  x: Math.min(...nodes.map((node) => numberOf(doc, node.x))),
+  y: Math.min(...nodes.map((node) => numberOf(doc, node.y))),
+});
+
+/** Move nodes so the top-left of their bounds lands on `at` (in their parent's coordinates). */
+const shiftedTo = (doc: PegoDocument, nodes: PegoNode[], at: { x: number; y: number }) => {
+  const corner = topLeftOf(doc, nodes);
+  const dx = Math.round(at.x - corner.x);
+  const dy = Math.round(at.y - corner.y);
+  return nodes.map(
+    (node) =>
+      ({ ...node, x: numberOf(doc, node.x) + dx, y: numberOf(doc, node.y) + dy }) as PegoNode,
+  );
+};
+
+/** What a paste at a point needs besides the point: the shown page and the selection. */
+export type PasteAtTarget = { pageId: string; selection: readonly string[] };
+
+/**
+ * Paste here: copies whose bounds start at `at` (canvas coordinates). They go into the selected
+ * frame or group when exactly one is selected (like ⌘V), otherwise onto the page. A flex frame
+ * places its children itself, so nothing is positioned there.
+ */
+export const pasteNodesAt = (
+  doc: PegoDocument,
+  layout: Layout,
+  payload: NodesPayload,
+  at: { x: number; y: number },
+  target: PasteAtTarget,
+): PastePlan | null => {
+  const prepared = prepareCopies(doc, payload);
+  if (!prepared) return null;
+  const { ops } = prepared;
+  const into = containerTarget(doc, target.selection);
+  const parent = into ? findNode(doc, into) : null;
+  const flexParent = parent?.type === "frame" && parent.layout !== "none";
+  const box = into ? layout.get(into) : undefined;
+  const placed = flexParent
+    ? prepared.copies
+    : shiftedTo(doc, prepared.copies, { x: at.x - (box?.x ?? 0), y: at.y - (box?.y ?? 0) });
+  for (const node of placed) ops.push({ op: "insert", parentId: into ?? target.pageId, node });
+  return { ops, select: placed.map((node) => node.id), label: "Paste here" };
+};
+
+/**
+ * Paste to replace: every selected layer is swapped for a copy of the payload's layers (all of
+ * them), at the same parent and index, with the bounds starting where the old layer started.
+ */
+export const replaceWithNodes = (
+  doc: PegoDocument,
+  payload: NodesPayload,
+  ids: readonly string[],
+): PastePlan | { error: string } => {
+  const locs = topmostSelected(doc, ids)
+    .flatMap((id) => {
+      const loc = findLocation(doc, id);
+      return loc && loc.node.type !== "page" ? [loc] : [];
+    })
+    // Last first: an earlier sibling's index stays valid.
+    .sort((a, b) => b.index - a.index);
+  if (locs.length === 0) return { error: "Select the layers to replace first." };
+  const first = prepareCopies(doc, payload);
+  if (!first) return { error: "Nothing to paste." };
+  const ops: Op[] = [...first.ops];
+  const select: string[] = [];
+  locs.forEach((loc, round) => {
+    const copies = round === 0 ? first.copies : (prepareCopies(doc, payload)?.copies ?? []);
+    const at = { x: numberOf(doc, loc.node.x), y: numberOf(doc, loc.node.y) };
+    shiftedTo(doc, copies, at).forEach((node, offset) => {
+      ops.push({ op: "insert", parentId: loc.parentId, index: loc.index + offset, node });
+      select.push(node.id);
+    });
+    ops.push({ op: "delete", id: loc.node.id });
+  });
+  return { ops, select, label: "Paste to replace" };
+};
+
+/** Clipboard text as a payload of one layer (SVG markup or a text layer); null when empty. */
+export const payloadFromText = (doc: PegoDocument, text: string): NodesPayload | null => {
+  const target = { pageId: "", selection: [], center: { x: 0, y: 0 } };
+  const plan = pasteSvg(doc, text, target) ?? pasteText(doc, text, target);
+  const op = plan?.ops[0];
+  if (op?.op !== "insert") return null;
+  return { version: 1, docId: "", nodes: [op.node], variables: {}, parents: [] };
 };

@@ -11,6 +11,7 @@ import {
   pasteText,
   readPayload,
 } from "./node-clipboard";
+import { rememberCopy } from "./clipboard-actions";
 import { runDelete } from "./structure-actions";
 import { isTextEditing } from "@/store/use-text-edit-store";
 
@@ -82,7 +83,9 @@ const writeSelection = (data: DataTransfer): boolean => {
   if (!copied || !payload) return false;
   data.setData("text/plain", copied.text);
   data.setData(LAYERS_MIME, copied.payload);
-  data.setData(NODES_MIME, JSON.stringify(payload));
+  const nodes = JSON.stringify(payload);
+  data.setData(NODES_MIME, nodes);
+  rememberCopy(copied.text, nodes);
   return true;
 };
 

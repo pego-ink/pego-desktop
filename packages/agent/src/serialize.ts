@@ -78,6 +78,8 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
   push("width", n.width);
   push("height", n.height);
   push("rotation", n.rotation);
+  if (n.flipX) push("flipX", true);
+  if (n.flipY) push("flipY", true);
   push("opacity", n.opacity);
   if (n.fill !== undefined) tokens.push(`fill=${fmtFill(n.fill as Fill)}`);
   if (n.stroke) tokens.push(`stroke=${fmtStroke(n.stroke as Stroke)}`);

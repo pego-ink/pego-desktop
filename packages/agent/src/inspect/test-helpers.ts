@@ -25,7 +25,7 @@ export const makeDoc = (
   variables: Record<string, unknown> = {},
 ): PegoDocument =>
   documentSchema.parse({
-    version: 4,
+    version: 5,
     id: "doc",
     name: "Test",
     variables,

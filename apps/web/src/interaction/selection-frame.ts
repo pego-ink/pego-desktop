@@ -31,7 +31,7 @@ const buildFrame = (doc: PegoDocument, layout: Layout, id: string): SelectionFra
   const box = layout.get(id);
   const path = findNodePath(doc, id);
   if (!box || !path) return null;
-  const matrix = nodeToDocAffine(doc, layout, path);
+  const matrix = nodeToDocAffine(doc, layout, path, false);
   const parentMatrix = nodeToDocAffine(doc, layout, path.slice(0, -1));
   return matrix && parentMatrix ? { matrix, parentMatrix, box } : null;
 };

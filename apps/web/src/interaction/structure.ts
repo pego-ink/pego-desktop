@@ -299,3 +299,49 @@ export const restack = (
     label: where === "front" ? "Bring to front" : "Send to back",
   };
 };
+
+/** Whether every selected layer is hidden-free (visible); the menu shows "Hide layer" then. */
+export const allVisible = (doc: PegoDocument, ids: readonly string[]): boolean =>
+  located(doc, ids).every((loc) => loc.node.visible !== false);
+
+/** Hide / Show layer: hides the selection, or shows it when something in it is already hidden. */
+export const toggleVisible = (doc: PegoDocument, ids: readonly string[]): StructureResult => {
+  const locs = located(doc, ids);
+  if (locs.length === 0) return { error: "Select layers to hide or show." };
+  const hide = allVisible(doc, ids);
+  return {
+    ops: locs.map((loc) => ({
+      op: "update" as const,
+      id: loc.node.id,
+      props: { visible: hide ? false : null },
+    })),
+    select: locs.map((loc) => loc.node.id),
+    label: hide ? "Hide layer" : "Show layer",
+  };
+};
+
+/** The selected frames (the ones "Clip content" applies to). */
+const selectedFrames = (doc: PegoDocument, ids: readonly string[]) =>
+  located(doc, ids).flatMap((loc) => (loc.node.type === "frame" ? [loc.node] : []));
+
+/** Whether every selected frame clips its content (false when no frame is selected). */
+export const allClipped = (doc: PegoDocument, ids: readonly string[]): boolean => {
+  const frames = selectedFrames(doc, ids);
+  return frames.length > 0 && frames.every((frame) => frame.clip === true);
+};
+
+/** Clip content: turn clipping off when every selected frame clips, on otherwise. */
+export const toggleClip = (doc: PegoDocument, ids: readonly string[]): StructureResult => {
+  const frames = selectedFrames(doc, ids);
+  if (frames.length === 0) return { error: "Select a frame to clip its content." };
+  const clip = !allClipped(doc, ids);
+  return {
+    ops: frames.map((frame) => ({
+      op: "update" as const,
+      id: frame.id,
+      props: { clip: clip ? true : null },
+    })),
+    select: frames.map((frame) => frame.id),
+    label: clip ? "Clip content" : "Stop clipping content",
+  };
+};

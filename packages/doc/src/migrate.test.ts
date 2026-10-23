@@ -18,8 +18,25 @@ describe("migrateDocument", () => {
         { type: "page", id: "p", children: [{ type: "ellipse", id: "e", visible: false }] },
       ],
     };
-    expect(migrateDocument(v3)).toMatchObject({ version: 4 });
+    expect(migrateDocument(v3)).toMatchObject({ version: DOCUMENT_VERSION });
     expect(loadDocument(v3)?.children[0]?.children[0]).toMatchObject({ visible: false });
+  });
+
+  test("upgrades version 4 documents to 5 and accepts flipX / flipY", () => {
+    const v4 = {
+      version: 4,
+      id: "d",
+      name: "V4",
+      children: [
+        {
+          type: "page",
+          id: "p",
+          children: [{ type: "ellipse", id: "e", flipX: true, flipY: true }],
+        },
+      ],
+    };
+    expect(migrateDocument(v4)).toMatchObject({ version: 5 });
+    expect(loadDocument(v4)?.children[0]?.children[0]).toMatchObject({ flipX: true, flipY: true });
   });
 
   test("leaves current documents unchanged", () => {
