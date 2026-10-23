@@ -24,3 +24,5 @@ Ask Claude Code to change a project by name and it edits that project in a backg
 ## Right-click does what you expect
 
 A right-click now acts on what you selected. Right-click a frame's name above it to get that frame's full menu, and right-clicking inside a selected frame keeps it selected instead of switching to a layer inside it or clearing the selection.
+
+The menu also ends with **Settings**, even on empty canvas: turn snapping to whole pixels on or off, or open all settings.
