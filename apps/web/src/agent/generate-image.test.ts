@@ -3,7 +3,11 @@ import { describe, expect, test } from "bun:test";
 import {
   createImageGenerator,
   findImageProvider,
+  geminiAspectRatio,
+  geminiImage,
   ImageUnsupportedError,
+  imageModelKey,
+  listImageModels,
   sizeFor,
 } from "./generate-image";
 import type { CustomProvider } from "./providers/types";
@@ -175,5 +179,105 @@ describe("createImageGenerator", () => {
       fetch: fakeFetch(() => json({ data: [] })).impl,
     });
     await expect(empty({ prompt: "x", width: 512, height: 512 })).rejects.toThrow(/no image/);
+  });
+});
+
+describe("image model choice", () => {
+  const openai = provider();
+  const google = provider({
+    id: "g1",
+    name: "Google",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    models: ["models/gemini-2.5-flash", "models/gemini-2.5-flash-image", "imagen-4.0-generate-001"],
+    createdAt: 2,
+  });
+
+  test("every image model of every provider is listed, oldest provider first", () => {
+    expect(listImageModels([openai, google]).map(imageModelKey)).toEqual([
+      "p1::gpt-image-1",
+      "g1::models/gemini-2.5-flash-image",
+      "g1::imagen-4.0-generate-001",
+    ]);
+  });
+
+  test("the picked model wins while it exists; otherwise the first one", () => {
+    expect(findImageProvider([openai, google], "g1::imagen-4.0-generate-001")).toMatchObject({
+      provider: { id: "g1" },
+      model: "imagen-4.0-generate-001",
+    });
+    expect(findImageProvider([openai, google], "gone::x")?.model).toBe("gpt-image-1");
+  });
+});
+
+describe("Gemini image models (Nano Banana)", () => {
+  const google = provider({
+    id: "g1",
+    name: "Google",
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+    models: ["models/gemini-2.5-flash-image"],
+  });
+
+  test("use Google's native endpoint with the key header and the nearest aspect ratio", async () => {
+    const { calls, impl } = fakeFetch(() =>
+      json({
+        candidates: [
+          {
+            content: {
+              parts: [{ text: "here" }, { inlineData: { mimeType: "image/png", data: PNG_B64 } }],
+            },
+          },
+        ],
+      }),
+    );
+    const generate = createImageGenerator({
+      listProviders: async () => [google],
+      loadKey: async () => SECRET,
+      fetch: impl,
+    });
+    const result = await generate({ prompt: "rendang on a banana leaf", width: 1600, height: 900 });
+    expect(result).toEqual({ src: `data:image/png;base64,${PNG_B64}` });
+    expect(calls[0]?.url).toBe(
+      "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent",
+    );
+    const headers = calls[0]?.init.headers as Record<string, string>;
+    expect(headers["x-goog-api-key"]).toBe(SECRET);
+    expect(headers.Authorization).toBeUndefined();
+    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({
+      contents: [{ parts: [{ text: "rendang on a banana leaf" }] }],
+      generationConfig: { responseModalities: ["IMAGE"], imageConfig: { aspectRatio: "16:9" } },
+    });
+  });
+
+  test("a blocked prompt (no image part) and HTTP errors are reported without the key", async () => {
+    const empty = createImageGenerator({
+      listProviders: async () => [google],
+      loadKey: async () => SECRET,
+      fetch: fakeFetch(() => json({ candidates: [{ content: { parts: [{ text: "no" }] } }] })).impl,
+    });
+    await expect(empty({ prompt: "x", width: 512, height: 512 })).rejects.toThrow(
+      /returned no image/,
+    );
+    const denied = createImageGenerator({
+      listProviders: async () => [google],
+      loadKey: async () => SECRET,
+      fetch: fakeFetch(() => json({ error: { message: "API key not valid" } }, 400)).impl,
+    });
+    const error = await denied({ prompt: "x", width: 512, height: 512 }).catch((e: Error) => e);
+    expect(String(error)).toContain("HTTP 400");
+    expect(String(error)).not.toContain(SECRET);
+  });
+
+  test("aspect ratios and image parts", () => {
+    expect(geminiAspectRatio(1024, 1024)).toBe("1:1");
+    expect(geminiAspectRatio(1080, 1920)).toBe("9:16");
+    expect(geminiAspectRatio(1200, 900)).toBe("4:3");
+    expect(
+      geminiImage({
+        candidates: [
+          { content: { parts: [{ inline_data: { data: "AAAA", mimeType: "image/svg+xml" } }] } },
+        ],
+      }),
+    ).toBe("data:image/png;base64,AAAA");
+    expect(geminiImage(null)).toBeNull();
   });
 });

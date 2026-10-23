@@ -68,6 +68,16 @@
         "electron-builder": "26.15.3",
       },
     },
+    "apps/extension": {
+      "name": "@pego/extension",
+      "version": "0.1.0",
+      "dependencies": {
+        "@pego/agent": "workspace:*",
+      },
+      "devDependencies": {
+        "@types/bun": "1.4.3",
+      },
+    },
     "apps/web": {
       "name": "@pego/web",
       "version": "0.0.0",
@@ -528,6 +538,8 @@
     "@pego/desktop": ["@pego/desktop@workspace:apps/desktop"],
 
     "@pego/doc": ["@pego/doc@workspace:packages/doc"],
+
+    "@pego/extension": ["@pego/extension@workspace:apps/extension"],
 
     "@pego/ui": ["@pego/ui@workspace:packages/ui"],
 

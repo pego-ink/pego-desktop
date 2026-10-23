@@ -25,6 +25,7 @@ import { createToolHost } from "./tool-host";
 import { showEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
 import { projectTarget } from "@/workspace/background-project";
+import { importCaptureFromBridge } from "@/browser/extension-import";
 import { readTarget, type DocumentTarget } from "@/workspace/document-target";
 
 /** Consecutive Claude Code (MCP) calls arriving within this window share one undo step. */
@@ -153,6 +154,11 @@ export const createBridgeHandlers = ({
     }
     if (message.tool === EDITOR_OPS.switchTab) {
       const outcome = switchTabForBridge(message.input);
+      return void reply(outcome.content, outcome.isError);
+    }
+    if (message.tool === EDITOR_OPS.importCapture) {
+      const outcome = await importCaptureFromBridge(message.input);
+      if (!outcome.isError) mcpHost.run.appendLog({ kind: "info", text: outcome.content });
       return void reply(outcome.content, outcome.isError);
     }
     if (message.tool === EDITOR_OPS.markSaved) {

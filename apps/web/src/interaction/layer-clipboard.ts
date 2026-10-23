@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { findNode, type PegoDocument } from "@pego/doc";
 import { screenToDoc } from "@/canvas/types";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, viewportCenter } from "@/store/use-viewport-store";
 import {
   copyPayload,
   NODES_MIME,
@@ -13,6 +13,7 @@ import {
 } from "./node-clipboard";
 import { rememberCopy } from "./clipboard-actions";
 import { runDelete } from "./structure-actions";
+import { pastedImageLink } from "@/interaction/use-image-paste";
 import { isTextEditing } from "@/store/use-text-edit-store";
 
 /** Clipboard type of copied layers: which document, which ids (read by the agent composer). */
@@ -92,16 +93,17 @@ const writeSelection = (data: DataTransfer): boolean => {
 /** What a paste on the canvas makes: copied layers, SVG markup or plain text (images: see use-image-paste). */
 const pastePlanFor = (data: DataTransfer) => {
   const state = useDocumentStore.getState();
-  const { camera, size } = useViewportStore.getState();
+  const { camera } = useViewportStore.getState();
+  const middle = viewportCenter();
   const target = {
     pageId: activePage(state).id,
     selection: state.selection,
-    center: screenToDoc(camera, size.width / 2, size.height / 2),
+    center: screenToDoc(camera, middle.x, middle.y),
   };
   const payload = readPayload(data.getData(NODES_MIME));
   if (payload) return pasteNodes(state.doc, payload, target);
-  // Image files are use-image-paste's.
-  if (data.files.length > 0) return null;
+  // Image files and image links are use-image-paste's.
+  if (data.files.length > 0 || pastedImageLink(data)) return null;
   const text = data.getData("text/plain");
   return pasteSvg(state.doc, text, target) ?? pasteText(state.doc, text, target);
 };

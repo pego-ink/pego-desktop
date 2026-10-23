@@ -1,5 +1,7 @@
 import { toast } from "sonner";
+import { svgToNode } from "@pego/agent";
 import {
+  collectDocIds,
   createId,
   findNode,
   isContainer,
@@ -229,4 +231,73 @@ export const insertImageCentered = (data: ImageAsset, center: { x: number; y: nu
   if (!ok) return;
   store.select([node.id]);
   useToolStore.getState().setTool("select");
+};
+
+/** True for an SVG file (by type, or by name when the type is missing). */
+export const isSvgFile = (file: Pick<File, "name" | "type">): boolean =>
+  file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
+
+/**
+ * SVG markup as vector layers (a clipped frame) centered on doc point `center`, at placement size
+ * (longest side <= MAX_PLACE_SIDE, scaled as vectors). Null when the markup cannot be converted.
+ */
+export const buildSvgNode = (
+  doc: PegoDocument,
+  markup: string,
+  name: string,
+  placement: ImagePlacement,
+  center: { x: number; y: number },
+): PegoNode | null => {
+  const taken = collectDocIds(doc);
+  let node: PegoNode;
+  try {
+    node = svgToNode(markup, taken, name);
+    const natural = {
+      width: typeof node.width === "number" ? node.width : 0,
+      height: typeof node.height === "number" ? node.height : 0,
+    };
+    const size = placementSize(natural);
+    if (size.width < natural.width) node = svgToNode(markup, taken, name, size.width);
+  } catch {
+    return null;
+  }
+  const width = typeof node.width === "number" ? node.width : 0;
+  const height = typeof node.height === "number" ? node.height : 0;
+  const x = Math.round(center.x - width / 2);
+  const y = Math.round(center.y - height / 2);
+  return {
+    ...node,
+    name: uniqueName(name, siblingsOf(doc, placement.parentId)),
+    x: 0,
+    y: 0,
+    ...(placement.flex ? {} : toParentSpace(placement, x, y)),
+  } as PegoNode;
+};
+
+/** Insert an SVG file's markup as vector layers centered at `center`. False when it can't convert. */
+const insertSvgCentered = (markup: string, name: string, center: { x: number; y: number }) => {
+  const store = useDocumentStore.getState();
+  const placement = placementAt(store.doc, getLayout(store.doc), center, store.pageId);
+  const node = buildSvgNode(store.doc, markup, name, placement, center);
+  if (!node) return false;
+  if (!store.commit([{ op: "insert", parentId: placement.parentId, node }], { label: "Place SVG" }))
+    return false;
+  store.select([node.id]);
+  useToolStore.getState().setTool("select");
+  return true;
+};
+
+/**
+ * Place a dropped or pasted image file centered at `center`: an SVG becomes vector layers
+ * (falling back to an image when Pego cannot convert it), any other image an image layer.
+ */
+export const placeImageFile = async (file: File, center: { x: number; y: number }) => {
+  let image = file;
+  if (isSvgFile(file)) {
+    if (insertSvgCentered(await file.text(), baseName(file), center)) return;
+    toast.info(`${file.name} was placed as an image: it could not be turned into layers.`);
+    if (!file.type) image = new File([file], file.name, { type: "image/svg+xml" });
+  }
+  const asset = await readImageFile(image);
+  if (asset) insertImageCentered(asset, center);
 };

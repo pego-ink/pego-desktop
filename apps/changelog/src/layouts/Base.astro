@@ -3,6 +3,7 @@ import "@/styles/global.css";
 import fontUrl from "@/assets/fonts/inter-latin.woff2?url";
 import Logo from "@/components/Logo.astro";
 import { serializeJsonLd } from "@/lib/json-ld";
+import { getDownloads, downloadAnchor } from "@/lib/downloads";
 import { APP_URL, GITHUB_URL, SITE_NAME, SITE_URL } from "@/lib/site";
 
 interface Props {
@@ -20,6 +21,7 @@ const { title, description, type = "website", publishedTime, jsonLd, noindex = f
 const canonical = new URL(Astro.url.pathname, SITE_URL).href;
 const ogImage = new URL("/pego-mark.png", SITE_URL).href;
 const ld = jsonLd ? (Array.isArray(jsonLd) ? jsonLd : [jsonLd]) : [];
+const { latest } = await getDownloads();
 const isHome = Astro.url.pathname === "/";
 ---
 
@@ -67,6 +69,7 @@ const isHome = Astro.url.pathname === "/";
       </a>
       <nav class="site-nav" aria-label="Site">
         <a class="secondary" href={GITHUB_URL}>GitHub</a>
+        {latest && <a class="nav-download" href={`/#${downloadAnchor(latest.version)}`}>Download</a>}
         <a class="cta" href={APP_URL}>Open Pego</a>
       </nav>
     </header>

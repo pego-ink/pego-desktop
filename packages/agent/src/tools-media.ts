@@ -64,10 +64,22 @@ export const insertRaw = (
 
 /**
  * SVG markup as one Pego node (a clipped frame of vector nodes) with ids that are not in `taken`.
- * Pasting SVG on the canvas uses it too. Throws `SvgError` for markup it cannot convert.
+ * Pasting and dropping SVG on the canvas use it too; `width` scales it (height keeps the aspect).
+ * Throws `SvgError` for markup it cannot convert.
  */
-export const svgToNode = (source: string, taken: Set<string>, name?: string): PegoNode =>
-  parseNode(assignIds(convertSvg(source, name ? { name } : {}).node, taken), "node").node;
+export const svgToNode = (
+  source: string,
+  taken: Set<string>,
+  name?: string,
+  width?: number,
+): PegoNode =>
+  parseNode(
+    assignIds(
+      convertSvg(source, { ...(name ? { name } : {}), ...(width ? { width } : {}) }).node,
+      taken,
+    ),
+    "node",
+  ).node;
 
 const withWarnings = (data: Record<string, unknown>, warnings: string[]): ToolResult =>
   ok(warnings.length > 0 ? { ...data, warnings } : data);
@@ -194,7 +206,7 @@ const placeImage = defineTool({
   description:
     "Place a bitmap image (photo, screenshot, raster artwork) from a known source as an image node. " +
     "src is an https URL, a base64 data:image URL (png, jpeg, gif, webp, avif; max 5 MB), or attachment:<id> for an image the user attached to the request (the ids are listed in the request). SVG data URLs are rejected: use insert_svg for vectors. " +
-    "Never invent URLs: only use ones the user gave you or that you know exist. If you need a new picture and generate_image is available, use that. Never fake photos with shapes. " +
+    "Never invent URLs: only use ones the user gave you, that search_images returned, or that you know exist. For a real photo, search_images first; if you need an invented picture and generate_image is available, use that. Never fake photos with shapes. " +
     "fit: fill (cover the box, default), fit (contain), crop (no scaling), tile. Set width and height; if only one is given the box is square-ish to it. Add alt text.",
   inputSchema: {
     type: "object",
@@ -215,6 +227,11 @@ const placeImage = defineTool({
       },
       alt: { type: "string", description: "Alt text describing the image." },
       name: { type: "string", description: "Layer name." },
+      sourceUrl: {
+        type: "string",
+        description:
+          "The image's page (from search_images: pageUrl), kept on the layer for credit and license.",
+      },
     },
     required: ["src"],
     additionalProperties: false,
@@ -229,9 +246,14 @@ const placeImage = defineTool({
     fit: fitSchema.optional(),
     alt: z.string().max(500).optional(),
     name: z.string().min(1).max(200).optional(),
+    sourceUrl: z
+      .string()
+      .max(2000)
+      .regex(/^https:\/\//i, "must be an https URL")
+      .optional(),
   }),
   inputHint:
-    "Pass {src: https URL | data:image URL | attachment:<id>, parentId?, x?, y?, width?, height?, fit?, alt?}.",
+    "Pass {src: https URL | data:image URL | attachment:<id>, parentId?, x?, y?, width?, height?, fit?, alt?, sourceUrl?}.",
   run: (input, host) => {
     const parent = input.parentId ?? null;
     const resolved = resolveSrc(host, input.src);
@@ -244,6 +266,7 @@ const placeImage = defineTool({
         src,
         fit: input.fit ?? "fill",
         ...(input.alt ? { alt: input.alt } : {}),
+        ...(input.sourceUrl ? { source: { url: input.sourceUrl } } : {}),
         ...imageSizeProps(input.width, input.height),
         ...defaultPosition(host, parent, input.x, input.y),
       },
@@ -337,5 +360,80 @@ const generateImage = defineTool({
   },
 });
 
-/** Media tools: insert_svg, place_image, generate_image. */
-export const mediaTools: ToolSpec[] = [insertSvg, placeImage, generateImage];
+// --- search_images ------------------------------------------------------------------
+
+const MAX_SEARCH_RESULTS = 20;
+
+const searchImages = defineTool({
+  name: "search_images",
+  description:
+    "Search free-to-use photos (openly licensed stock images) for a query, e.g. 'fried chicken on a plate' or 'mountain lake at dawn'. " +
+    "Returns candidates with src, size, title, creator, license and pageUrl. Then place the one you want with place_image: pass its src, a box that keeps its aspect ratio, alt, and sourceUrl = pageUrl so the credit stays on the layer. " +
+    "Use it for real photos (food, places, people, products); use generate_image only for pictures that cannot exist. Search in English with concrete nouns. Tell the user which photos you used and their credit line.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      query: { type: "string", description: "What the photo shows." },
+      count: {
+        type: "number",
+        description: `How many candidates (1-${MAX_SEARCH_RESULTS}, default 6).`,
+      },
+      orientation: {
+        type: "string",
+        enum: ["landscape", "portrait", "square"],
+        description: "Optional shape to prefer.",
+      },
+    },
+    required: ["query"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({
+    query: z.string().trim().min(1).max(200),
+    count: z.number().int().min(1).max(MAX_SEARCH_RESULTS).optional(),
+    orientation: z.enum(["landscape", "portrait", "square"]).optional(),
+  }),
+  inputHint: "Pass {query: string, count?: number, orientation?: 'landscape'|'portrait'|'square'}.",
+  run: async (input, host) => {
+    if (!host.searchImages) {
+      return fail("unsupported", "Image search is not available in this editor.");
+    }
+    let found;
+    try {
+      found = await host.searchImages({
+        query: input.query,
+        count: input.count ?? 6,
+        ...(input.orientation ? { orientation: input.orientation } : {}),
+      });
+    } catch (error) {
+      throw new ToolError(
+        "search_failed",
+        error instanceof Error ? error.message : "image search failed",
+        "Try again, try other words, or design without the photo.",
+      );
+    }
+    // Results come from the network: keep only ones place_image would accept.
+    const results = found.flatMap((image) => {
+      try {
+        return [{ ...image, src: checkedSrc(image.src) }];
+      } catch {
+        return [];
+      }
+    });
+    return ok({
+      query: input.query,
+      results: results.map((image) => ({
+        src: image.src,
+        ...(image.width && image.height ? { width: image.width, height: image.height } : {}),
+        title: image.title,
+        ...(image.creator ? { creator: image.creator } : {}),
+        license: image.license,
+        pageUrl: image.pageUrl,
+        credit: `${image.title}${image.creator ? ` by ${image.creator}` : ""} (${image.license}, via ${image.provider})`,
+      })),
+      ...(results.length === 0 ? { hint: "No photo found; try broader or other words." } : {}),
+    });
+  },
+});
+
+/** Media tools: insert_svg, place_image, generate_image, search_images. */
+export const mediaTools: ToolSpec[] = [insertSvg, placeImage, generateImage, searchImages];

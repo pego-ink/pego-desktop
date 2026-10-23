@@ -1,9 +1,10 @@
 import { useRef, type ComponentType, type KeyboardEvent, type SVGProps } from "react";
-import { InfoIcon, KeyboardIcon, SlidersHorizontalIcon, SparklesIcon } from "lucide-react";
+import { InfoIcon, KeyboardIcon, SlidersHorizontalIcon, SparklesIcon, TagIcon } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@pego/ui/components/dialog";
 import { cn } from "@pego/ui/lib/utils";
 import { useSettingsModal, type SettingsTab } from "@/store/use-settings-store";
 import { AboutTab } from "./AboutTab";
+import { AgentNamesSettingsTab } from "./AgentNamesSettingsTab";
 import { AgentSettingsTab } from "./AgentSettingsTab";
 import { GeneralSettingsTab } from "./GeneralSettingsTab";
 import { ShortcutsTab } from "./ShortcutsTab";
@@ -18,6 +19,7 @@ type TabItem = {
 const TABS: readonly TabItem[] = [
   { id: "general", label: "General & Editor", Icon: SlidersHorizontalIcon },
   { id: "agent", label: "Agent & Models", Icon: SparklesIcon },
+  { id: "agent-names", label: "Agent names", Icon: TagIcon },
   { id: "shortcuts", label: "Keyboard shortcuts", Icon: KeyboardIcon },
   { id: "about", label: "About & Updates", Icon: InfoIcon },
 ];
@@ -88,6 +90,8 @@ const TabContent = ({ tab, section }: { tab: SettingsTab; section: string | unde
       return <GeneralSettingsTab />;
     case "agent":
       return <AgentSettingsTab section={section} />;
+    case "agent-names":
+      return <AgentNamesSettingsTab />;
     case "shortcuts":
       return <ShortcutsTab />;
     case "about":
@@ -109,7 +113,7 @@ export const SettingsModal = () => {
       <DialogContent className="h-[560px] max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[760px] gap-0 overflow-hidden p-0">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
-          Editor, agent, keyboard shortcut and update settings.
+          Editor, agent, agent name, keyboard shortcut and update settings.
         </DialogDescription>
         <div className="flex h-full min-h-0 flex-col sm:flex-row">
           <SettingsNav tab={tab} onSelect={(next) => openSettings(next)} />

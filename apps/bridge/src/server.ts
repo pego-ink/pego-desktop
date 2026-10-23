@@ -1,5 +1,6 @@
 import {
   BRIDGE_PROTOCOL_VERSION,
+  EDITOR_OPS,
   type BridgeToEditor,
   type EditorToBridge,
   type RunEvent,
@@ -17,10 +18,22 @@ import { resolve, sep } from "node:path";
 import { listDesignFiles, readProjectFile } from "./project";
 import { createProject, listProjects } from "./projects";
 import { trashProject } from "./trash";
+import { fetchImage, FetchImageError } from "./fetch-image";
+import {
+  DEFAULT_TOKEN_PATH,
+  isExtensionOrigin,
+  loadExtensionToken,
+  MAX_CAPTURE_BYTES,
+  parseCapture,
+  readTextLimited,
+  tokenMatches,
+} from "./extension";
 
 type SocketData = { greeted: boolean };
 
 export type BridgeOptions = BridgeConfig & {
+  /** Where the browser extension's pairing code lives (tests use a temp file). */
+  extensionTokenPath?: string;
   /** Overrides for tests. */
   adapters?: AgentAdapter[];
   detector?: AgentDetector;
@@ -101,6 +114,11 @@ export const startBridge = (options: BridgeOptions) => {
   const detector =
     options.detector ?? createAgentDetector(options.adapters ? { adapters: options.adapters } : {});
 
+  // The browser extension's pairing code, read (or created) on first use.
+  let extensionToken: Promise<string> | null = null;
+  const pairingCode = () =>
+    (extensionToken ??= loadExtensionToken(options.extensionTokenPath ?? DEFAULT_TOKEN_PATH));
+
   const server = Bun.serve<SocketData>({
     hostname: "127.0.0.1",
     port: options.port,
@@ -122,6 +140,96 @@ export const startBridge = (options: BridgeOptions) => {
         }
         if (srv.upgrade(request, { data: { greeted: false } })) return undefined;
         return text(426, "Upgrade Required");
+      }
+
+      if (pathname === "/fetch-image") {
+        // Images the editor cannot load itself (no CORS on the site). Editor only: a browser page
+        // always sends Origin, and only the editor's passes.
+        if (!origin || !isOriginAllowed(origin, options.allowedOrigins)) {
+          return text(403, "Forbidden: origin not allowed");
+        }
+        const cors = { "access-control-allow-origin": origin, vary: "Origin" };
+        if (request.method !== "GET") {
+          return new Response("Method not allowed", { status: 405, headers: cors });
+        }
+        try {
+          const { bytes, type } = await fetchImage(
+            new URL(request.url).searchParams.get("url") ?? "",
+          );
+          return new Response(bytes, {
+            headers: {
+              ...cors,
+              "content-type": type,
+              "cache-control": "no-store",
+              "x-content-type-options": "nosniff",
+            },
+          });
+        } catch (error) {
+          const status = error instanceof FetchImageError ? error.status : 502;
+          const message = error instanceof Error ? error.message : "Could not fetch the image.";
+          return new Response(message, {
+            status,
+            headers: { ...cors, "content-type": "text/plain; charset=utf-8" },
+          });
+        }
+      }
+
+      if (pathname === "/extension/token") {
+        // The pairing code, for the editor's settings only.
+        if (!origin || !isOriginAllowed(origin, options.allowedOrigins)) {
+          return text(403, "Forbidden: origin not allowed");
+        }
+        return Response.json(
+          { token: await pairingCode() },
+          {
+            headers: {
+              "access-control-allow-origin": origin,
+              vary: "Origin",
+              "cache-control": "no-store",
+            },
+          },
+        );
+      }
+
+      if (pathname === "/extension/import") {
+        // Only a browser extension, and only with the pairing code (see extension.ts).
+        if (!isExtensionOrigin(origin)) return text(403, "Forbidden: not a browser extension");
+        const cors = {
+          "access-control-allow-origin": origin!,
+          "access-control-allow-headers": "content-type, x-pego-token",
+          "access-control-allow-methods": "POST",
+          vary: "Origin",
+        };
+        if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: cors });
+        const reply = (status: number, body: string) =>
+          new Response(body, {
+            status,
+            headers: { ...cors, "content-type": "text/plain; charset=utf-8" },
+          });
+        if (request.method !== "POST") return reply(405, "Method not allowed");
+        if (!tokenMatches(request.headers.get("x-pego-token"), await pairingCode())) {
+          return reply(
+            401,
+            "Wrong pairing code. Copy it from Pego: Settings › Agent & Models › Browser extension.",
+          );
+        }
+        const length = Number(request.headers.get("content-length") ?? 0);
+        if (length > MAX_CAPTURE_BYTES) return reply(413, "The capture is larger than 20 MB.");
+        const raw = await readTextLimited(request, MAX_CAPTURE_BYTES);
+        if (raw === null) return reply(413, "The capture is larger than 20 MB.");
+        let body: unknown;
+        try {
+          body = JSON.parse(raw);
+        } catch {
+          return reply(400, "The capture is not JSON.");
+        }
+        const capture = parseCapture(body);
+        if (!capture) return reply(400, "That is not a Pego capture.");
+        const outcome = await hub.callTool(EDITOR_OPS.importCapture, capture, {
+          kind: "mcp",
+          clientName: "Pego browser extension",
+        });
+        return reply(outcome.isError ? 409 : 200, outcome.content);
       }
 
       const runToken = parseRunMcpPath(pathname);

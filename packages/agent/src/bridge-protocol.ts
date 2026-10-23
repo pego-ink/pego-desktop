@@ -1,3 +1,4 @@
+import type { DomSnapshot } from "./browser-types";
 import type { DecisionRequest, PlanStep, StepStatus, ToolImage } from "./types";
 
 /**
@@ -79,7 +80,21 @@ export const EDITOR_OPS = {
   switchTab: "pego.switch_tab",
   /** Input a ProjectInfo: open (or show) that project's tab in the editor. */
   openProject: "pego.open_project",
+  /** Input an `ExtensionCapture`: put what the browser extension captured on the canvas. */
+  importCapture: "pego.import_capture",
 } as const;
+
+/** The page a browser-extension capture came from. */
+export type CapturedPage = { url: string; title: string };
+
+/**
+ * What the Pego browser extension sends (POST /extension/import, forwarded to the focused editor
+ * as `EDITOR_OPS.importCapture`): a page or element as a DOM snapshot (editable layers), or a
+ * screenshot of the visible tab.
+ */
+export type ExtensionCapture =
+  | { kind: "snapshot"; page: CapturedPage; fullPage: boolean; snapshot: DomSnapshot }
+  | { kind: "screenshot"; page: CapturedPage; dataUrl: string; width: number; height: number };
 
 /** Messages the editor sends to the bridge. */
 export type EditorToBridge =

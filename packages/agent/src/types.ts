@@ -68,8 +68,35 @@ export type ToolHost = {
     width: number;
     height: number;
   }) => Promise<{ src: string; alt?: string }>;
+  /**
+   * Search free-to-use photos (stock images with an open license). `search_images` returns
+   * `unsupported` without it. Results are untrusted: their src is checked like place_image's.
+   */
+  searchImages?: (request: {
+    query: string;
+    count: number;
+    orientation?: "landscape" | "portrait" | "square";
+  }) => Promise<StockImage[]>;
   /** The in-app browser (desktop app only); `browser` returns `unsupported` without it. */
   browser?: BrowserHost;
+};
+
+/** A photo from an image search, with what crediting it needs. */
+export type StockImage = {
+  /** Full-size image, https, loadable on the canvas. */
+  src: string;
+  /** Small preview, https. */
+  thumb: string;
+  width?: number;
+  height?: number;
+  title: string;
+  creator?: string;
+  /** License label, e.g. "CC BY 2.0" or "CC0 1.0". */
+  license: string;
+  /** The image's page (credit and license details). */
+  pageUrl: string;
+  /** Where the search ran, e.g. "Openverse". */
+  provider: string;
 };
 
 /** Image media types a tool result may carry. */

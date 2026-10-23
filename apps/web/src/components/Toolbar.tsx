@@ -2,11 +2,18 @@ import { Fragment, useState } from "react";
 import { CheckIcon, ChevronDownIcon } from "lucide-react";
 import { cn } from "@pego/ui/lib/utils";
 import {
+  ContextMenu,
+  ContextMenuCheckboxItem,
+  ContextMenuContent,
+  ContextMenuTrigger,
+} from "@pego/ui/components/context-menu";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@pego/ui/components/dropdown-menu";
+import { useSettingsStore } from "@/store/use-settings-store";
 import { useToolStore, type Tool } from "@/store/use-tool-store";
 import {
   TOOL_GROUPS,
@@ -15,16 +22,26 @@ import {
   tooltipFor,
   type ToolGroup,
 } from "@/components/toolbar-groups";
+import {
+  TOOLBAR_POSITION_LABELS,
+  TOOLBAR_POSITIONS,
+  toolbarLayout,
+  type ToolbarPosition,
+} from "@/components/toolbar-position";
 
 const FOCUS_RING = "outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50";
 
 /** The navigation tools (Move, Hand) sit apart from the creation tools. */
 const DIVIDER_AFTER = "hand";
 
-type GroupButtonProps = { group: ToolGroup };
+type GroupButtonProps = {
+  group: ToolGroup;
+  vertical: boolean;
+  menuSide: "top" | "bottom" | "left" | "right";
+};
 
 /** One toolbar group: a button for the shown tool, plus a chevron menu when it holds several. */
-const GroupButton = ({ group }: GroupButtonProps) => {
+const GroupButton = ({ group, vertical, menuSide }: GroupButtonProps) => {
   const active = useToolStore((s) => s.tool);
   const setTool = useToolStore((s) => s.setTool);
   const [lastUsed, setLastUsed] = useState<Tool>(group.tools[0]?.tool ?? "select");
@@ -37,7 +54,7 @@ const GroupButton = ({ group }: GroupButtonProps) => {
   const multi = group.tools.length > 1;
 
   return (
-    <div className="flex items-center">
+    <div className={cn("flex items-center", vertical && "flex-col")}>
       <button
         type="button"
         title={tooltipFor(shown)}
@@ -63,14 +80,15 @@ const GroupButton = ({ group }: GroupButtonProps) => {
               title={group.label}
               aria-label={group.label}
               className={cn(
-                "flex h-9 w-4 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+                "flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
+                vertical ? "h-4 w-9" : "h-9 w-4",
                 FOCUS_RING,
               )}
             >
               <ChevronDownIcon className="size-3" aria-hidden />
             </button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" aria-label={group.label}>
+          <DropdownMenuContent side={menuSide} align="start" aria-label={group.label}>
             {group.tools.map((entry) => (
               <DropdownMenuItem key={entry.tool} onSelect={() => setTool(entry.tool)}>
                 <CheckIcon
@@ -93,20 +111,65 @@ const GroupButton = ({ group }: GroupButtonProps) => {
   );
 };
 
-/** Floating tool picker, bottom center of the canvas. */
-export const Toolbar = () => (
-  <div
-    role="toolbar"
-    aria-label="Tools"
-    className="absolute bottom-6 left-1/2 flex -translate-x-1/2 items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[0_8px_24px_#00000055]"
-  >
-    {TOOL_GROUPS.map((group) => (
-      <Fragment key={group.id}>
-        <GroupButton group={group} />
-        {group.id === DIVIDER_AFTER ? (
-          <div role="separator" aria-orientation="vertical" className="mx-1 h-5 w-px bg-border" />
-        ) : null}
-      </Fragment>
-    ))}
-  </div>
-);
+/**
+ * Placement per position: centered on its edge of the canvas. Each stays clear of the zoom control
+ * (bottom right) and the "show properties" button (top right): on a small canvas the toolbar
+ * scrolls instead of covering them, and never gets shorter than 12rem (it stays usable).
+ */
+const POSITION_CLASS: Record<ToolbarPosition, string> = {
+  bottom: "bottom-6 left-1/2 -translate-x-1/2 max-w-[max(calc(100%-23rem),12rem)] overflow-x-auto",
+  top: "top-4 left-1/2 -translate-x-1/2 max-w-[max(calc(100%-7rem),12rem)] overflow-x-auto",
+  left: "left-3 top-1/2 -translate-y-1/2 flex-col max-h-[max(calc(100%-8rem),12rem)] overflow-y-auto",
+  right:
+    "right-3 top-1/2 -translate-y-1/2 flex-col max-h-[max(calc(100%-8rem),12rem)] overflow-y-auto",
+};
+
+/**
+ * Floating tool picker on the canvas: a row at the bottom (default) or top, a column on the left
+ * or right (Settings › General, or right-click it).
+ */
+export const Toolbar = () => {
+  const position = useSettingsStore((s) => s.toolbarPosition);
+  const update = useSettingsStore((s) => s.update);
+  const { vertical, menuSide } = toolbarLayout(position);
+  return (
+    <ContextMenu>
+      <ContextMenuTrigger asChild>
+        <div
+          role="toolbar"
+          aria-label="Tools"
+          aria-orientation={vertical ? "vertical" : "horizontal"}
+          className={cn(
+            "absolute flex items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[0_8px_24px_#00000055] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            POSITION_CLASS[position],
+          )}
+        >
+          {TOOL_GROUPS.map((group) => (
+            <Fragment key={group.id}>
+              <GroupButton group={group} vertical={vertical} menuSide={menuSide} />
+              {group.id === DIVIDER_AFTER ? (
+                <div
+                  role="separator"
+                  aria-orientation={vertical ? "horizontal" : "vertical"}
+                  className={vertical ? "my-1 h-px w-5 bg-border" : "mx-1 h-5 w-px bg-border"}
+                />
+              ) : null}
+            </Fragment>
+          ))}
+        </div>
+      </ContextMenuTrigger>
+      <ContextMenuContent className="min-w-40" aria-label="Toolbar position">
+        <div className="px-2 py-1 text-xs text-muted-foreground">Toolbar position</div>
+        {TOOLBAR_POSITIONS.map((value) => (
+          <ContextMenuCheckboxItem
+            key={value}
+            checked={position === value}
+            onCheckedChange={() => update({ toolbarPosition: value })}
+          >
+            {TOOLBAR_POSITION_LABELS[value]}
+          </ContextMenuCheckboxItem>
+        ))}
+      </ContextMenuContent>
+    </ContextMenu>
+  );
+};

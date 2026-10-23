@@ -1,5 +1,8 @@
 import { describe, expect, it } from "bun:test";
+import { readFileSync } from "node:fs";
+import { coreSkill, coreSkills } from "./index";
 import { systemSkills } from "./system-skills";
+import { uiPolishSkill } from "./system/ui-polish";
 
 const STYLE_IDS = [
   "quiet-ink",
@@ -52,11 +55,37 @@ describe("systemSkills", () => {
     for (const id of ids) expect(id).toMatch(/^[a-z0-9]+(-[a-z0-9]+)*$/);
   });
 
-  it("has exactly one core skill with no styles or keywords", () => {
+  it("has the core skills core and ui-polish, with no styles or keywords", () => {
     const core = systemSkills.filter((skill) => skill.core);
-    expect(core).toHaveLength(1);
-    expect(core[0]?.styles).toEqual([]);
-    expect(core[0]?.keywords).toEqual([]);
+    expect(core.map((skill) => skill.id)).toEqual(["core", "ui-polish"]);
+    for (const skill of core) {
+      expect(skill.styles).toEqual([]);
+      expect(skill.keywords).toEqual([]);
+    }
+  });
+
+  it("coreSkills lists every core skill in registry order; coreSkill stays core", () => {
+    expect(coreSkills().map((skill) => skill.id)).toEqual(["core", "ui-polish"]);
+    expect(coreSkill()?.id).toBe("core");
+  });
+
+  it("ui-polish speaks Pego, not CSS, and credits its source", () => {
+    for (const term of [
+      "cornerRadius",
+      "padding",
+      "fill_container",
+      "effects",
+      "get_screenshot",
+      "check_layout",
+    ]) {
+      expect(uiPolishSkill.content).toContain(term);
+    }
+    for (const css of ["transition", "will-change", "box-shadow", "@media", "mono"]) {
+      expect(uiPolishSkill.content).not.toContain(css);
+    }
+    const source = readFileSync(new URL("./system/ui-polish.ts", import.meta.url), "utf8");
+    expect(source).toContain("Jakub Krehel");
+    expect(source).toContain("MIT");
   });
 
   it("keeps content within size bounds", () => {
