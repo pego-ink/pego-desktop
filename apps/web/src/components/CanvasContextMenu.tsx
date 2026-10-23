@@ -229,8 +229,8 @@ const EmptyMenuContent = ({ point }: { point: DocPoint | null }) => (
 
 /**
  * Right-click menu of the canvas. A right-click first selects what is under the pointer (like a
- * click: a frame's caption picks the frame, ⌘/Ctrl goes deep) unless it is already selected; on empty canvas it clears the selection
- * and opens a short menu. Paste here lands at the pointer.
+ * click: a frame's caption picks the frame, ⌘/Ctrl goes deep) unless it is already selected; on
+ * empty canvas it clears the selection and opens a short menu. Paste here lands at the pointer.
  */
 export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
   const [point, setPoint] = useState<DocPoint | null>(null);
