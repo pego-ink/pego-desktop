@@ -115,7 +115,7 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
       style={{ width: panel.width }}
       className={cn(
         "relative shrink-0 flex-col [&:not([hidden])]:flex",
-        !floating && "border-r border-border bg-card",
+        floating ? "min-h-0 flex-1" : "border-r border-border bg-card",
       )}
     >
       <FileMenu />
@@ -203,14 +203,24 @@ const HeaderActions = () => (
   </>
 );
 
+/** The floating interface's header pill, at the end of the tab row (like pen.dev's Share pill). */
+const FloatingHeaderPill = () => (
+  <div className={cn("flex items-center gap-1 p-1", FLOATING_CARD)}>
+    <HistoryButtons />
+    <div role="separator" aria-orientation="vertical" className="mx-0.5 h-5 w-px bg-border" />
+    <ShowRightPanelButton className="static z-auto border-0 bg-transparent shadow-none backdrop-blur-none" />
+    <HeaderActions />
+  </div>
+);
+
 /**
- * The floating layout (like pen.dev): the canvas fills the whole area behind the panels, the rail
- * and side panel are one card, the properties panel another, and the header controls are pills.
- * The free area between the cards (the stage) is measured into the viewport's insets, so fits,
- * zoom and "the middle of the view" use what the user can actually see.
+ * The floating layout (like pen.dev): the canvas fills the whole area behind the panels; the side
+ * card has its panel icons in a row on top, and the properties card sits on the right. The free
+ * area between the cards (the stage) is measured into the viewport's insets, so fits, zoom and
+ * "the middle of the view" use what the user can actually see.
  */
 const FloatingBody = ({ rail }: { rail: ReactNode }) => {
-  const theme = useThemeStore((s) => s.resolved);
+  const railOpen = useLayoutStore((s) => s.rail.open);
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -239,35 +249,28 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
   }, []);
 
   return (
-    <div
-      ref={containerRef}
-      className="relative min-h-0 flex-1"
-      style={{ background: CANVAS_BACKGROUND[theme] }}
-    >
+    <div ref={containerRef} className="relative min-h-0 flex-1">
       <main className="absolute inset-0">
         <Canvas />
       </main>
-      <div className="pointer-events-none absolute inset-0 flex gap-2 p-2">
-        <div className={cn("pointer-events-auto flex shrink-0 overflow-hidden", FLOATING_CARD)}>
+      <div className="pointer-events-none absolute inset-0 flex gap-2 px-2 pb-2">
+        {/* With its panel closed the card is just the icon row, floating at the top left; the
+            canvas then gets the full width. */}
+        <div
+          className={cn(
+            "pointer-events-auto flex shrink-0 flex-col overflow-hidden",
+            FLOATING_CARD,
+            !railOpen && "absolute top-0 left-2 z-10",
+          )}
+        >
           {rail}
           <LeftColumn floating />
         </div>
-        {/* The pills get their own row, so the stage (what fits and centers aim at) starts
-            below them. */}
-        <div className="flex min-w-0 flex-1 flex-col gap-2">
-          <div className="flex shrink-0 items-start justify-between gap-2">
-            <div className={cn("pointer-events-auto flex items-center p-1", FLOATING_CARD)}>
-              <HistoryButtons />
-            </div>
-            <div className={cn("pointer-events-auto flex items-center gap-1.5 p-1", FLOATING_CARD)}>
-              <ShowRightPanelButton className="static z-auto border-0 bg-transparent shadow-none backdrop-blur-none" />
-              <HeaderActions />
-            </div>
-          </div>
-          <div ref={stageRef} className="relative min-h-0 flex-1">
-            <div className="pointer-events-auto">
-              <ZoomControl />
-            </div>
+        {/* With the panel closed its icon pill floats over the top left, so the stage (what fits
+            and centers aim at, and where the toolbar sits) starts below it. */}
+        <div ref={stageRef} className={cn("relative min-w-0 flex-1", !railOpen && "mt-[52px]")}>
+          <div className="pointer-events-auto">
+            <ZoomControl />
           </div>
         </div>
         <div className="pointer-events-auto flex shrink-0 empty:hidden">
@@ -286,6 +289,7 @@ export const EditorShell = () => {
   const dashboard = useWorkspaceStore((s) => s.view === "dashboard" || s.liveId === null);
   // The dashboard keeps the docked layout; the floating one is for the editor.
   const floating = useFloatingInterface() && !dashboard;
+  const theme = useThemeStore((s) => s.resolved);
   usePanelShortcut();
 
   const press = (tab: RailTab) => {
@@ -298,59 +302,71 @@ export const EditorShell = () => {
     pressRailTab(tab);
   };
 
-  const iconRail = (
-    <IconRail
-      state={rail}
-      agentWorking={working}
-      onPress={press}
-      onHome={showDashboard}
-      homeActive={dashboard}
-      className={floating && !rail.open ? "border-r-0" : undefined}
-    />
-  );
+  if (floating)
+    return (
+      <div
+        className="flex h-full flex-col text-foreground"
+        style={{ background: CANVAS_BACKGROUND[theme] }}
+      >
+        <TabBar floating trailing={<FloatingHeaderPill />} />
+        <FloatingBody
+          rail={
+            <IconRail
+              orientation="horizontal"
+              state={rail}
+              agentWorking={working}
+              onPress={press}
+              className={rail.open ? undefined : "border-b-0"}
+            />
+          }
+        />
+      </div>
+    );
 
   return (
     <div className="flex h-full flex-col bg-background text-foreground">
       <TabBar />
-      {floating ? (
-        <FloatingBody rail={iconRail} />
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          {iconRail}
-          {dashboard ? null : <LeftColumn />}
-          <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
-              <div className="flex min-w-0 items-center gap-2">
-                {dashboard ? null : <HistoryButtons />}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                {dashboard ? (
-                  <>
-                    <ThemeToggle />
-                    <Button size="sm" variant="secondary">
-                      Share
-                    </Button>
-                  </>
-                ) : (
-                  <HeaderActions />
-                )}
-              </div>
-            </header>
-            {dashboard ? (
-              <Dashboard />
-            ) : (
-              <div className="flex min-h-0 flex-1">
-                <main className="relative min-w-0 flex-1">
-                  <ShowRightPanelButton />
-                  <Canvas />
-                  <ZoomControl />
-                </main>
-                <RightColumn />
-              </div>
-            )}
-          </div>
+      <div className="flex min-h-0 flex-1">
+        <IconRail
+          state={rail}
+          agentWorking={working}
+          onPress={press}
+          onHome={showDashboard}
+          homeActive={dashboard}
+        />
+        {dashboard ? null : <LeftColumn />}
+        <div className="flex min-w-0 flex-1 flex-col">
+          <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
+            <div className="flex min-w-0 items-center gap-2">
+              {dashboard ? null : <HistoryButtons />}
+            </div>
+            <div className="flex shrink-0 items-center gap-2">
+              {dashboard ? (
+                <>
+                  <ThemeToggle />
+                  <Button size="sm" variant="secondary">
+                    Share
+                  </Button>
+                </>
+              ) : (
+                <HeaderActions />
+              )}
+            </div>
+          </header>
+          {dashboard ? (
+            <Dashboard />
+          ) : (
+            <div className="flex min-h-0 flex-1">
+              <main className="relative min-w-0 flex-1">
+                <ShowRightPanelButton />
+                <Canvas />
+                <ZoomControl />
+              </main>
+              <RightColumn />
+            </div>
+          )}
         </div>
-      )}
+      </div>
     </div>
   );
 };
