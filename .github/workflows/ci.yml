@@ -8,8 +8,11 @@ on:
 permissions:
   contents: read
 
+# PR runs never cancel each other: autopilot/ci (autopilot.yml) requires every CI run for a commit
+# to succeed, so a run cancelled by a reopen or a re-push of the same commit would block it. Pushes
+# to main cancel the older run.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.event_name == 'pull_request' && format('pr-{0}', github.run_id) || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -18,6 +21,8 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       # Astro (apps/changelog) needs a newer Node than the runner ships.
       - uses: actions/setup-node@v4
         with:
@@ -29,3 +34,5 @@ jobs:
       - run: bun run typecheck
       - run: bun run lint
       - run: bun run test
+      # The autopilot's sensitive-path list (.github is outside the workspaces).
+      - run: bun test ./.github/scripts

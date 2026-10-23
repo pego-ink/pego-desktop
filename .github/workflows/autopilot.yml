@@ -1,0 +1,339 @@
+name: Autopilot
+
+# Merges PRs into dev on their own, without an approval, once every required check passes. The
+# required checks are check runs of the pego-bot GitHub App (the ruleset pins each to the App), so
+# a workflow a PR adds cannot fake them:
+#   autopilot/ci         CI's result, mirrored here (job `ci`)
+#   autopilot/gate       sensitive paths and merge policy (job `gate`)
+#   autopilot/review     Claude review (claude-review.yml)
+#   autopilot/changelog  changelog entry (changelog-check.yml)
+#
+# Gate:
+# - A PR that touches nothing sensitive passes and gets auto-merge (merge commit, enabled as the
+#   App so the merge triggers the dev deploy) and the `autopilot` label. Drafts and PRs labelled
+#   `no-autopilot` pass but wait for a manual merge.
+# - A PR that touches a sensitive path (.github/scripts/sensitive-paths.ts), or whose file list
+#   the API cannot give in full, fails until @yolkmonday approves its head commit. It is labelled
+#   `needs-owner-review`, the author gets a sticky comment and the owner a Telegram message. After
+#   the approval the gate passes but never enables auto-merge: the owner merges it. His own
+#   sensitive PRs always fail the gate: he merges them by hand (admin bypass).
+# - External (fork) PRs fail: they are merged by hand.
+#
+# Trust: everything here runs the definition and scripts on `dev` (pull_request_target and
+# workflow_run both run the default branch), never PR code, and takes its secrets from the
+# `autopilot` environment (deployment branches: dev only). Approvals arrive through the
+# secret-less relay "Autopilot events" (autopilot-events.yml). Without the pego-bot secrets no
+# check is written, so nothing merges on its own.
+on:
+  pull_request_target:
+    branches: [dev]
+    types:
+      [
+        opened,
+        synchronize,
+        reopened,
+        ready_for_review,
+        converted_to_draft,
+        labeled,
+        unlabeled,
+        edited,
+      ]
+  workflow_run:
+    workflows: [CI, Autopilot events]
+    types: [completed]
+
+permissions: {}
+
+env:
+  # The owner's call: "true" lets the gate enable auto-merge on a sensitive PR once @yolkmonday
+  # approved its head commit (his approval is the consent). "false": sensitive PRs never
+  # auto-merge; only auto-merge he enabled himself after approving is kept.
+  AUTO_MERGE_APPROVED_SENSITIVE: "false"
+
+jobs:
+  gate:
+    if: >-
+      github.event_name == 'pull_request_target' ||
+      (github.event.workflow_run.name == 'Autopilot events' &&
+       github.event.workflow_run.event == 'pull_request_review')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: autopilot
+      deployment: false
+    # One gate at a time per PR branch; a newer event replaces a queued one.
+    concurrency:
+      group: autopilot-gate-${{ github.event.pull_request.head.ref || github.event.workflow_run.head_branch }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APP_ID: ${{ secrets.PEGO_BOT_APP_ID }}
+      HAS_APP: ${{ secrets.PEGO_BOT_APP_ID != '' && secrets.PEGO_BOT_PRIVATE_KEY != '' }}
+      EVENT_PR: ${{ github.event.pull_request.number }}
+      RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+    steps:
+      # dev's scripts (the commit this definition came from); PR code is never checked out.
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.11
+
+      - name: App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.PEGO_BOT_APP_ID }}
+          private-key: ${{ secrets.PEGO_BOT_PRIVATE_KEY }}
+          permission-checks: write
+          permission-contents: write
+          permission-pull-requests: write
+
+      - name: Gate
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/autopilot.sh
+          repo="$GITHUB_REPOSITORY"
+          marker='<!-- autopilot:owner-review -->'
+          if [ "$HAS_APP" != true ]; then
+            echo "::notice::PEGO_BOT_APP_ID / PEGO_BOT_PRIVATE_KEY are not set in the autopilot environment: no autopilot/gate check, so nothing auto-merges."
+            exit 0
+          fi
+
+          if [ -n "$EVENT_PR" ]; then
+            prs="$EVENT_PR"
+          else
+            # A review relayed by dev's "Autopilot events" workflow; the PR comes from the API.
+            if [ "$RUN_WORKFLOW_ID" != "$(ap_workflow_id autopilot-events.yml)" ]; then
+              echo "Not dev's Autopilot events workflow; nothing to do."; exit 0
+            fi
+            prs="$(ap_prs_for_sha "$RUN_SHA")"
+          fi
+
+          failed=0
+          for pr in $prs; do
+            # Fresh state from the API: a re-run replays the old event payload.
+            pr_json="$(gh api "repos/$repo/pulls/$pr")"
+            if [ "$(jq -r '.state + " " + .base.ref' <<<"$pr_json")" != "open dev" ]; then
+              echo "#$pr is closed or not into dev."; continue
+            fi
+            head="$(jq -r .head.sha <<<"$pr_json")"
+            head_repo="$(jq -r '.head.repo.full_name // ""' <<<"$pr_json")"
+            author="$(jq -r .user.login <<<"$pr_json")"
+            title="$(jq -r .title <<<"$pr_json")"
+            url="$(jq -r .html_url <<<"$pr_json")"
+            draft="$(jq -r .draft <<<"$pr_json")"
+            changed="$(jq -r .changed_files <<<"$pr_json")"
+            # Who enabled auto-merge ("" when off).
+            auto_merge="$(jq -r '.auto_merge.enabled_by.login // (if .auto_merge then "?" else "" end)' <<<"$pr_json")"
+            labels="$(jq -r '.labels[].name' <<<"$pr_json")"
+            # disable_auto_merge [keep-owner]: turns auto-merge off; with keep-owner not when the
+            # owner enabled it.
+            disable_auto_merge() {
+              if [ -n "$auto_merge" ] && { [ "${1:-}" != keep-owner ] || [ "$auto_merge" != "$AP_OWNER" ]; }; then
+                GH_TOKEN="$APP_TOKEN" gh pr merge "$pr" --repo "$repo" --disable-auto >/dev/null || true
+              fi
+            }
+
+            if [ "$head_repo" != "$repo" ]; then
+              ap_check autopilot/gate "$head" failure "External PR" \
+                "PRs from forks are merged by hand." >/dev/null
+              failed=1; continue
+            fi
+
+            # Renamed files count with their old path too. A list the API cuts short (3000 files)
+            # or that disagrees with changed_files fails closed as INCOMPLETE_FILE_LIST.
+            sensitive="$(ap_pr_files "$pr" | bun .github/scripts/sensitive-paths.ts --expect "$changed")"
+            if [ -n "$sensitive" ]; then
+              echo "#$pr sensitive:"; printf '%s\n' "$sensitive" | sed 's/^/  /'
+              list=""
+              while IFS= read -r f; do
+                if [ "$f" = INCOMPLETE_FILE_LIST ]; then f="more files than the API lists"; else f="\`$f\`"; fi
+                list="${list:+$list, }$f"
+              done <<<"$sensitive"
+              # The owner's latest approve / request-changes / dismissed review must approve this
+              # head. He cannot approve his own PR, and authorship is not an approval.
+              approved="$(gh api --paginate --slurp "repos/$repo/pulls/$pr/reviews?per_page=100" | jq -r \
+                --arg owner "$AP_OWNER" --arg head "$head" '
+                  [add[] | select(.user.login == $owner and (.state == "APPROVED" or .state == "CHANGES_REQUESTED" or .state == "DISMISSED"))]
+                  | last | (. != null and .state == "APPROVED" and .commit_id == $head)')"
+              if [ "$author" = "$AP_OWNER" ]; then approved=false; fi
+              ap_label "$pr" remove autopilot
+              if [ "$approved" != true ]; then
+                disable_auto_merge
+                ap_label "$pr" add needs-owner-review
+                if [ "$author" = "$AP_OWNER" ]; then
+                  msg="This touches $list. Sensitive changes never merge on their own: @$AP_OWNER merges it by hand once the other checks pass."
+                else
+                  msg="This touches $list, so @$AP_OWNER reviews it before it merges. Once he approves the latest commit (${head:0:7}) the gate passes and he merges it."
+                fi
+                ap_sticky "$pr" "$marker" "$msg" create
+                previous="$(ap_check autopilot/gate "$head" failure "Needs @$AP_OWNER's approval" "$msg")"
+                if [ "$previous" != failure ]; then
+                  ap_telegram "🔒 Needs your review: #$pr $title by @$author — touches $list"$'\n\n'"$url"
+                fi
+                failed=1; continue
+              fi
+              ap_label "$pr" remove needs-owner-review
+              if [ "$AUTO_MERGE_APPROVED_SENSITIVE" = true ] && [ "$draft" != true ] &&
+                 ! printf '%s\n' "$labels" | grep -qx no-autopilot &&
+                 GH_TOKEN="$APP_TOKEN" gh pr merge "$pr" --repo "$repo" --auto --merge --match-head-commit "$head"; then
+                ap_label "$pr" add autopilot
+                msg="This touches $list; @$AP_OWNER approved ${head:0:7}, so it merges on its own once every check passes."
+              else
+                # Only auto-merge the owner enabled himself survives on a sensitive PR.
+                disable_auto_merge keep-owner
+                msg="This touches $list; @$AP_OWNER approved ${head:0:7}. Sensitive changes do not auto-merge: he merges it."
+              fi
+              ap_sticky "$pr" "$marker" "$msg"
+              ap_check autopilot/gate "$head" success "Approved by @$AP_OWNER" "$msg" >/dev/null
+              continue
+            fi
+            ap_label "$pr" remove needs-owner-review
+            ap_sticky "$pr" "$marker" "This no longer touches sensitive paths."
+
+            if [ "$draft" = true ] || printf '%s\n' "$labels" | grep -qx no-autopilot; then
+              disable_auto_merge
+              ap_label "$pr" remove autopilot
+              ap_check autopilot/gate "$head" success "Merge by hand" \
+                "Draft or labelled \`no-autopilot\`: the gate passes, but nothing merges it on its own." >/dev/null
+              continue
+            fi
+
+            if GH_TOKEN="$APP_TOKEN" gh pr merge "$pr" --repo "$repo" --auto --merge --match-head-commit "$head"; then
+              ap_label "$pr" add autopilot
+            else
+              echo "::warning::Could not enable auto-merge on #$pr (is \"Allow auto-merge\" on in the repo settings?)."
+            fi
+            ap_check autopilot/gate "$head" success "Auto-merge" \
+              "Nothing sensitive: merges on its own once every required check passes." >/dev/null
+          done
+          exit "$failed"
+
+  ci:
+    # CI runs the PR's code without secrets; this mirrors its result as a pego-bot check.
+    if: >-
+      github.event.workflow_run.name == 'CI' &&
+      github.event.workflow_run.event == 'pull_request'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: autopilot
+      deployment: false
+    concurrency:
+      group: autopilot-ci-${{ github.event.workflow_run.head_sha }}
+      cancel-in-progress: false
+    permissions:
+      actions: read
+      contents: read
+      pull-requests: write
+      issues: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      APP_ID: ${{ secrets.PEGO_BOT_APP_ID }}
+      HAS_APP: ${{ secrets.PEGO_BOT_APP_ID != '' && secrets.PEGO_BOT_PRIVATE_KEY != '' }}
+      RUN_SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+      RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: App token
+        id: app
+        if: env.HAS_APP == 'true'
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.PEGO_BOT_APP_ID }}
+          private-key: ${{ secrets.PEGO_BOT_PRIVATE_KEY }}
+          permission-checks: write
+
+      - name: Mirror CI
+        env:
+          APP_TOKEN: ${{ steps.app.outputs.token }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/autopilot.sh
+          repo="$GITHUB_REPOSITORY"
+          marker='<!-- autopilot:ci -->'
+          if [ "$HAS_APP" != true ]; then
+            echo "::notice::pego-bot secrets are not set: no autopilot/ci check, so nothing auto-merges."
+            exit 0
+          fi
+          # Only runs of .github/workflows/ci.yml count, not another workflow named "CI". A PR into
+          # dev can still edit ci.yml itself, but that is a sensitive path, so the gate holds it.
+          ci_id="$(ap_workflow_id ci.yml)"
+          if [ "$RUN_WORKFLOW_ID" != "$ci_id" ] || [ "$RUN_REPO" != "$repo" ]; then
+            echo "Not ci.yml on a same-repo PR; nothing to do."; exit 0
+          fi
+          prs="$(ap_prs_for_sha "$RUN_SHA")"
+          if [ -z "$prs" ]; then echo "No open PR into dev at ${RUN_SHA:0:7}."; exit 0; fi
+
+          # Every ci.yml pull_request run for this commit counts, so a second PR with the same head
+          # into a branch carrying a doctored ci.yml (or a cancelled real run) cannot make it pass:
+          # success needs at least one run, all completed with success, every run on the dev PR's
+          # head branch and tied only to PRs into dev or main (one into dev), and no open PR with
+          # this head into another branch.
+          # RELIES ON the push ruleset that lets only the org admin change .github/workflows/**,
+          # .github/scripts/** and CODEOWNERS on every branch: a pull_request run uses the merge
+          # commit's ci.yml, so without it a teammate could still delete the real runs and run a
+          # doctored ci.yml from a short-lived PR into a branch that carries it.
+          refs="$(for pr in $prs; do gh api "repos/$repo/pulls/$pr" --jq .head.ref; done | jq -R . | jq -s .)"
+          runs="$(gh api --paginate "repos/$repo/actions/workflows/$ci_id/runs?head_sha=$RUN_SHA&event=pull_request&per_page=100" \
+            --jq '.workflow_runs[] | {id, status, conclusion, html_url, head_branch, bases: [.pull_requests[].base.ref]}' | jq -s .)"
+          others="$(gh api "repos/$repo/commits/$RUN_SHA/pulls" --jq \
+            "[.[] | select(.state == \"open\" and .head.sha == \"$RUN_SHA\" and .base.ref != \"dev\" and .base.ref != \"main\") | .base.ref] | join(\", \")")"
+          verdict="$(jq -r --arg others "$others" --argjson refs "$refs" '
+            if length == 0 then "pending No CI run yet"
+            elif $others != "" then "failure Open PR with this head into \($others)"
+            elif any(.[]; .head_branch as $b | ($refs | index($b)) == null)
+              then "failure A CI run for this commit ran on another branch"
+            elif any(.[]; (.bases | length) == 0 or any(.bases[]; . != "dev" and . != "main"))
+              then "failure A CI run for this commit belongs to a PR into another branch"
+            elif all(.[]; (.bases | index("dev")) == null) then "failure No CI run for the PR into dev"
+            elif any(.[]; .status != "completed") then "pending CI is running"
+            elif any(.[]; .conclusion != "success")
+              then "failure CI: \([.[] | select(.conclusion != "success") | .conclusion] | unique | join(", "))"
+            else "success CI passed" end' <<<"$runs")"
+          conclusion="${verdict%% *}"
+          summary="${verdict#* }"
+          run_url="$(jq -r 'sort_by(-.id) | map(select(.conclusion != "success")) + . | first | .html_url // ""' <<<"$runs")"
+          echo "$summary ($(jq length <<<"$runs") runs)"
+          if [ "$conclusion" = pending ]; then
+            # Not a pass while anything runs: an earlier success must not stand meanwhile.
+            ap_check autopilot/ci "$RUN_SHA" action_required "$summary" "Waiting for CI." "$run_url" >/dev/null
+            exit 0
+          fi
+
+          if [ "$conclusion" = success ]; then
+            ap_check autopilot/ci "$RUN_SHA" success "CI passed" "[CI run]($run_url)" "$run_url" >/dev/null
+            for pr in $prs; do ap_sticky "$pr" "$marker" "CI passes again."; done
+            exit 0
+          fi
+          previous="$(ap_check autopilot/ci "$RUN_SHA" failure "$summary" "[CI run]($run_url)" "$run_url")"
+          if [ "$previous" != failure ]; then
+            for pr in $prs; do
+              pr_json="$(gh api "repos/$repo/pulls/$pr")"
+              author="$(jq -r .user.login <<<"$pr_json")"
+              ap_sticky "$pr" "$marker" "@$author CI failed: $run_url. Please fix and push." create
+              ap_telegram "⚠️ Blocked: #$pr $(jq -r .title <<<"$pr_json") by @$author — CI failed"$'\n\n'"$run_url"$'\n'"$(jq -r .html_url <<<"$pr_json")"
+            done
+          fi

@@ -2,6 +2,7 @@
 import "@/styles/global.css";
 import fontUrl from "@/assets/fonts/inter-latin.woff2?url";
 import Logo from "@/components/Logo.astro";
+import { serializeJsonLd } from "@/lib/json-ld";
 import { APP_URL, GITHUB_URL, SITE_NAME, SITE_URL } from "@/lib/site";
 
 interface Props {
@@ -54,7 +55,7 @@ const isHome = Astro.url.pathname === "/";
     <meta name="twitter:title" content={title} />
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
-    {ld.map((item) => <script type="application/ld+json" set:html={JSON.stringify(item)} />)}
+    {ld.map((item) => <script type="application/ld+json" set:html={serializeJsonLd(item)} />)}
   </head>
   <body>
     <a class="skip" href="#main">Skip to content</a>
