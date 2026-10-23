@@ -68,15 +68,40 @@ jobs:
 
       - run: bun install --frozen-lockfile
 
+      # Import the Developer ID certificate into our own keychain. electron-builder's temporary
+      # keychain (CSC_LINK) fails on the hosted runners at set-key-partition-list
+      # ("SecKeychainUnlock: The user name or passphrase you entered is not correct").
+      - name: Import the signing certificate
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        run: |
+          keychain="${RUNNER_TEMP}/pego-signing.keychain-db"
+          password="$(openssl rand -hex 24)"
+          certificate="${RUNNER_TEMP}/certificate.p12"
+          printf '%s' "${APPLE_CERTIFICATE}" | base64 --decode > "${certificate}"
+          security create-keychain -p "${password}" "${keychain}"
+          security set-keychain-settings -lut 21600 "${keychain}"
+          security unlock-keychain -p "${password}" "${keychain}"
+          security import "${certificate}" -k "${keychain}" -P "${APPLE_CERTIFICATE_PASSWORD}" \
+            -f pkcs12 -A -T /usr/bin/codesign -T /usr/bin/security -T /usr/bin/productbuild
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${password}" "${keychain}" >/dev/null
+          # shellcheck disable=SC2046
+          security list-keychains -d user -s "${keychain}" $(security list-keychains -d user | tr -d '"')
+          rm -f "${certificate}"
+          security find-identity -v -p codesigning "${keychain}"
+
       - name: Build, sign and notarize (arm64 + x64)
         working-directory: apps/desktop
         env:
-          CSC_LINK: ${{ secrets.APPLE_CERTIFICATE }}
-          CSC_KEY_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: bun run scripts/build.ts --mac --arm64 --x64 --publish never
+        run: |
+          # electron-builder takes the keychain identity without its "Developer ID Application: " prefix.
+          export CSC_NAME="${APPLE_SIGNING_IDENTITY#Developer ID Application: }"
+          bun run scripts/build.ts --mac --arm64 --x64 --publish never
 
       - name: Verify signature and notarization of the shipped DMGs
         working-directory: apps/desktop/release

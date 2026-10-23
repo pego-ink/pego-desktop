@@ -3,6 +3,7 @@ title: Export projects from Home
 date: 2026-10-23T16:00:00Z
 summary: Download a project, or every screen in it as PNG, SVG, HTML/CSS or React + Tailwind, straight from Home.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 Open a project's menu on Home (the **…** button or a right-click) and pick **Export**:

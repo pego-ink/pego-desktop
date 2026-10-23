@@ -3,6 +3,7 @@ title: The Pego browser extension
 date: 2026-10-23T18:30:00Z
 summary: Send any web page, an element of it, or a screenshot from Chrome to your canvas, as editable layers.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 A new Chrome extension sends what you see on the web straight into Pego:

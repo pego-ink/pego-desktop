@@ -3,6 +3,7 @@ title: Pego Magic
 date: 2026-10-23T18:00:00Z
 summary: One-click ideas for any selection. Try a new layout, style, palette or type, let Pego surprise you, or export the selection as HTML.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 Select a frame and click the ✨ button next to it. Above the prompt box, Pego Magic offers ideas you can run with one click.

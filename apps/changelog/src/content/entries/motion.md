@@ -3,6 +3,7 @@ title: Motion and counting numbers
 date: 2026-10-23T19:00:00Z
 summary: Give any layer an entrance (fade, slide, grow, pop), play it on the canvas, and export it as CSS animation. Numbers can count up too.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 Designs can now move. Select a layer and open **Animation** in the properties panel.

@@ -3,6 +3,7 @@ title: Animated shader backgrounds
 date: 2026-10-23T20:00:00Z
 summary: Fill any frame or shape with a living shader, such as aurora, flowing gradients, waves, film grain, shimmer or pulsing dots, or write your own.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 Frames and shapes have a new fill type: **Shader (animated)**. Pick it under Fill in the properties panel and choose a look:
