@@ -60,10 +60,17 @@ const siteName = (url: string): string => {
   }
 };
 
+/** What the import needs besides the stores (replaced in tests). */
+export type ImportDeps = {
+  /** Loads the font catalog the converter matches page fonts against. */
+  primeFonts?: () => Promise<unknown>;
+};
+
 const importSnapshot = async (
   capture: Extract<ExtensionCapture, { kind: "snapshot" }>,
+  deps: ImportDeps,
 ): Promise<OpOutcome> => {
-  await primeFontResolver().catch(() => undefined);
+  await (deps.primeFonts ?? primeFontResolver)().catch(() => undefined);
   let snapshot: DomSnapshot;
   try {
     // Remote images are embedded (through the bridge when the site blocks CORS); elements the
@@ -131,13 +138,16 @@ const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** `EDITOR_OPS.importCapture`: put a browser-extension capture on the shown page. */
-export const importCaptureFromBridge = async (input: unknown): Promise<OpOutcome> => {
+export const importCaptureFromBridge = async (
+  input: unknown,
+  deps: ImportDeps = {},
+): Promise<OpOutcome> => {
   if (!liveWorkspace()) return fail("Open a document in Pego first, then send the page again.");
   if (!isRecord(input) || !isRecord(input.page) || typeof input.page.url !== "string") {
     return fail("That is not a Pego capture.");
   }
   const capture = input as unknown as ExtensionCapture;
-  if (capture.kind === "snapshot" && isRecord(input.snapshot)) return importSnapshot(capture);
+  if (capture.kind === "snapshot" && isRecord(input.snapshot)) return importSnapshot(capture, deps);
   if (capture.kind === "screenshot") return importScreenshot(capture);
   return fail("That is not a Pego capture.");
 };

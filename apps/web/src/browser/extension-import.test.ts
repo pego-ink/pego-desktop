@@ -42,22 +42,26 @@ describe("browser extension imports", () => {
   });
 
   test("a page snapshot becomes editable layers named after the page", async () => {
-    const outcome = await importCaptureFromBridge({
-      kind: "snapshot",
-      page,
-      fullPage: true,
-      snapshot: {
-        url: page.url,
-        title: page.title,
-        root: {
-          kind: "element",
-          tag: "body",
-          box: box(0, 0, 400, 300),
-          style: { backgroundColor: "rgb(255, 255, 255)" },
-          children: [{ kind: "text", text: "Ayam pop", box: box(20, 20, 120, 24), style: {} }],
+    // No font catalog: other suites expect it unloaded (it is module-wide state).
+    const outcome = await importCaptureFromBridge(
+      {
+        kind: "snapshot",
+        page,
+        fullPage: true,
+        snapshot: {
+          url: page.url,
+          title: page.title,
+          root: {
+            kind: "element",
+            tag: "body",
+            box: box(0, 0, 400, 300),
+            style: { backgroundColor: "rgb(255, 255, 255)" },
+            children: [{ kind: "text", text: "Ayam pop", box: box(20, 20, 120, 24), style: {} }],
+          },
         },
       },
-    });
+      { primeFonts: async () => undefined },
+    );
     expect(outcome.isError).toBe(false);
     expect(outcome.content).toMatch(/^Imported "Menu Ayam" as \d+ layers/);
     expect(selected()).toMatchObject({ type: "frame", name: "Menu Ayam" });
