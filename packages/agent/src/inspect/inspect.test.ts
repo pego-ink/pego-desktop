@@ -6,6 +6,7 @@ import { inspectTools } from "../tools-inspect";
 import { agentTools } from "../tools";
 import { contrastBetweenHex } from "./color";
 import { checkLayout, type LayoutIssue } from "./check-layout";
+import { sourceId } from "./check-polish";
 import { findEmptySpace } from "./empty-space";
 import { scoreIcon, searchIcons } from "./search";
 import { createInspectHost, ICONS, layoutOf, makeDoc, PNG } from "./test-helpers";
@@ -578,6 +579,93 @@ describe("check_layout polish", () => {
     expect(
       polish(issuesOf([panel([20, 20, 4, 20], { fill: undefined, stroke: undefined })])),
     ).toEqual([]);
+  });
+
+  test("we-ui dashboard fixture gives exactly the five expected polish warnings", () => {
+    const issues = issuesOf([
+      frame("komponen", { name: "Komponen", layout: "vertical", gap: 24 }, [
+        frame(
+          "kpiCard",
+          {
+            reusable: true,
+            layout: "vertical",
+            width: 240,
+            fill: "#FFFFFF",
+            stroke: { color: "#C3D2D7", width: 1 },
+            cornerRadius: 12,
+            padding: 20,
+            gap: 8,
+          },
+          [
+            text("kpiLabel", "Menunggu", { fontSize: 13 }),
+            text("kpiValue", "14", { fontSize: 28 }),
+          ],
+        ),
+        frame("queueRow", { reusable: true, layout: "horizontal", alignItems: "center", gap: 16 }, [
+          frame(
+            "rowChip",
+            {
+              layout: "horizontal",
+              fill: "#FCEFD6",
+              cornerRadius: 4,
+              padding: [0, 8, 0, 8],
+              gap: 6,
+              alignItems: "center",
+            },
+            [
+              icon("rowChipIcon", { iconName: "clock" }),
+              text("rowChipText", "Menunggu", { fontSize: 12, fontWeight: 600 }),
+            ],
+          ),
+        ]),
+      ]),
+      frame("dashboard", { name: "Dashboard Klinik", layout: "horizontal", width: 1000, y: 400 }, [
+        frame("sidebar", { name: "Sidebar", layout: "vertical", width: 240 }, [userCard()]),
+        frame("main", { name: "Main", layout: "vertical", width: "fill_container", gap: 24 }, [
+          frame("kpiRow", { name: "KPI Row", layout: "horizontal", gap: 16 }, [
+            ref("k1", "kpiCard", { descendants: { kpiValue: { fontSize: 40 } } }),
+            ref("k2", "kpiCard"),
+          ]),
+          frame("link", { name: "Link", layout: "horizontal", gap: 4 }, [
+            text("linkLabel", "Semua jadwal", { fontSize: 13, fontWeight: 600 }),
+            icon("linkIcon", { iconName: "arrow-right" }),
+          ]),
+          frame(
+            "doctorPanel",
+            {
+              name: "Doctor Panel",
+              layout: "vertical",
+              width: 340,
+              fill: "#FFFFFF",
+              stroke: { color: "#C3D2D7", width: 1 },
+              cornerRadius: 12,
+              padding: [20, 20, 4, 20],
+            },
+            [text("docName", "Poli Umum · Ruang 1", { fontSize: 14 })],
+          ),
+          frame("queue", { name: "Queue", layout: "vertical" }, [
+            ref("q1", "queueRow"),
+            ref("q2", "queueRow"),
+          ]),
+        ]),
+      ]),
+    ]);
+    const found = polish(issues);
+    expect(found.every((i) => i.severity === "warning")).toBe(true);
+    const summary = found
+      .map((i) => {
+        const rule = /rounder than|beside|different heights|lopsided/.exec(i.issue)?.[0];
+        return `${sourceId(i.nodeId)} ${rule}`;
+      })
+      .sort();
+    expect(summary).toEqual([
+      "doctorPanel lopsided",
+      "kpiRow different heights",
+      "linkIcon beside",
+      "rowChipIcon beside",
+      "user rounder than",
+    ]);
+    expect(issues.find((i) => i.issue.includes("circular"))).toBeUndefined();
   });
 });
 

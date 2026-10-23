@@ -96,7 +96,7 @@ values:
   hard offset); every surface of the same kind (all cards, all panels, all inputs) then gets the same treatment.
   Where the style lifts a surface with a soft shadow, use a layered ring instead of one big blur. Light: `effects`
   = `[{shadow #0000000F, x 0, y 0, blur 0, spread 1}, {shadow #0000000F, x 0, y 1, blur 2, spread -1},
-  {shadow #0000000A, x 0, y 2, blur 4, spread 0}]`. Dark: one ring `{shadow #FFFFFF14, x 0, y 0, blur 0, spread 1}`.
+{shadow #0000000A, x 0, y 2, blur 4, spread 0}]`. Dark: one ring `{shadow #FFFFFF14, x 0, y 0, blur 0, spread 1}`.
 - **Image edges.** Photos (image nodes and image fills with content) get `stroke: {color: "#0000001A", width: 1}`
   on light surfaces and `#FFFFFF1A` on dark. Never a tinted neutral or the accent. Skip logos and transparent
   illustrations. (Builder's call, settled: Pego draws a uniform width centered on the edge, and image nodes have
@@ -124,13 +124,13 @@ New checks in `checkNode`, each with a hint that names the fix in Pego props. `w
 ones (the working rules make agents fix every error and warning). Instance children get the existing
 `INSTANCE_HINT` suffix.
 
-| Check | Condition (all must hold) | Severity |
-| --- | --- | --- |
-| Inner corner rounder than outer | Frame P with radius rp > 0 and flex layout; child C with radius rc > rp; C's box touches one of P's inner corners (both edges within 0.5px); the two paddings meeting at that corner are equal and ≤ 24 | warning |
-| Corner not concentric | Same as above but rc ≤ rp, the padding p ≤ 24 (the same limit as the skill rule), and rp differs from rc + p (+ uniform stroke width) by more than 2 | info |
-| Thin icon beside bold text | Icon width < 16 and its neighbour in the same flex frame's children (previous or next) is text with fontWeight ≥ 600 | warning |
-| Row of cards ends unevenly | Horizontal flex frame with ≥ 2 children, every child a painted frame (fill or stroke) or an instance of one; none has height `fill_container`; alignItems start or unset; child heights differ by more than 2px | warning |
-| Lopsided padding | Frame with a fill or a uniform stroke (per-side strokes are dividers and are skipped); top and bottom (or left and right) are both > 0, the larger is at least 2x the smaller and at least 8px more | warning |
+| Check                           | Condition (all must hold)                                                                                                                                                                                       | Severity |
+| ------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------- |
+| Inner corner rounder than outer | Frame P with radius rp > 0 and flex layout; child C with radius rc > rp; C's box touches one of P's inner corners (both edges within 0.5px); the two paddings meeting at that corner are equal and ≤ 24         | warning  |
+| Corner not concentric           | Same as above but rc ≤ rp, the padding p ≤ 24 (the same limit as the skill rule), and rp differs from rc + p (+ uniform stroke width) by more than 2                                                            | info     |
+| Thin icon beside bold text      | Icon width < 16 and its neighbour in the same flex frame's children (previous or next) is text with fontWeight ≥ 600                                                                                            | warning  |
+| Row of cards ends unevenly      | Horizontal flex frame with ≥ 2 children, every child a painted frame (fill or stroke) or an instance of one; none has height `fill_container`; alignItems start or unset; child heights differ by more than 2px | warning  |
+| Lopsided padding                | Frame with a fill or a uniform stroke (per-side strokes are dividers and are skipped); top and bottom (or left and right) are both > 0, the larger is at least 2x the smaller and at least 8px more             | warning  |
 
 Also fix one existing false positive: the "circular" fill_container check fires on a horizontal row whose
 children all have `height: "fill_container"`, which is the equal-heights idiom (`computeLayout` pass 3 stretches
