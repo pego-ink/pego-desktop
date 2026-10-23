@@ -20,17 +20,34 @@ describe("unsafeText", () => {
     expect(unsafeText("Use `<Tab>`")).toEqual(["raw-html (line 1)"]);
   });
 
-  test("rejects entities", () => {
-    expect(unsafeText("[x](&#106;avascript:alert(1))")).toContain("html-entity (line 1)");
+  test("rejects entities, and decodes them before the scheme rules", () => {
+    expect(unsafeText("[x](&#106;avascript:alert(1))")).toEqual([
+      "html-entity (line 1)",
+      "script-url (line 1)",
+      "link-scheme (line 1)",
+    ]);
+    expect(unsafeText("[x](javascript&colon;alert(1))")).toContain("script-url (line 1)");
+    expect(unsafeText("[x](java&#x09;script:alert(1))")).toContain("script-url (line 1)");
     expect(unsafeText("a &lt;b&gt;")).toEqual(["html-entity (line 1)"]);
   });
 
-  test("rejects script-capable schemes, however spaced or cased", () => {
-    expect(unsafeText("[x](javascript:alert(1))")).toEqual(["script-url (line 1)"]);
+  test("rejects script-capable schemes, however spaced, cased or escaped", () => {
+    const script = ["script-url (line 1)", "link-scheme (line 1)"];
+    expect(unsafeText("[x](javascript:alert(1))")).toEqual(script);
     expect(unsafeText("[x]( JaVa\tScRiPt :alert(1))")).toEqual(["script-url (line 1)"]);
-    expect(unsafeText("> [x]: vbscript:msgbox")).toEqual(["script-url (line 1)"]);
-    expect(unsafeText("![x](data:image/svg+xml;base64,PHN2Zz4=)")).toEqual(["script-url (line 1)"]);
+    expect(unsafeText("> [x]: vbscript:msgbox")).toEqual(script);
+    expect(unsafeText("![x](data:image/svg+xml;base64,PHN2Zz4=)")).toEqual(script);
+    expect(unsafeText("[x](javascript\\:alert(1))")).toEqual(script);
+    expect(unsafeText("[x](\\javascript\\:alert(1))")).toEqual(script);
     expect(unsafeText("[x](java\nscript:alert(1))")).toEqual(["script-url (across lines)"]);
+  });
+
+  test("allows only http(s), mailto and relative link destinations", () => {
+    expect(unsafeText("[a](HTTPS://pego.ink) [b](./x) [c](a/b:c) [d](#x) [e]: /y")).toEqual([]);
+    expect(unsafeText("Tip: press Tab. [Note] it is fast.")).toEqual([]);
+    expect(unsafeText("[x](tel:123)")).toEqual(["link-scheme (line 1)"]);
+    expect(unsafeText("[x](\n  ftp://a)")).toEqual(["link-scheme (across lines)"]);
+    expect(unsafeText("[y]: blob:https://a")).toEqual(["link-scheme (line 1)"]);
   });
 });
 

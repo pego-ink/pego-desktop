@@ -3,7 +3,9 @@
  * `check`). It runs only this file (a sensitive path), never the changelog app's code: the full
  * schema and tests in apps/changelog run in CI on the commit afterwards. The text rules are the
  * same as apps/changelog/src/lib/entry-body.ts; keep them in sync. They fail closed on the raw
- * text (code included) instead of parsing Markdown. Problems name a rule and a line, never the
+ * text (code included) instead of parsing Markdown, after undoing what Markdown and HTML decode
+ * (backslash escapes, entities): no `<`, no entities, no script-capable scheme anywhere, and link
+ * destinations only http(s), mailto or relative. Problems name a rule and a line, never the
  * offending text: they end up in a public check run.
  *
  * CLI: `bun .github/scripts/changelog-entry.ts <file>` prints the problems and exits 1, if any.
@@ -12,16 +14,57 @@ const TAGS = new Set(["new", "improved", "fixed"]);
 const KEYS = new Set(["title", "date", "summary", "tags"]);
 
 // eslint-disable-next-line no-control-regex -- control characters are what it removes
-const IGNORED = /[\s\u0000-\u001f\u007f-\u009f]/g;
+const IGNORED = /[\s\u0000-\u001f\u007f-\u009f\\]/g;
+const NAMED: Readonly<Record<string, string>> = {
+  colon: ":",
+  tab: "\t",
+  newline: "\n",
+  amp: "&",
+  sol: "/",
+  bsol: "\\",
+  lpar: "(",
+  rpar: ")",
+  period: ".",
+  nbsp: " ",
+};
+const codePoint = (value: number): string =>
+  value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "\ufffd";
+/**
+ * `text` as a browser would see it in a URL: entities decoded, backslashes (Markdown escapes),
+ * whitespace and control characters removed, lowercase.
+ */
+const fold = (text: string): string =>
+  text
+    .replace(/&(?:#(\d{1,8})|#x([0-9a-f]{1,8})|([a-z][a-z0-9]*));?/gi, (entity, dec, hex, name) =>
+      dec !== undefined
+        ? codePoint(Number(dec))
+        : hex !== undefined
+          ? codePoint(Number.parseInt(hex, 16))
+          : (NAMED[String(name).toLowerCase()] ?? entity),
+    )
+    .toLowerCase()
+    .replace(IGNORED, "");
 const hasScriptUrl = (text: string): boolean =>
-  /javascript:|vbscript:|data:|file:/.test(text.toLowerCase().replace(IGNORED, ""));
+  /javascript:|vbscript:|data:|file:/.test(fold(text));
+const SAFE_SCHEMES = new Set(["http", "https", "mailto"]);
+/**
+ * True when a link or image destination (`](dest` or a `[ref]: dest` definition) has a scheme
+ * other than http(s) or mailto. Relative links and #fragments have none.
+ */
+const hasUnsafeLink = (text: string): boolean =>
+  [...text.matchAll(/\]\s*[(:]\s*(\S*)/g)].some(([, destination = ""]) => {
+    const scheme = /^([a-z][a-z0-9+.-]*):/.exec(fold(destination))?.[1];
+    return scheme !== undefined && !SAFE_SCHEMES.has(scheme);
+  });
 
 const RULES: readonly (readonly [name: string, test: (line: string) => boolean])[] = [
   ["raw-html", (line) => line.includes("<")],
   ["html-entity", (line) => /&#|&[a-zA-Z][a-zA-Z0-9]*;/.test(line)],
   ["script-url", hasScriptUrl],
+  ["link-scheme", hasUnsafeLink],
   ["secret-like", (line) => /sk-ant-|gh[psou]_[A-Za-z0-9]{20,}|[A-Za-z0-9+/_=-]{100,}/.test(line)],
 ];
+const WHOLE = RULES.filter(([name]) => name === "script-url" || name === "link-scheme");
 
 /** Rule violations in `text` as "rule (line n)", lines counted from `first`. */
 export const unsafeText = (text: string, first = 1): string[] => {
@@ -30,8 +73,11 @@ export const unsafeText = (text: string, first = 1): string[] => {
     .flatMap((line, index) =>
       RULES.filter(([, test]) => test(line)).map(([name]) => `${name} (line ${index + first})`),
     );
-  const split = hasScriptUrl(text) && !problems.some((problem) => problem.startsWith("script-url"));
-  return split ? [...problems, "script-url (across lines)"] : problems;
+  // A destination or scheme split over lines (`](\njavascript:`, `java\nscript:`).
+  const split = WHOLE.filter(
+    ([name, test]) => test(text) && !problems.some((problem) => problem.startsWith(`${name} `)),
+  );
+  return [...problems, ...split.map(([name]) => `${name} (across lines)`)];
 };
 
 const plain = (value: unknown, max: number): boolean =>

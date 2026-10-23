@@ -9,6 +9,10 @@ name: Claude review
 # Fail closed: a failed Claude step, a missing or invalid verdict, a diff too large to review or a
 # missing CLAUDE_CODE_OAUTH_TOKEN fail the check. Re-run the workflow to retry; from the 4th
 # attempt on it fails without calling Claude. Into main it only comments (no check, never blocks).
+# "Changes requested" sticks to the commit: once a review blocked a head, every later run for that
+# same head (a re-run, close and reopen, a retarget) keeps the check failing without touching the
+# comment. A new push (a new head) gets a fresh review. A PR retargeted to dev (`edited` with a base
+# change) is reviewed; title and description edits are not.
 #
 # Trust: pull_request_target runs this file and the scripts from `dev`. Claude's working directory
 # is that `dev` checkout (so only dev's CLAUDE.md and .claude settings apply) and it gets read
@@ -20,19 +24,22 @@ name: Claude review
 on:
   pull_request_target:
     branches: [dev, main]
-    types: [opened, synchronize, reopened, ready_for_review]
+    types: [opened, synchronize, reopened, ready_for_review, edited]
 
 permissions: {}
 
+# An edit that does not change the base gets its own group, so it cannot cancel a running review.
 concurrency:
-  group: claude-review-${{ github.event.pull_request.number }}
+  group: claude-review-${{ github.event.pull_request.number }}${{ github.event.action == 'edited' && !github.event.changes.base && format('-edit-{0}', github.run_id) || '' }}
   cancel-in-progress: true
 
 jobs:
   review:
     if: >-
       github.event.pull_request.head.repo.full_name == github.repository &&
-      !github.event.pull_request.draft
+      !github.event.pull_request.draft &&
+      (github.event.action != 'edited' ||
+       (github.event.changes.base && github.event.pull_request.base.ref == 'dev'))
     runs-on: ubuntu-latest
     timeout-minutes: 20
     environment:
@@ -57,6 +64,13 @@ jobs:
         with:
           fetch-depth: 0
           persist-credentials: false
+
+      # Claude reads this checkout: no symlink in it may lead outside.
+      - name: Refuse symlinks out of the checkout
+        run: |
+          set -euo pipefail
+          source .github/scripts/autopilot.sh
+          ap_check_symlinks
 
       - name: Prepare the review input
         id: input
@@ -86,7 +100,8 @@ jobs:
               --jq '.[] | "\(.status)\t\(.filename)\t\(.previous_filename // "")"' > "$INPUT/files.tsv"
             # The PR's commits as git objects only (the repo is public; no credentials needed).
             git fetch --quiet --no-tags origin "$head"
-            git diff --no-ext-diff --no-textconv "origin/$BASE...$head" > "$INPUT/pr.diff"
+            # --text: a .gitattributes `binary` / `-diff` must not hide changes from the review.
+            git diff --text --no-ext-diff --no-textconv "origin/$BASE...$head" > "$INPUT/pr.diff"
             if [ "$(wc -c < "$INPUT/pr.diff")" -gt 400000 ]; then
               skip="The diff is over 400 KB, too large for automatic review: @yolkmonday reviews it."
             fi
@@ -105,7 +120,7 @@ jobs:
                 [ "$ts" -ge "$since" ] || continue
                 echo "=== $ref"
                 git log --oneline -n 20 "origin/dev..$ref" --
-                git diff --no-ext-diff --no-textconv --stat=200 "origin/dev...$ref" -- | tail -n 60
+                git diff --text --no-ext-diff --no-textconv --stat=200 "origin/dev...$ref" -- | tail -n 60
               done | head -c 400000 > "$INPUT/branches.txt"
           fi
           echo "skip=$skip" >> "$GITHUB_OUTPUT"
@@ -239,6 +254,23 @@ jobs:
           pr_json="$(gh api "repos/$repo/pulls/$PR")"
           author="$(jq -r .user.login <<<"$pr_json")"
 
+          # Sticky per commit: a review that requested changes on this head stands, whatever this
+          # run finds (a re-run, a reopen or a retarget cannot roll it again). Push a new commit.
+          # An API error ends the run here (set -e): no check is written rather than a wrong one.
+          requested="Changes requested by Claude"
+          if [ "$HAS_APP" = true ] && [ "$BASE" = dev ]; then
+            earlier="$(GH_TOKEN="$APP_TOKEN" gh api --paginate -X GET "repos/$repo/commits/$HEAD/check-runs" \
+              -f check_name=autopilot/review -F app_id="$APP_ID" -f filter=all -F per_page=100 \
+              --jq '.check_runs[] | select(.conclusion == "failure") | .output.title')"
+            if grep -qxF "$requested" <<<"$earlier"; then
+              echo "::error::An earlier review requested changes on ${HEAD:0:7}; push a new commit for a new review."
+              ap_label "$PR" add needs-fixes
+              check failure "$requested" \
+                "An earlier review of ${HEAD:0:7} requested changes (see the Claude review comment). That stands for this commit: push a fix to get a new review." >/dev/null
+              exit 1
+            fi
+          fi
+
           # Fail closed: no skip reason, a successful Claude step and a well-formed result, or no pass.
           problem=""
           if [ -n "$SKIP" ]; then
@@ -282,7 +314,7 @@ jobs:
           if [ "$verdict" = block ]; then
             ap_label "$PR" add needs-fixes
             while IFS= read -r line; do echo "::error::${line#- }"; done <<<"$reasons"
-            previous="$(check failure "Changes requested by Claude" "$reasons")"
+            previous="$(check failure "$requested" "$reasons")"
             if [ "$previous" != failure ]; then
               ap_telegram "⚠️ Blocked: #$PR $(jq -r .title <<<"$pr_json") by @$author — Claude review"$'\n\n'"$reasons"$'\n'"$(jq -r .html_url <<<"$pr_json")"
             fi

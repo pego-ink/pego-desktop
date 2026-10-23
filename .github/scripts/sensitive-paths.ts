@@ -2,15 +2,20 @@
  * Paths a PR into `dev` may only touch with an approving review from @yolkmonday on its head commit
  * (`.github/workflows/autopilot.yml`, job `gate`). The one list; edit it here.
  *
- * CLI: `git diff --name-only ... | bun .github/scripts/sensitive-paths.ts` prints the sensitive ones.
- * With `--expect <n>` (the PR's `changed_files`) it also prints INCOMPLETE_FILE_LIST when the list
- * cannot be the PR's whole file list, so the gate fails closed.
+ * Matching ignores case (macOS and Windows disks do: `.Claude/settings.json` is `.claude/...`
+ * there), Unicode normalization form and invisible format characters.
+ *
+ * CLI: `git diff --name-only -z ... | bun .github/scripts/sensitive-paths.ts -z` prints the
+ * sensitive ones, one per line, control characters escaped as `\uXXXX`, so every line is one
+ * path and safe to show. Without `-z` the input is one path per line.
  */
 export const SENSITIVE_PATTERNS = [
-  // CI, bots and their scripts, code owners.
+  // CI, bots and their scripts, code owners, git attributes and submodules.
   ".github/**",
   "CODEOWNERS",
   "docs/CODEOWNERS",
+  "**/.gitattributes",
+  ".gitmodules",
   // Agent configuration and instructions: they steer Claude in CI and on every machine.
   ".claude/**",
   "**/.claude/**",
@@ -28,53 +33,49 @@ export const SENSITIVE_PATTERNS = [
   "**/wrangler.toml",
   "apps/changelog/astro.config.*",
   "apps/desktop/electron-builder.yml",
-  // Security-relevant source.
+  "apps/desktop/scripts/**",
+  // Security-relevant source: the local bridge, the desktop shell, the changelog's HTML safety.
   "packages/doc/src/schema.ts",
   "packages/doc/src/migrate.ts",
+  "apps/bridge/src/**",
   "apps/bridge/src/security.ts",
+  "apps/desktop/src/**",
   "apps/desktop/src/browser-*",
-  "apps/web/src/browser/page-scripts.ts",
   "apps/desktop/src/main.ts",
   "apps/desktop/src/preload.ts",
+  "apps/web/src/browser/page-scripts.ts",
+  "apps/changelog/src/lib/**",
+  "apps/changelog/src/content/schema.ts",
+  "apps/changelog/src/content/entries.test.ts",
 ] as const;
 
-/** Printed (and returned) when the PR's file list is not known to be complete. */
-export const INCOMPLETE_FILE_LIST = "INCOMPLETE_FILE_LIST";
+/** Characters most filesystems and editors do not show (zero-width, bidi controls, BOM, ...). */
+const INVISIBLE = /\p{Default_Ignorable_Code_Point}/gu;
 
-/** `GET /pulls/{n}/files` returns at most this many files, whatever the page size. */
-export const PR_FILES_API_LIMIT = 3000;
+/** The form paths are compared in: trimmed, no `./`, NFC, no invisible characters, lowercase. */
+const fold = (path: string): string =>
+  path.trim().replace(/^\.\//, "").normalize("NFC").replace(INVISIBLE, "").toLowerCase();
 
-const globs = SENSITIVE_PATTERNS.map((pattern) => new Bun.Glob(pattern));
-
-const normalize = (path: string): string => path.trim().replace(/^\.\//, "");
+const globs = SENSITIVE_PATTERNS.map((pattern) => new Bun.Glob(fold(pattern)));
 
 /** Returns the paths (repo-relative, `/`-separated) that match a sensitive pattern, deduplicated. */
 export const sensitivePaths = (paths: readonly string[]): string[] => [
   ...new Set(
-    paths.map(normalize).filter((path) => path !== "" && globs.some((glob) => glob.match(path))),
+    paths
+      .map((path) => path.trim().replace(/^\.\//, ""))
+      .filter((path) => path !== "" && globs.some((glob) => glob.match(fold(path)))),
   ),
 ];
 
-/**
- * True when `filenames` (the PR's current file names, one per changed file) can be its whole file
- * list: as many as `changedFiles` and below the API cap.
- */
-export const isCompleteFileList = (filenames: readonly string[], changedFiles: number): boolean => {
-  const count = new Set(filenames.map(normalize).filter((path) => path !== "")).size;
-  return Number.isInteger(changedFiles) && count === changedFiles && count < PR_FILES_API_LIMIT;
-};
+// eslint-disable-next-line no-control-regex -- control characters are what it escapes
+const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
+
+/** A path as one printable line: control characters (newlines included) become `\uXXXX`. */
+export const printable = (path: string): string =>
+  path.replace(CONTROL, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
 if (import.meta.main) {
-  const flag = process.argv.indexOf("--expect");
-  const input = (await Bun.stdin.text()).split("\n");
-  // With --expect, stdin lines are "<filename>\t<previous filename or empty>".
-  const rows = input.filter((line) => line.trim() !== "").map((line) => line.split("\t"));
-  const result = sensitivePaths(rows.flat());
-  if (flag !== -1) {
-    const current = rows.map(([filename = ""]) => filename);
-    if (!isCompleteFileList(current, Number(process.argv[flag + 1]))) {
-      result.push(INCOMPLETE_FILE_LIST);
-    }
-  }
-  if (result.length > 0) console.log(result.join("\n"));
+  const separator = process.argv.includes("-z") ? "\0" : "\n";
+  const result = sensitivePaths((await Bun.stdin.text()).split(separator));
+  if (result.length > 0) console.log(result.map(printable).join("\n"));
 }

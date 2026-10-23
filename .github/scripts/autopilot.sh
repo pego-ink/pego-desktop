@@ -124,9 +124,47 @@ ap_urlpath() {
   jq -rn --arg p "$1" '$p | split("/") | map(@uri) | join("/")'
 }
 
-# ap_pr_files PR: prints "<filename>\t<previous filename>" per changed file (the API stops at
-# 3000 files; sensitive-paths.ts --expect detects that).
-ap_pr_files() {
-  gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$1/files?per_page=100" \
-    --jq '.[] | "\(.filename)\t\(.previous_filename // "")"'
+# ap_changed_files SHA: prints, NUL-separated, every path commit SHA changes against dev (from
+# each merge base, like a PR's "Files changed"). It comes from git, not the paginated files API, so
+# the list belongs to exactly that commit and has no size limit. --no-renames lists a rename as its
+# old and its new path. Fetches dev and SHA into the current checkout of dev as objects only:
+# nothing from them is checked out or run. Returns non-zero on any error, so callers fail closed.
+ap_changed_files() {
+  local sha="$1" bases base
+  [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
+  git fetch --quiet --no-tags --no-recurse-submodules origin \
+    "+refs/heads/dev:refs/remotes/origin/dev" "$sha" || return 1
+  bases="$(git merge-base --all refs/remotes/origin/dev "$sha")" || return 1
+  [ -n "$bases" ] || return 1
+  for base in $bases; do
+    git diff --name-only --no-renames --no-ext-diff --no-textconv -z "$base" "$sha" -- || return 1
+  done
+}
+
+# ap_code_block TEXT: prints TEXT as a Markdown fenced code block whose fence is longer than any
+# run of backticks in it, so TEXT (file names, say) renders literally: no markup, no @mentions.
+ap_code_block() {
+  local fence='```'
+  while [[ "$1" == *"$fence"* ]]; do fence+='`'; done
+  printf '%s\n%s\n%s' "$fence" "$1" "$fence"
+}
+
+# ap_no_mentions TEXT: prints TEXT with a zero-width space after every @, so it mentions nobody.
+ap_no_mentions() {
+  printf '%s' "${1//@/@$'\xe2\x80\x8b'}"
+}
+
+# ap_check_symlinks: fails when the checkout in the current directory holds a symlink that
+# resolves outside it. Claude reads that checkout; a link must not lead it to runner files.
+ap_check_symlinks() {
+  local root link target bad=0
+  root="$(realpath .)"
+  while IFS= read -r -d '' link; do
+    target="$(realpath -m -- "$link")"
+    case "$target" in
+      "$root" | "$root"/*) ;;
+      *) printf '::error::The checkout has a symlink that leaves it: %q\n' "$link"; bad=1 ;;
+    esac
+  done < <(find . -path ./.git -prune -o -type l -print0)
+  return "$bad"
 }

@@ -329,10 +329,11 @@ returns an entry or "internal"; the workflow checks the entry with `.github/scri
 that one file to the PR branch as the pego-bot App (never onto `dev` or `main`), or adds the `no-changelog` label.
 Edit the entry like any file before merging. Entries are rendered as HTML, so the
 text rules fail closed on the raw file, code included: no `<` anywhere, no HTML entities, no `javascript:`,
-`vbscript:`, `data:` or `file:` (even in prose), and frontmatter text has no `>` either
+`vbscript:`, `data:` or `file:` (even in prose, and checked after decoding entities and dropping backslash escapes),
+link and image destinations only http(s), mailto or relative, and frontmatter text has no `>` either
 (`src/lib/entry-body.ts`, enforced by the tests; the bot uses the same rules). The site also drops raw HTML and
-non-http(s)/mailto URLs when rendering (`src/lib/safe-markdown.ts`, wired in `astro.config.ts`), and JSON-LD goes
-through `serializeJsonLd`.
+non-http(s)/mailto URLs when rendering (`src/lib/safe-markdown.ts`, wired in `astro.config.ts`; `entry-rendering.test.ts`
+renders hostile bodies through the site's pipeline), and JSON-LD goes through `serializeJsonLd`.
 
 ## Git workflow
 
@@ -348,22 +349,32 @@ Two people contribute to `github.com/yolkmonday/pego`, so:
   `autopilot` label) once four required checks pass, all check runs of the pego-bot GitHub App (the ruleset pins
   them to the App, so a workflow a PR adds cannot fake them): `autopilot/ci` (CI's result, mirrored),
   `autopilot/changelog`, `autopilot/review` and `autopilot/gate`. No approval needed. `autopilot/ci` passes only when every CI run
-  for the head commit succeeded on the PR's own branch; it **relies on a push ruleset** that lets only the org admin
-  change `.github/workflows/**`, `.github/scripts/**` and CODEOWNERS on every branch (otherwise a teammate branch
-  could carry a doctored `ci.yml`). Keep that ruleset when changing branch rules. Drafts and PRs labelled
+  for the head commit succeeded on the PR's own branch, counting only runs created after the PR's latest base change
+  (CI re-runs on `edited`, so a retargeted PR is tested against `dev`); it **relies on a push ruleset** that lets
+  only the org admin change `.github/**` and every `CODEOWNERS` on every branch (otherwise a teammate branch could
+  carry a doctored `ci.yml` or workflow). Keep that ruleset when changing branch rules. Drafts and PRs labelled
   `no-autopilot` wait for a manual merge; fork PRs are merged by hand.
-- **Sensitive paths** (`.github/scripts/sensitive-paths.ts`: `.github/**`, `.claude/**`, `CLAUDE.md`, every
-  `package.json`, `bun.lock`, `bunfig.toml`, `.npmrc`, wrangler and astro config, CODEOWNERS, schema/migrations,
-  bridge security, desktop shell and browser code) never auto-merge. Such a PR is labelled `needs-owner-review` and
-  its gate passes only once @yolkmonday approves its head commit; he then merges it (the bot enables
-  auto-merge after his approval only if `AUTO_MERGE_APPROVED_SENSITIVE` in `autopilot.yml` is `"true"`). His own sensitive PRs
-  he merges with an admin bypass. A PR with more files than the API lists (3000) counts as sensitive.
+- **Sensitive paths** (`.github/scripts/sensitive-paths.ts`: `.github/**`, CODEOWNERS, `.gitattributes`,
+  `.gitmodules`, `.claude/**`, `CLAUDE.md`, `.mcp.json`, every `package.json`, `bun.lock`, `bunfig.toml`, `.npmrc`,
+  wrangler and astro config, `apps/desktop/electron-builder.yml` and `scripts/**`, schema/migrations, all of
+  `apps/bridge/src/**` and `apps/desktop/src/**`, the web browser page scripts, and the changelog's HTML safety
+  (`apps/changelog/src/lib/**`, `src/content/schema.ts`, `src/content/entries.test.ts`); matched ignoring case)
+  never auto-merge. The gate lists the changed files with git for exactly the head commit it checks (old and new
+  path of a rename), not with the files API, and writes nothing if the head or base moved meanwhile. A sensitive PR
+  is labelled `needs-owner-review` and its gate fails until @yolkmonday approves its head commit, and keeps failing
+  after that ("Approved; he merges it", auto-merge turned off): he merges it with an admin bypass, as he does his
+  own sensitive PRs. Only with `AUTO_MERGE_APPROVED_SENSITIVE: "true"` in `autopilot.yml` does his approval make
+  the gate pass and the bot enable auto-merge for that exact commit.
 - **Claude review** (`.github/workflows/claude-review.yml`) keeps one comment on every same-repo PR into `dev`
   (into `main` it only comments):
   overlap with other open PRs, recent merges and active branches, plus a short code check. It blocks only real
   bugs, data loss, security issues, CLAUDE.md rule breaks that matter and duplicate work (`needs-fixes` label, the
-  author tagged with the reasons). No verdict (Claude failed, diff over 1.5 MB, no token) fails the check: re-run
-  the workflow (at most 3 attempts call Claude) or the owner merges by hand.
+  author tagged with the reasons). No verdict (Claude failed, diff over 400 KB, no token) fails the check: re-run
+  the workflow (at most 3 attempts call Claude) or the owner merges by hand. "Changes requested" sticks to the
+  commit: a re-run, a close and reopen or a retarget of the same head keeps the check failing; a new push gets a
+  fresh review. Retargeting a PR to `dev` re-runs the review and the changelog check. Claude's diffs are made
+  with `--text` (a `.gitattributes` cannot hide a change), and a job that lets Claude read the `dev` checkout fails
+  if that checkout has a symlink leading outside it.
 - **Trust model.** Workflows that hold secrets run only from `dev`'s definition (`pull_request_target`,
   `workflow_run`) and never check out or run PR code: Claude works in a `dev` checkout with read tools and gets the
   PR as data. All bot secrets (`PEGO_BOT_APP_ID`, `PEGO_BOT_PRIVATE_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,

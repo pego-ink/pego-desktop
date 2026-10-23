@@ -80,10 +80,12 @@ jobs:
             msg="🚀 Merged into $BASE: #$PR $TITLE by @$AUTHOR"
           fi
           msg+=$'\n\n'"$URL"
+          # A random delimiter: the message (a PR title, say) cannot end the value early.
+          delimiter="EOF_$(openssl rand -hex 16)"
           {
-            echo "message<<EOF_$GITHUB_RUN_ID"
+            echo "message<<$delimiter"
             printf '%s\n' "$msg"
-            echo "EOF_$GITHUB_RUN_ID"
+            echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
 
   released:
@@ -123,10 +125,12 @@ jobs:
           msg="📦 $kind $tag"
           if [ -n "$name" ] && [ "$name" != "$tag" ]; then msg+=": $name"; fi
           msg+=$'\n\n'"$(jq -r .html_url <<<"$release")"
+          # A random delimiter: the message (a PR title, say) cannot end the value early.
+          delimiter="EOF_$(openssl rand -hex 16)"
           {
-            echo "message<<EOF_$GITHUB_RUN_ID"
+            echo "message<<$delimiter"
             printf '%s\n' "$msg"
-            echo "EOF_$GITHUB_RUN_ID"
+            echo "$delimiter"
           } >> "$GITHUB_OUTPUT"
 
   telegram:

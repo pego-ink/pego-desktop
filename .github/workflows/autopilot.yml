@@ -12,11 +12,16 @@ name: Autopilot
 # - A PR that touches nothing sensitive passes and gets auto-merge (merge commit, enabled as the
 #   App so the merge triggers the dev deploy) and the `autopilot` label. Drafts and PRs labelled
 #   `no-autopilot` pass but wait for a manual merge.
-# - A PR that touches a sensitive path (.github/scripts/sensitive-paths.ts), or whose file list
-#   the API cannot give in full, fails until @yolkmonday approves its head commit. It is labelled
-#   `needs-owner-review`, the author gets a sticky comment and the owner a Telegram message. After
-#   the approval the gate passes but never enables auto-merge: the owner merges it. His own
-#   sensitive PRs always fail the gate: he merges them by hand (admin bypass).
+# - The changed files come from git for exactly the head commit the gate writes its check on
+#   (ap_changed_files: the head fetched as objects into the dev checkout, never checked out), not
+#   from the paginated files API. If the PR's head or base moved meanwhile, nothing is written: the
+#   run for the new state decides.
+# - A PR that touches a sensitive path (.github/scripts/sensitive-paths.ts) fails the gate. It is
+#   labelled `needs-owner-review`, the author gets a sticky comment and the owner a Telegram
+#   message. Once @yolkmonday approves its head commit the gate still fails ("Approved; he merges
+#   it") and auto-merge is turned off: he merges it with an admin bypass. A passing gate on a
+#   sensitive commit would let auto-merge that is already on merge it (say, enabled for a later
+#   non-sensitive head, then force-pushed back). His own sensitive PRs fail the same way.
 # - External (fork) PRs fail: they are merged by hand.
 #
 # Trust: everything here runs the definition and scripts on `dev` (pull_request_target and
@@ -45,9 +50,10 @@ on:
 permissions: {}
 
 env:
-  # The owner's call: "true" lets the gate enable auto-merge on a sensitive PR once @yolkmonday
-  # approved its head commit (his approval is the consent). "false": sensitive PRs never
-  # auto-merge; only auto-merge he enabled himself after approving is kept.
+  # The owner's call: "true" lets the gate pass and enable auto-merge on a sensitive PR once
+  # @yolkmonday approved its head commit: his approval of that exact commit is the consent, so it
+  # merges once every check passes. "false": the gate fails on every sensitive commit, approved or
+  # not, auto-merge stays off and he merges it himself.
   AUTO_MERGE_APPROVED_SENSITIVE: "false"
 
 jobs:
@@ -78,15 +84,20 @@ jobs:
       RUN_SHA: ${{ github.event.workflow_run.head_sha }}
       RUN_WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
     steps:
-      # dev's scripts (the commit this definition came from); PR code is never checked out.
+      # dev's scripts (the commit this definition came from) with dev's history, for the file
+      # list (trees only, no blobs); PR code is never checked out.
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
           sparse-checkout: .github/scripts
+          fetch-depth: 0
+          filter: blob:none
 
+      # No Actions cache: this job holds the pego-bot token, and a cache can be written by others.
       - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.11
+          no-cache: true
 
       - name: App token
         id: app
@@ -137,34 +148,43 @@ jobs:
             title="$(jq -r .title <<<"$pr_json")"
             url="$(jq -r .html_url <<<"$pr_json")"
             draft="$(jq -r .draft <<<"$pr_json")"
-            changed="$(jq -r .changed_files <<<"$pr_json")"
-            # Who enabled auto-merge ("" when off).
-            auto_merge="$(jq -r '.auto_merge.enabled_by.login // (if .auto_merge then "?" else "" end)' <<<"$pr_json")"
+            auto_merge="$(jq -r 'if .auto_merge then "on" else "" end' <<<"$pr_json")"
             labels="$(jq -r '.labels[].name' <<<"$pr_json")"
-            # disable_auto_merge [keep-owner]: turns auto-merge off; with keep-owner not when the
-            # owner enabled it.
             disable_auto_merge() {
-              if [ -n "$auto_merge" ] && { [ "${1:-}" != keep-owner ] || [ "$auto_merge" != "$AP_OWNER" ]; }; then
+              if [ -n "$auto_merge" ]; then
                 GH_TOKEN="$APP_TOKEN" gh pr merge "$pr" --repo "$repo" --disable-auto >/dev/null || true
               fi
             }
 
+            # Before anything is fetched: a fork's commits never enter this checkout.
             if [ "$head_repo" != "$repo" ]; then
               ap_check autopilot/gate "$head" failure "External PR" \
                 "PRs from forks are merged by hand." >/dev/null
               failed=1; continue
             fi
 
-            # Renamed files count with their old path too. A list the API cuts short (3000 files)
-            # or that disagrees with changed_files fails closed as INCOMPLETE_FILE_LIST.
-            sensitive="$(ap_pr_files "$pr" | bun .github/scripts/sensitive-paths.ts --expect "$changed")"
+            # Every path this exact head changes against dev; a rename counts with both paths.
+            if ! ap_changed_files "$head" >"$RUNNER_TEMP/files"; then
+              disable_auto_merge
+              ap_check autopilot/gate "$head" failure "No file list" \
+                "git could not list the files of ${head:0:7}. Re-run the Autopilot workflow." >/dev/null
+              failed=1; continue
+            fi
+            sensitive="$(bun .github/scripts/sensitive-paths.ts -z <"$RUNNER_TEMP/files")"
+            # The list is for $head; if the PR moved on (new head, other base) meanwhile, write
+            # nothing: the run for the new state (synchronize / edited, queued behind this one)
+            # decides. A check on $head stays right for $head, and auto-merge matches the head.
+            if [ "$(gh api "repos/$repo/pulls/$pr" --jq '[.state, .base.ref, .head.sha] | join(" ")')" != "open dev $head" ]; then
+              echo "#$pr moved on from ${head:0:7} or changed its base; the newer run decides."; continue
+            fi
+
             if [ -n "$sensitive" ]; then
-              echo "#$pr sensitive:"; printf '%s\n' "$sensitive" | sed 's/^/  /'
-              list=""
-              while IFS= read -r f; do
-                if [ "$f" = INCOMPLETE_FILE_LIST ]; then f="more files than the API lists"; else f="\`$f\`"; fi
-                list="${list:+$list, }$f"
-              done <<<"$sensitive"
+              # Names reach markdown only inside a code block and Telegram without @mentions.
+              count="$(grep -c . <<<"$sensitive")"
+              shown="$(head -n 50 <<<"$sensitive")"
+              if [ "$count" -gt 50 ]; then shown+=$'\n'"... and $((count - 50)) more"; fi
+              echo "#$pr touches $count sensitive paths:"; printf '%s\n' "$shown" | sed 's/^/  sensitive: /'
+              files=$'\n\n'"$(ap_code_block "$shown")"
               # The owner's latest approve / request-changes / dismissed review must approve this
               # head. He cannot approve his own PR, and authorship is not an approval.
               approved="$(gh api --paginate --slurp "repos/$repo/pulls/$pr/reviews?per_page=100" | jq -r \
@@ -177,27 +197,34 @@ jobs:
                 disable_auto_merge
                 ap_label "$pr" add needs-owner-review
                 if [ "$author" = "$AP_OWNER" ]; then
-                  msg="This touches $list. Sensitive changes never merge on their own: @$AP_OWNER merges it by hand once the other checks pass."
+                  msg="This touches sensitive paths. Sensitive changes never merge on their own: @$AP_OWNER merges it by hand once the other checks pass.$files"
                 else
-                  msg="This touches $list, so @$AP_OWNER reviews it before it merges. Once he approves the latest commit (${head:0:7}) the gate passes and he merges it."
+                  msg="This touches sensitive paths, so @$AP_OWNER reviews it before it merges. Once he approves the latest commit (${head:0:7}) he merges it.$files"
                 fi
                 ap_sticky "$pr" "$marker" "$msg" create
                 previous="$(ap_check autopilot/gate "$head" failure "Needs @$AP_OWNER's approval" "$msg")"
                 if [ "$previous" != failure ]; then
-                  ap_telegram "🔒 Needs your review: #$pr $title by @$author — touches $list"$'\n\n'"$url"
+                  ap_telegram "🔒 Needs your review: #$pr $title by @$author — touches $count sensitive paths:"$'\n'"$(ap_no_mentions "$shown")"$'\n\n'"$url"
                 fi
                 failed=1; continue
               fi
               ap_label "$pr" remove needs-owner-review
-              if [ "$AUTO_MERGE_APPROVED_SENSITIVE" = true ] && [ "$draft" != true ] &&
-                 ! printf '%s\n' "$labels" | grep -qx no-autopilot &&
+              if [ "$AUTO_MERGE_APPROVED_SENSITIVE" != true ]; then
+                # Approved, but never a passing gate and never auto-merge on a sensitive commit.
+                disable_auto_merge
+                msg="This touches sensitive paths; @$AP_OWNER approved ${head:0:7}. Sensitive changes do not auto-merge: he merges it.$files"
+                ap_sticky "$pr" "$marker" "$msg"
+                ap_check autopilot/gate "$head" failure "Approved; @$AP_OWNER merges it" "$msg" >/dev/null
+                continue
+              fi
+              # AUTO_MERGE_APPROVED_SENSITIVE: his approval of this commit lets it merge on its own.
+              if [ "$draft" != true ] && ! printf '%s\n' "$labels" | grep -qx no-autopilot &&
                  GH_TOKEN="$APP_TOKEN" gh pr merge "$pr" --repo "$repo" --auto --merge --match-head-commit "$head"; then
                 ap_label "$pr" add autopilot
-                msg="This touches $list; @$AP_OWNER approved ${head:0:7}, so it merges on its own once every check passes."
+                msg="This touches sensitive paths; @$AP_OWNER approved ${head:0:7}, so it merges on its own once every check passes.$files"
               else
-                # Only auto-merge the owner enabled himself survives on a sensitive PR.
-                disable_auto_merge keep-owner
-                msg="This touches $list; @$AP_OWNER approved ${head:0:7}. Sensitive changes do not auto-merge: he merges it."
+                disable_auto_merge
+                msg="This touches sensitive paths; @$AP_OWNER approved ${head:0:7}. It does not merge on its own (draft, \`no-autopilot\` or auto-merge unavailable): it merges by hand.$files"
               fi
               ap_sticky "$pr" "$marker" "$msg"
               ap_check autopilot/gate "$head" success "Approved by @$AP_OWNER" "$msg" >/dev/null
@@ -292,13 +319,21 @@ jobs:
           # success needs at least one run, all completed with success, every run on the dev PR's
           # head branch and tied only to PRs into dev or main (one into dev), and no open PR with
           # this head into another branch.
-          # RELIES ON the push ruleset that lets only the org admin change .github/workflows/**,
-          # .github/scripts/** and CODEOWNERS on every branch: a pull_request run uses the merge
+          # RELIES ON the push ruleset that lets only the org admin change .github/** and
+          # CODEOWNERS (every copy) on every branch: a pull_request run uses the merge
           # commit's ci.yml, so without it a teammate could still delete the real runs and run a
           # doctored ci.yml from a short-lived PR into a branch that carries it.
           refs="$(for pr in $prs; do gh api "repos/$repo/pulls/$pr" --jq .head.ref; done | jq -R . | jq -s .)"
+          # Runs created before the PR's latest base change tested it against another base (a PR
+          # opened elsewhere and retargeted to dev): they do not count. ci.yml re-runs on `edited`.
+          since="$(for pr in $prs; do
+              gh api --paginate "repos/$repo/issues/$pr/timeline?per_page=100" \
+                --jq '.[] | select(.event == "base_ref_changed") | .created_at'
+            done | sort | tail -n 1)"
           runs="$(gh api --paginate "repos/$repo/actions/workflows/$ci_id/runs?head_sha=$RUN_SHA&event=pull_request&per_page=100" \
-            --jq '.workflow_runs[] | {id, status, conclusion, html_url, head_branch, bases: [.pull_requests[].base.ref]}' | jq -s .)"
+            --jq '.workflow_runs[] | {id, status, conclusion, html_url, head_branch, created_at, bases: [.pull_requests[].base.ref]}' |
+            jq -s --arg since "$since" 'map(select(.created_at >= $since))')"
+          if [ -n "$since" ]; then echo "Counting only runs created since the base change at $since."; fi
           others="$(gh api "repos/$repo/commits/$RUN_SHA/pulls" --jq \
             "[.[] | select(.state == \"open\" and .head.sha == \"$RUN_SHA\" and .base.ref != \"dev\" and .base.ref != \"main\") | .base.ref] | join(\", \")")"
           verdict="$(jq -r --arg others "$others" --argjson refs "$refs" '

@@ -28,13 +28,41 @@ describe("entryProblems", () => {
   test("rejects entities and script-capable schemes, however spaced", () => {
     expect(entryProblems(entry(ok, "[x](&#106;avascript:alert(1))\n"))).toEqual([
       "html-entity (line 7)",
+      "script-url (line 7)",
+      "link-scheme (line 7)",
     ]);
     expect(entryProblems(entry(ok, "[x]( JaVa\tScRiPt :alert(1))\n"))).toEqual([
       "script-url (line 7)",
     ]);
-    expect(entryProblems(entry(ok, "> [x]: vbscript:msgbox\n"))).toEqual(["script-url (line 7)"]);
+    expect(entryProblems(entry(ok, "> [x]: vbscript:msgbox\n"))).toEqual([
+      "script-url (line 7)",
+      "link-scheme (line 7)",
+    ]);
     expect(entryProblems(entry(ok, "[x](java\nscript:alert(1))\n"))).toEqual([
       "script-url (across lines)",
+    ]);
+  });
+
+  test("rejects schemes hidden by Markdown backslash escapes", () => {
+    expect(entryProblems(entry(ok, "[x](javascript\\:alert(1))\n"))).toEqual([
+      "script-url (line 7)",
+      "link-scheme (line 7)",
+    ]);
+    expect(entryProblems(entry(ok, "[x](java\\script\\:alert(1))\n"))).toEqual([
+      "script-url (line 7)",
+      "link-scheme (line 7)",
+    ]);
+  });
+
+  test("allows only http(s), mailto and relative link destinations", () => {
+    const safe =
+      "[a](https://pego.ink) [b](http://x.y) [c](mailto:hi@pego.ink) [d](/x#y) [e](#top)";
+    expect(entryProblems(entry(ok, `${safe}\n`))).toEqual([]);
+    expect(entryProblems(entry(ok, "Tip: press Tab. Note: it is fast.\n"))).toEqual([]);
+    expect(entryProblems(entry(ok, "[x](tel:123)\n"))).toEqual(["link-scheme (line 7)"]);
+    expect(entryProblems(entry(ok, "![x](ftp://a/b.png)\n"))).toEqual(["link-scheme (line 7)"]);
+    expect(entryProblems(entry(ok, "[x][y]\n\n[y]:\n  tel\\:123\n"))).toEqual([
+      "link-scheme (across lines)",
     ]);
   });
 
