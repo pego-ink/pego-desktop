@@ -2,7 +2,7 @@
 title: Components, projects and Claude Code
 date: 2026-10-23T15:00:00Z
 summary: A searchable Assets panel you can drag from, Save as project, Copy for AI, and Claude Code that works on a project in the background.
-tags: [new, improved]
+tags: [new, improved, fixed]
 ---
 
 ## Assets panel
@@ -20,3 +20,7 @@ Select layers and press **⌘⇧C** to copy a short reference to them: the proje
 ## Claude Code works on any project
 
 Ask Claude Code to change a project by name and it edits that project in a background tab, without switching what you see. If the project's file can't be read, it stops and tells you instead of starting from an empty design.
+
+## Right-click does what you expect
+
+A right-click now acts on what you selected. Right-click a frame's name above it to get that frame's full menu, and right-clicking inside a selected frame keeps it selected instead of switching to a layer inside it or clearing the selection.
