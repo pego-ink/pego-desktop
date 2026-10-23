@@ -181,7 +181,10 @@ const RightColumn = ({ floating = false }: { floating?: boolean }) => {
     <aside
       className={cn(
         "flex w-72 shrink-0 flex-col",
-        floating ? cn("overflow-hidden", FLOATING_CARD) : "border-l border-border bg-card",
+        // Capped so a narrow window still leaves canvas between the floating cards.
+        floating
+          ? cn("max-w-[30vw] overflow-hidden", FLOATING_CARD)
+          : "border-l border-border bg-card",
       )}
     >
       {frameTool ? <FramePresetsPanel /> : <PropertiesPanel />}
@@ -282,7 +285,6 @@ export const EditorShell = () => {
   // Home shows with the Home view, and whenever no document tab is left (always, bridge or not).
   const dashboard = useWorkspaceStore((s) => s.view === "dashboard" || s.liveId === null);
   // The dashboard keeps the docked layout; the floating one is for the editor.
-  // Narrow windows fall back to docked: the cards would leave almost no canvas.
   const floating = useFloatingInterface() && !dashboard;
   usePanelShortcut();
 
