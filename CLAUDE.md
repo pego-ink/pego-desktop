@@ -260,8 +260,9 @@ When you add a node prop, update the canvas renderer and the exporter together, 
 ## Agent
 
 - Tools: `packages/agent/src/tools.ts` (registry), `tools-edit.ts`, `tools-inspect.ts`, `edit/`, `inspect/`.
-- Prompts: `prompts.ts`. Design guidance is the skills system (`skills/`: one design skill plus one style
-  skill per run, `list_skills` / `get_skill`; `get_guidelines` maps old topic names onto skills). Style presets
+- Prompts: `prompts.ts`. Design guidance is the skills system (`skills/`: the always-on `core` and
+  `ui-polish` skills plus one design skill and one style skill per run, `list_skills` / `get_skill`;
+  `get_guidelines` maps old topic names onto skills). Style presets
   (`list_styles`, `get_style`): `styles/presets.ts`.
 - BYOK models: planner `claude-opus-5-5`, executor `claude-sonnet-5-5` (`apps/web/src/agent/api-runtime.ts`).
 - Plan and progress always go through `report_plan` / `report_step` so every backend drives the same panel.
