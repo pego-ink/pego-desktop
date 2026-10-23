@@ -13,6 +13,7 @@ import {
 } from "@pego/ui/components/context-menu";
 import { getLayout } from "@/canvas/layout";
 import { screenToDoc } from "@/canvas/types";
+import { copySelectionForAgent } from "@/interaction/agent-reference";
 import { runCopyAs } from "@/interaction/copy-as";
 import { runPasteHere, runPasteReplace } from "@/interaction/clipboard-actions";
 import { flipSelection } from "@/interaction/flip";
@@ -87,6 +88,13 @@ export const SelectionMenuContent = ({ point }: { point?: DocPoint | null }) => 
             HTML/CSS
           </ContextMenuItem>
           <ContextMenuItem onSelect={() => void runCopyAs("json")}>JSON</ContextMenuItem>
+          <ContextMenuSeparator />
+          <ContextMenuItem
+            shortcut={keys("mod", "shift", "C")}
+            onSelect={() => void copySelectionForAgent()}
+          >
+            For AI (project and node ids)
+          </ContextMenuItem>
         </ContextMenuSubContent>
       </ContextMenuSub>
       <ContextMenuItem onSelect={() => void runPasteHere(point ?? undefined)}>

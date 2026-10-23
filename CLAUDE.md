@@ -55,11 +55,13 @@ design/          mocks (.pen, png, html), not linted
 - **Skia only renders.** Hit-testing, selection, transforms and layout are ours (`apps/web/src/interaction`,
   `packages/doc/src/layout.ts`).
 - The bridge binds to `127.0.0.1:4519` only and checks origins (`apps/bridge/src/security.ts`). Keep it that way.
-- **Several editors share one bridge** (`apps/bridge/src/editor-hub.ts`, protocol v7): every editor window stays
+- **Several editors share one bridge** (`apps/bridge/src/editor-hub.ts`, protocol v8): every editor window stays
   connected; MCP calls (and the file tools) go to the most recently focused one, agent runs talk only to the
   editor that started them (up to `MAX_CONCURRENT_RUNS` = 3 at once, each with its own run-scoped MCP endpoint),
   `run_steer` feeds a running run. Two windows with the same project file: last focused wins, the other's
   `save_file` is refused until it is focused again (its changes stay in its browser autosave).
+  The hub only knows who last saved a file, not which windows have it open or dirty, so a background MCP edit of a
+  project that another window has open with unsaved changes is not refused (documented in the tool text).
 - The user's Anthropic API key stays in the browser and is sent only to `api.anthropic.com`.
 
 ## The `.pego` file format
@@ -225,6 +227,7 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   creates them. Projects, the dashboard and the project tabs appear only while a bridge serves a design folder.
   Deleting (Dashboard card menu) moves the folder to the OS Trash, never a permanent delete: the editor sends only
   the project id (`trash_project`), the bridge re-validates the folder (`trash.ts`); it is not an agent tool.
+  File › Save as project… (`persistence/save-as-project.ts`) turns the shown document into a new project: an unsaved untitled document moves in (its tab closes, its chats are re-keyed to the project id), one with a file is copied; it refuses while a panel run is active and trashes the new folder if a later step fails.
 - **Workspaces** (`apps/web/src/workspace/use-workspace-store.ts`): Scratch (local files, the default) and one
   per open project, each with **one document**. The shown document lives in the normal stores (document, file,
   viewport; `workspace/live-document.ts`), the others keep a snapshot. Open documents through `openDocument`
@@ -238,6 +241,11 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   Layout state is one store, `apps/web/src/store/use-layout-store.ts`.
 - MCP: `list_projects`, `open_project` (by id, name or unambiguous prefix), `create_project`,
   `list_documents` (the open documents, one per workspace) and `switch_document`; they act on the focused editor.
+  On the terminal `/mcp` endpoint (not the run-scoped ones) every agent tool also takes `project` (id or name, resolved
+  by `resolveProjectArg` in `apps/bridge/src/mcp.ts`): the call edits that project's tab, opened in the background from
+  `project.pego` when it has no tab (`apps/web/src/workspace/background-project.ts`). A design file that exists but
+  cannot be read is an error to the agent, never an empty design. Background tabs are written only when autosave is
+  on; `save_document` saves the shown document only.
 - Dev: `?bridge=4599` in the editor URL connects to a bridge on another port (`PEGO_BRIDGE_PORT=4599 bun run
 bridge`), handy for testing without touching your main editor tab.
 
@@ -292,6 +300,10 @@ RSS), `tags` (`new`, `improved`, `fixed`), optional `version`, optional `image` 
 details. `bun test` in that workspace validates every entry. It deploys from `main` to changelog.pego.ink
 (`.github/workflows/deploy-changelog.yml`; `dev` and same-repo PRs get preview URLs).
 
+**Every PR into `dev` adds or updates an entry** (same-day changes may extend that day's entry). The `Changelog` check
+(`.github/workflows/changelog-check.yml`) fails a PR into `dev` that touches no file in `src/content/entries/`;
+purely internal PRs (CI, docs, refactors, tests) take the `no-changelog` label instead.
+
 ## Git workflow
 
 Two people contribute to `github.com/yolkmonday/pego`, so:
@@ -302,3 +314,5 @@ Two people contribute to `github.com/yolkmonday/pego`, so:
 - Coordinate before touching shared hot spots: `packages/doc/src/schema.ts`, `packages/doc/src/ops.ts`,
   `packages/agent/src/tools.ts`, root `package.json`.
 - On a `bun.lock` conflict, take `main`'s version and rerun `bun install`; never hand-edit it.
+- Every PR into `dev` carries a changelog entry (see Changelog) or the `no-changelog` label. Approvals for `dev`
+  and `main` come from the code owner (`.github/CODEOWNERS`).
