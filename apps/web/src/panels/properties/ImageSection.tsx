@@ -27,6 +27,9 @@ export const ImageSection = ({ node }: { node: ImageNode }) => {
   // Natural size appears once the renderer has decoded the image.
   useToolPreview((s) => s.version);
   const natural = getImageNaturalSize(node.src);
+  // A screenshot is embedded (data URL) and can be taken again from its page; a linked photo
+  // (an https src, e.g. from the image search) only links to its page for credit and license.
+  const screenshot = node.src.startsWith("data:");
 
   const replace = async () => {
     const file = await pickImageFile();
@@ -64,20 +67,22 @@ export const ImageSection = ({ node }: { node: ImageNode }) => {
             variant="ghost"
             size="icon-xs"
             aria-label="Open the page"
-            title="Open the page"
+            title={screenshot ? "Open the page" : "Open the photo's page (credit and license)"}
             onClick={() => void openSource(node.source!)}
           >
             <ExternalLinkIcon />
           </Button>
-          <Button
-            variant="ghost"
-            size="icon-xs"
-            aria-label="Refresh from the page"
-            title="Take the screenshot again from the live page"
-            onClick={() => void refreshSnapshot(node.id)}
-          >
-            <RefreshCwIcon />
-          </Button>
+          {screenshot ? (
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Refresh from the page"
+              title="Take the screenshot again from the live page"
+              onClick={() => void refreshSnapshot(node.id)}
+            >
+              <RefreshCwIcon />
+            </Button>
+          ) : null}
         </div>
       ) : null}
       <PropertyRow>

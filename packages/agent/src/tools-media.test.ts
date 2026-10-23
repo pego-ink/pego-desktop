@@ -18,8 +18,13 @@ const SVG =
   '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0E7C5A"/><path d="M7 12l3 3 7-7" stroke="#fff" stroke-width="2" fill="none"/></svg>';
 
 describe("mediaTools", () => {
-  test("registers the three tools with object input schemas", () => {
-    expect(mediaTools.map((t) => t.name)).toEqual(["insert_svg", "place_image", "generate_image"]);
+  test("registers the media tools with object input schemas", () => {
+    expect(mediaTools.map((t) => t.name)).toEqual([
+      "insert_svg",
+      "place_image",
+      "generate_image",
+      "search_images",
+    ]);
     for (const tool of mediaTools) expect(tool.inputSchema.type).toBe("object");
   });
 });
@@ -236,5 +241,84 @@ describe("generate_image", () => {
       (await call("generate_image", { prompt: "x", width: 99999, height: 256 }, host)).data.error
         .code,
     ).toBe("invalid_input");
+  });
+});
+
+describe("search_images", () => {
+  const photo = {
+    src: "https://api.openverse.org/v1/images/abc/thumb/?full_size=true",
+    thumb: "https://api.openverse.org/v1/images/abc/thumb/",
+    width: 1024,
+    height: 768,
+    title: "Basic Fried Chicken",
+    creator: "Cooking With Lon",
+    license: "CC BY 2.0",
+    pageUrl: "https://www.flickr.com/photos/x/6050446406",
+    provider: "Openverse",
+  };
+
+  test("without the capability it is unsupported", async () => {
+    const { data } = await call("search_images", { query: "chicken" });
+    expect(data.error.code).toBe("unsupported");
+  });
+
+  test("returns candidates with their credit; unsafe sources are dropped", async () => {
+    const requests: Json[] = [];
+    const host = Object.assign(createFakeHost(), {
+      searchImages: async (request: Json) => {
+        requests.push(request);
+        return [photo, { ...photo, src: "http://insecure.test/a.jpg" }];
+      },
+    });
+    const { isError, data } = await call(
+      "search_images",
+      { query: "fried chicken", count: 4, orientation: "landscape" },
+      host,
+    );
+    expect(isError).toBe(false);
+    expect(requests[0]).toEqual({ query: "fried chicken", count: 4, orientation: "landscape" });
+    expect(data.results).toEqual([
+      {
+        src: photo.src,
+        width: 1024,
+        height: 768,
+        title: "Basic Fried Chicken",
+        creator: "Cooking With Lon",
+        license: "CC BY 2.0",
+        pageUrl: photo.pageUrl,
+        credit: "Basic Fried Chicken by Cooking With Lon (CC BY 2.0, via Openverse)",
+      },
+    ]);
+  });
+
+  test("an empty search hints at other words; failures are reported", async () => {
+    const none = Object.assign(createFakeHost(), { searchImages: async () => [] });
+    expect((await call("search_images", { query: "zzz" }, none)).data.hint).toMatch(/other words/);
+    const broken = Object.assign(createFakeHost(), {
+      searchImages: async () => {
+        throw new Error("offline");
+      },
+    });
+    expect((await call("search_images", { query: "x" }, broken)).data.error).toMatchObject({
+      code: "search_failed",
+      message: "offline",
+    });
+  });
+
+  test("place_image keeps the photo's page as the layer's source", async () => {
+    const { data, host } = await call("place_image", {
+      src: photo.src,
+      width: 400,
+      height: 300,
+      alt: "Fried chicken",
+      sourceUrl: photo.pageUrl,
+    });
+    expect(findNode(host.getDoc(), data.created.id)).toMatchObject({
+      type: "image",
+      src: photo.src,
+      source: { url: photo.pageUrl },
+    });
+    const bad = await call("place_image", { src: photo.src, sourceUrl: "javascript:alert(1)" });
+    expect(bad.data.error.code).toBe("invalid_input");
   });
 });

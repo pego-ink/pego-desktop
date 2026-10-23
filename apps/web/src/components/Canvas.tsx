@@ -19,6 +19,7 @@ import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { CanvasContextMenu } from "@/components/CanvasContextMenu";
 import { COMPONENT_MIME } from "@/assets/components";
 import { dropComponent } from "@/assets/drop-component";
+import { placeStockImage, readDroppedStockImage, STOCK_IMAGE_MIME } from "@/images/stock-image";
 import { useImagePaste } from "@/interaction/use-image-paste";
 import { useLayerCopy } from "@/interaction/layer-clipboard";
 import { AgentCursors } from "@/components/AgentCursor";
@@ -363,7 +364,10 @@ export const Canvas = () => {
       className="relative h-full w-full overflow-hidden"
       onDragOver={(event) => {
         // A component from the Assets panel: an instance goes where it is dropped.
-        if (event.dataTransfer.types.includes(COMPONENT_MIME)) {
+        if (
+          event.dataTransfer.types.includes(COMPONENT_MIME) ||
+          event.dataTransfer.types.includes(STOCK_IMAGE_MIME)
+        ) {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
           return;
@@ -377,6 +381,15 @@ export const Canvas = () => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
       }}
       onDrop={(event) => {
+        const photo = event.dataTransfer.getData(STOCK_IMAGE_MIME);
+        if (photo) {
+          event.preventDefault();
+          const image = readDroppedStockImage(photo);
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (image)
+            placeStockImage(image, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+          return;
+        }
         const componentId = event.dataTransfer.getData(COMPONENT_MIME);
         if (componentId) {
           event.preventDefault();

@@ -28,6 +28,7 @@ import { resolveFont } from "@/fonts/resolve-font";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
 import { generateImage } from "./generate-image";
+import { searchOpenverse } from "@/images/openverse";
 import { requestDecision } from "./decisions";
 import { runClaims } from "./run-claims";
 import { getRun } from "./run-registry";
@@ -243,6 +244,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     listIcons: listIconNames,
     renderImage,
     generateImage,
+    searchImages: (request) => searchOpenverse(request),
     resolveFont,
     getAttachment: (id) => findAttachmentSrc(options.attachments ?? [], id),
     applyOps,
