@@ -10,7 +10,15 @@ import {
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
-import { appStateContext, mentionTitle, skills, type MentionRef } from "@pego/agent";
+import {
+  appStateContext,
+  mentionTitle,
+  skills,
+  variantPrompt,
+  type MentionRef,
+  type RunAttachment,
+} from "@pego/agent";
+import { toast } from "sonner";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -18,7 +26,9 @@ import {
   DropdownMenuTrigger,
 } from "@pego/ui/components/dropdown-menu";
 import { cn } from "@pego/ui/lib/utils";
-import { submitPrompt, steerNow } from "@/agent/queue";
+import { submitPrompt, steerNow, type PromptDisplay, type SubmitResult } from "@/agent/queue";
+import { createSessionInBackground } from "@/agent/sessions/session-sync";
+import { VariantPicker, type Variants } from "@/panels/agent/VariantPicker";
 import { collectAppState } from "@/agent/app-state";
 import type { PickedElement } from "@/browser/picked-element";
 import { useBrowserStore } from "@/browser/use-browser-store";
@@ -117,6 +127,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const [plain, setPlain] = useState("");
 
   const [link] = useState(() => new ComposerLink());
+  const [variants, setVariants] = useState<Variants>({ count: 1, mode: "any" });
   /** The user has been in the box: chips go at its caret instead of the end. */
   const caretKnown = useRef(false);
   const caretOf = (current: Editor) =>
@@ -186,6 +197,31 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   });
 
   /**
+   * Several agents, one take each: variant 1 runs in this chat, the others in new chats (shown in
+   * the chat list once they start). Up to MAX_CONCURRENT_RUNS run at once; the rest wait.
+   */
+  const sendVariants = (
+    agentText: string,
+    display: PromptDisplay,
+    images: RunAttachment[],
+  ): SubmitResult => {
+    const { count, mode } = variants;
+    setVariants({ count: 1, mode });
+    let first: SubmitResult = "refused";
+    for (let index = 1; index <= count; index++) {
+      const target = index === 1 ? sessionId : createSessionInBackground();
+      const result = submitPrompt(target, variantPrompt(agentText, index, count, mode), {
+        ...display,
+        displayText: `${display.displayText ?? ""} · variant ${index}/${count}`.trim(),
+        attachments: images,
+      });
+      if (index === 1) first = result;
+    }
+    if (first !== "refused") toast(`${count} agents are working on ${count} variants`);
+    return first;
+  };
+
+  /**
    * Send the box: a run starts now when the chat is idle, otherwise the message is queued
    * (`steer` sends it into the running agent instead). Mentions are resolved now: the agent
    * gets their context block, the bubble shows the chips.
@@ -214,7 +250,9 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     const result =
       steer && active
         ? steerNow(sessionId, run.agentText, images, display)
-        : submitPrompt(sessionId, run.agentText, { ...display, attachments: images });
+        : variants.count > 1
+          ? sendVariants(run.agentText, display, images)
+          : submitPrompt(sessionId, run.agentText, { ...display, attachments: images });
     if (result === "refused") editor.commands.setContent(restore, { emitUpdate: true });
     else if (images.length > 0) useAgentStore.getState().clearAttachments();
   };
@@ -416,6 +454,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
           </DropdownMenuContent>
         </DropdownMenu>
         <AgentSelector restoreFocusRef={focusRef} />
+        <VariantPicker value={variants} onChange={setVariants} />
         <SkillChip prompt={plain} restoreFocusRef={focusRef} />
         <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
           {active ? "Enter to queue · ⌘Enter to send now" : "Enter to send · @ mention · / skill"}
