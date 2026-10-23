@@ -1,5 +1,7 @@
 type Point = { x: number; y: number };
 type Size = { width: number; height: number };
+/** The visible part of the canvas: a size, optionally offset (floating panels cover the rest). */
+type View = Size & { x?: number; y?: number };
 
 /** Gap between the selection corner and the button / box. */
 export const ANCHOR_GAP = 6;
@@ -27,21 +29,33 @@ export const topRightAnchor = (frames: readonly (readonly Point[])[]): Point | n
 };
 
 /** True when the corners' bounding box overlaps the viewport (an off-screen selection shows no button). */
-export const intersectsViewport = (frames: readonly (readonly Point[])[], viewport: Size) => {
+export const intersectsViewport = (frames: readonly (readonly Point[])[], viewport: View) => {
   const corners = frames.flat();
   if (corners.length === 0) return false;
   const xs = corners.map((c) => c.x);
   const ys = corners.map((c) => c.y);
+  const left = viewport.x ?? 0;
+  const top = viewport.y ?? 0;
   return (
-    Math.max(...xs) >= 0 &&
-    Math.min(...xs) <= viewport.width &&
-    Math.max(...ys) >= 0 &&
-    Math.min(...ys) <= viewport.height
+    Math.max(...xs) >= left &&
+    Math.min(...xs) <= left + viewport.width &&
+    Math.max(...ys) >= top &&
+    Math.min(...ys) <= top + viewport.height
   );
 };
 
 const clamp = (value: number, min: number, max: number) =>
   Math.max(min, Math.min(value, Math.max(min, max)));
+
+/** `pos` pulled inside `viewport` for an element of `size`, keeping VIEWPORT_MARGIN. */
+const clampInto = (pos: Point, size: Size, viewport: View): Point => {
+  const left = viewport.x ?? 0;
+  const top = viewport.y ?? 0;
+  return {
+    x: clamp(pos.x, left + VIEWPORT_MARGIN, left + viewport.width - size.width - VIEWPORT_MARGIN),
+    y: clamp(pos.y, top + VIEWPORT_MARGIN, top + viewport.height - size.height - VIEWPORT_MARGIN),
+  };
+};
 
 /**
  * Top-left of a floating element of `size` placed just outside `anchor` (up and to the right),
@@ -50,25 +64,20 @@ const clamp = (value: number, min: number, max: number) =>
 export const placeAtAnchor = (
   anchor: Point,
   size: Size,
-  viewport: Size,
+  viewport: View,
   options: { up?: boolean } = {},
 ): Point => {
   const rawX = anchor.x + ANCHOR_GAP;
   const rawY = options.up ? anchor.y - ANCHOR_GAP - size.height : anchor.y + ANCHOR_GAP;
-  return {
-    x: clamp(rawX, VIEWPORT_MARGIN, viewport.width - size.width - VIEWPORT_MARGIN),
-    y: clamp(rawY, VIEWPORT_MARGIN, viewport.height - size.height - VIEWPORT_MARGIN),
-  };
+  return clampInto({ x: rawX, y: rawY }, size, viewport);
 };
 
 /**
  * Where the prompt box opens: over the button's spot (so it grows from the button), clamped.
  * `buttonPos` is the button's already clamped top-left.
  */
-export const placePromptBox = (buttonPos: Point, size: Size, viewport: Size): Point => ({
-  x: clamp(buttonPos.x, VIEWPORT_MARGIN, viewport.width - size.width - VIEWPORT_MARGIN),
-  y: clamp(buttonPos.y, VIEWPORT_MARGIN, viewport.height - size.height - VIEWPORT_MARGIN),
-});
+export const placePromptBox = (buttonPos: Point, size: Size, viewport: View): Point =>
+  clampInto(buttonPos, size, viewport);
 
 export type PromptTarget = { id: string; name: string };
 

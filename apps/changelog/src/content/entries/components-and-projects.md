@@ -37,4 +37,4 @@ The tools (Move, Hand, frame, shapes, pen, text) can now sit at the bottom, top,
 
 ## A floating interface
 
-**Settings › General › Interface › Floating** turns the panels into cards that float over the canvas, like pen.dev: the side panel and its icons are one card, the properties another, and undo, redo and Share become small pills at the top. Docked stays the default.
+**Settings › General › Interface › Floating** turns the panels into cards that float over the canvas, like pen.dev: the side panel and its icons are one card, the properties another, and undo, redo and Share become small pills at the top. Your design runs on behind the panels, and zoom to fit, zoom to selection and pasting aim at the part you can see. Docked stays the default.

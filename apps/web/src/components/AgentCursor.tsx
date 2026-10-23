@@ -30,7 +30,7 @@ import { useAgentStore } from "@/agent/use-agent-store";
 import { idsOnPage } from "@/agent/focus-groups";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { useSettingsStore } from "@/store/use-settings-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, visibleRect } from "@/store/use-viewport-store";
 import { sessionShownInEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 
 const PILL_FLIP_MARGIN = 190;
@@ -114,7 +114,14 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
     const focusInfo = createFocusMemo();
     const live = () => useAgentStore.getState().liveSessions[sessionId];
 
-    const resolveAim = (current: Session, size: { width: number; height: number }) => {
+    /** The visible part of the canvas (floating panels cover the rest): the cursor stays in it. */
+    type View = { x: number; y: number; width: number; height: number };
+    const inView = (point: Point, view: View): Point => {
+      const local = clampToSize({ x: point.x - view.x, y: point.y - view.y }, view);
+      return { x: local.x + view.x, y: local.y + view.y };
+    };
+
+    const resolveAim = (current: Session, view: View) => {
       const { camera } = useViewportStore.getState();
       const { doc } = useDocumentStore.getState();
       if (current.mode === "target" && current.aim.kind === "box") {
@@ -123,7 +130,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
         );
         if (union) {
           const raw = pointInRect(union, current.aim.anchor);
-          const screen = clampToSize(docToScreen(camera, raw.x, raw.y), size);
+          const screen = inView(docToScreen(camera, raw.x, raw.y), view);
           return screenToDoc(camera, screen.x, screen.y);
         }
       }
@@ -131,14 +138,18 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
     };
 
     const chooseAim = (mode: Mode, key: string, step: number, inspect: boolean): Aim => {
-      const { camera, size } = useViewportStore.getState();
+      const { camera } = useViewportStore.getState();
+      const view = visibleRect(useViewportStore.getState());
       if (mode === "target")
         return {
           kind: "box",
           anchor: inspect ? pickInspectAnchor(key, step) : pickTargetAnchor(key),
         };
-      const screen = mode === "park" ? pickParkPoint(size, step) : pickWanderPoint(size, step);
-      return { kind: "point", point: screenToDoc(camera, screen.x, screen.y) };
+      const local = mode === "park" ? pickParkPoint(view, step) : pickWanderPoint(view, step);
+      return {
+        kind: "point",
+        point: screenToDoc(camera, local.x + view.x, local.y + view.y),
+      };
     };
 
     const stop = () => {
@@ -169,6 +180,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       }
 
       const { camera, size } = useViewportStore.getState();
+      const view = visibleRect(useViewportStore.getState());
       if (size.width === 0) {
         frame = requestAnimationFrame(tick);
         return;
@@ -186,7 +198,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       const key = `${mode}:${focus.key}`;
 
       if (!session) {
-        const start = screenToDoc(camera, size.width * 0.5, size.height * 0.18);
+        const start = screenToDoc(camera, view.x + view.width * 0.5, view.y + view.height * 0.18);
         session = {
           key: "",
           mode,
@@ -206,7 +218,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
         const from = current.position;
         current.mode = mode;
         current.aim = chooseAim(mode, seedKey, current.step, inspect);
-        const to = resolveAim(current, size);
+        const to = resolveAim(current, view);
         current.glide = createGlide(
           from,
           to,
@@ -223,7 +235,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       if (current.key !== key) retarget(false);
       else if (now >= current.nextInspectAt) retarget(true);
 
-      const to = resolveAim(current, size);
+      const to = resolveAim(current, view);
       const point = reduced ? to : glideAt(current.glide, to, now).point;
       current.position = point;
 
@@ -239,7 +251,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
         pill.textContent = text;
         pillWidth = pill.offsetWidth;
       }
-      const shouldFlip = x > size.width - PILL_FLIP_MARGIN;
+      const shouldFlip = x > view.x + view.width - PILL_FLIP_MARGIN;
       if (shouldFlip !== flipped) {
         flipped = shouldFlip;
         pill.style.transition = reduced ? "none" : PILL_FLIP_TRANSITION;

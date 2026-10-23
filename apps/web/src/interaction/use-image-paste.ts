@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { screenToDoc } from "@/canvas/types";
 import { insertImageCentered, isSupportedImage, readImageFile } from "@/interaction/image-file";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, viewportCenter } from "@/store/use-viewport-store";
 
 const isEditable = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
@@ -29,8 +29,8 @@ export const useImagePaste = () => {
       const files = Array.from(e.clipboardData?.files ?? []).filter(isSupportedImage);
       if (files.length === 0) return;
       e.preventDefault();
-      const { camera, size } = useViewportStore.getState();
-      void placeFiles(files, screenToDoc(camera, size.width / 2, size.height / 2));
+      const middle = viewportCenter();
+      void placeFiles(files, screenToDoc(useViewportStore.getState().camera, middle.x, middle.y));
     };
     document.addEventListener("paste", onPaste);
     return () => document.removeEventListener("paste", onPaste);

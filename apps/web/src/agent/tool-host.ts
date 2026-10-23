@@ -15,7 +15,7 @@ import {
   type DocumentCore,
 } from "@/store/use-document-store";
 import { showPage, showPageOf } from "@/pages/page-actions";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, visibleRect } from "@/store/use-viewport-store";
 import {
   commitToTarget,
   extendTarget,
@@ -193,7 +193,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     const layout = getLayout(useDocumentStore.getState().doc);
     const boxes = ids.flatMap((id) => layout.get(id) ?? []);
     const viewport = useViewportStore.getState();
-    const camera = focusCamera(boxes, viewport.size);
+    const camera = focusCamera(boxes, visibleRect(viewport));
     if (camera) viewport.animateTo(camera);
   };
 
