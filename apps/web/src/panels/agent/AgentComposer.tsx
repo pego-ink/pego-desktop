@@ -3,9 +3,10 @@ import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
-import { mentionTitle, skills, type MentionRef } from "@pego/agent";
+import { appStateContext, mentionTitle, skills, type MentionRef } from "@pego/agent";
 import { cn } from "@pego/ui/lib/utils";
 import { submitPrompt, steerNow } from "@/agent/queue";
+import { collectAppState } from "@/agent/app-state";
 import { buildRunPrompt } from "@/agent/run-prompt";
 import { cancelRun } from "@/agent/run";
 import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
@@ -149,9 +150,12 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     if (!prompt.text.trim()) return;
     // The images travel with the message; the composer starts empty again.
     const images = useAgentStore.getState().pendingAttachments;
-    const run = buildRunPrompt(useDocumentStore.getState().doc, prompt, {
-      attachments: images.map(({ id, name }) => ({ id, name })),
-    });
+    const run = buildRunPrompt(
+      useDocumentStore.getState().doc,
+      prompt,
+      { attachments: images.map(({ id, name }) => ({ id, name })) },
+      appStateContext(collectAppState()),
+    );
     if (!run.agentText) return;
     const display = {
       displayText: run.displayText,

@@ -58,4 +58,18 @@ describe("buildRunPrompt", () => {
     );
     expect(run).toMatchObject({ skillId: "landing-page", styleId: "bauhaus" });
   });
+
+  test("the app state goes first in the context block", () => {
+    const run = buildRunPrompt(
+      sampleDoc,
+      { text: `fix ${mentionToken(0)}`, mentions: [{ kind: "layer", ids: ["rect-1"] }] },
+      {},
+      "Editor state …",
+    );
+    expect(run.context).toStartWith("Editor state …\n\nThe request is about this layer");
+    expect(run.agentText).toEndWith('Request: fix "Card" [layer rect-1]');
+    expect(buildRunPrompt(sampleDoc, { text: "hi", mentions: [] }, {}, "State").agentText).toBe(
+      "State\n\nRequest: hi",
+    );
+  });
 });

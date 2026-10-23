@@ -82,7 +82,8 @@ export const startLocalAgentRun = async (
   });
 
   // The CLI loads the skills itself through get_skill; the panel and log keep the user's text.
-  const skills = resolveRunSkills(prompt, skillId, options.styleId);
+  // Detection reads the user's words, not the context block in front of them.
+  const skills = resolveRunSkills(shown, skillId, options.styleId);
   for (const text of skillLogLines(skills)) scope.appendLog({ kind: "info", text });
   // The images travel in run_start; one line names them so the agent knows they exist.
   const prefix = [skillPromptPrefix(skills), attachmentNote(attachments)]

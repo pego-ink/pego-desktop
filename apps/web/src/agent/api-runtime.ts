@@ -167,6 +167,8 @@ type RuntimeContext = {
   skillId?: string | null;
   /** Explicit style for this run: undefined = auto-detect, null = none. */
   styleId?: string | null;
+  /** What skill auto-detection reads (the user's own words); defaults to the prompt. */
+  skillText?: string;
   /** Images the user attached; sent as image blocks before the text in planner and step turns. */
   attachments?: readonly RunAttachment[];
   /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
@@ -587,7 +589,7 @@ export const runApiAgent = async (prompt: string, base: RuntimeContext): Promise
   const ctx: RuntimeContext = { ...base }; // private copy: skill text is filled in below
   const run = ctx.host.run;
   try {
-    const skills = resolveRunSkills(prompt, ctx.skillId, ctx.styleId);
+    const skills = resolveRunSkills(ctx.skillText ?? prompt, ctx.skillId, ctx.styleId);
     ctx.skillsText = skillsBlock(skills);
     for (const text of skillLogLines(skills)) run.appendLog({ kind: "info", text });
     run.appendLog({

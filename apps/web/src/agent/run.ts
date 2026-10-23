@@ -180,6 +180,7 @@ export const startCustomRun = async (
         attachments,
         history,
         steer: steering.steerInbox,
+        skillText: options.displayText,
       });
     } else {
       await deps.runAnthropic(text, {
@@ -199,6 +200,7 @@ export const startCustomRun = async (
         attachments,
         history,
         steer: steering.steerInbox,
+        skillText: options.displayText,
       });
     }
   } finally {
@@ -313,6 +315,7 @@ export const startRun = async (
       attachments,
       history,
       steer: steering.steerInbox,
+      skillText: options.displayText,
     });
   } finally {
     unregisterRun(runId);
