@@ -28,6 +28,7 @@ import {
   type Segment,
 } from "@/interaction/drag-target";
 import { hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
+import { captionAt, frameCaptions } from "@/canvas/frame-captions";
 import { useSettingsStore } from "@/store/use-settings-store";
 import { wheelAction } from "@/interaction/wheel-behavior";
 import { snapEnabled } from "@/interaction/snap";
@@ -232,10 +233,18 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
 
       const d = toDoc(p.x, p.y);
       const layout = getLayout(state.doc);
-      const hit = pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e), {
-        tolerance: hitTolerance(),
-        pageId: state.pageId,
-      });
+      // A frame's caption picks the frame itself (its body picks what is inside).
+      const captioned = captionAt(
+        frameCaptions(state.doc, layout, useViewportStore.getState().camera, state.pageId),
+        p.x,
+        p.y,
+      );
+      const hit =
+        captioned ??
+        pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e), {
+          tolerance: hitTolerance(),
+          pageId: state.pageId,
+        });
 
       if (!hit) {
         if (!e.shiftKey) state.select([]);
