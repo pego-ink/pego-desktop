@@ -3,7 +3,7 @@ import { findNode } from "@pego/doc";
 import type { BrowserHost, BrowserTarget, DomSnapshot } from "./browser-types";
 import { createFakeHost } from "./test-host";
 import { CDP_ALLOWED_METHODS } from "./browser-cdp";
-import { browserTools, wrapPageContent } from "./tools-browser";
+import { browserTools, sanitizeSourceUrl, wrapPageContent } from "./tools-browser";
 import type { ToolHost } from "./types";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -250,6 +250,25 @@ describe("browser tool", () => {
     });
     const picked = await call({ action: "screenshot-to-canvas", target: "selection" }, host);
     expect(findNode(host.getDoc(), picked.data.created.id)).not.toHaveProperty("source");
+  });
+
+  test("the remembered page url is sanitized: http(s) only, no userinfo, short query only", () => {
+    expect(sanitizeSourceUrl("https://u:p@a.test/x?q=1#h")).toBe("https://a.test/x?q=1#h");
+    expect(sanitizeSourceUrl("javascript:alert(1)")).toBeUndefined();
+    expect(sanitizeSourceUrl("file:///etc/passwd")).toBeUndefined();
+    expect(sanitizeSourceUrl("nope")).toBeUndefined();
+    expect(sanitizeSourceUrl(`https://a.test/x?q=${"a".repeat(400)}#h`)).toBe("https://a.test/x");
+    expect(sanitizeSourceUrl(`https://a.test/${"a".repeat(2100)}`)).toBeUndefined();
+  });
+
+  test("screenshot-to-canvas still works when the page url is too long to remember", async () => {
+    const { browser } = fakeBrowser({
+      currentPage: () => ({ url: `https://a.test/${"a".repeat(2100)}`, title: "" }),
+    });
+    const host = withBrowser(browser);
+    const result = await call({ action: "screenshot-to-canvas" }, host);
+    expect(result.data.ok).toBe(true);
+    expect(findNode(host.getDoc(), result.data.created.id)).not.toHaveProperty("source");
   });
 
   test("screenshot-to-canvas rejects an unusable screenshot", async () => {

@@ -13,7 +13,7 @@ const measureText: TextMeasurer = (node, maxWidth) => {
 
 const makeDoc = (children: unknown[], variables: Record<string, unknown> = {}): PegoDocument =>
   documentSchema.parse({
-    version: 3,
+    version: 4,
     id: "doc",
     name: "Test",
     variables,

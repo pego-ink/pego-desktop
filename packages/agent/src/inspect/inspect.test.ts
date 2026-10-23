@@ -113,7 +113,7 @@ describe("check_layout rules", () => {
     ]);
     const byId = (id: string) => issues.filter((i) => i.nodeId === id);
     expect(byId("stray")).toMatchObject([
-      { severity: "warning", issue: "ellipse sits loose at the top level of the page" },
+      { severity: "info", issue: "ellipse sits loose at the top level of the page" },
     ]);
     expect(byId("caption")[0]?.hint).toContain("wrap it together with the layers");
     expect(byId("nameless")).toMatchObject([
@@ -121,6 +121,39 @@ describe("check_layout rules", () => {
     ]);
     expect(byId("cloud")).toEqual([]);
     expect(byId("puff")).toEqual([]);
+  });
+
+  test("structure rule skips reusable nodes and library pages", () => {
+    const issues = issuesOf([
+      { type: "ellipse", id: "comp", reusable: true, width: 60, height: 40, fill: "#ffffff" },
+      frame("comp-frame", { reusable: true, width: 50, height: 50, fill: "#eeeeee" }),
+    ]);
+    expect(
+      issues.filter((i) => i.issue.includes("top level") || i.issue.includes("no name")),
+    ).toEqual([]);
+    const doc = makeDoc([]);
+    const page = doc.children[0];
+    if (!page) throw new Error("no page");
+    const library = {
+      projectId: "lib",
+      name: "Lib",
+      path: "/lib/project.pego",
+      syncedAt: 0,
+    };
+    const libDoc = {
+      ...doc,
+      children: [
+        {
+          ...page,
+          library,
+          children: [
+            { type: "ellipse" as const, id: "loose", x: 0, y: 0, width: 10, height: 10 },
+            frame("nameless", { width: 50, height: 50, fill: "#eeeeee" }),
+          ],
+        },
+      ],
+    } as typeof doc;
+    expect(checkLayout(libDoc, layoutOf(libDoc)).issues).toEqual([]);
   });
 
   test("child overflowing a non-clipping parent is a warning, a clipping parent an error", () => {

@@ -50,7 +50,12 @@ describe("fetching a design", () => {
           headers: { "content-type": "image/png" },
         }),
     });
-    const result = await fetchFigmaImport({ fileKey: "KEY", nodeId: "1:2" }, "secret", fetcher);
+    const result = await fetchFigmaImport(
+      { fileKey: "KEY", nodeId: "1:2" },
+      "secret",
+      fetcher,
+      async (image) => image,
+    );
     expect(result.name).toBe("Hero");
     expect(result.nodes.map((node) => node.id)).toEqual(["1:2"]);
     expect(result.images.get("ref1")).toBe("data:image/png;base64,iVBORw==");
@@ -65,27 +70,109 @@ describe("fetching a design", () => {
   });
 
   test("without a layer: the first page's top-level layers", async () => {
-    const { fetcher } = fakeFigma({
-      "/files/KEY?geometry=paths": () =>
+    const { calls, fetcher } = fakeFigma({
+      "/files/KEY?depth=1": () =>
         json({
           name: "Kit",
           document: {
             id: "0:0",
             type: "DOCUMENT",
             children: [
-              {
+              { id: "0:1", type: "CANVAS", name: "Page 1" },
+              { id: "0:2", type: "CANVAS", name: "Page 2" },
+            ],
+          },
+        }),
+      "/files/KEY/nodes?ids=0%3A1&geometry=paths": () =>
+        json({
+          nodes: {
+            "0:1": {
+              document: {
                 id: "0:1",
                 type: "CANVAS",
                 name: "Page 1",
                 children: [{ id: "5:1", type: "FRAME" }],
               },
-            ],
+            },
           },
         }),
     });
     const result = await fetchFigmaImport({ fileKey: "KEY" }, "t", fetcher);
+    // Never the whole file: only the first page is fetched with geometry.
+    expect(calls.map((call) => call.url.replace("https://api.figma.com/v1", ""))).toEqual([
+      "/files/KEY?depth=1",
+      "/files/KEY/nodes?ids=0%3A1&geometry=paths",
+    ]);
     expect(result).toMatchObject({ name: "Kit", missingImages: 0 });
     expect(result.nodes.map((node) => node.id)).toEqual(["5:1"]);
+  });
+
+  const imageFrame = (refs: string[]) => ({
+    id: "1:2",
+    type: "FRAME",
+    absoluteBoundingBox: { x: 0, y: 0, width: 10, height: 10 },
+    children: refs.map((imageRef, index) => ({
+      id: `1:${index + 3}`,
+      type: "RECTANGLE",
+      absoluteBoundingBox: { x: 0, y: 0, width: 10, height: 10 },
+      fills: [{ type: "IMAGE", imageRef }],
+    })),
+  });
+  const png =
+    (bytes: number, headers: Record<string, string> = {}) =>
+    () =>
+      new Response(new Uint8Array(bytes), { headers: { "content-type": "image/png", ...headers } });
+  const imageRoutes = (refs: string[], routes: Record<string, () => Response>) => ({
+    "/files/KEY/nodes?ids=1%3A2": () => json({ nodes: { "1:2": { document: imageFrame(refs) } } }),
+    "/files/KEY/images": () =>
+      json({ meta: { images: Object.fromEntries(refs.map((r) => [r, `https://s3.test/${r}`])) } }),
+    ...routes,
+  });
+  const target = { fileKey: "KEY", nodeId: "1:2" };
+  const identity = async (image: { bytes: Uint8Array; type: string }) => image;
+
+  test("an image whose content-length is over the cap is not read", async () => {
+    let read = false;
+    const { fetcher } = fakeFigma(
+      imageRoutes(["a"], {
+        "s3.test/a": () => {
+          const response = png(4, { "content-length": String(6 * 1024 * 1024) })();
+          const spy = response.arrayBuffer.bind(response);
+          response.arrayBuffer = () => {
+            read = true;
+            return spy();
+          };
+          return response;
+        },
+      }),
+    );
+    const result = await fetchFigmaImport(target, "t", fetcher, identity);
+    expect(read).toBe(false);
+    expect(result.missingImages).toBe(1);
+  });
+
+  test("images past the total budget are skipped with a warning", async () => {
+    const refs = ["a", "b", "c", "d", "e", "f", "g"];
+    const { fetcher } = fakeFigma(
+      imageRoutes(
+        refs,
+        Object.fromEntries(refs.map((ref) => [`s3.test/${ref}`, png(4 * 1024 * 1024)])),
+      ),
+    );
+    const result = await fetchFigmaImport(target, "t", fetcher, identity);
+    // 4 MB of bytes is ~5.6 MB of base64: four fit in 25 MB.
+    expect(result.images.size).toBe(4);
+    expect(result.missingImages).toBe(3);
+    expect(result.warnings.join(" ")).toContain("budget");
+  });
+
+  test("images are shrunk before embedding", async () => {
+    const { fetcher } = fakeFigma(imageRoutes(["a"], { "s3.test/a": png(4) }));
+    const result = await fetchFigmaImport(target, "t", fetcher, async () => ({
+      bytes: new Uint8Array([1, 2, 3]),
+      type: "image/webp",
+    }));
+    expect(result.images.get("a")).toBe("data:image/webp;base64,AQID");
   });
 
   test("errors say what to do, without the token", async () => {

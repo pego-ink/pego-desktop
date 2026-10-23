@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
 import type { BrowserHost, BrowserTarget } from "@pego/agent";
-import { captureSource } from "./refresh-snapshot";
+import { captureSource, safeHttpUrl } from "./refresh-snapshot";
 
 const fake = (url: string) => {
   const calls: unknown[] = [];
@@ -31,5 +31,12 @@ describe("refreshing a screenshot", () => {
       ["load", "https://x.test/"],
       ["shot", { kind: "full-page" }],
     ]);
+  });
+
+  test("only http(s) urls are opened", () => {
+    expect(safeHttpUrl("https://x.test/a")).toBe("https://x.test/a");
+    expect(safeHttpUrl("javascript:alert(1)")).toBeNull();
+    expect(safeHttpUrl("myapp://open")).toBeNull();
+    expect(safeHttpUrl("nope")).toBeNull();
   });
 });

@@ -188,7 +188,7 @@ type Plan = {
 
 const tmpDoc = (root: RawNode): PegoDocument =>
   ({
-    version: 3,
+    version: 4,
     id: "tmp",
     name: "tmp",
     variables: {},

@@ -11,6 +11,7 @@ import {
   type PromptWithMentions,
 } from "@pego/agent";
 import type { PegoDocument } from "@pego/doc";
+import { useBrowserStore } from "@/browser/use-browser-store";
 
 /** Everything a run needs from the user's prompt, the same for every backend. */
 export type RunPrompt = {
@@ -40,10 +41,12 @@ export const buildRunPrompt = (
   scope: MentionScope = {},
   appState = "",
 ): RunPrompt => {
-  const context = [appState, mentionContext(doc, prompt.mentions, scope)]
+  // Browser mentions of a page the browser has left since are stale (`scope` may override).
+  const mentionScope: MentionScope = { browserUrl: useBrowserStore.getState().state.url, ...scope };
+  const context = [appState, mentionContext(doc, prompt.mentions, mentionScope)]
     .filter(Boolean)
     .join("\n\n");
-  const requestText = promptTextForAgent(doc, prompt, scope);
+  const requestText = promptTextForAgent(doc, prompt, mentionScope);
   const parts = promptParts(doc, prompt, scope);
   return {
     requestText,
@@ -51,6 +54,6 @@ export const buildRunPrompt = (
     agentText: withMentionContext(requestText, context),
     parts,
     displayText: promptPartsText(parts),
-    ...mentionedSkills(resolveMentions(doc, prompt.mentions, scope)),
+    ...mentionedSkills(resolveMentions(doc, prompt.mentions, mentionScope)),
   };
 };

@@ -5,9 +5,11 @@ import {
   findLocation,
   findNode,
   isContainer,
+  nodeSchema,
   resolveInstance,
   resolveNumber,
   type Op,
+  variablesSchema,
   type PegoDocument,
   type PegoNode,
 } from "@pego/doc";
@@ -32,8 +34,11 @@ export type NodesPayload = {
   docId: string;
   /** The layers as they are (instances still point at their components). */
   nodes: PegoNode[];
-  /** The same layers with every instance replaced by what it shows (for another document). */
-  detached: PegoNode[];
+  /**
+   * The same layers with every instance replaced by what it shows (for another document). Left
+   * out when no layer holds an instance: `nodes` already is the plain version.
+   */
+  detached?: PegoNode[];
   /** The variables the layers use, so another document can get them too. */
   variables: Variables;
   /** Where each layer sat: its parent, so a paste in the same document lands beside it. */
@@ -46,6 +51,9 @@ const detachAll = (doc: PegoDocument, node: PegoNode): PegoNode => {
   if (!isContainer(plain)) return plain;
   return { ...plain, children: plain.children.map((child) => detachAll(doc, child)) } as PegoNode;
 };
+
+const hasInstance = (node: PegoNode): boolean =>
+  node.type === "ref" || (isContainer(node) && node.children.some(hasInstance));
 
 /** Names of the variables a value refers to (`"$accent"` anywhere inside it). */
 const usedVariables = (value: unknown, into = new Set<string>()): Set<string> => {
@@ -65,10 +73,11 @@ export const copyPayload = (doc: PegoDocument, ids: readonly string[]): NodesPay
   });
   if (locs.length === 0) return null;
   const nodes = locs.map((loc) => loc.node);
-  const detached = nodes.map((node) => detachAll(doc, node));
+  const hasRefs = nodes.some((node) => hasInstance(node));
+  const detached = hasRefs ? nodes.map((node) => detachAll(doc, node)) : undefined;
   // Instances use their component's variables too: read them from the detached copies.
   const variables: Variables = {};
-  for (const name of usedVariables([nodes, detached])) {
+  for (const name of usedVariables([nodes, detached ?? []])) {
     const variable = doc.variables[name];
     if (variable) variables[name] = variable;
   }
@@ -82,21 +91,41 @@ export const copyPayload = (doc: PegoDocument, ids: readonly string[]): NodesPay
   };
 };
 
-/** The payload in clipboard data, or null when it is not ours. */
+/** Largest clipboard text read as a payload, and most layers it may hold. */
+export const MAX_PAYLOAD_CHARS = 20_000_000;
+export const MAX_PAYLOAD_NODES = 5_000;
+
+const countNodes = (nodes: readonly PegoNode[]): number =>
+  nodes.reduce((sum, node) => sum + 1 + (isContainer(node) ? countNodes(node.children) : 0), 0);
+
+/** Every item through `nodeSchema` (clipboard data comes from anywhere); null if one fails. */
+const parseNodes = (value: unknown): PegoNode[] | null => {
+  if (!Array.isArray(value)) return null;
+  const out: PegoNode[] = [];
+  for (const item of value) {
+    const result = nodeSchema.safeParse(item);
+    if (!result.success || result.data.type === "page") return null;
+    out.push(result.data);
+  }
+  return out;
+};
+
+/** The payload in clipboard data, or null when it is not ours or not valid. */
 export const readPayload = (data: string): NodesPayload | null => {
-  if (!data) return null;
+  if (!data || data.length > MAX_PAYLOAD_CHARS) return null;
   try {
     const parsed = JSON.parse(data) as Partial<NodesPayload>;
-    if (parsed.version !== 1 || typeof parsed.docId !== "string") return null;
-    if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.detached)) return null;
-    return {
-      version: 1,
-      docId: parsed.docId,
-      nodes: parsed.nodes,
-      detached: parsed.detached,
-      variables: parsed.variables ?? {},
-      parents: Array.isArray(parsed.parents) ? parsed.parents : [],
-    };
+    if (!parsed || parsed.version !== 1 || typeof parsed.docId !== "string") return null;
+    const nodes = parseNodes(parsed.nodes);
+    if (!nodes || countNodes(nodes) > MAX_PAYLOAD_NODES) return null;
+    const detached = parsed.detached === undefined ? undefined : parseNodes(parsed.detached);
+    if (detached === null || (detached && countNodes(detached) > MAX_PAYLOAD_NODES)) return null;
+    const variables = variablesSchema.safeParse(parsed.variables ?? {});
+    if (!variables.success) return null;
+    const parents = Array.isArray(parsed.parents)
+      ? parsed.parents.map((id) => (typeof id === "string" ? id : null))
+      : [];
+    return { version: 1, docId: parsed.docId, nodes, detached, variables: variables.data, parents };
   } catch {
     return null;
   }
@@ -168,7 +197,7 @@ export const pasteNodes = (
 ): PastePlan | null => {
   const sameDoc = payload.docId === doc.id;
   const source = payload.nodes.map((node, index) =>
-    sameDoc && allRefsResolve(doc, node) ? node : (payload.detached[index] ?? node),
+    sameDoc && allRefsResolve(doc, node) ? node : (payload.detached?.[index] ?? node),
   );
   if (source.length === 0) return null;
   const copies = source.map((node) => cloneWithFreshIds(node));
@@ -189,8 +218,11 @@ export const pasteNodes = (
     });
 
   if (besideOriginals) {
-    payload.nodes.forEach((original, index) => {
-      const loc = findLocation(doc, original.id)!;
+    // Highest index first: an insert never shifts the (old-document) index of a later one.
+    const order = payload.nodes
+      .map((original, index) => ({ index, loc: findLocation(doc, original.id)! }))
+      .sort((a, b) => b.loc.index - a.loc.index);
+    order.forEach(({ index, loc }) => {
       const copy = copies[index]!;
       ops.push({
         op: "insert",

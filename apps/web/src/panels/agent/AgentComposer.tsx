@@ -14,7 +14,10 @@ import {
   appStateContext,
   mentionTitle,
   skills,
+  clampVariants,
+  submitVariants,
   variantPrompt,
+  variantsFit,
   type MentionRef,
   type RunAttachment,
 } from "@pego/agent";
@@ -93,7 +96,12 @@ class ComposerLink {
 }
 
 /** The part of a picked element a browser mention keeps. */
-const pick = ({ selector, label }: PickedElement) => ({ selector, label });
+// The page URL at pick time lets a stale chip (the page navigated since) be dropped.
+const pick = ({ selector, label, url }: PickedElement) => ({
+  selector,
+  label,
+  ...(url ? { url } : {}),
+});
 
 /** Suggestions for the @ and / menus from the live stores (read when the user types). */
 const suggestionsFor = (query: string, trigger: MentionTrigger) => {
@@ -205,19 +213,24 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     display: PromptDisplay,
     images: RunAttachment[],
   ): SubmitResult => {
-    const { count, mode } = variants;
-    setVariants({ count: 1, mode });
-    let first: SubmitResult = "refused";
-    for (let index = 1; index <= count; index++) {
-      const target = index === 1 ? sessionId : createSessionInBackground();
-      const result = submitPrompt(target, variantPrompt(agentText, index, count, mode), {
-        ...display,
-        displayText: `${display.displayText ?? ""} · variant ${index}/${count}`.trim(),
-        attachments: images,
-      });
-      if (index === 1) first = result;
+    const { mode } = variants;
+    const count = clampVariants(variants.count);
+    const first = submitVariants(count, (index) =>
+      submitPrompt(
+        index === 1 ? sessionId : createSessionInBackground(),
+        variantPrompt(agentText, index, count, mode),
+        {
+          ...display,
+          displayText: `${display.displayText ?? ""} · variant ${index}/${count}`.trim(),
+          attachments: images,
+        },
+      ),
+    );
+    // Only a send that went through uses up the picker; a refused one keeps it.
+    if (first !== "refused") {
+      setVariants({ count: 1, mode });
+      toast(`${count} agents are working on ${count} variants`);
     }
-    if (first !== "refused") toast(`${count} agents are working on ${count} variants`);
     return first;
   };
 
@@ -250,7 +263,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     const result =
       steer && active
         ? steerNow(sessionId, run.agentText, images, display)
-        : variants.count > 1
+        : variants.count > 1 && variantsFit(run.parts)
           ? sendVariants(run.agentText, display, images)
           : submitPrompt(sessionId, run.agentText, { ...display, attachments: images });
     if (result === "refused") editor.commands.setContent(restore, { emitUpdate: true });
@@ -277,8 +290,10 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
             return true;
           }
           if (event.key === "Enter" || event.key === "Tab") {
+            // "No matches": leave the key alone so Enter sends and Tab moves on.
             const item = menu.items[Math.min(menuIndex, count - 1)];
-            if (item) menu.choose(item);
+            if (!item) return false;
+            menu.choose(item);
             return true;
           }
           if (event.key === "Escape") {
@@ -337,7 +352,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   useEffect(() => {
     if (!editor) return;
     const sync = (selection: readonly string[]) => {
-      if (editor.isDestroyed) return;
+      if (editor.isDestroyed || editor.view.composing) return;
       const ref: MentionRef = { kind: "layer", ids: [...selection] };
       const label = mentionTitle(useDocumentStore.getState().doc, ref);
       const tr = liveChipTransaction(
@@ -348,7 +363,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       );
       if (tr) editor.view.dispatch(tr);
     };
-    sync(useDocumentStore.getState().selection);
+    // No initial sync: only a selection change made while the box is open adds a chip.
     return useDocumentStore.subscribe((state, prev) => {
       if (state.selection !== prev.selection) sync(state.selection);
     });
@@ -358,7 +373,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   useEffect(() => {
     if (!editor) return;
     const sync = (picked: PickedElement | null) => {
-      if (editor.isDestroyed) return;
+      if (editor.isDestroyed || editor.view.composing) return;
       const chips = picked
         ? [{ ref: { kind: "browser" as const, ...pick(picked) }, label: picked.label }]
         : [];

@@ -10,6 +10,7 @@ import {
 } from "./page-scripts";
 import { importToCanvas, screenshotToCanvas } from "./browser-actions";
 import { parsePicked, withComponents, type PickedElement } from "./picked-element";
+import { createPickerNonce, hasPickerNonce } from "./picker-nonce";
 
 const SHOW_TIMEOUT_MS = 5000;
 
@@ -101,25 +102,55 @@ const addComponentNames = async (picked: PickedElement) => {
   }
 };
 
+/**
+ * The armed picker's secret, made here and handed only to the picker script (isolated world), so
+ * page scripts cannot forge picker messages. One per armed picker; cleared when it stops.
+ */
+let pickerNonce: string | undefined;
+/** A pick action (import / screenshot) is running: one at a time. */
+let actionInFlight = false;
+
 /** Record a pick reported by the page (picker click or keys, or a crumb). */
 const acceptPick = (info: unknown) => {
-  const picked = parsePicked(info);
+  const parsed = parsePicked(info);
+  if (!parsed) return;
   const store = useBrowserStore.getState();
-  store.setHasPicked(true);
+  const picked: PickedElement = { ...parsed, url: store.state.url };
   store.setPicked(picked);
-  if (picked) void addComponentNames(picked);
+  store.setHasPicked(true);
+  void addComponentNames(picked);
+};
+
+const runPickAction = (action: unknown) => {
+  if (actionInFlight) return;
+  actionInFlight = true;
+  const target = { kind: "selection" } as const;
+  const run = action === "screenshot" ? screenshotToCanvas(target) : importToCanvas(target);
+  void Promise.resolve(run)
+    .catch(() => {})
+    .finally(() => {
+      actionInFlight = false;
+    });
 };
 
 const handlePageMessage = (message: unknown) => {
   if (typeof message !== "object" || message === null) return;
+  // Anything the page itself could have written lacks the nonce of the armed picker.
+  if (!hasPickerNonce(message, pickerNonce)) return;
   const { type, action } = message as { type?: unknown; action?: unknown };
   const store = useBrowserStore.getState();
   // The picker stays armed after a pick, like a DOM inspector.
   if (type === "picked") acceptPick(message);
-  else if (type === "pick-cancelled") store.setPicking(false);
-  else if (type === "pick-action" && store.hasPicked) {
-    const target = { kind: "selection" } as const;
-    void (action === "screenshot" ? screenshotToCanvas(target) : importToCanvas(target));
+  else if (type === "pick-cancelled") {
+    pickerNonce = undefined;
+    store.setPicking(false);
+  } else if (
+    type === "pick-action" &&
+    store.picking &&
+    store.hasPicked &&
+    (action === "import" || action === "screenshot")
+  ) {
+    runPickAction(action);
   }
 };
 
@@ -141,8 +172,10 @@ export const ensureBrowserConnected = (): void => {
     const store = useBrowserStore.getState();
     // A new page loses the picked element and the armed picker.
     if (next.url !== store.state.url) {
+      pickerNonce = undefined;
       store.setHasPicked(false);
       store.setPicking(false);
+      store.setPicked(null);
     }
     store.setState(next);
   });
@@ -178,13 +211,21 @@ export const openBrowserPanel = (): Promise<void> => {
 export const startPicker = async (): Promise<void> => {
   const api = requireApi();
   ensureBrowserConnected();
-  await evaluateInPage(api, pickerStartScript);
+  const nonce = createPickerNonce();
+  pickerNonce = nonce;
+  try {
+    await evaluateInPage(api, pickerStartScript(nonce));
+  } catch (error) {
+    if (pickerNonce === nonce) pickerNonce = undefined;
+    throw error;
+  }
   useBrowserStore.getState().setPicking(true);
 };
 
 /** Disarms the picker; the picked element (if any) stays picked. */
 export const stopPicker = async (): Promise<void> => {
   const api = browserApi();
+  pickerNonce = undefined;
   useBrowserStore.getState().setPicking(false);
   if (!api) return;
   await evaluateInPage(api, pickerStopScript).catch(() => {});

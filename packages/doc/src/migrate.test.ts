@@ -9,6 +9,19 @@ describe("migrateDocument", () => {
     expect(migrateDocument(v0)).toMatchObject({ version: DOCUMENT_VERSION, id: "d" });
   });
 
+  test("upgrades version 3 documents and keeps their v4 props", () => {
+    const v3 = {
+      version: 3,
+      id: "d",
+      name: "V3",
+      children: [
+        { type: "page", id: "p", children: [{ type: "ellipse", id: "e", visible: false }] },
+      ],
+    };
+    expect(migrateDocument(v3)).toMatchObject({ version: 4 });
+    expect(loadDocument(v3)?.children[0]?.children[0]).toMatchObject({ visible: false });
+  });
+
   test("leaves current documents unchanged", () => {
     const current = { ...v0, version: DOCUMENT_VERSION };
     expect(migrateDocument(current)).toBe(current);
@@ -65,7 +78,7 @@ describe("version 3 (image nodes, path markers, font style)", () => {
       ],
     };
     const doc = loadDocument(v2);
-    expect(doc?.version).toBe(3);
+    expect(doc?.version).toBe(DOCUMENT_VERSION);
     expect(doc?.children[0]?.children[0]).toMatchObject({ type: "ellipse", id: "e" });
   });
 

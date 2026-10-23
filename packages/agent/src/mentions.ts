@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { findNode, type PegoDocument, type PegoNode, type PegoNodeType } from "@pego/doc";
 import { findSkill } from "./skills/index";
+import { sanitizeLabel } from "./sanitize";
 
 /**
  * Mentions: things the user points at in a prompt ("make @Hero Section dark, in @Bauhaus"), so
@@ -25,6 +26,8 @@ export const mentionRefSchema = z.discriminatedUnion("kind", [
     kind: z.literal("browser"),
     selector: z.string().min(1).max(1000),
     label: z.string().min(1).max(200),
+    /** Page URL when the element was picked; the mention is stale once the page differs. */
+    url: z.string().max(2000).optional(),
   }),
 ]);
 
@@ -44,6 +47,9 @@ const TOKEN_OPEN = "\uE000";
 const TOKEN_CLOSE = "\uE001";
 const TOKEN_PATTERN = new RegExp(`${TOKEN_OPEN}(\\d+)${TOKEN_CLOSE}`, "g");
 
+/** A chip token with the blanks around it, to tidy up the gap a removed chip leaves. */
+const CHIP_WITH_SPACES = new RegExp(`([ \\t]*)${TOKEN_OPEN}(\\d+)${TOKEN_CLOSE}([ \\t]*)`, "g");
+
 export const mentionToken = (index: number): string => `${TOKEN_OPEN}${index}${TOKEN_CLOSE}`;
 
 /** Same mention, written twice: a layer chip is the same when it names the same ids. */
@@ -56,7 +62,15 @@ export const mentionKey = (ref: MentionRef): string => {
 export type MentionScope = {
   /** Ids of the images attached to this prompt. */
   attachments?: readonly { id: string; name: string }[];
+  /** The URL of the page now shown in the in-app browser; browser mentions of another page drop. */
+  browserUrl?: string;
 };
+
+const isStaleBrowser = (
+  ref: Extract<MentionRef, { kind: "browser" }>,
+  scope: MentionScope,
+): boolean =>
+  ref.url !== undefined && scope.browserUrl !== undefined && ref.url !== scope.browserUrl;
 
 const isComponent = (node: PegoNode | null | undefined): node is PegoNode =>
   node != null && node.reusable === true;
@@ -70,7 +84,7 @@ const skillOf = (skillId: string, category: "design" | "style") => {
  * The mentions that still point at something, deduplicated: layers keep the ids that exist,
  * components must be reusable nodes, skills and styles must be known (of the right kind), and
  * attachments must be attached to this prompt. Anything else is dropped. Browser elements are
- * kept: the page lives in the browser, not in the document.
+ * kept while the page is the one they were picked on (when both URLs are known).
  */
 export const resolveMentions = (
   doc: PegoDocument,
@@ -87,7 +101,7 @@ export const resolveMentions = (
     if (ref.kind === "component") return isComponent(findNode(doc, ref.id)) ? ref : null;
     if (ref.kind === "skill") return skillOf(ref.id, "design") ? ref : null;
     if (ref.kind === "style") return skillOf(ref.id, "style") ? ref : null;
-    if (ref.kind === "browser") return ref;
+    if (ref.kind === "browser") return isStaleBrowser(ref, scope) ? null : ref;
     return scope.attachments?.some((item) => item.id === ref.id) ? ref : null;
   };
   for (const ref of mentions) {
@@ -138,15 +152,20 @@ export const mentionInlineLabel = (
   if (ref.kind === "layer") {
     const nodes = ref.ids.flatMap((nodeId) => findNode(doc, nodeId) ?? []);
     if (nodes.length === 0) return null;
-    const names = nodes.slice(0, 3).map((node) => `"${nodeName(node)}"`);
+    const names = nodes.slice(0, 3).map((node) => `"${sanitizeLabel(nodeName(node))}"`);
     if (nodes.length > 3) names.push(`+${nodes.length - 3} more`);
     const ids = nodes.slice(0, 3).map((node) => node.id);
     if (nodes.length > 3) ids.push("...");
     return `${names.join(", ")} [${nodes.length === 1 ? "layer" : "layers"} ${ids.join(", ")}]`;
   }
-  if (ref.kind === "browser") return `"${ref.label}" [browser element \`${ref.selector}\`]`;
+  if (ref.kind === "browser") {
+    if (isStaleBrowser(ref, scope)) return null;
+    return `"${sanitizeLabel(ref.label, 120)}" [browser element \`${sanitizeLabel(ref.selector, 300)}\`]`;
+  }
   const title = mentionTitle(doc, ref, scope);
-  return title === null ? null : `"${title}" [${ref.kind} ${ref.id}]`;
+  return title === null
+    ? null
+    : `"${sanitizeLabel(title)}" [${ref.kind} ${sanitizeLabel(ref.id, 128)}]`;
 };
 
 /** Most layers listed in the context block; the rest are counted. */
@@ -181,7 +200,10 @@ export const mentionContext = (
   if (layers.length > 0) {
     const lines = layers
       .slice(0, MAX_LISTED)
-      .map((node) => `- ${node.id}: "${nodeName(node)}" (${node.type})`);
+      .map(
+        (node) =>
+          `- ${sanitizeLabel(node.id, 128)}: "${sanitizeLabel(nodeName(node))}" (${node.type})`,
+      );
     if (layers.length > MAX_LISTED) lines.push(`- ... and ${layers.length - MAX_LISTED} more`);
     blocks.push(
       [
@@ -194,7 +216,10 @@ export const mentionContext = (
     blocks.push(
       [
         "Components the request refers to (reusable nodes; edit the component, or place instances of it):",
-        ...components.map((node) => `- ${node.id}: "${nodeName(node)}" (${node.type}, component)`),
+        ...components.map(
+          (node) =>
+            `- ${sanitizeLabel(node.id, 128)}: "${sanitizeLabel(nodeName(node))}" (${node.type}, component)`,
+        ),
       ].join("\n"),
     );
   }
@@ -202,7 +227,9 @@ export const mentionContext = (
     blocks.push(
       [
         'Attached images the request refers to (use them with place_image, src "attachment:<id>"):',
-        ...attachments.map((item) => `- ${item.id}: "${item.name}" (image)`),
+        ...attachments.map(
+          (item) => `- ${sanitizeLabel(item.id, 128)}: "${sanitizeLabel(item.name)}" (image)`,
+        ),
       ].join("\n"),
     );
   }
@@ -210,7 +237,9 @@ export const mentionContext = (
     blocks.push(
       [
         'Elements of the page in the in-app browser the request refers to (browser tool: target "query" with the selector as querySelector):',
-        ...elements.map((ref) => `- \`${ref.selector}\`: "${ref.label}"`),
+        ...elements.map(
+          (ref) => `- \`${sanitizeLabel(ref.selector, 300)}\`: "${sanitizeLabel(ref.label, 120)}"`,
+        ),
       ].join("\n"),
     );
   }
@@ -231,11 +260,13 @@ export const promptTextForAgent = (
   scope: MentionScope = {},
 ): string =>
   prompt.text
-    .replace(TOKEN_PATTERN, (_, index: string) => {
+    .replace(CHIP_WITH_SPACES, (_, before: string, index: string, after: string) => {
       const ref = prompt.mentions[Number(index)];
-      return ref ? (mentionInlineLabel(doc, ref, scope) ?? "") : "";
+      const label = ref ? mentionInlineLabel(doc, ref, scope) : null;
+      if (label) return `${before}${label}${after}`;
+      // A removed chip leaves at most one space between its neighbours; typed spaces elsewhere stay.
+      return before || after ? " " : "";
     })
-    .replace(/[ \t]{2,}/g, " ")
     .trim();
 
 /** One piece of a prompt as shown in the activity log: text, or a chip. */

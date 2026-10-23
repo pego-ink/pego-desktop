@@ -3,7 +3,7 @@ import { sampleDoc, type PegoDocument } from "@pego/doc";
 import { flattenLayers, layerLabel, rangeIds } from "./layer-rows";
 
 const doc: PegoDocument = {
-  version: 3,
+  version: 4,
   id: "d",
   name: "d",
   variables: {},

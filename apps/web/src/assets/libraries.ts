@@ -21,8 +21,19 @@ export type LibrarySource = { projectId: string; name: string; path: string };
 
 const GAP = 80;
 
-/** A short, id-safe key for a library project. */
-const libraryKey = (projectId: string) => projectId.replace(/[^A-Za-z0-9_-]/g, "_").slice(0, 24);
+/** FNV-1a 32-bit hash of `text`, base36. */
+const hash36 = (text: string): string => {
+  let h = 0x811c9dc5;
+  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
+  return (h >>> 0).toString(36);
+};
+
+/**
+ * A short, id-safe, stable key for a library project: a readable prefix plus a hash of the whole
+ * project id, so ids that sanitize or truncate alike (`a/b` vs `a_b`) still differ.
+ */
+export const libraryKey = (projectId: string) =>
+  `${projectId.replace(/[^A-Za-z0-9]/g, "").slice(0, 12)}${hash36(projectId)}`;
 
 /** The id a source node gets in this document. */
 export const libraryId = (projectId: string, sourceId: string) =>
@@ -51,17 +62,29 @@ const outermostComponents = (nodes: readonly PegoNode[], into: PegoNode[] = []):
 
 /**
  * A source subtree as it goes into the library page: ids mapped, instances of the library's own
- * components kept (pointing at the mapped ids), instances of anything else made plain.
+ * components kept (pointing at the mapped ids). An instance whose component is missing becomes a
+ * plain placeholder frame and a warning is recorded.
  */
 const copyIn = (
   source: PegoDocument,
   node: PegoNode,
   projectId: string,
   components: Set<string>,
+  warnings: string[],
 ): PegoNode => {
   if (node.type === "ref" && !components.has(node.ref)) {
-    const plain = resolveInstance(source, node);
-    if (plain) return copyIn(source, cloneWithFreshIds(plain), projectId, components);
+    warnings.push(`Instance "${node.name ?? node.id}" points at a missing component (${node.ref})`);
+    return {
+      type: "frame",
+      id: libraryId(projectId, node.id),
+      name: node.name ?? "Missing component",
+      x: node.x,
+      y: node.y,
+      width: typeof node.width === "number" ? node.width : 100,
+      height: typeof node.height === "number" ? node.height : 100,
+      layout: "none",
+      children: [],
+    } as PegoNode;
   }
   const map = (id: string) => libraryId(projectId, id);
   const mapped = { ...node, id: map(node.id) } as PegoNode;
@@ -77,7 +100,7 @@ const copyIn = (
             ? {
                 ...props,
                 children: (props.children as PegoNode[]).map((child) =>
-                  copyIn(source, child, projectId, components),
+                  copyIn(source, child, projectId, components, warnings),
                 ),
               }
             : props,
@@ -91,7 +114,9 @@ const copyIn = (
   return isContainer(node) && isContainer(mapped)
     ? {
         ...mapped,
-        children: node.children.map((child) => copyIn(source, child, projectId, components)),
+        children: node.children.map((child) =>
+          copyIn(source, child, projectId, components, warnings),
+        ),
       }
     : mapped;
 };
@@ -127,10 +152,18 @@ export const syncLibraryOps = (
   source: PegoDocument,
   library: LibrarySource,
   now: number,
-): { ops: Op[]; pageId: string; count: number } => {
+): {
+  ops: Op[];
+  pageId: string;
+  count: number;
+  /** Source variables whose name exists here with a different type or value (kept as they are). */
+  conflicts: string[];
+  warnings: string[];
+} => {
   const components = reusableIds(source.children);
+  const warnings: string[] = [];
   const copies = outermostComponents(source.children.flatMap((page) => page.children)).map((node) =>
-    copyIn(source, node, library.projectId, components),
+    copyIn(source, node, library.projectId, components, warnings),
   );
   let x = 0;
   const placed = copies.map((node) => {
@@ -158,13 +191,19 @@ export const syncLibraryOps = (
     ops.push(...detachUsers(doc, existing.id, gone));
   }
   const missing = Object.entries(source.variables).filter(([name]) => !doc.variables[name]);
+  const conflicts = Object.entries(source.variables)
+    .filter(([name, variable]) => {
+      const mine = doc.variables[name];
+      return mine !== undefined && JSON.stringify(mine) !== JSON.stringify(variable);
+    })
+    .map(([name]) => name);
   if (missing.length > 0) ops.push({ op: "setVariables", variables: Object.fromEntries(missing) });
   ops.push(
     existing
       ? { op: "replace", id: existing.id, node: page }
       : { op: "insert", parentId: null, node: page },
   );
-  return { ops, pageId, count: copies.length };
+  return { ops, pageId, count: copies.length, conflicts, warnings };
 };
 
 /** Remove a library: its instances elsewhere become plain layers, then its page goes. */

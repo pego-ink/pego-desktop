@@ -17,7 +17,7 @@ const frame = (id: string, props: Record<string, unknown>, children: PegoNode[] 
 
 /** A "kit" project: a Badge, and a Card holding a Badge instance and a slot recommending Badge. */
 const kit = (withBadge = true): PegoDocument => ({
-  version: 3,
+  version: 4,
   id: "kit-project",
   name: "Kit",
   variables: { brand: { type: "color", value: "#ff0000" } },
@@ -116,5 +116,40 @@ describe("libraries", () => {
     expect(libraryPages(removed)).toEqual([]);
     expect(findNode(removed, "my-card")).toBeNull();
     expect(removed.children[0]!.children.at(-1)).toMatchObject({ type: "frame", name: "Card" });
+  });
+});
+
+describe("library keys and reports", () => {
+  test("ids differ for project ids that sanitize or truncate alike", () => {
+    const pairs = [
+      ["a/b", "a_b"],
+      ["a b", "a-b"],
+      ["x".repeat(40) + "1", "x".repeat(40) + "2"],
+    ] as const;
+    for (const [a, b] of pairs) expect(libraryId(a, "n")).not.toBe(libraryId(b, "n"));
+    expect(libraryId("a/b", "n")).toBe(libraryId("a/b", "n"));
+    expect(libraryId("a/b", "n")).toMatch(/^[A-Za-z0-9_]+$/);
+  });
+
+  test("an instance of a missing component becomes a placeholder with a warning", () => {
+    const from = kit();
+    const page = from.children[0]!;
+    page.children.push({ type: "ref", id: "dangling", ref: "gone", x: 0, y: 0 } as RefNode);
+    const wrapper = frame("wrap", { name: "Wrap", reusable: true, width: 50, height: 50 }, [
+      { type: "ref", id: "d2", ref: "gone", x: 0, y: 0 } as RefNode,
+    ]);
+    page.children.push(wrapper);
+    const plan = syncLibraryOps(sampleDoc, from, source, 1);
+    expect(plan.warnings).toHaveLength(1);
+    const doc = applyOps(sampleDoc, plan.ops).doc;
+    expect(findNode(doc, libraryId("kit-project", "d2"))).toMatchObject({ type: "frame" });
+  });
+
+  test("reports variables that exist here with a different value", () => {
+    const withBrand = applyOps(sampleDoc, [
+      { op: "setVariables", variables: { brand: { type: "color", value: "#00ff00" } } },
+    ]).doc;
+    expect(syncLibraryOps(withBrand, kit(), source, 1).conflicts).toEqual(["brand"]);
+    expect(syncLibraryOps(sampleDoc, kit(), source, 1).conflicts).toEqual([]);
   });
 });

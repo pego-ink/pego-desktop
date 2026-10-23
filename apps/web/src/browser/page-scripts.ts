@@ -14,6 +14,7 @@ export const PICKED_ATTRIBUTE = "data-pego-picked";
 export const OVERLAY_ATTRIBUTE = "data-pego-overlay";
 /** Prefix of the console.debug messages pages send back to the editor. */
 export const PAGE_MESSAGE_PREFIX = "__pego__:";
+const NONCE_PATTERN = /^[0-9a-f]{16,64}$/;
 const PICKER_STOP_KEY = "__pegoPickerStop";
 
 /** Wraps a function body so thrown errors come back as data instead of CDP exceptions. */
@@ -603,7 +604,7 @@ const PICK_HELPERS =
 function pegoUnique(s){try{return document.querySelectorAll(s).length===1}catch(e){return false}}
 function pegoBrief(el){
   var cls=typeof el.className==="string"?el.className.trim().split(/\s+/)[0]||"":"";
-  return {tag:el.tagName.toLowerCase(),id:el.id||"",cls:cls,selector:pegoPath(el,CSS.escape,pegoUnique)};
+  return {tag:el.tagName.toLowerCase(),id:(el.id||"").slice(0,80),cls:cls.slice(0,80),selector:pegoPath(el,CSS.escape,pegoUnique)};
 }
 function pickInfo(el){
   var info=pegoBrief(el),path=[];
@@ -639,7 +640,13 @@ var hover=makeBox("2px solid #4f46e5","rgba(79,70,229,0.12)");
 var chosen=makeBox("1px solid #4f46e5","rgba(79,70,229,0.06)");
 var current=null,picked=document.querySelector("[data-pego-picked]");
 var lastChild=new WeakMap();
-function send(m){console.debug("__pego__:"+JSON.stringify(m))}
+function send(m){m.nonce=NONCE;console.debug("__pego__:"+JSON.stringify(m))}
+// The desktop only passes flat string fields: the path travels as a bounded JSON string.
+function packPath(path){
+  var p=path.slice(-30),s=JSON.stringify(p);
+  while(p.length>1&&s.length>3500){p.shift();s=JSON.stringify(p)}
+  return s;
+}
 function own(n){return n===hover.box||hover.box.contains(n)||n===chosen.box||chosen.box.contains(n)}
 function place(o,el){
   if(!el){o.box.style.display="none";return}
@@ -653,14 +660,18 @@ function place(o,el){
 }
 function pick(el){
   markPicked(el);picked=el;place(chosen,el);
-  send(pickInfo(el));
+  var info=pickInfo(el);
+  info.path=packPath(info.path);
+  send(info);
 }
 function visibleKids(el){
   return Array.prototype.filter.call(el.children,function(c){
     if(own(c))return false;var r=c.getBoundingClientRect();return r.width>0||r.height>0;
   });
 }
-function hit(e){var t=e.target;return t&&t.nodeType===1&&!own(t)?t:null}
+// Only real user input counts: the page can dispatch synthetic clicks and keys at the armed
+// picker (it sees the overlay), which would pick or import elements of its choosing.
+function hit(e){if(!e.isTrusted)return null;var t=e.target;return t&&t.nodeType===1&&!own(t)?t:null}
 function onMove(e){var t=hit(e);if(!t)return;current=t;place(hover,t)}
 function onClick(e){
   var t=hit(e);
@@ -670,6 +681,7 @@ function onClick(e){
 }
 function swallow(e){if(hit(e)){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}}
 function onKey(e){
+  if(!e.isTrusted)return;
   if(e.key==="Escape"){
     e.preventDefault();e.stopPropagation();
     stop();send({type:"pick-cancelled"});return;
@@ -726,7 +738,10 @@ return JSON.stringify({ok:true});
  * arrows walk the tree (↑ parent, ↓ child, ←/→ siblings), Enter asks to import and ⌘/Ctrl+Enter
  * to screenshot the picked element, Escape disarms.
  */
-export const pickerStartScript: string = wrap(PICKER_BODY);
+export const pickerStartScript = (nonce: string): string => {
+  if (!NONCE_PATTERN.test(nonce)) throw new Error("Invalid picker nonce");
+  return wrap(`var NONCE=${JSON.stringify(nonce)};\n` + PICKER_BODY);
+};
 
 /** Removes the picker (a no-op when it is not armed). */
 export const pickerStopScript: string = wrap(

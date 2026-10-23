@@ -22,6 +22,9 @@ const MIGRATIONS: Record<number, (doc: RawDocument) => RawDocument> = {
   // v3 only adds optional props and node types: image nodes, path caps/joins/markers, text
   // fontStyle. The bump makes older Pego builds refuse these files instead of failing validation.
   2: (doc) => ({ ...doc, version: 3 }),
+  // v4 only adds optional props: `visible` (hidden layers), frame `slot`, page `library` and image
+  // `source`. The bump makes older builds refuse these files instead of dropping the props.
+  3: (doc) => ({ ...doc, version: 4 }),
 };
 
 /** "page-1", or "page-1-2"... if a node already uses that id. */

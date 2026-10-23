@@ -156,3 +156,36 @@ describe("stacking", () => {
     expect(childIds(back.doc, "frame-1")).toEqual(["rect-1", "text-1"]);
   });
 });
+
+describe("hidden layers", () => {
+  const hidden = (doc: PegoDocument, id: string) =>
+    applyOps(doc, [{ op: "update", id, props: { visible: false } }]).doc;
+
+  test("ungroup keeps a hidden child at container offset + its own x/y", () => {
+    let doc = applyOps(sampleDoc, [
+      {
+        op: "insert",
+        parentId: "page-1",
+        node: {
+          type: "group",
+          id: "grp",
+          x: 500,
+          y: 300,
+          children: [
+            { type: "rectangle", id: "hid", x: 10, y: 20, width: 30, height: 40, visible: false },
+          ],
+        } as PegoNode,
+      },
+    ]).doc;
+    doc = hidden(doc, "grp");
+    const { doc: after } = run(doc, ungroupSelection(doc, layoutOf(doc), ["grp"]));
+    const node = findNode(after, "hid") as { x: number; y: number };
+    expect([node.x, node.y]).toEqual([510, 320]);
+  });
+
+  test("wrapping a hidden layer works", () => {
+    const doc = hidden(sampleDoc, "rect-1");
+    const result = wrapSelection(doc, layoutOf(doc), ["rect-1"], "group");
+    expect("error" in result).toBe(false);
+  });
+});

@@ -32,7 +32,7 @@ export type MentionSources = {
   selection: readonly string[];
   attachments: readonly { id: string; name: string }[];
   /** The element picked in the in-app browser, if any. */
-  browser?: { selector: string; label: string } | null;
+  browser?: { selector: string; label: string; url?: string } | null;
 };
 
 /** Rows per section, so a big document does not drown the skills. */
@@ -96,7 +96,12 @@ export const mentionSuggestions = (query: string, sources: MentionSources): Ment
       {
         key: `browser:${picked.selector}`,
         section: "Browser",
-        ref: { kind: "browser", selector: picked.selector, label: picked.label },
+        ref: {
+          kind: "browser",
+          selector: picked.selector,
+          label: picked.label,
+          ...(picked.url ? { url: picked.url } : {}),
+        },
         title: picked.label,
         detail: "Picked in the browser",
       },

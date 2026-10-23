@@ -70,7 +70,7 @@ const card: FigmaNode = {
 };
 
 const asDoc = (nodes: PegoNode[]): PegoDocument => ({
-  version: 3,
+  version: 4,
   id: "d",
   name: "d",
   variables: {},
@@ -160,7 +160,7 @@ describe("figma import", () => {
             size: { x: 20, y: 20 },
             relativeTransform: [
               [0, 1, 0],
-              [-1, 0, 0],
+              [-1, 0, 20],
             ],
           },
         ],
@@ -202,5 +202,94 @@ describe("figma import", () => {
     ]);
     expect(odd.nodes).toEqual([]);
     expect(odd.warnings).toEqual(["sticky layers are not supported"]);
+  });
+
+  test("children of a rotated frame are placed from their relative transform", () => {
+    const { nodes } = convertFigmaNodes([
+      {
+        id: "7:1",
+        type: "FRAME",
+        absoluteBoundingBox: box(0, 0, 100, 100),
+        size: { x: 60, y: 60 },
+        relativeTransform: [
+          [0.7071, -0.7071, 0],
+          [0.7071, 0.7071, 0],
+        ],
+        children: [
+          {
+            id: "7:2",
+            type: "RECTANGLE",
+            // The axis-aligned box of the parent says 40, the transform says 10 / 20.
+            absoluteBoundingBox: box(40, 40, 10, 10),
+            size: { x: 10, y: 10 },
+            relativeTransform: [
+              [1, 0, 10],
+              [0, 1, 20],
+            ],
+          },
+        ],
+      },
+    ]);
+    const frame = nodes[0] as FrameNode;
+    expect(frame.children[0]).toMatchObject({ type: "rectangle", x: 10, y: 20 });
+  });
+
+  test("one invalid descendant drops only itself", () => {
+    const { nodes, warnings } = convertFigmaNodes([
+      {
+        id: "8:1",
+        type: "FRAME",
+        absoluteBoundingBox: box(0, 0, 100, 100),
+        children: [
+          {
+            id: "8:2",
+            type: "RECTANGLE",
+            absoluteBoundingBox: box(0, 0, 10, 10),
+            // A gradient with one stop does not satisfy the schema (at least two).
+            fills: [{ type: "GRADIENT_LINEAR", gradientStops: [{ color: black, position: 0 }] }],
+          },
+          { id: "8:3", type: "ELLIPSE", absoluteBoundingBox: box(0, 0, 10, 10) },
+        ],
+      },
+    ]);
+    const frame = nodes[0] as FrameNode;
+    expect(frame).toBeDefined();
+    expect(frame.children.some((child) => child.type === "ellipse")).toBe(true);
+    expect(frame.children.some((child) => child.type === "rectangle")).toBe(false);
+    expect(warnings).toContain("some layers did not fit Pego's format and were skipped");
+  });
+
+  test("silent losses are reported", () => {
+    const { warnings } = convertFigmaNodes([
+      {
+        id: "9:1",
+        type: "INSTANCE",
+        absoluteBoundingBox: box(0, 0, 100, 100),
+        strokes: [{ type: "SOLID", color: black }],
+        strokeAlign: "INSIDE",
+        children: [
+          {
+            id: "9:2",
+            type: "GROUP",
+            absoluteBoundingBox: box(0, 0, 10, 10),
+            effects: [{ type: "LAYER_BLUR", radius: 4 }],
+            children: [],
+          },
+          {
+            id: "9:3",
+            type: "VECTOR",
+            absoluteBoundingBox: box(0, 0, 10, 10),
+            strokes: [{ type: "SOLID", color: black }],
+            strokeGeometry: [{ path: "M0 0L10 10" }],
+            effects: [{ type: "LAYER_BLUR", radius: 4 }],
+          },
+        ],
+      },
+    ]);
+    const text = warnings.join("\n");
+    expect(text).toContain("instances became plain frames");
+    expect(text).toContain("effects on groups were dropped");
+    expect(text).toContain("effects on stroke-only vectors were dropped");
+    expect(text).toContain("inside and outside strokes");
   });
 });

@@ -193,7 +193,11 @@ const imageSchema = baseNode.extend({
    */
   source: z
     .object({
-      url: z.string().min(1).max(2000),
+      url: z
+        .string()
+        .min(1)
+        .max(2000)
+        .regex(/^https?:\/\//i, "must be an http(s) URL"),
       selector: z.string().min(1).max(1000).optional(),
     })
     .optional(),
@@ -309,7 +313,7 @@ export const variableSchema = z.discriminatedUnion("type", [
 export const variablesSchema = z.record(z.string(), variableSchema);
 
 /** Current document format version; older documents go through `migrateDocument` first. */
-export const DOCUMENT_VERSION = 3;
+export const DOCUMENT_VERSION = 4;
 
 export const documentSchema = z.object({
   version: z.literal(DOCUMENT_VERSION),

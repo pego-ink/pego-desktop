@@ -5,6 +5,7 @@ import {
   findNode,
   isContainer,
   resolveInstance,
+  resolveNumber,
   type Box,
   type Layout,
   type NodeLocation,
@@ -36,6 +37,26 @@ const originOf = (layout: Layout, parentId: string | null) => {
   const box = parentId ? layout.get(parentId) : undefined;
   return box ? { x: box.x, y: box.y } : { x: 0, y: 0 };
 };
+
+const num = (doc: PegoDocument, value: unknown, fallback = 0): number =>
+  typeof value === "number" ? value : resolveNumber(value as never, doc.variables, fallback);
+
+/**
+ * A layer's box on the canvas. Hidden layers have no layout box: fall back to the parent's origin
+ * plus the layer's own x/y (and numeric size).
+ */
+const boxOrFallback = (
+  doc: PegoDocument,
+  layout: Layout,
+  node: PegoNode,
+  origin: { x: number; y: number },
+): Box =>
+  layout.get(node.id) ?? {
+    x: origin.x + num(doc, node.x),
+    y: origin.y + num(doc, node.y),
+    width: typeof node.width === "number" ? node.width : 0,
+    height: typeof node.height === "number" ? node.height : 0,
+  };
 
 const isFlexFrame = (node: PegoNode | null | undefined) =>
   node?.type === "frame" && node.layout !== "none";
@@ -83,10 +104,9 @@ export const wrapSelection = (
   if (locs.some((loc) => loc.parentId !== parentId)) {
     return { error: "Select layers that sit in the same frame or group." };
   }
-  const boxes = locs.flatMap((loc) => layout.get(loc.node.id) ?? []);
-  if (boxes.length !== locs.length) return { error: "The selection has no size on the canvas." };
-  const bounds = union(boxes);
   const origin = originOf(layout, parentId);
+  const boxes = locs.map((loc) => boxOrFallback(doc, layout, loc.node, origin));
+  const bounds = union(boxes);
   const id = createId();
   const base = {
     id,
@@ -115,7 +135,7 @@ export const wrapSelection = (
     },
   ];
   locs.forEach((loc, index) => {
-    const box = layout.get(loc.node.id)!;
+    const box = boxes[index]!;
     ops.push({ op: "move", id: loc.node.id, parentId: id, index });
     ops.push({
       op: "update",
@@ -147,10 +167,17 @@ export const ungroupSelection = (
     if (!isContainer(node)) continue;
     const origin = originOf(layout, loc.parentId);
     const flexParent = isFlexFrame(parentNode(doc, loc));
+    // A hidden container has no box: its own x/y in the parent is where its children start.
+    const start = layout.get(node.id)
+      ? { x: layout.get(node.id)!.x, y: layout.get(node.id)!.y }
+      : { x: origin.x + num(doc, node.x), y: origin.y + num(doc, node.y) };
     node.children.forEach((child, offset) => {
       ops.push({ op: "move", id: child.id, parentId: loc.parentId, index: loc.index + offset });
-      const box = layout.get(child.id);
-      if (box && !flexParent) {
+      if (!flexParent) {
+        const box = layout.get(child.id) ?? {
+          x: start.x + num(doc, child.x),
+          y: start.y + num(doc, child.y),
+        };
         ops.push({
           op: "update",
           id: child.id,

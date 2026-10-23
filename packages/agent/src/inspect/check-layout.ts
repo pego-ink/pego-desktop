@@ -147,12 +147,13 @@ const checkNode = (
   const children = isContainer(node) ? node.children : [];
 
   // Structure: the top level of a page holds screens, standalone pieces (each one frame) and
-  // instances, never loose layers; those frames carry a name.
-  if (parent?.type === "page") {
+  // instances, never loose layers; those frames carry a name. Library pages and components
+  // (reusable nodes) are exempt.
+  if (parent?.type === "page" && !parent.library && !node.reusable) {
     if (node.type !== "frame" && node.type !== "group" && node.type !== "ref") {
       report(
         ctx,
-        "warning",
+        "info",
         node,
         `${node.type} sits loose at the top level of the page`,
         "Move it into the screen or section frame it belongs to (move_node), or wrap it together with the layers that make up the same thing (a drawing, a logo, a chart) in one frame or group named after the whole.",
