@@ -103,4 +103,12 @@ describe("mention suggestions", () => {
     expect(items.filter((item) => item.section === "Layers").length).toBeLessThanOrEqual(8);
     expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
   });
+
+  test("the element picked in the browser is offered after the selection", () => {
+    const browser = { selector: "#cta", label: "button.cta · Go" };
+    const items = mentionSuggestions("", sources({ selection: ["text-1"], browser }));
+    expect(items.slice(0, 2).map((item) => item.section)).toEqual(["Selection", "Browser"]);
+    expect(items[1]?.ref).toEqual({ kind: "browser", ...browser });
+    expect(mentionSuggestions("cta", sources({ browser }))[0]?.section).toBe("Browser");
+  });
 });

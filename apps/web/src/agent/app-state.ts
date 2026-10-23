@@ -99,7 +99,11 @@ export const collectAppState = (): AppState => {
       ? {
           url: browser.state.url,
           ...(browser.state.title ? { title: browser.state.title } : {}),
-          picked: browser.hasPicked ? { label: "an element" } : null,
+          picked: browser.picked
+            ? { label: browser.picked.label, selector: browser.picked.selector }
+            : browser.hasPicked
+              ? { label: "an element" }
+              : null,
         }
       : null,
   });

@@ -76,4 +76,23 @@ describe("live selection chip", () => {
       { kind: "layer", ids: ["a"] },
     ]);
   });
+
+  test("selection and browser chips at the end keep their places", () => {
+    const element: LiveChip = {
+      ref: { kind: "browser", selector: "#cta", label: "a" },
+      label: "a",
+    };
+    let state = sync(stateOf([{ type: "text", text: "match " }]), [chip(["a"])]).state;
+    const browser = liveChipTransaction(state, "browser", [element]);
+    state = state.apply(browser!);
+    state = sync(state, [chip(["b"])]).state;
+    expect(composerToPrompt(state.doc.toJSON() as ComposerNode).mentions).toEqual([
+      { kind: "layer", ids: ["b"] },
+      { kind: "browser", selector: "#cta", label: "a" },
+    ]);
+    state = state.apply(liveChipTransaction(state, "browser", [])!);
+    expect(composerToPrompt(state.doc.toJSON() as ComposerNode).mentions).toEqual([
+      { kind: "layer", ids: ["b"] },
+    ]);
+  });
 });

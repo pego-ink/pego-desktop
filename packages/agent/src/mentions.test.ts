@@ -43,6 +43,7 @@ describe("MentionRef schema", () => {
       { kind: "skill", id: "landing-page" },
       { kind: "style", id: "bauhaus" },
       { kind: "attachment", id: "att-1" },
+      { kind: "browser", selector: "#app > button", label: "button · Go" },
     ];
     expect(mentionRefsSchema.parse(refs)).toEqual(refs);
   });
@@ -54,6 +55,7 @@ describe("MentionRef schema", () => {
       { kind: "layer", id: "frame-1" },
       { kind: "skill", id: "" },
       { kind: "attachment" },
+      { kind: "browser", selector: "", label: "x" },
     ]) {
       expect(mentionRefSchema.safeParse(bad).success).toBe(false);
     }
@@ -215,5 +217,25 @@ describe("prompts with mentions", () => {
       ]),
     ).toEqual({ skillId: "landing-page", styleId: "bauhaus" });
     expect(mentionedSkills([{ kind: "layer", ids: ["frame-1"] }])).toEqual({});
+  });
+});
+
+describe("browser elements", () => {
+  const ref: MentionRef = {
+    kind: "browser",
+    selector: "#app > button.cta",
+    label: "button.cta · Go",
+  };
+
+  test("kept as they are, labelled with the selector, listed for the browser tool", () => {
+    expect(resolveMentions(doc, [ref, ref])).toEqual([ref]);
+    expect(mentionTitle(doc, ref)).toBe("button.cta · Go");
+    expect(mentionInlineLabel(doc, ref)).toBe(
+      '"button.cta · Go" [browser element `#app > button.cta`]',
+    );
+    const context = mentionContext(doc, [ref]);
+    expect(context).toStartWith("Elements of the page in the in-app browser");
+    expect(context).toContain('target "query"');
+    expect(context).toEndWith('- `#app > button.cta`: "button.cta · Go"');
   });
 });

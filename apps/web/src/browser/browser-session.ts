@@ -2,6 +2,7 @@ import { desktopApi, type DesktopBrowserApi } from "@/desktop/desktop-api";
 import { useLayoutStore } from "@/store/use-layout-store";
 import { useBrowserStore } from "./use-browser-store";
 import { pickerStartScript, pickerStopScript, unwrapEvaluation } from "./page-scripts";
+import { parsePicked } from "./picked-element";
 
 const SHOW_TIMEOUT_MS = 5000;
 
@@ -78,6 +79,7 @@ const handlePageMessage = (message: unknown) => {
   const store = useBrowserStore.getState();
   if (type === "picked") {
     store.setHasPicked(true);
+    store.setPicked(parsePicked(message));
     store.setPicking(false);
   } else if (type === "pick-cancelled") {
     store.setPicking(false);

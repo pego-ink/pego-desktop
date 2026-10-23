@@ -7,6 +7,8 @@ import { appStateContext, mentionTitle, skills, type MentionRef } from "@pego/ag
 import { cn } from "@pego/ui/lib/utils";
 import { submitPrompt, steerNow } from "@/agent/queue";
 import { collectAppState } from "@/agent/app-state";
+import type { PickedElement } from "@/browser/picked-element";
+import { useBrowserStore } from "@/browser/use-browser-store";
 import { buildRunPrompt } from "@/agent/run-prompt";
 import { cancelRun } from "@/agent/run";
 import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
@@ -63,12 +65,22 @@ class ComposerLink {
   }
 }
 
+/** The part of a picked element a browser mention keeps. */
+const pick = ({ selector, label }: PickedElement) => ({ selector, label });
+
 /** Suggestions for the @ and / menus from the live stores (read when the user types). */
 const suggestionsFor = (query: string, trigger: MentionTrigger) => {
   if (trigger === "/") return slashSuggestions(query, skills);
   const { doc, pageId, selection } = useDocumentStore.getState();
   const { pendingAttachments } = useAgentStore.getState();
-  return mentionSuggestions(query, { doc, pageId, selection, attachments: pendingAttachments });
+  const { picked } = useBrowserStore.getState();
+  return mentionSuggestions(query, {
+    doc,
+    pageId,
+    selection,
+    attachments: pendingAttachments,
+    browser: picked ? pick(picked) : null,
+  });
 };
 
 export const AgentComposer = ({ seed }: AgentComposerProps) => {
@@ -243,6 +255,23 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     sync(useDocumentStore.getState().selection);
     return useDocumentStore.subscribe((state, prev) => {
       if (state.selection !== prev.selection) sync(state.selection);
+    });
+  }, [editor]);
+
+  // The same for the element picked in the in-app browser.
+  useEffect(() => {
+    if (!editor) return;
+    const sync = (picked: PickedElement | null) => {
+      if (editor.isDestroyed) return;
+      const chips = picked
+        ? [{ ref: { kind: "browser" as const, ...pick(picked) }, label: picked.label }]
+        : [];
+      const tr = liveChipTransaction(editor.state, "browser", chips);
+      if (tr) editor.view.dispatch(tr);
+    };
+    sync(useBrowserStore.getState().picked);
+    return useBrowserStore.subscribe((state, prev) => {
+      if (state.picked !== prev.picked) sync(state.picked);
     });
   }, [editor]);
 

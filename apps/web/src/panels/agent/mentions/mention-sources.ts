@@ -9,7 +9,7 @@ import type { MentionRef, Skill } from "@pego/agent";
 import { pickableSkills, pickableStyles } from "@/panels/agent/skill-chip";
 
 export type MentionSection =
-  "Selection" | "Layers" | "Components" | "Skills" | "Styles" | "Attachments";
+  "Selection" | "Browser" | "Layers" | "Components" | "Skills" | "Styles" | "Attachments";
 
 /** One row of the @ popover. */
 export type MentionItem = {
@@ -31,11 +31,14 @@ export type MentionSources = {
   pageId: string | null;
   selection: readonly string[];
   attachments: readonly { id: string; name: string }[];
+  /** The element picked in the in-app browser, if any. */
+  browser?: { selector: string; label: string } | null;
 };
 
 /** Rows per section, so a big document does not drown the skills. */
 const LIMITS: Record<MentionSection, number> = {
   Selection: 1,
+  Browser: 1,
   Layers: 8,
   Components: 6,
   Skills: 8,
@@ -65,7 +68,7 @@ const walk = (nodes: readonly PegoNode[], out: PegoNode[] = []): PegoNode[] => {
 
 /**
  * What the @ popover offers for `query`, section by section: the current selection (as one
- * chip), layers of the shown page, components of the document and attached images. Skills and
+ * chip), the element picked in the browser, layers of the shown page, components of the document and attached images. Skills and
  * styles are the "/" popover's (`slashSuggestions`).
  */
 export const mentionSuggestions = (query: string, sources: MentionSources): MentionItem[] => {
@@ -83,6 +86,19 @@ export const mentionSuggestions = (query: string, sources: MentionSources): Ment
         ref: { kind: "layer", ids: [...sources.selection] },
         title: count === 1 ? "Selection" : `Selection (${count} layers)`,
         detail: "What is selected on the canvas",
+      },
+    ]);
+  }
+
+  const picked = sources.browser;
+  if (picked && matches(needle, "browser element", picked.label)) {
+    push("Browser", [
+      {
+        key: `browser:${picked.selector}`,
+        section: "Browser",
+        ref: { kind: "browser", selector: picked.selector, label: picked.label },
+        title: picked.label,
+        detail: "Picked in the browser",
       },
     ]);
   }

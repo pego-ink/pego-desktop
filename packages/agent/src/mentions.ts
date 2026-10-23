@@ -20,6 +20,12 @@ export const mentionRefSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("style"), id }),
   /** An image attached to the prompt ("att-1"). */
   z.object({ kind: z.literal("attachment"), id }),
+  /** An element picked in the in-app browser: a selector that matches only it, and its label. */
+  z.object({
+    kind: z.literal("browser"),
+    selector: z.string().min(1).max(1000),
+    label: z.string().min(1).max(200),
+  }),
 ]);
 
 export type MentionRef = z.infer<typeof mentionRefSchema>;
@@ -41,8 +47,10 @@ const TOKEN_PATTERN = new RegExp(`${TOKEN_OPEN}(\\d+)${TOKEN_CLOSE}`, "g");
 export const mentionToken = (index: number): string => `${TOKEN_OPEN}${index}${TOKEN_CLOSE}`;
 
 /** Same mention, written twice: a layer chip is the same when it names the same ids. */
-export const mentionKey = (ref: MentionRef): string =>
-  ref.kind === "layer" ? `layer:${[...ref.ids].sort().join(",")}` : `${ref.kind}:${ref.id}`;
+export const mentionKey = (ref: MentionRef): string => {
+  if (ref.kind === "layer") return `layer:${[...ref.ids].sort().join(",")}`;
+  return ref.kind === "browser" ? `browser:${ref.selector}` : `${ref.kind}:${ref.id}`;
+};
 
 /** What the agent needs to resolve mentions that live outside the document. */
 export type MentionScope = {
@@ -61,7 +69,8 @@ const skillOf = (skillId: string, category: "design" | "style") => {
 /**
  * The mentions that still point at something, deduplicated: layers keep the ids that exist,
  * components must be reusable nodes, skills and styles must be known (of the right kind), and
- * attachments must be attached to this prompt. Anything else is dropped.
+ * attachments must be attached to this prompt. Anything else is dropped. Browser elements are
+ * kept: the page lives in the browser, not in the document.
  */
 export const resolveMentions = (
   doc: PegoDocument,
@@ -78,6 +87,7 @@ export const resolveMentions = (
     if (ref.kind === "component") return isComponent(findNode(doc, ref.id)) ? ref : null;
     if (ref.kind === "skill") return skillOf(ref.id, "design") ? ref : null;
     if (ref.kind === "style") return skillOf(ref.id, "style") ? ref : null;
+    if (ref.kind === "browser") return ref;
     return scope.attachments?.some((item) => item.id === ref.id) ? ref : null;
   };
   for (const ref of mentions) {
@@ -111,6 +121,7 @@ export const mentionTitle = (
   if (ref.kind === "skill" || ref.kind === "style") {
     return skillOf(ref.id, ref.kind === "skill" ? "design" : "style")?.title ?? null;
   }
+  if (ref.kind === "browser") return ref.label;
   return scope.attachments?.find((item) => item.id === ref.id)?.name ?? null;
 };
 
@@ -133,6 +144,7 @@ export const mentionInlineLabel = (
     if (nodes.length > 3) ids.push("...");
     return `${names.join(", ")} [${nodes.length === 1 ? "layer" : "layers"} ${ids.join(", ")}]`;
   }
+  if (ref.kind === "browser") return `"${ref.label}" [browser element \`${ref.selector}\`]`;
   const title = mentionTitle(doc, ref, scope);
   return title === null ? null : `"${title}" [${ref.kind} ${ref.id}]`;
 };
@@ -163,6 +175,8 @@ export const mentionContext = (
       : [],
   );
 
+  const elements = resolved.flatMap((ref) => (ref.kind === "browser" ? [ref] : []));
+
   const blocks: string[] = [];
   if (layers.length > 0) {
     const lines = layers
@@ -189,6 +203,14 @@ export const mentionContext = (
       [
         'Attached images the request refers to (use them with place_image, src "attachment:<id>"):',
         ...attachments.map((item) => `- ${item.id}: "${item.name}" (image)`),
+      ].join("\n"),
+    );
+  }
+  if (elements.length > 0) {
+    blocks.push(
+      [
+        'Elements of the page in the in-app browser the request refers to (browser tool: target "query" with the selector as querySelector):',
+        ...elements.map((ref) => `- \`${ref.selector}\`: "${ref.label}"`),
       ].join("\n"),
     );
   }

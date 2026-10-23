@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import {
   ComponentIcon,
+  GlobeIcon,
   ImageIcon,
   LayersIcon,
   PaletteIcon,
@@ -19,6 +20,7 @@ const ICONS = {
   skill: SparklesIcon,
   style: PaletteIcon,
   attachment: ImageIcon,
+  browser: GlobeIcon,
 } satisfies Record<MentionKind, LucideIcon>;
 
 export const MENTION_KIND_LABEL: Record<MentionKind, string> = {
@@ -27,6 +29,7 @@ export const MENTION_KIND_LABEL: Record<MentionKind, string> = {
   skill: "Skill",
   style: "Style",
   attachment: "Image",
+  browser: "Browser element",
 };
 
 /** A chip's icon: the layer's own type (frame, text, ...) when it names one, else the kind's. */
