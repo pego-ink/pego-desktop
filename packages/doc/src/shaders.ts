@@ -187,7 +187,11 @@ const hexToFloats = (hex: string): number[] => {
 const toFloats = (value: ShaderUniformValue | PresetUniform, variables: Variables): number[] => {
   if (typeof value === "number") return [value];
   if (Array.isArray(value)) return [...value];
-  const color = resolveColor(value as string, variables);
+  const text = value as string;
+  // A number variable feeds a float uniform; a color (or color variable) feeds a vec3 / vec4.
+  const variable = text.startsWith("$") ? variables[text.slice(1)] : undefined;
+  if (variable?.type === "number") return [variable.value];
+  const color = resolveColor(text, variables);
   return color ? hexToFloats(color) : [0, 0, 0, 1];
 };
 
@@ -229,9 +233,10 @@ const SKSL_TYPES: readonly [RegExp, string][] = [
  * helper called with `fragCoord` in CSS px from the top-left (`pegoPixelRatio` maps device pixels).
  */
 export const shaderToWebGl = (code: string): string => {
-  let body = withBuiltinUniforms(code);
+  // Comments go first, so a `main(` in one is never taken for the definition.
+  let body = withBuiltinUniforms(code.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, ""));
   for (const [pattern, replacement] of SKSL_TYPES) body = body.replace(pattern, replacement);
-  body = body.replace(/\bmain\s*\(/, "pego_main(");
+  body = body.replace(/\bvec4\s+main\s*\(/, "vec4 pego_main(");
   return [
     "precision highp float;",
     "uniform float pegoPixelRatio;",

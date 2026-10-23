@@ -64,6 +64,15 @@ describe("shader fills", () => {
     );
     expect(short.get("c")).toEqual([1, 0, 0, 0x88 / 255]);
     expect(short.get("v")).toEqual([1, 2]);
+    const fromVariables = shaderUniforms(
+      { type: "shader", preset: "waves", uniforms: { lines: "$count", color: "$brand" } },
+      {
+        count: { type: "number", value: 20 },
+        brand: { type: "color", value: "#ff0000" },
+      },
+    );
+    expect(fromVariables.get("lines")).toEqual([20]);
+    expect(fromVariables.get("color")).toEqual([1, 0, 0, 1]);
   });
 
   test("the fallback color is the first color uniform", () => {
@@ -98,5 +107,13 @@ describe("shader fills", () => {
     expect(glsl).toContain("vec4 pego_main(vec2 p) { mat2 m; return vec4(tint, 1); }");
     expect(glsl).toContain("gl_FragColor = pego_main(css);");
     expect(glsl).not.toMatch(/\bhalf|float[234]\b/);
+  });
+
+  test("WebGL translation renames the real main, not one in a comment", () => {
+    const glsl = shaderToWebGl(
+      "// vec4 main(vec2 p) is the entry point\n/* main( */\nvec4 main(vec2 p) { return vec4(1.0); }",
+    );
+    expect(glsl).toContain("vec4 pego_main(vec2 p) { return vec4(1.0); }");
+    expect(glsl.match(/\bmain\s*\(/g)).toEqual(["main("]);
   });
 });

@@ -9,14 +9,19 @@ import {
 
 type Compiled = { effect: RuntimeEffect | null; error: string | undefined };
 
-/** Compiled shaders by source; a design uses few, edits of custom code add more. */
+/** Compiled shaders by source, least recently used first; a design uses few, code edits add more. */
 const compiled = new Map<string, Compiled>();
 const MAX_COMPILED = 32;
 
 const compile = (ck: CanvasKit, code: string): Compiled => {
   const source = withBuiltinUniforms(code);
   const hit = compiled.get(source);
-  if (hit) return hit;
+  if (hit) {
+    // Least recently used goes first: move a hit to the end.
+    compiled.delete(source);
+    compiled.set(source, hit);
+    return hit;
+  }
   let error: string | undefined;
   const effect = ck.RuntimeEffect.Make(source, (message) => {
     error = message;
