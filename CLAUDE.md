@@ -179,7 +179,7 @@ grow_up | grow_right | scale | pop`, `delay`/`duration` in ms (default 0 / 600),
   exported `grow_*` presets scale along the page axes from its top-left corner, unlike the canvas. No loops
   or timeline.
 - **Shader fills** (`packages/doc/src/shaders.ts`): `preset` is `aurora | gradient_flow | waves | grain | shimmer |
-  dots | custom`; `custom` runs `code`, a GLSL-style fragment shader both Skia (SkSL) and WebGL 1 accept:
+dots | custom`; `custom` runs `code`, a GLSL-style fragment shader both Skia (SkSL) and WebGL 1 accept:
   `vec4 main(vec2 fragCoord)`, `fragCoord` in px from the shape's top-left, `iResolution` (vec2 px) and `iTime`
   (s) declared for it, float / vec2-4 uniforms only, no textures. `uniforms` override the preset defaults by name
   (numbers, vectors, colors as hex or `$variable`). The canvas compiles it with `RuntimeEffect`
