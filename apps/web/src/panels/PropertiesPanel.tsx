@@ -17,6 +17,7 @@ import {
 } from "@/panels/properties/StyleSections";
 import { FillSection } from "@/panels/properties/FillSection";
 import { ExportSection } from "@/panels/properties/ExportSection";
+import { AnimationSection } from "@/panels/properties/AnimationSection";
 import { LayoutSection } from "@/panels/properties/LayoutSection";
 import { ImageSection } from "@/panels/properties/ImageSection";
 import { IconSection, RefSection, TextSection } from "@/panels/properties/ContentSections";
@@ -43,6 +44,7 @@ const SingleNodeSections = ({ node }: { node: PegoNode }) => (
     {hasStroke(node) ? <StrokeSection node={node} /> : null}
     {node.type === "path" ? <PathSection node={node} /> : null}
     {hasEffects(node) ? <EffectsSection node={node} /> : null}
+    <AnimationSection node={node} />
     <ExportSection node={node} />
   </>
 );

@@ -38,7 +38,7 @@ export const HideRightPanelButton = ({ className }: { className?: string }) => (
  * Floating button over the canvas that brings the hidden properties column back. The left side
  * needs none: its icon rail always stays visible.
  */
-export const ShowRightPanelButton = () => {
+export const ShowRightPanelButton = ({ className }: { className?: string }) => {
   const hidden = useLayoutStore((s) => s.rightHidden);
   if (!hidden) return null;
   return (
@@ -47,7 +47,10 @@ export const ShowRightPanelButton = () => {
       size="icon-sm"
       aria-label="Show properties panel"
       title={`Show properties (${SHORTCUT} for both panels)`}
-      className="absolute top-3 right-3 z-20 border border-border bg-card/90 shadow-sm backdrop-blur hover:bg-accent"
+      className={cn(
+        "absolute top-3 right-3 z-20 border border-border bg-card/90 shadow-sm backdrop-blur hover:bg-accent",
+        className,
+      )}
       onClick={() => useLayoutStore.getState().toggleRight()}
     >
       <PanelRightIcon />

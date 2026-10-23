@@ -102,6 +102,8 @@ export const useEditorShortcuts = () => {
         return;
       }
       if (isEditable(e.target) || isTextEditing()) return;
+      // A dialog or menu already closed itself on this Escape; don't also drop the selection.
+      if (e.key === "Escape" && e.defaultPrevented) return;
       // The active tool gets first pick (e.g. the pen finishing a path on Enter/Escape).
       if (getToolHandler(useToolStore.getState().tool)?.onKeyDown?.(e)) {
         e.preventDefault();

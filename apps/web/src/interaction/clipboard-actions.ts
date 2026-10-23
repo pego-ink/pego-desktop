@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { getLayout } from "@/canvas/layout";
 import { screenToDoc } from "@/canvas/types";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, viewportCenter } from "@/store/use-viewport-store";
 import {
   payloadFromText,
   pasteNodesAt,
@@ -41,8 +41,8 @@ const readClipboardPayload = async (): Promise<NodesPayload | null> => {
 
 /** The middle of the view, in canvas coordinates. */
 export const viewCenter = () => {
-  const { camera, size } = useViewportStore.getState();
-  return screenToDoc(camera, size.width / 2, size.height / 2);
+  const middle = viewportCenter();
+  return screenToDoc(useViewportStore.getState().camera, middle.x, middle.y);
 };
 
 /** Paste here: the clipboard's layers with their top-left at `at` (the view's middle by default). */

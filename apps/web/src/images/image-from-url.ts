@@ -3,7 +3,7 @@ import { bridgeHttpUrl } from "@/agent/bridge-client";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { screenToDoc } from "@/canvas/types";
 import { insertImageCentered, readImageFile } from "@/interaction/image-file";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, viewportCenter } from "@/store/use-viewport-store";
 
 /**
  * Images from the web, by URL: "From URL" in Assets › Images and pasting an image link (or an
@@ -130,8 +130,8 @@ export const placeImageFromUrl = async (
       toast.dismiss(progress);
       return false;
     }
-    const { camera, size } = useViewportStore.getState();
-    const point = screen ?? { x: size.width / 2, y: size.height / 2 };
+    const { camera } = useViewportStore.getState();
+    const point = screen ?? viewportCenter();
     insertImageCentered(asset, screenToDoc(camera, point.x, point.y));
     toast.success(`Placed the image from ${host}`, { id: progress });
     return true;

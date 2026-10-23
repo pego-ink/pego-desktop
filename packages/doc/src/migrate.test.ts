@@ -22,7 +22,7 @@ describe("migrateDocument", () => {
     expect(loadDocument(v3)?.children[0]?.children[0]).toMatchObject({ visible: false });
   });
 
-  test("upgrades version 4 documents to 5 and accepts flipX / flipY", () => {
+  test("upgrades version 4 documents and accepts flipX / flipY", () => {
     const v4 = {
       version: 4,
       id: "d",
@@ -35,8 +35,43 @@ describe("migrateDocument", () => {
         },
       ],
     };
-    expect(migrateDocument(v4)).toMatchObject({ version: 5 });
+    expect(migrateDocument(v4)).toMatchObject({ version: DOCUMENT_VERSION });
     expect(loadDocument(v4)?.children[0]?.children[0]).toMatchObject({ flipX: true, flipY: true });
+  });
+
+  test("upgrades version 5 documents and accepts an animation", () => {
+    const animation = { preset: "grow_up", delay: 200, duration: 500, easing: "spring" };
+    const v5 = {
+      version: 5,
+      id: "d",
+      name: "V5",
+      children: [
+        {
+          type: "page",
+          id: "p",
+          children: [
+            { type: "rectangle", id: "r", animation },
+            { type: "text", id: "t", content: "70%", animation: { preset: "none", countUp: true } },
+          ],
+        },
+      ],
+    };
+    expect(migrateDocument(v5)).toMatchObject({ version: DOCUMENT_VERSION });
+    const nodes = loadDocument(v5)?.children[0]?.children;
+    expect(nodes?.[0]).toMatchObject({ animation });
+    expect(nodes?.[1]).toMatchObject({ animation: { preset: "none", countUp: true } });
+  });
+
+  test("upgrades version 6 documents and accepts a shader fill", () => {
+    const fill = { type: "shader", preset: "aurora", uniforms: { speed: 1.2 } };
+    const v6 = {
+      version: 6,
+      id: "d",
+      name: "V6",
+      children: [{ type: "page", id: "p", children: [{ type: "rectangle", id: "r", fill }] }],
+    };
+    expect(migrateDocument(v6)).toMatchObject({ version: DOCUMENT_VERSION });
+    expect(loadDocument(v6)?.children[0]?.children[0]).toMatchObject({ fill });
   });
 
   test("leaves current documents unchanged", () => {

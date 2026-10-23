@@ -1,5 +1,6 @@
 import {
   findNode,
+  shaderFallbackColor,
   flipOf,
   isContainer,
   MAX_INSTANCE_DEPTH,
@@ -22,6 +23,8 @@ import {
 import type { BuildCtx, Decl, IrComponent, IrEl, IrIcon, IrNode, Parent, Scope } from "./ir";
 import { camelCase, cssVarName, pascalCase, uniqueName } from "./naming";
 import { paintDef, type SvgDef } from "./svg-paint";
+import { countUpAttr, motionDecls } from "./motion-css";
+import { shaderAttrs, shaderFillDecls } from "./shader-export";
 
 export const DEFAULT_FONT = "Inter";
 
@@ -202,6 +205,10 @@ const transformParts = (node: PegoNode, ctx: BuildCtx, box: Box | undefined): De
     decls.push(["transform-origin", "top left"]);
   }
   if (transform) decls.push(["transform", transform]);
+  if (node.type !== "page" && node.animation) {
+    decls.push(...motionDecls(node.animation, rotation !== 0));
+    ctx.motion.add(node.animation.preset);
+  }
   return decls;
 };
 
@@ -270,6 +277,7 @@ const fillDecl = (fill: Fill | undefined, ctx: BuildCtx): Decl[] => {
     const color = colorOf(fill, ctx);
     return color ? [["background-color", color]] : [];
   }
+  if (fill.type === "shader") return shaderFillDecls(fill, ctx);
   if (fill.type === "image") {
     return [
       ["background-image", `url("${fill.src}")`],
@@ -435,13 +443,15 @@ const buildText = (
     ...effectDecls(node.effects, ctx, "text"),
   ];
   const propName = scope?.propOf.get(node.id);
+  const counts = node.animation?.countUp === true && /\d/.test(content);
+  if (counts) ctx.countUp = true;
   return {
     kind: "el",
     tag: textTag(node, ctx, size, weight, content, wraps),
     label: node.name ?? "text",
     decls,
     placement: parts.placement,
-    attrs: [],
+    attrs: counts && node.animation ? [countUpAttr(node.animation)] : [],
     children: [propName ? { kind: "prop", name: propName } : { kind: "text", value: content }],
   };
 };
@@ -524,6 +534,8 @@ const buildPath = (node: PathNode, parent: Parent, ctx: BuildCtx, box: Box | und
   const fillAttr = ((): string => {
     if (fill === undefined) return "none";
     if (typeof fill === "string") return colorOf(fill, ctx) ?? "none";
+    // SVG cannot run a shader: its first color stands in.
+    if (fill.type === "shader") return shaderFallbackColor(fill, ctx.doc.variables).toLowerCase();
     const id = `paint${++ctx.paintCount}`;
     const angle = fill.type === "linear" ? numOf(fill.angle, ctx, 180) : 0;
     const area = { x: minX, y: minY, width: vbWidth, height: vbHeight };
@@ -662,7 +674,7 @@ const buildContainer = (
     label,
     decls: [...parts.decls, ...own],
     placement: parts.placement,
-    attrs: [],
+    attrs: node.type === "frame" ? shaderAttrs(node.fill, ctx) : [],
     children: buildChildren(node, ctx, scope, depth),
   };
 };
@@ -870,7 +882,7 @@ export const buildNode = (
           ...effectDecls(raw.effects, ctx, "box"),
         ],
         placement: parts.placement,
-        attrs: [],
+        attrs: shaderAttrs(raw.fill, ctx),
         children: [],
       };
     }
@@ -895,5 +907,8 @@ export const createBuildCtx = (
   propNames: inlineRefs ? new Map() : collectPropNames(doc, root),
   h1Used: false,
   paintCount: 0,
+  motion: new Set(),
+  countUp: false,
+  shaders: false,
   hasIcon,
 });

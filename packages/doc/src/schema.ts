@@ -61,10 +61,40 @@ export const imageFillSchema = z.object({
     ),
   fit: z.enum(["cover", "contain", "stretch"]).default("cover"),
 });
-/** What shapes are filled with: a color, a gradient or an image. */
+/** Built-in shader looks (`shaders.ts`); `custom` runs the fill's own `code`. */
+export const shaderPresetSchema = z.enum([
+  "aurora",
+  "gradient_flow",
+  "waves",
+  "grain",
+  "shimmer",
+  "dots",
+  "custom",
+]);
+/** A float, a vec2-4, or a color (hex or `$variable`, read as r, g, b[, a] in 0..1). */
+export const shaderUniformValueSchema = z.union([
+  z.number(),
+  z.array(z.number()).min(2).max(4),
+  colorValueSchema,
+]);
+/** A fragment shader paints the shape (see `shaders.ts` for the code format). */
+export const shaderFillSchema = z.object({
+  type: z.literal("shader"),
+  preset: shaderPresetSchema,
+  /** Code of a `custom` shader: `vec4 main(vec2 fragCoord)`, with `iResolution` and `iTime`. */
+  code: z.string().max(20_000).optional(),
+  /** Uniform values by name, over the preset's defaults. */
+  uniforms: z.record(z.string(), shaderUniformValueSchema).optional(),
+});
+/** What shapes are filled with: a color, a gradient, an image or a shader. */
 export const fillSchema = z.union([
   colorValueSchema,
-  z.discriminatedUnion("type", [linearGradientSchema, radialGradientSchema, imageFillSchema]),
+  z.discriminatedUnion("type", [
+    linearGradientSchema,
+    radialGradientSchema,
+    imageFillSchema,
+    shaderFillSchema,
+  ]),
 ]);
 
 /** One value for every side, or `[top, right, bottom, left]` (CSS order). */
@@ -112,12 +142,45 @@ const baseNode = z.object({
   visible: z.boolean().optional(),
 });
 
-/** Every node that renders (everything but pages): adds the mirror flags. */
+// --- motion -----------------------------------------------------------------
+
+/**
+ * How a node enters when the design plays (preview, exports). `none` moves nothing (for a text that
+ * only counts up); `grow_up` / `grow_right` grow from the bottom / left edge, like a bar.
+ */
+export const animationPresetSchema = z.enum([
+  "none",
+  "fade",
+  "slide_up",
+  "slide_down",
+  "slide_left",
+  "slide_right",
+  "grow_up",
+  "grow_right",
+  "scale",
+  "pop",
+]);
+export const animationEasingSchema = z.enum(["ease_out", "ease_in_out", "linear", "spring"]);
+export const animationSchema = z.object({
+  preset: animationPresetSchema,
+  /** Milliseconds after playback starts. Default 0. */
+  delay: z.number().min(0).max(60_000).optional(),
+  /** Milliseconds. Default 600. */
+  duration: z.number().min(1).max(60_000).optional(),
+  /** Default `ease_out`. */
+  easing: animationEasingSchema.optional(),
+  /** Text only: every number in the content counts up from 0 while it plays ("70%", "± 6"). */
+  countUp: z.boolean().optional(),
+});
+
+/** Every node that renders (everything but pages): adds the mirror flags and the entrance. */
 const renderedNode = baseNode.extend({
   /** Mirror left-right around the node's own box center (applied before rotation). */
   flipX: z.boolean().optional(),
   /** Mirror top-bottom around the node's own box center (applied before rotation). */
   flipY: z.boolean().optional(),
+  /** Entrance played in preview and exports; the canvas shows the end state while editing. */
+  animation: animationSchema.optional(),
 });
 
 const paintedNode = renderedNode.extend({
@@ -246,10 +309,16 @@ export type GradientStop = z.infer<typeof gradientStopSchema>;
 export type LinearGradient = z.infer<typeof linearGradientSchema>;
 export type RadialGradient = z.infer<typeof radialGradientSchema>;
 export type ImageFill = z.infer<typeof imageFillSchema>;
+export type ShaderFill = z.infer<typeof shaderFillSchema>;
+export type ShaderPreset = z.infer<typeof shaderPresetSchema>;
+export type ShaderUniformValue = z.infer<typeof shaderUniformValueSchema>;
 export type Fill = z.infer<typeof fillSchema>;
 export type ShadowEffect = z.infer<typeof shadowEffectSchema>;
 export type BlurEffect = z.infer<typeof blurEffectSchema>;
 export type Effect = z.infer<typeof effectSchema>;
+export type Animation = z.infer<typeof animationSchema>;
+export type AnimationPreset = z.infer<typeof animationPresetSchema>;
+export type AnimationEasing = z.infer<typeof animationEasingSchema>;
 export type RectangleNode = z.infer<typeof rectangleSchema>;
 export type EllipseNode = z.infer<typeof ellipseSchema>;
 export type PathNode = z.infer<typeof pathSchema>;
@@ -321,7 +390,7 @@ export const variableSchema = z.discriminatedUnion("type", [
 export const variablesSchema = z.record(z.string(), variableSchema);
 
 /** Current document format version; older documents go through `migrateDocument` first. */
-export const DOCUMENT_VERSION = 5;
+export const DOCUMENT_VERSION = 7;
 
 export const documentSchema = z.object({
   version: z.literal(DOCUMENT_VERSION),

@@ -38,15 +38,20 @@ const FAKES = [
 ];
 
 let added: Skill[] = [];
+// The real core skills apply to every run; stash them so the fakes are the only core skills.
+let stashed: Skill[] = [];
 beforeEach(() => {
   localRunConfig.bridgeWaitMs = 0; // no bridge in tests: local runs fail fast instead of waiting
   resetStores();
   useAgentStore.getState().set({ selectedSkillId: undefined, selectedStyleId: undefined });
+  stashed = skills.filter((skill) => skill.core);
+  for (const skill of stashed) skills.splice(skills.indexOf(skill), 1);
   added = [...FAKES];
   skills.unshift(...added);
 });
 afterEach(() => {
   for (const skill of added) skills.splice(skills.indexOf(skill), 1);
+  skills.unshift(...stashed);
 });
 
 const state = () => useAgentStore.getState();
@@ -100,6 +105,20 @@ describe("resolveRunSkills", () => {
 
   test("the core skill is never listed twice", () => {
     expect(resolveRunSkills("x", "fake-core").map((s) => s.id)).toEqual(["fake-core"]);
+  });
+
+  test("every core skill comes first, in registry order", () => {
+    const polish = fake("fake-polish", "Fake polish", { core: true });
+    skills.splice(1, 0, polish);
+    added.push(polish);
+    expect(resolveRunSkills("buat zzfoo page").map((s) => s.id)).toEqual([
+      "fake-core",
+      "fake-polish",
+      "fake-landing",
+    ]);
+    expect(skillPromptPrefix(resolveRunSkills("x", null))).toStartWith(
+      "Use Pego skills: fake-core, fake-polish (call get_skill).",
+    );
   });
 });
 

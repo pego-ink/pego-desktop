@@ -1,12 +1,13 @@
-import type { Fill, GradientStop } from "@pego/doc";
+import { shaderFallbackColor, type Fill, type GradientStop } from "@pego/doc";
 
-export type FillKind = "solid" | "linear" | "radial" | "image";
+export type FillKind = "solid" | "linear" | "radial" | "image" | "shader";
 
 export const FILL_KINDS: readonly [FillKind, string][] = [
   ["solid", "Solid"],
   ["linear", "Linear gradient"],
   ["radial", "Radial gradient"],
   ["image", "Image"],
+  ["shader", "Shader (animated)"],
 ];
 
 export const kindOfFill = (fill: Fill): FillKind =>
@@ -25,13 +26,19 @@ const stopsOf = (fill: Fill): GradientStop[] => {
       { color: "#FFFFFF", position: 1 },
     ];
   }
+  if (fill.type === "shader") {
+    return [
+      { color: shaderFallbackColor(fill, {}), position: 0 },
+      { color: "#FFFFFF", position: 1 },
+    ];
+  }
   return fill.stops;
 };
 
 /**
  * Switch a fill to another kind, keeping what carries over: the solid color becomes the first
- * gradient stop and back, and gradients keep their stops. Image needs a picked file, so it
- * returns null and the caller asks for one.
+ * gradient stop and back, and gradients keep their stops. A shader starts as the aurora preset.
+ * Image needs a picked file, so it returns null and the caller asks for one.
  */
 export const convertFill = (fill: Fill, kind: FillKind): Fill | null => {
   switch (kind) {
@@ -43,6 +50,10 @@ export const convertFill = (fill: Fill, kind: FillKind): Fill | null => {
       return { type: "radial", center: [0.5, 0.5], radius: [0.5, 0.5], stops: stopsOf(fill) };
     case "image":
       return null;
+    case "shader":
+      return typeof fill === "object" && fill.type === "shader"
+        ? fill
+        : { type: "shader", preset: "aurora" };
   }
 };
 

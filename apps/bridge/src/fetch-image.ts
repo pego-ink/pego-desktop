@@ -38,12 +38,62 @@ const ipv4Parts = (address: string): number[] | null => {
     : null;
 };
 
+/** The eight 16-bit groups of an IPv6 address (`::` expanded, a dotted IPv4 tail folded in). */
+const ipv6Groups = (address: string): number[] | null => {
+  let text = address.replace(/%.*$/, ""); // zone id (fe80::1%en0)
+  const tail = /(\d+\.\d+\.\d+\.\d+)$/.exec(text);
+  if (tail?.[1]) {
+    const v4 = ipv4Parts(tail[1]);
+    if (!v4) return null;
+    const [a = 0, b = 0, c = 0, d = 0] = v4;
+    text = `${text.slice(0, -tail[1].length)}${((a << 8) | b).toString(16)}:${((c << 8) | d).toString(16)}`;
+  }
+  const halves = text.split("::");
+  if (halves.length > 2) return null;
+  const parse = (part: string) => (part === "" ? [] : part.split(":"));
+  const head = parse(halves[0] ?? "");
+  const rest = halves.length === 2 ? parse(halves[1] ?? "") : [];
+  const missing = 8 - head.length - rest.length;
+  if (halves.length === 2 ? missing < 1 : missing !== 0) return null;
+  const groups = [...head, ...Array<string>(halves.length === 2 ? missing : 0).fill("0"), ...rest];
+  if (!groups.every((g) => /^[0-9a-f]{1,4}$/.test(g))) return null;
+  return groups.map((g) => parseInt(g, 16));
+};
+
+/** The IPv4 address held in two 16-bit groups. */
+const ipv4From = (high: number, low: number): string =>
+  `${high >> 8}.${high & 0xff}.${low >> 8}.${low & 0xff}`;
+
+/** True for IPv6 addresses that are local, private, reserved, or carry such an IPv4 address. */
+const isPrivateIpv6 = (groups: number[]): boolean => {
+  const [g0 = 0, g1 = 0, g2 = 0, g3 = 0, g4 = 0, g5 = 0, g6 = 0, g7 = 0] = groups;
+  const zeroTo = (n: number) => groups.slice(0, n).every((g) => g === 0);
+  // ::ffff:a.b.c.d (mapped) and ::a.b.c.d (compatible, also :: and ::1) are judged as IPv4.
+  if (zeroTo(5) && (g5 === 0xffff || g5 === 0)) {
+    if (g5 === 0 && g6 === 0) return true; // ::, ::1 and the rest of ::/112
+    return isPrivateAddress(ipv4From(g6, g7));
+  }
+  // NAT64 (64:ff9b::/96) carries an IPv4 address in its last 32 bits.
+  if (g0 === 0x64 && g1 === 0xff9b && g2 === 0 && g3 === 0 && g4 === 0 && g5 === 0) {
+    return isPrivateAddress(ipv4From(g6, g7));
+  }
+  // 6to4 (2002::/16) carries one in groups 1 and 2.
+  if (g0 === 0x2002) return isPrivateAddress(ipv4From(g1, g2));
+  return (
+    (g0 === 0x64 && g1 === 0xff9b && g2 === 1) || // local-use NAT64 64:ff9b:1::/48
+    (g0 === 0x100 && g1 === 0 && g2 === 0 && g3 === 0) || // discard 100::/64
+    (g0 === 0x2001 && g1 === 0) || // Teredo 2001::/32 (hides an IPv4 address)
+    (g0 === 0x2001 && g1 === 0xdb8) || // documentation 2001:db8::/32
+    (g0 & 0xffc0) === 0xfe80 || // link-local fe80::/10
+    (g0 & 0xffc0) === 0xfec0 || // site-local fec0::/10
+    (g0 & 0xfe00) === 0xfc00 || // unique local fc00::/7
+    (g0 & 0xff00) === 0xff00 // multicast ff00::/8
+  );
+};
+
 /** True for addresses on the user's machine or private networks (or not routable at all). */
 export const isPrivateAddress = (address: string): boolean => {
   const lower = address.toLowerCase();
-  // IPv4-mapped IPv6 (::ffff:10.0.0.1) is judged as the IPv4 address.
-  const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(lower);
-  if (mapped?.[1]) return isPrivateAddress(mapped[1]);
   const v4 = ipv4Parts(lower);
   if (v4) {
     const [a = 0, b = 0] = v4;
@@ -61,17 +111,8 @@ export const isPrivateAddress = (address: string): boolean => {
     );
   }
   if (isIP(lower) === 6) {
-    return (
-      lower === "::" ||
-      lower === "::1" ||
-      lower.startsWith("fe8") ||
-      lower.startsWith("fe9") ||
-      lower.startsWith("fea") ||
-      lower.startsWith("feb") || // link-local fe80::/10
-      lower.startsWith("fc") ||
-      lower.startsWith("fd") || // unique local fc00::/7
-      lower.startsWith("ff") // multicast
-    );
+    const groups = ipv6Groups(lower);
+    return groups ? isPrivateIpv6(groups) : true;
   }
   return true; // not an address we understand: refuse
 };
