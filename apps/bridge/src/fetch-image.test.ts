@@ -58,6 +58,42 @@ describe("fetch-image", () => {
     }
   });
 
+  test("IPv6 forms that carry a private IPv4 address, and reserved IPv6 ranges, are refused", () => {
+    // How URL normalizes https://[::ffff:127.0.0.1]/ (hex, not dotted).
+    const fromUrl = new URL("https://[::ffff:127.0.0.1]/x.png").hostname.replace(/^\[|\]$/g, "");
+    for (const address of [
+      fromUrl,
+      "::ffff:7f00:1",
+      "::ffff:a00:1",
+      "0:0:0:0:0:ffff:c0a8:1",
+      "::127.0.0.1",
+      "::",
+      "0:0:0:0:0:0:0:1",
+      "64:ff9b::a9fe:a9fe", // NAT64 of 169.254.169.254
+      "64:ff9b:1::1",
+      "2002:7f00:1::", // 6to4 of 127.0.0.1
+      "2001:0:4136:e378::1", // Teredo
+      "2001:db8::1",
+      "100::1",
+      "fec0::1",
+      "febf::1",
+      "fc00::1",
+      "ff02::1",
+      "fe80::1%en0",
+      "1:2:3:4:5:6:7:8:9",
+    ]) {
+      expect(isPrivateAddress(address)).toBe(true);
+    }
+    for (const address of [
+      "::ffff:808:808", // 8.8.8.8
+      "64:ff9b::808:808",
+      "2002:808:808::1",
+      "2a00:1450:4001:82a::200e",
+    ]) {
+      expect(isPrivateAddress(address)).toBe(false);
+    }
+  });
+
   test("only https on the default port, no credentials", () => {
     expect(checkImageUrl("https://example.com/a.png").hostname).toBe("example.com");
     for (const bad of [
