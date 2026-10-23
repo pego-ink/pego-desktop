@@ -7,6 +7,9 @@ import {
   openBrowserPanel,
   revealBrowserPanel,
 } from "./browser-session";
+import { primeFontResolver } from "@/fonts/resolve-font";
+import { normalizeImageDataUrl } from "./normalize-image";
+import { inlineSnapshotImages } from "./snapshot-images";
 import { boxScript, describeScript, snapshotScript } from "./page-scripts";
 import { useBrowserStore } from "./use-browser-store";
 
@@ -62,7 +65,23 @@ export const createBrowserHost = (api: DesktopBrowserApi): BrowserHost => {
     },
     snapshot: async (target: BrowserTarget) => {
       requirePage();
-      return (await evaluateInPage(api, snapshotScript(target))) as DomSnapshot;
+      const snapshot = (await evaluateInPage(api, snapshotScript(target))) as DomSnapshot;
+      // resolveFont (sync, used by the converter) needs the font catalog.
+      await primeFontResolver().catch(() => undefined);
+      return inlineSnapshotImages(snapshot, {
+        ensureVisible: openBrowserPanel,
+        capture: async (clip) => {
+          const shot = (await api.cdp("Page.captureScreenshot", {
+            format: "png",
+            clip,
+            captureBeyondViewport: true,
+            fromSurface: true,
+          })) as { data: string };
+          return `data:image/png;base64,${shot.data}`;
+        },
+        ...(api.fetchImage ? { fetchImage: api.fetchImage } : {}),
+        normalize: normalizeImageDataUrl,
+      });
     },
     describeElement: async (target: BrowserTarget) => {
       requirePage();

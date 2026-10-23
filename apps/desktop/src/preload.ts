@@ -105,6 +105,8 @@ const browser = {
     ipcRenderer.send(BROWSER_CHANNELS.setEmulation, emulation),
   cdp: (method: unknown, params?: unknown): Promise<unknown> =>
     ipcRenderer.invoke(BROWSER_CHANNELS.cdp, method, params),
+  fetchImage: (url: unknown): Promise<string> =>
+    ipcRenderer.invoke(BROWSER_CHANNELS.fetchImage, url),
   // Replay the current state so a late subscriber sees the view as it is.
   onState: (listener: (state: never) => void): (() => void) =>
     subscribe(BROWSER_CHANNELS.state, isBrowserState, listener, BROWSER_CHANNELS.getState),

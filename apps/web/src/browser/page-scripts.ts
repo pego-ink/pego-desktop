@@ -92,6 +92,47 @@ export const boxScript = (target: BrowserTarget): string =>
       ");return JSON.stringify({ok:pageBox(r.el,r.full)});",
   );
 
+/**
+ * DOM-free helpers of the snapshot walk (kept apart so tests can evaluate them): splitting a CSS
+ * value at top-level commas, classifying a computed `transform`, and collapsing the text of a
+ * merged paragraph the way the browser renders it (\u0001 stands for a <br>).
+ */
+export const PURE_HELPERS = String.raw`
+function splitTop(s){
+  var out=[],d=0,cur="";
+  for(var i=0;i<s.length;i++){
+    var ch=s.charAt(i);
+    if(ch==="(")d++;else if(ch===")")d--;
+    if(ch===","&&d===0){out.push(cur);cur=""}else cur+=ch;
+  }
+  out.push(cur);
+  return out;
+}
+function transformKind(t){
+  if(!t||t==="none")return 0;
+  var m=/^matrix(3d)?\(([^)]*)\)$/.exec(t);
+  if(!m)return 1;
+  var v=m[2].split(",").map(parseFloat),e=1e-3;
+  if(m[1]){
+    if(v.length!==16)return 1;
+    var idx=[1,2,3,4,6,7,8,9,11];
+    for(var i=0;i<idx.length;i++)if(Math.abs(v[idx[i]])>e)return 2;
+    return v[0]===1&&v[5]===1&&v[10]===1&&v[12]===0&&v[13]===0&&v[14]===0?0:1;
+  }
+  if(v.length!==6)return 1;
+  if(Math.abs(v[1])>e||Math.abs(v[2])>e)return 2;
+  return v[0]===1&&v[3]===1&&v[4]===0&&v[5]===0?0:1;
+}
+function collapseText(s,ws){
+  if(ws==="pre"||ws==="pre-wrap"||ws==="break-spaces")return s.replace(/\u0001/g,"\n").replace(/\n$/,"");
+  var keep=ws==="pre-line";
+  s=keep?s.replace(/[\t\r\f ]+/g," "):s.replace(/[\t\n\r\f ]+/g," ");
+  s=s.replace(/ ?\u0001 ?/g,"\n");
+  if(keep)s=s.replace(/ ?\n ?/g,"\n");
+  return s.replace(/^ +| +$/g,"").replace(/\n$/,"");
+}
+`;
+
 const SNAPSHOT_BODY = String.raw`
 var MAX_NODES=4000,MAX_INLINE=1400000,MAX_TOTAL_INLINE=8000000,inlined=0,count=0;
 function takeBudget(url){
@@ -111,9 +152,24 @@ function textStyle(cs){
   if(cs.textAlign&&cs.textAlign!=="start")s.textAlign=cs.textAlign;
   if(cs.textTransform&&cs.textTransform!=="none")s.textTransform=cs.textTransform;
   if(cs.objectFit&&cs.objectFit!=="fill")s.objectFit=cs.objectFit;
+  if(cs.whiteSpace&&cs.whiteSpace!=="normal")s.whiteSpace=cs.whiteSpace;
   return s;
 }
-function elementStyle(cs,rect){
+function layoutFacts(cs,pcs,s){
+  var m=[px(cs.marginTop),px(cs.marginRight),px(cs.marginBottom),px(cs.marginLeft)];
+  if(m.some(function(v){return v!==0}))s.margin=m;
+  var pd=pcs?pcs.display:"",pflex=pd.indexOf("flex")>=0,pgrid=pd.indexOf("grid")>=0;
+  if(pflex){
+    var g=parseFloat(cs.flexGrow);if(isFinite(g)&&g>0)s.flexGrow=g;
+    var sh=parseFloat(cs.flexShrink);if(isFinite(sh)&&sh!==1)s.flexShrink=sh;
+  }
+  if((pflex||pgrid)&&cs.alignSelf&&cs.alignSelf!=="auto")s.alignSelf=cs.alignSelf;
+  var fl=cs.cssFloat||cs.float;
+  if(fl&&fl!=="none")s.float=fl;
+  if(transformKind(cs.transform)>0)s.transformed=true;
+  return s;
+}
+function elementStyle(cs,rect,pcs){
   var s={display:cs.display};
   if(cs.position&&cs.position!=="static")s.position=cs.position;
   var flex=cs.display.indexOf("flex")>=0,grid=cs.display.indexOf("grid")>=0;
@@ -124,13 +180,20 @@ function elementStyle(cs,rect){
   if(flex||grid){
     if(cs.justifyContent&&cs.justifyContent!=="normal")s.justifyContent=cs.justifyContent;
     if(cs.alignItems&&cs.alignItems!=="normal")s.alignItems=cs.alignItems;
-    var g=px(flex&&cs.flexDirection.indexOf("column")===0?cs.rowGap:cs.columnGap);
-    if(g>0)s.gap=g;
+    var rg=px(cs.rowGap),cg=px(cs.columnGap);
+    if(rg>0)s.rowGap=rg;
+    if(cg>0){s.columnGap=cg;s.gap=cg}
   }
   var pad=[px(cs.paddingTop),px(cs.paddingRight),px(cs.paddingBottom),px(cs.paddingLeft)];
   if(pad.some(function(v){return v>0}))s.padding=pad;
   if(cs.backgroundColor&&cs.backgroundColor!=="rgba(0, 0, 0, 0)"&&cs.backgroundColor!=="transparent")s.backgroundColor=normColor(cs.backgroundColor);
-  if(cs.backgroundImage&&cs.backgroundImage!=="none")s.backgroundImage=normColors(cs.backgroundImage);
+  if(cs.backgroundImage&&cs.backgroundImage!=="none"){
+    s.backgroundImage=normColors(cs.backgroundImage);
+    if(cs.backgroundImage.indexOf("url(")>=0){
+      if(cs.backgroundSize&&cs.backgroundSize!=="auto"&&cs.backgroundSize!=="auto auto")s.backgroundSize=cs.backgroundSize;
+      if(cs.backgroundPosition&&cs.backgroundPosition!=="0% 0%")s.backgroundPosition=cs.backgroundPosition;
+    }
+  }
   var sides=["Top","Right","Bottom","Left"],bw=[],bc;
   for(var i=0;i<4;i++){
     var w=cs["border"+sides[i]+"Style"]==="none"||cs["border"+sides[i]+"Style"]==="hidden"?0:px(cs["border"+sides[i]+"Width"]);
@@ -144,6 +207,7 @@ function elementStyle(cs,rect){
   var op=parseFloat(cs.opacity);if(isFinite(op)&&op<1)s.opacity=op;
   if(cs.boxShadow&&cs.boxShadow!=="none")s.boxShadow=normColors(cs.boxShadow);
   if(cs.overflowX!=="visible"||cs.overflowY!=="visible")s.overflowHidden=true;
+  layoutFacts(cs,pcs,s);
   return s;
 }
 function componentOf(el){
@@ -182,12 +246,6 @@ function imageSource(el){
     if(!src)return null;
     if(src.indexOf("data:")===0)return takeBudget(src);
     return inlineImage(el)||(src.indexOf("https:")===0?src:null);
-  }
-  if(tag==="VIDEO"){
-    var poster=el.poster;
-    if(!poster)return null;
-    if(poster.indexOf("https:")===0)return poster;
-    return poster.indexOf("data:")===0?takeBudget(poster):null;
   }
   return null;
 }
@@ -256,13 +314,110 @@ function splitLines(node,raw){
   }
   return lines;
 }
+var INLINE_TAGS={SPAN:1,A:1,STRONG:1,B:1,EM:1,I:1,CODE:1,SMALL:1,SUP:1,SUB:1,MARK:1,ABBR:1,LABEL:1,BR:1,WBR:1,U:1,S:1,DEL:1,INS:1,TIME:1,Q:1,CITE:1,KBD:1,VAR:1,SAMP:1,BDI:1,BDO:1,FONT:1};
+var BLOCKISH={"block":1,"list-item":1,"flow-root":1,"table-cell":1,"inline-block":1};
+var NO_MERGE={INPUT:1,TEXTAREA:1,SELECT:1,BUTTON:1,IMG:1,VIDEO:1,CANVAS:1,IFRAME:1,OBJECT:1,EMBED:1,SVG:1,svg:1};
+function isSet(v){return !!v&&v!=="none"}
+/** An inline element with nothing of its own to draw: safe to fold into its block's paragraph. */
+function plainInline(c){
+  if(c.visibility!=="visible"||parseFloat(c.opacity)<1)return false;
+  if(c.backgroundColor&&c.backgroundColor!=="rgba(0, 0, 0, 0)"&&c.backgroundColor!=="transparent")return false;
+  if(isSet(c.backgroundImage)||isSet(c.boxShadow))return false;
+  var sides=["Top","Right","Bottom","Left"];
+  for(var i=0;i<4;i++){
+    var st=c["border"+sides[i]+"Style"];
+    if(st!=="none"&&st!=="hidden"&&px(c["border"+sides[i]+"Width"])>0)return false;
+  }
+  if(px(c.paddingLeft)>0||px(c.paddingRight)>0)return false;
+  if(c.position==="absolute"||c.position==="fixed"||c.position==="sticky")return false;
+  var fl=c.cssFloat||c.float;
+  return !fl||fl==="none";
+}
+function gatherInline(node,parts,rects){
+  for(var n=node.firstChild;n;n=n.nextSibling){
+    if(n.nodeType===3){
+      var raw=n.nodeValue||"";
+      parts.push(raw);
+      if(/\S/.test(raw)){
+        var rg=document.createRange();rg.selectNodeContents(n);
+        var rs=rg.getClientRects();
+        for(var i=0;i<rs.length;i++)if(rs[i].width>0||rs[i].height>0)rects.push(rs[i]);
+      }
+    }else if(n.nodeType===1){
+      if(isOwn(n)||SKIP[n.tagName])continue;
+      var cc=getComputedStyle(n);
+      if(cc.display==="none")continue;
+      if(!INLINE_TAGS[n.tagName]||cc.display!=="inline"||!plainInline(cc))return false;
+      if(n.tagName==="BR"){parts.push("\u0001");continue}
+      if(n.tagName==="WBR")continue;
+      if(!gatherInline(n,parts,rects))return false;
+    }
+  }
+  return true;
+}
+/**
+ * A block whose content is only plain inline text becomes ONE paragraph node. A block that draws
+ * something itself (background, border, padding...) stays an element holding that one text.
+ */
+function tryMerge(el,cs,rect,pcs,isRoot,pcomp){
+  if(NO_MERGE[el.tagName]||!BLOCKISH[cs.display]||!el.firstChild)return null;
+  var parts=[],rects=[];
+  if(!gatherInline(el,parts,rects)||rects.length===0)return null;
+  var text=collapseText(parts.join(""),cs.whiteSpace);
+  if(!/\S/.test(text))return null;
+  var l=Infinity,t=Infinity,r=-Infinity,b=-Infinity;
+  for(var i=0;i<rects.length;i++){
+    l=Math.min(l,rects[i].left);t=Math.min(t,rects[i].top);r=Math.max(r,rects[i].right);b=Math.max(b,rects[i].bottom);
+  }
+  var textNode={kind:"text",merged:true,text:text,box:rectBox({left:l,top:t,width:r-l,height:b-t}),style:textStyle(cs)};
+  var style=elementStyle(cs,rect,pcs);
+  var wrap=isRoot||style.backgroundColor!==undefined||style.backgroundImage!==undefined||style.borderWidth!==undefined||style.boxShadow!==undefined||style.padding!==undefined||style.opacity!==undefined||style.overflowHidden||style.transformed||(style.position!==undefined&&style.position!=="relative");
+  if(!wrap){
+    layoutFacts(cs,pcs,textNode.style);
+    count++;
+    return textNode;
+  }
+  var node={kind:"element",tag:el.tagName.toLowerCase(),box:rectBox(rect),style:style,children:[textNode]};
+  var comp=componentOf(el);
+  if(comp&&(!pcomp||pcomp.type!==comp.type))node.component=comp.name;
+  count+=2;
+  return node;
+}
+function svgComplex(svg){
+  if(svg.querySelector("mask,filter,clipPath,pattern,linearGradient,radialGradient,image,text,foreignObject,[fill-rule=evenodd],[clip-rule],[stroke-dasharray],[clip-path],[mask],[filter]"))return true;
+  var all=[svg].concat(Array.prototype.slice.call(svg.querySelectorAll("*"),0,300));
+  for(var i=0;i<all.length;i++){
+    var c=getComputedStyle(all[i]);
+    if(c.fillRule==="evenodd"||c.clipRule==="evenodd")return true;
+    if(c.strokeDasharray&&c.strokeDasharray!=="none")return true;
+    if((c.fill&&c.fill.indexOf("url(")===0)||(c.stroke&&c.stroke.indexOf("url(")===0))return true;
+  }
+  return false;
+}
+/** CSS Pego cannot draw: the element is screenshotted by the host instead. */
+function cssNeedsRaster(cs){
+  if(isSet(cs.filter)||isSet(cs.backdropFilter)||isSet(cs.webkitBackdropFilter))return true;
+  if(cs.mixBlendMode&&cs.mixBlendMode!=="normal")return true;
+  if(isSet(cs.clipPath)||isSet(cs.maskImage)||isSet(cs.webkitMaskImage))return true;
+  if(transformKind(cs.transform)===2)return true;
+  var bg=cs.backgroundImage;
+  if(bg&&bg!=="none"){
+    if(bg.indexOf("conic-gradient")>=0)return true;
+    if(bg.indexOf("url(")>=0&&splitTop(bg).length>1)return true;
+  }
+  return false;
+}
+function rasterNode(tag,box,style){
+  count++;
+  return {kind:"image",raster:true,src:"",tag:tag,box:box,style:style};
+}
 function walkChildren(el,out,pcomp,pcs){
   for(var n=el.firstChild;n&&count<MAX_NODES;n=n.nextSibling){
-    if(n.nodeType===1)walk(n,out,pcomp,false);
+    if(n.nodeType===1)walk(n,out,pcomp,false,pcs);
     else if(n.nodeType===3)addText(n,el,pcs,out);
   }
 }
-function walk(el,out,pcomp,isRoot){
+function walk(el,out,pcomp,isRoot,pcs){
   if(count>=MAX_NODES||SKIP[el.tagName]||isOwn(el))return;
   var cs=getComputedStyle(el);
   if(cs.display==="none")return;
@@ -270,13 +425,18 @@ function walk(el,out,pcomp,isRoot){
   if(!visible(cs))return;
   var rect=el.getBoundingClientRect();
   if(!isRoot&&(rect.width===0||rect.height===0))return;
-  var tag=el.tagName.toLowerCase(),box=rectBox(rect),style=elementStyle(cs,rect);
+  var tag=el.tagName.toLowerCase(),box=rectBox(rect),style=elementStyle(cs,rect,pcs);
+  if(!isRoot&&(tag==="video"||tag==="iframe"||cssNeedsRaster(cs))){
+    out.push(rasterNode(tag,box,style));
+    return;
+  }
   if(tag==="svg"){
+    if(!isRoot&&svgComplex(el)){out.push(rasterNode(tag,box,style));return}
     count++;
     out.push({kind:"svg",markup:svgMarkup(el),box:box,style:style});
     return;
   }
-  if(tag==="img"||tag==="video"){
+  if(tag==="img"){
     var src=imageSource(el);
     if(src){
       count++;
@@ -287,14 +447,17 @@ function walk(el,out,pcomp,isRoot){
     return;
   }
   if(tag==="canvas"){
-    var data=null;
-    if(inlined<MAX_TOTAL_INLINE){try{data=el.toDataURL("image/png")}catch(e){}}
+    var data=null,tainted=false;
+    if(inlined<MAX_TOTAL_INLINE){try{data=el.toDataURL("image/png")}catch(e){tainted=true}}
     if(data&&data.length<=MAX_INLINE&&takeBudget(data)){
       count++;
       out.push({kind:"image",tag:tag,src:data,box:box,style:style});
       return;
     }
+    if(tainted&&!isRoot){out.push(rasterNode(tag,box,style));return}
   }
+  var merged=tryMerge(el,cs,rect,pcs,isRoot,pcomp);
+  if(merged){out.push(merged);return}
   count++;
   var node={kind:"element",tag:tag,box:box,style:style,children:[]};
   var comp=componentOf(el);
@@ -314,7 +477,7 @@ function walk(el,out,pcomp,isRoot){
   walkChildren(el,node.children,comp||pcomp,cs);
 }
 var r=resolveTarget(TARGET),out=[];
-walk(r.el,out,null,true);
+walk(r.el,out,null,true,r.el.parentElement?getComputedStyle(r.el.parentElement):null);
 if(out.length===0)throw new Error("The target is not visible");
 var root=out[0];
 if(r.full){
@@ -337,7 +500,15 @@ return JSON.stringify({ok:{url:location.href,title:document.title,root:root}});
 
 /** Walks the target into a `DomSnapshot` (url, title, root), at most ~4000 nodes. */
 export const snapshotScript = (target: BrowserTarget): string =>
-  wrap(COMMON + COLOR_HELPERS + "var TARGET=" + targetJson(target) + ";" + SNAPSHOT_BODY);
+  wrap(
+    COMMON +
+      COLOR_HELPERS +
+      PURE_HELPERS +
+      "var TARGET=" +
+      targetJson(target) +
+      ";" +
+      SNAPSHOT_BODY,
+  );
 
 const DESCRIBE_BODY = String.raw`
 var MAX_HTML=20000,MAX_DESCENDANTS=50;

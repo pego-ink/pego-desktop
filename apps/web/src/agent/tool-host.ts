@@ -24,6 +24,7 @@ import {
   type DocumentTarget,
 } from "@/workspace/document-target";
 import { sharedBrowserHost } from "@/browser/browser-host";
+import { resolveFont } from "@/fonts/resolve-font";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
 import { generateImage } from "./generate-image";
@@ -242,6 +243,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     listIcons: listIconNames,
     renderImage,
     generateImage,
+    resolveFont,
     getAttachment: (id) => findAttachmentSrc(options.attachments ?? [], id),
     applyOps,
     setFocus: (ids) => run.set({ focusIds: ids }),
