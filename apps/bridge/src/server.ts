@@ -17,6 +17,7 @@ import { resolve, sep } from "node:path";
 import { listDesignFiles, readProjectFile } from "./project";
 import { createProject, listProjects } from "./projects";
 import { trashProject } from "./trash";
+import { fetchImage, FetchImageError } from "./fetch-image";
 
 type SocketData = { greeted: boolean };
 
@@ -122,6 +123,38 @@ export const startBridge = (options: BridgeOptions) => {
         }
         if (srv.upgrade(request, { data: { greeted: false } })) return undefined;
         return text(426, "Upgrade Required");
+      }
+
+      if (pathname === "/fetch-image") {
+        // Images the editor cannot load itself (no CORS on the site). Editor only: a browser page
+        // always sends Origin, and only the editor's passes.
+        if (!origin || !isOriginAllowed(origin, options.allowedOrigins)) {
+          return text(403, "Forbidden: origin not allowed");
+        }
+        const cors = { "access-control-allow-origin": origin, vary: "Origin" };
+        if (request.method !== "GET") {
+          return new Response("Method not allowed", { status: 405, headers: cors });
+        }
+        try {
+          const { bytes, type } = await fetchImage(
+            new URL(request.url).searchParams.get("url") ?? "",
+          );
+          return new Response(bytes, {
+            headers: {
+              ...cors,
+              "content-type": type,
+              "cache-control": "no-store",
+              "x-content-type-options": "nosniff",
+            },
+          });
+        } catch (error) {
+          const status = error instanceof FetchImageError ? error.status : 502;
+          const message = error instanceof Error ? error.message : "Could not fetch the image.";
+          return new Response(message, {
+            status,
+            headers: { ...cors, "content-type": "text/plain; charset=utf-8" },
+          });
+        }
       }
 
       const runToken = parseRunMcpPath(pathname);

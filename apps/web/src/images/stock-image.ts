@@ -3,7 +3,7 @@ import type { StockImage } from "@pego/agent";
 import { createId, type InsertOp, type PegoNode } from "@pego/doc";
 import { screenToDoc } from "@/canvas/types";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, viewportCenter } from "@/store/use-viewport-store";
 
 /** Drag payload of a photo from the Assets panel's image search. */
 export const STOCK_IMAGE_MIME = "application/x-pego-stock-image";
@@ -121,8 +121,8 @@ export const placeImageLayer = (
   screen?: { x: number; y: number },
 ): boolean => {
   const state = useDocumentStore.getState();
-  const { camera, size } = useViewportStore.getState();
-  const point = screen ?? { x: size.width / 2, y: size.height / 2 };
+  const { camera } = useViewportStore.getState();
+  const point = screen ?? viewportCenter();
   const node = imageLayerNode(layer, aspect, screenToDoc(camera, point.x, point.y));
   const op: InsertOp = { op: "insert", parentId: activePage(state).id, node };
   if (!state.commit([op], { label: `Place ${node.name}` })) return false;
