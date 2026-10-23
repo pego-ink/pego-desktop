@@ -29,6 +29,30 @@ const isLoadableUrl = (url: string): boolean =>
   /^https?:\/\/[^\s/?#]/i.test(url) ||
   /^(?:[a-z0-9](?:[a-z0-9.-]*[a-z0-9])?|\[[0-9a-f:.]+\])(?::\d{1,5})?(?:[/?#]\S*)?$/i.test(url);
 
+const MAX_SOURCE_URL = 2000;
+const MAX_SOURCE_QUERY_URL = 300;
+
+/**
+ * A page URL fit to remember on a screenshot: http(s) only, no `user:pass@`, the query and hash
+ * kept only while the whole URL stays short. Undefined when nothing safe fits.
+ */
+export const sanitizeSourceUrl = (raw: string): string | undefined => {
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return undefined;
+  }
+  if (url.protocol !== "http:" && url.protocol !== "https:") return undefined;
+  url.username = "";
+  url.password = "";
+  if (url.href.length > MAX_SOURCE_QUERY_URL) {
+    url.search = "";
+    url.hash = "";
+  }
+  return url.href.length <= MAX_SOURCE_URL ? url.href : undefined;
+};
+
 const SCREENSHOT_TYPES: Record<string, ToolImageType> = {
   png: "image/png",
   jpeg: "image/jpeg",
@@ -263,6 +287,7 @@ const browserTool = defineTool({
           }
           throw error;
         }
+        const sourceUrl = target.kind !== "selection" ? sanitizeSourceUrl(page.url) : undefined;
         const label = target.kind === "query" ? target.selector : page.title || page.url;
         const { node } = insertRaw(
           host,
@@ -273,10 +298,10 @@ const browserTool = defineTool({
             fit: "fill",
             alt: `Screenshot of ${page.title || page.url}`.slice(0, 500),
             // Remembered so the user can refresh it from the live page later.
-            ...(page.url && target.kind !== "selection"
+            ...(sourceUrl
               ? {
                   source: {
-                    url: page.url,
+                    url: sourceUrl,
                     ...(target.kind === "query" ? { selector: target.selector } : {}),
                   },
                 }

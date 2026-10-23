@@ -104,8 +104,34 @@ describe("parsePageMessage", () => {
     expect(parsePageMessage(`__pego__:{"type":"picked","text":"${long}"}`, P)).toBeUndefined();
     const huge = `__pego__:{"type":"picked","text":"${"a".repeat(3000)}"}`;
     expect(parsePageMessage(huge, P)).toBeUndefined();
-    const many = { type: "picked", a: "1", b: "1", c: "1", d: "1", e: "1", f: "1" };
-    expect(parsePageMessage(`__pego__:${JSON.stringify(many)}`, P)).toBeUndefined();
+    const unknown = { type: "picked", other: "1" };
+    expect(parsePageMessage(`__pego__:${JSON.stringify(unknown)}`, P)).toBeUndefined();
+  });
+
+  test("accepts what the picker really sends: nonce, flat fields and a path string", () => {
+    const path = JSON.stringify(
+      Array.from({ length: 30 }, () => ({ tag: "div", id: "", cls: "c", selector: "a > b" })),
+    );
+    const picked = {
+      type: "picked",
+      nonce: "0123456789abcdef0123456789abcdef",
+      tag: "button",
+      id: "go",
+      cls: "cta",
+      selector: "#app > button",
+      text: "Go",
+      path,
+    } as const;
+    expect(parsePageMessage(`__pego__:${JSON.stringify(picked)}`, P)).toEqual(picked);
+    const action = { type: "pick-action", nonce: "n", action: "screenshot" } as const;
+    expect(parsePageMessage(`__pego__:${JSON.stringify(action)}`, P)).toEqual(action);
+  });
+
+  test("a pick-action needs a known action; the path has its own limit", () => {
+    expect(parsePageMessage('__pego__:{"type":"pick-action"}', P)).toBeUndefined();
+    expect(parsePageMessage('__pego__:{"type":"pick-action","action":"rm"}', P)).toBeUndefined();
+    const tooLong = JSON.stringify({ type: "picked", path: "x".repeat(4001) });
+    expect(parsePageMessage(`__pego__:${tooLong}`, P)).toBeUndefined();
   });
 });
 

@@ -20,14 +20,25 @@ const prefixIds = (instanceId: string, node: PegoNode): PegoNode => {
     : prefixed;
 };
 
-/** The content an instance gave a slot (`descendants[slotId].children`), valid nodes only. */
+/** Validated slot content per `children` array: resolveInstance runs often, the parse must not. */
+const slotCache = new WeakMap<object, PegoNode[]>();
+
+/**
+ * The content an instance gave a slot (`descendants[slotId].children`), valid nodes only. Null
+ * when the slot is not filled: no children, or none of them valid (the default content shows).
+ */
 const slotContent = (override: Record<string, unknown> | undefined): PegoNode[] | null => {
   const children = override?.children;
   if (!Array.isArray(children)) return null;
-  return children.flatMap((child) => {
-    const parsed = nodeSchema.safeParse(child);
-    return parsed.success && parsed.data.type !== "page" ? [parsed.data] : [];
-  });
+  let valid = slotCache.get(children);
+  if (!valid) {
+    valid = children.flatMap((child) => {
+      const parsed = nodeSchema.safeParse(child);
+      return parsed.success && parsed.data.type !== "page" ? [parsed.data] : [];
+    });
+    slotCache.set(children, valid);
+  }
+  return valid.length > 0 ? valid : null;
 };
 
 /**

@@ -1,3 +1,5 @@
+import { sanitizeLabel } from "@pego/agent";
+
 /** One step of the path from body to the picked element (a breadcrumb). */
 export type PickedCrumb = {
   /** `tag#id` or `tag.class`. */
@@ -23,6 +25,8 @@ export type PickedElement = {
   component?: string;
   /** The start of the element's text. */
   text?: string;
+  /** The page URL when it was picked; the pick is stale once the page changes. */
+  url?: string;
 };
 
 /**
@@ -50,32 +54,65 @@ export const ELEMENT_PATH_SOURCE = String.raw`function(el,escape,isUnique){
 const isRecord = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null;
 
+/** A selector the picker may report: no quotes, backticks or line breaks, at most 300 characters. */
+const SAFE_SELECTOR = /^[\w\-#.>:()[\]=,*+~^$|\\ \u00A1-\u2027\u202A-\uFFFF]+$/;
+export const isSafeSelector = (selector: string): boolean =>
+  selector.length <= 300 && SAFE_SELECTOR.test(selector);
+
+/** Component names the page reports (main world, so untrusted) must look like identifiers. */
+const COMPONENT_NAME = /^[A-Z][\w$.]{0,63}$/;
+
+const MAX_CRUMBS = 30;
+const MAX_PART = 80;
+
 const briefName = (raw: Record<string, unknown>): string | null => {
   const { tag, id, cls } = raw;
   if (typeof tag !== "string" || !tag) return null;
-  if (typeof id === "string" && id) return `${tag}#${id}`;
-  return typeof cls === "string" && cls ? `${tag}.${cls}` : tag;
+  const name = tag.slice(0, MAX_PART);
+  if (typeof id === "string" && id) return `${name}#${id.slice(0, MAX_PART)}`;
+  return typeof cls === "string" && cls ? `${name}.${cls.slice(0, MAX_PART)}` : name;
 };
 
 const labelOf = (name: string, words: string, component?: string) =>
-  (component ? `${component} · ${name}` : words ? `${name} · ${words}` : name).slice(0, 120);
+  sanitizeLabel(component ? `${component} · ${name}` : words ? `${name} · ${words}` : name, 120);
 
-/** What the picker reports for a pick (`pickInfo` in page-scripts.ts); null for anything else. */
+/** The path of a pick: an array (a crumb) or the JSON string the picker sends; never throws. */
+const readPath = (value: unknown): unknown[] => {
+  if (typeof value === "string") {
+    try {
+      const parsed: unknown = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return Array.isArray(value) ? value : [];
+};
+
+/**
+ * What the picker reports for a pick (`pickInfo` in page-scripts.ts); null for anything else,
+ * and for a selector that is not strictly a selector (the page chose it).
+ */
 export const parsePicked = (message: unknown): PickedElement | null => {
   if (!isRecord(message)) return null;
   const name = briefName(message);
   const { tag, text, selector } = message;
-  if (!name || typeof tag !== "string" || typeof selector !== "string" || !selector) return null;
-  const words = typeof text === "string" ? text.trim().slice(0, 30) : "";
-  const path = (Array.isArray(message.path) ? message.path : []).flatMap((raw): PickedCrumb[] => {
-    if (!isRecord(raw) || typeof raw.selector !== "string") return [];
-    const label = briefName(raw);
-    return label ? [{ label, selector: raw.selector.slice(0, 1000) }] : [];
-  });
+  if (!name || typeof tag !== "string" || typeof selector !== "string") return null;
+  if (!isSafeSelector(selector)) return null;
+  const words = typeof text === "string" ? sanitizeLabel(text, 30) : "";
+  const path = readPath(message.path)
+    .slice(-MAX_CRUMBS)
+    .flatMap((raw): PickedCrumb[] => {
+      if (!isRecord(raw) || typeof raw.selector !== "string" || !isSafeSelector(raw.selector)) {
+        return [];
+      }
+      const label = briefName(raw);
+      return label ? [{ label: sanitizeLabel(label, 120), selector: raw.selector }] : [];
+    });
   return {
-    tag,
-    selector: selector.slice(0, 1000),
-    label: labelOf(name, words),
+    tag: sanitizeLabel(tag, MAX_PART),
+    selector,
+    label: labelOf(sanitizeLabel(name, 120), words),
     path,
     ...(words ? { text: words } : {}),
   };
@@ -87,8 +124,11 @@ export const parsePicked = (message: unknown): PickedElement | null => {
  * starts (not on every element inside it).
  */
 export const withComponents = (picked: PickedElement, names: readonly unknown[]): PickedElement => {
-  if (names.length !== picked.path.length) return picked;
-  const valid = names.map((name) => (typeof name === "string" && name ? name : undefined));
+  // The picker may have dropped the outermost crumbs to fit its message: line up from the element.
+  if (names.length < picked.path.length) return picked;
+  const valid = names
+    .slice(names.length - picked.path.length)
+    .map((name) => (typeof name === "string" && COMPONENT_NAME.test(name) ? name : undefined));
   const path = picked.path.map((crumb, index) => {
     const name = valid[index];
     return name && name !== valid[index - 1] ? { ...crumb, component: name } : crumb;

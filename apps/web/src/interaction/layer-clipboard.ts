@@ -49,6 +49,31 @@ const isEditable = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   (target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName));
 
+/** What a copy or cut event looks like to `shouldHandleLayerClipboard`. */
+export type ClipboardContext = {
+  /** The event target or the focused element is an input, textarea, select or contenteditable. */
+  inEditable: boolean;
+  /** The canvas text editor is open. */
+  textEditing: boolean;
+  /** The text the user has selected on the page (empty when nothing is). */
+  selectedText: string;
+  /** The selection's anchor sits in an editable field. */
+  selectionInEditable: boolean;
+  /** Layers are selected on the canvas. */
+  hasLayers: boolean;
+};
+
+/**
+ * Whether a copy or cut is about the selected layers. Not when a field or the text editor has it,
+ * nor when the user selected text anywhere (the agent transcript, a panel): that text stays theirs.
+ */
+export const shouldHandleLayerClipboard = (ctx: ClipboardContext): boolean =>
+  ctx.hasLayers &&
+  !ctx.inEditable &&
+  !ctx.textEditing &&
+  !ctx.selectionInEditable &&
+  ctx.selectedText.length === 0;
+
 /** Puts the selected layers on the clipboard (ids as text, ids for the composer, the layers). */
 const writeSelection = (data: DataTransfer): boolean => {
   const { doc, selection } = useDocumentStore.getState();
@@ -86,14 +111,26 @@ export const useLayerCopy = () => {
   useEffect(() => {
     const outsideFields = (e: ClipboardEvent) =>
       e.clipboardData !== null && !isEditable(e.target) && !isTextEditing();
+    const canCopyLayers = (e: ClipboardEvent) => {
+      const selection = window.getSelection();
+      const anchor = selection?.anchorNode;
+      return shouldHandleLayerClipboard({
+        inEditable: isEditable(e.target) || isEditable(document.activeElement),
+        textEditing: isTextEditing(),
+        selectedText: selection?.toString() ?? "",
+        selectionInEditable: isEditable(
+          anchor instanceof Element ? anchor : (anchor?.parentElement ?? null),
+        ),
+        hasLayers: useDocumentStore.getState().selection.length > 0,
+      });
+    };
     const onCopy = (e: ClipboardEvent) => {
-      if (!outsideFields(e)) return;
-      if (window.getSelection()?.toString()) return; // copying selected UI text stays the browser's
-      if (writeSelection(e.clipboardData!)) e.preventDefault();
+      if (e.clipboardData === null || !canCopyLayers(e)) return;
+      if (writeSelection(e.clipboardData)) e.preventDefault();
     };
     const onCut = (e: ClipboardEvent) => {
-      if (!outsideFields(e) || window.getSelection()?.toString()) return;
-      if (!writeSelection(e.clipboardData!)) return;
+      if (e.clipboardData === null || !canCopyLayers(e)) return;
+      if (!writeSelection(e.clipboardData)) return;
       e.preventDefault();
       runDelete();
     };

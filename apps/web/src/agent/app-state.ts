@@ -107,7 +107,8 @@ export const collectAppState = (): AppState => {
                   .map((crumb) =>
                     crumb.component ? `${crumb.component} · ${crumb.label}` : crumb.label,
                   )
-                  .join(" > "),
+                  .join(" > ")
+                  .slice(-500),
               }
             : browser.hasPicked
               ? { label: "an element" }

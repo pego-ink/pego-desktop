@@ -77,15 +77,36 @@ export const parseBounds = (value: unknown): BrowserBounds | null => {
   };
 };
 
-export const MAX_PAGE_MESSAGE_LENGTH = 2048;
+export const MAX_PAGE_MESSAGE_LENGTH = 8192;
 const MAX_FIELD_LENGTH = 200;
-const MAX_FIELDS = 6;
+/** Per-field limits above the default: a selector, and the picked element's path (JSON string). */
+const FIELD_LIMITS: Record<string, number> = { selector: 400, path: 4000 };
+const MAX_KEY_LENGTH = 32;
+/** The only fields a page message may have (the editor checks the nonce and parses the rest). */
+const MESSAGE_FIELDS = new Set([
+  "type",
+  "nonce",
+  "tag",
+  "id",
+  "cls",
+  "selector",
+  "text",
+  "path",
+  "action",
+]);
+const PICK_ACTIONS = new Set(["import", "screenshot"]);
+const MESSAGE_TYPES = new Set(["picked", "pick-cancelled", "pick-action"]);
 
-export type PageMessage = { type: "picked" | "pick-cancelled"; [field: string]: string };
+export type PageMessage = {
+  type: "picked" | "pick-cancelled" | "pick-action";
+  [field: string]: string;
+};
 
 /**
- * Parses a console message of the form `__pego__:{json}`. Only `{type: "picked" | "pick-cancelled"}`
- * with a few short string fields passes; undefined for anything else.
+ * Parses a console message of the form `__pego__:{json}`. Only the picker's three types pass
+ * (`picked`, `pick-cancelled`, `pick-action` with `action` import | screenshot), with known
+ * flat string fields within their limits; undefined for anything else. Authentication (the
+ * nonce) is the editor's job: this only bounds what reaches it.
  */
 export const parsePageMessage = (message: unknown, prefix: string): PageMessage | undefined => {
   if (typeof message !== "string" || message.length > MAX_PAGE_MESSAGE_LENGTH) return undefined;
@@ -97,15 +118,18 @@ export const parsePageMessage = (message: unknown, prefix: string): PageMessage 
     return undefined;
   }
   if (!isRecord(parsed)) return undefined;
-  if (parsed.type !== "picked" && parsed.type !== "pick-cancelled") return undefined;
+  if (typeof parsed.type !== "string" || !MESSAGE_TYPES.has(parsed.type)) return undefined;
   const entries = Object.entries(parsed);
-  if (entries.length > MAX_FIELDS) return undefined;
+  if (entries.length > MESSAGE_FIELDS.size) return undefined;
   const out: Record<string, string> = {};
   for (const [key, value] of entries) {
-    if (typeof value !== "string" || value.length > MAX_FIELD_LENGTH || key.length > 32)
+    if (!MESSAGE_FIELDS.has(key) || key.length > MAX_KEY_LENGTH) return undefined;
+    if (typeof value !== "string" || value.length > (FIELD_LIMITS[key] ?? MAX_FIELD_LENGTH)) {
       return undefined;
+    }
     out[key] = value;
   }
+  if (out.type === "pick-action" && !PICK_ACTIONS.has(out.action ?? "")) return undefined;
   return out as PageMessage;
 };
 

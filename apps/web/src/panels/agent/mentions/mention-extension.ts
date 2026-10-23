@@ -32,6 +32,18 @@ export const chipContent = (ref: MentionRef, label: string) => ({
   attrs: { ref: JSON.stringify(ref), label },
 });
 
+/** The DOM attributes of a chip (read back by the attributes' `parseHTML`). */
+export const chipHtmlAttributes = (attrs: {
+  ref?: string | null;
+  label?: string;
+  live?: string | null;
+}): Record<string, string> => ({
+  "data-type": MENTION_NODE,
+  ...(attrs.ref ? { "data-ref": attrs.ref } : {}),
+  "data-label": attrs.label ?? "",
+  ...(attrs.live ? { "data-live": attrs.live } : {}),
+});
+
 /**
  * Mention chips: an inline atom holding its ref as JSON (parsed by composer-doc.ts), drawn by
  * MentionChipView, typed with "@" (layers, components, images) or "/" (skills, styles). The
@@ -66,9 +78,12 @@ export const createMentionExtension = (hooks: () => MentionMenuHooks) =>
     },
   }).configure({
     renderText: ({ node }) => `@${String(node.attrs.label ?? "")}`,
+    // Carries the attributes too, so a chip survives copy, paste and drag (parseHTML above).
     renderHTML: ({ node }) => [
       "span",
-      { "data-type": MENTION_NODE },
+      chipHtmlAttributes(
+        node.attrs as { ref?: string | null; label?: string; live?: string | null },
+      ),
       `@${String(node.attrs.label ?? "")}`,
     ],
     deleteTriggerWithBackspace: true,
@@ -93,7 +108,9 @@ export const createMentionExtension = (hooks: () => MentionMenuHooks) =>
         return {
           onStart: open,
           onUpdate: open,
-          onKeyDown: ({ event }: SuggestionKeyDownProps) => hooks().onKeyDown(event),
+          onKeyDown: ({ event, view }: SuggestionKeyDownProps) =>
+            // An input method's Enter or Tab never picks an item.
+            event.isComposing || view.composing ? false : hooks().onKeyDown(event),
           onExit: () => hooks().onChange(null),
         };
       },

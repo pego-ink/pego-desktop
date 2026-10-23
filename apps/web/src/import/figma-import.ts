@@ -33,7 +33,10 @@ const place = (nodes: PegoNode[]): string[] => {
       y: (typeof node.y === "number" ? node.y : 0) + dy,
     } as PegoNode,
   }));
-  if (!state.commit(ops, { label: "Import from Figma" })) return [];
+  if (!state.commit(ops, { label: "Import from Figma" })) {
+    toast.error("The imported layers could not be added to the page.");
+    return [];
+  }
   const ids = nodes.map((node) => node.id);
   state.select(ids);
   const { doc } = useDocumentStore.getState();
@@ -66,6 +69,7 @@ export const importFromFigma = async (
     if (place(nodes).length === 0) return false;
     const notes = [
       ...warnings,
+      ...fetched.warnings,
       ...(fetched.missingImages > 0
         ? [`${fetched.missingImages} image(s) could not be embedded`]
         : []),

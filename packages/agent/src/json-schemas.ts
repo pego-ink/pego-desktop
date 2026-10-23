@@ -35,6 +35,16 @@ const nodePropSchemas: Record<string, JsonSchema> = {
     type: "boolean",
     description: "Marks this node as a component that ref nodes instantiate.",
   },
+  visible: {
+    type: "boolean",
+    description: "false hides the layer and its children (not drawn, not exported). Default true.",
+  },
+  slot: {
+    type: "array",
+    items: { type: "string" },
+    description:
+      "Frame inside a component only. Makes it a slot: instances fill it with their own children, ideally with these component ids (may be empty).",
+  },
   fill: fillValue,
   stroke: {
     type: "object",
@@ -89,6 +99,11 @@ const nodePropSchemas: Record<string, JsonSchema> = {
       "Image only. fill covers the box, fit contains, crop is natural size, tile repeats.",
   },
   alt: { type: "string", description: "Image only. Alt text." },
+  source: {
+    type: "object",
+    description:
+      'Image only. Where a browser screenshot came from: {"url": "http(s)://...", "selector"?}. Set by the browser tools; used to refresh it.',
+  },
   viewBox: {
     type: "array",
     items: { type: "number" },
@@ -108,7 +123,7 @@ const nodePropSchemas: Record<string, JsonSchema> = {
   descendants: {
     type: "object",
     description:
-      'Ref only. Overrides keyed by the component\'s descendant id, e.g. {"label": {"content": "Buy"}}.',
+      'Ref only. Overrides keyed by the component\'s descendant id, e.g. {"label": {"content": "Buy"}}. To fill a slot frame use {"slotId": {"children": [nodes]}}.',
     additionalProperties: { type: "object" },
   },
 };
@@ -116,12 +131,12 @@ const nodePropSchemas: Record<string, JsonSchema> = {
 export const NODE_FORMAT_DESCRIPTION =
   "A node object. `type` is required: frame | group | rectangle | ellipse | path | text | icon | image | ref. " +
   "`id` is optional (assigned when omitted). Only frame and group take `children` (same node format, nested). " +
-  "Other fields apply per type: frame (layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke, effects), " +
+  "Other fields apply per type: frame (slot, layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke, effects), " +
   "rectangle (cornerRadius, fill, stroke, effects), ellipse (fill, stroke, effects), " +
   "path (geometry, viewBox, strokeCap, strokeJoin, startMarker, endMarker, fill, stroke, effects), " +
   "image (src, fit, cornerRadius, stroke, alt), " +
   "text (content, fontFamily, fontSize, fontWeight, fontStyle, lineHeight, letterSpacing, textAlign, fill, effects), icon (iconName, iconSet, fill, effects), " +
-  "ref (ref, descendants). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
+  "ref (ref, descendants). Every node also takes visible (false hides it). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
   'Shape fill may be {"type":"linear","angle":180,"stops":[{"color","position":0..1}, ...]} (angle like CSS: 0 up, 90 right), ' +
   '{"type":"radial","center":[0.5,0.5],"radius":[0.5,0.5],"stops":[...]} or {"type":"image","src":"data:image/...;base64,...","fit":"cover"|"contain"|"stretch"}. ' +
   'stroke: {"color","width"} with width one number or [top,right,bottom,left]. ' +

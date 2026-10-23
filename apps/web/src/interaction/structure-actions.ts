@@ -5,6 +5,7 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { duplicateOps } from "./duplicate";
 import { topmostSelected } from "./transform";
+import { showPage } from "@/pages/page-actions";
 import { selectionBounds } from "./zoom-utils";
 import {
   componentOf,
@@ -61,7 +62,7 @@ export const goToComponent = (instanceId: string): boolean => {
     return false;
   }
   const page = pageOf(state.doc, componentId);
-  if (page && page.id !== state.pageId) state.setPage(page.id);
+  if (page && page.id !== state.pageId) showPage(page.id);
   useDocumentStore.getState().select([componentId]);
   const { doc } = useDocumentStore.getState();
   useViewportStore.getState().zoomToFit(selectionBounds(getLayout(doc), [componentId], doc));

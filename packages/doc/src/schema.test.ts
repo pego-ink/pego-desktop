@@ -80,3 +80,23 @@ describe("v1 props", () => {
     for (const node of bad) expect(nodeSchema.safeParse(node).success).toBe(false);
   });
 });
+
+describe("image source", () => {
+  const image = (url: string) => ({
+    type: "image",
+    id: "i",
+    src: "https://a.b/c.png",
+    source: { url },
+  });
+
+  test("accepts http(s) URLs", () => {
+    expect(nodeSchema.safeParse(image("https://example.com/p")).success).toBe(true);
+    expect(nodeSchema.safeParse(image("http://localhost:3000")).success).toBe(true);
+  });
+
+  test("rejects javascript: and custom-scheme URLs", () => {
+    for (const url of ["javascript:alert(1)", "vscode://file/etc/passwd", "file:///etc/passwd"]) {
+      expect(nodeSchema.safeParse(image(url)).success).toBe(false);
+    }
+  });
+});

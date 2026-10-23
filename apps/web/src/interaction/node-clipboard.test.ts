@@ -10,6 +10,8 @@ import {
 } from "@pego/doc";
 import {
   copyPayload,
+  MAX_PAYLOAD_CHARS,
+  MAX_PAYLOAD_NODES,
   PASTE_OFFSET,
   pasteNodes,
   pasteSvg,
@@ -47,7 +49,7 @@ describe("copy", () => {
   test("the payload holds the layers, detached copies and the variables they use", () => {
     const payload = copyPayload(withComponent, ["inst", "frame-1"])!;
     expect(payload.nodes.map((node) => node.id)).toEqual(["inst", "frame-1"]);
-    expect(payload.detached[0]?.type).toBe("frame");
+    expect(payload.detached?.[0]?.type).toBe("frame");
     expect(payload.variables).toEqual({ brand: { type: "color", value: "#ff0000" } });
     expect(readPayload(JSON.stringify(payload))).toEqual(payload);
     expect(readPayload("{}")).toBeNull();
@@ -114,5 +116,51 @@ describe("paste", () => {
       y: 500,
     });
     expect(pasteText(sampleDoc, "   ", target)).toBeNull();
+  });
+});
+
+describe("untrusted clipboard data", () => {
+  const good = () => copyPayload(sampleDoc, ["rect-1"])!;
+  const read = (patch: Record<string, unknown>) =>
+    readPayload(JSON.stringify({ ...good(), ...patch }));
+
+  test("rejects nodes that fail the schema", () => {
+    const bad = { type: "text", id: "t", content: 5 };
+    expect(read({ nodes: [bad] })).toBeNull();
+    expect(read({ nodes: [{ type: "page", id: "p", children: [] }] })).toBeNull();
+    expect(read({ nodes: "x" })).toBeNull();
+    expect(read({ detached: [bad] })).toBeNull();
+  });
+
+  test("rejects bad variables and oversized payloads", () => {
+    expect(read({ variables: { a: { type: "color", value: 3 } } })).toBeNull();
+    expect(readPayload("x".repeat(MAX_PAYLOAD_CHARS + 1))).toBeNull();
+    const many = Array.from({ length: MAX_PAYLOAD_NODES + 1 }, (_, i) => ({
+      type: "group",
+      id: `g${i}`,
+      children: [],
+    }));
+    expect(read({ nodes: many })).toBeNull();
+  });
+
+  test("a valid payload round-trips", () => {
+    expect(read({})).toEqual(good());
+  });
+
+  test("detached is only copied when a layer holds an instance", () => {
+    expect(good().detached).toBeUndefined();
+    expect(copyPayload(withComponent, ["inst"])!.detached).toBeDefined();
+  });
+});
+
+describe("several originals", () => {
+  test("copies sharing a parent each land after their own original", () => {
+    const payload = copyPayload(sampleDoc, ["rect-1", "text-1"])!;
+    const doc = apply(sampleDoc, pasteNodes(sampleDoc, payload, target));
+    const ids = (findNode(doc, "frame-1") as { children: PegoNode[] }).children.map((n) => n.id);
+    const rect = ids.indexOf("rect-1");
+    const text = ids.indexOf("text-1");
+    expect(findNode(doc, ids[rect + 1]!)?.type).toBe("rectangle");
+    expect(findNode(doc, ids[text + 1]!)?.type).toBe("text");
   });
 });

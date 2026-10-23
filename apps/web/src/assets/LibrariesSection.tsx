@@ -27,6 +27,12 @@ const syncLibrary = async (library: LibrarySource, update: boolean) => {
     const plan = syncLibraryOps(state.doc, source, library, Date.now());
     if (plan.count === 0) return void toast(`${library.name} has no components to share yet.`);
     if (state.commit(plan.ops, { label: update ? "Update library" : "Add library" })) {
+      if (plan.conflicts.length > 0) {
+        toast.warning(
+          `Kept your variables ${plan.conflicts.join(", ")}: ${library.name} defines them differently.`,
+        );
+      }
+      if (plan.warnings.length > 0) toast.warning(plan.warnings.join("; "));
       toast.success(
         `${update ? "Updated" : "Added"} ${library.name}: ${plan.count} component${plan.count === 1 ? "" : "s"}`,
       );

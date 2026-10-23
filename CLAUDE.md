@@ -64,7 +64,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **3**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **4**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -80,7 +80,8 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 `documentSchema`. Version 1 added `effects`, per-side stroke widths, text `lineHeight`/`letterSpacing`, path
 `viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
 added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
-change: the bump makes older builds refuse these files instead of dropping the props).
+change: the bump makes older builds refuse these files instead of dropping the props); version 4 added `visible` (hidden layers), frame `slot` (component slots), page
+`library` (library pages) and image `source` (screenshot origin), again with no data change.
 
 ### Document
 
@@ -105,6 +106,8 @@ change: the bump makes older builds refuse these files instead of dropping the p
 
 - `document.children` holds only pages (at least one); a page holds the canvas content and is never nested.
   Ops enforce it (`invalid_parent`, `last_page`); a page is renamed with `update` and removed with `delete`.
+- A page with `library` (`{ projectId, name, path, syncedAt }`) holds read-only copies of another project's
+  components, replaced on update from that project's file; instance them, do not edit them.
 - Ids are unique across all pages, refs resolve across pages (a "Components" page works) and undo spans pages.
 - Layout gives pages no box: their content keeps its own x/y. The canvas, hit-testing, layers panel, marquee and
   zoom-to-fit take a `pageId` (null = the first page).
@@ -117,17 +120,18 @@ change: the bump makes older builds refuse these files instead of dropping the p
 ### Nodes
 
 Every node has `id` (unique in the whole document), `type`, and optionally `name`, `x`, `y` (default `0`),
-`width`, `height`, `rotation`, `opacity`, `reusable`.
+`width`, `height`, `rotation`, `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
+drawn, not hit, no room in a flex layout, not exported).
 
 | Type        | Extra props                                                                                                                              | Children |
 | ----------- | ---------------------------------------------------------------------------------------------------------------------------------------- | -------- |
-| `frame`     | `fill`, `stroke`, `effects`, `cornerRadius`, `clip`, `layout`, `gap`, `padding`, `justifyContent`, `alignItems`                          | yes      |
+| `frame`     | `fill`, `stroke`, `effects`, `cornerRadius`, `clip`, `layout`, `gap`, `padding`, `justifyContent`, `alignItems`, `slot`                  | yes      |
 | `group`     | none                                                                                                                                     | yes      |
 | `rectangle` | `fill`, `stroke`, `effects`, `cornerRadius`                                                                                              | no       |
 | `ellipse`   | `fill`, `stroke`, `effects`                                                                                                              | no       |
 | `path`      | `fill`, `stroke`, `effects`, `geometry` (SVG path data, required), `viewBox`, `strokeCap`, `strokeJoin`, `startMarker`, `endMarker`      | no       |
 | `text`      | `content` (required), `fontFamily`, `fontSize`, `fontWeight`, `fontStyle`, `lineHeight`, `letterSpacing`, `textAlign`, `fill`, `effects` | no       |
-| `image`     | `src` (data: or https URL, required), `fit` (`fill` \| `fit` \| `crop` \| `tile`), `cornerRadius`, `stroke`, `alt`                       | no       |
+| `image`     | `src` (data: or https URL, required), `fit` (`fill` \| `fit` \| `crop` \| `tile`), `cornerRadius`, `stroke`, `alt`, `source`             | no       |
 | `icon`      | `iconSet` (default `"lucide"`), `iconName` (kebab-case, required), `fill`, `effects`                                                     | no       |
 | `ref`       | `ref` (id of a reusable node, required), `descendants` (overrides)                                                                       | no       |
 
@@ -152,7 +156,7 @@ Value rules:
   `strokeCap` (`butt | round | square`), `strokeJoin` (`miter | round | bevel`) and the open-path markers
   `startMarker` / `endMarker` (`none | arrow | triangle | circle | bar`) ride on the stroke.
 - **Image node** vs **image fill**: an `image` node is a placed bitmap (its own layer, `fit` like Figma); an image
-  fill paints a shape's background. Both survive export.
+  fill paints a shape's background. Both survive export. `source` (`{ url, selector? }`, http(s) only) records which browser page a screenshot came from.
 - **Numbers** (`x`, `gap`, `fontSize`, `cornerRadius`, ...): a number or a `$variable`.
 - **Sizing** (`width`, `height`): a number, `"fit_content"` (hug children; frames default to it, text measures
   itself) or `"fill_container"` (take the parent's remaining space).
@@ -170,6 +174,10 @@ Value rules:
   Props on the ref (position, size, name, ...) override the component root.
 - `descendants` overrides props of nodes inside the component, keyed by their id in the component:
   `"descendants": { "titleText": { "content": "Pricing" } }`. `id`, `type` and `children` cannot be overridden.
+- A `frame` inside a component with `slot` (array of recommended component ids, may be empty) is a slot: an
+  instance fills it with `"descendants": { "bodySlot": { "children": [nodes] } }` (the only way `children` can be
+  overridden). Content is validated once per array; if none of it is valid, or there is none, the component's
+  default content shows.
 - At render time instance children get ids `<instanceId>/<sourceId>` (nested instances chain). These ids are
   not stored in the file and cannot be targeted by ops; edit the component or the ref's `descendants` instead.
 - Refs nest at most 16 deep; a ref must not point at its own ancestor.

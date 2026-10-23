@@ -42,6 +42,7 @@ export type FigmaNode = {
   fills?: FigmaPaint[];
   strokes?: FigmaPaint[];
   strokeWeight?: number;
+  strokeAlign?: string;
   individualStrokeWeights?: { top: number; right: number; bottom: number; left: number };
   effects?: FigmaEffect[];
   cornerRadius?: number;
@@ -221,14 +222,28 @@ const rotationOf = (node: FigmaNode): number => {
   return Math.abs(degrees) < 0.01 ? 0 : degrees;
 };
 
+/** Where a node's origin sits in its parent's space, from `relativeTransform`. */
+const translationOf = (node: FigmaNode): Vec | null => {
+  const [row0, row1] = node.relativeTransform ?? [];
+  const x = row0?.[2];
+  const y = row1?.[2];
+  return typeof x === "number" && typeof y === "number" ? { x, y } : null;
+};
+
 /**
  * Where a node goes in its parent: its own size, its rotation, and the corner Pego rotates about
  * (the top-left), found from the box Figma reports around the rotated node.
  */
-const placementOf = (node: FigmaNode, box: Box, parent: Box) => {
+const placementOf = (node: FigmaNode, box: Box, parent: Box, local: Vec | null) => {
   const rotation = rotationOf(node);
   const width = node.size?.x ?? box.width;
   const height = node.size?.y ?? box.height;
+  const shift = translationOf(node);
+  // The relative transform's translation is the node's origin in its parent's own (possibly
+  // rotated) space, exactly the corner Pego rotates about; the parent's bounding box is not.
+  if (local && shift) {
+    return { x: round(shift.x - local.x), y: round(shift.y - local.y), width, height, rotation };
+  }
   if (rotation === 0) {
     return { x: round(box.x - parent.x), y: round(box.y - parent.y), width, height, rotation };
   }
@@ -274,10 +289,21 @@ const claim = (ctx: Ctx): boolean => {
   return true;
 };
 
-const convert = (node: FigmaNode, parent: Box, parentFlex: boolean, ctx: Ctx): unknown => {
+/**
+ * `local` is the origin of the parent's coordinate space in the space `relativeTransform` is
+ * given in: (0, 0) under a frame, the group's own position under a group (Figma groups have no
+ * space of their own), null at the top level and under a group without a transform.
+ */
+const convert = (
+  node: FigmaNode,
+  parent: Box,
+  parentFlex: boolean,
+  ctx: Ctx,
+  local: Vec | null = null,
+): unknown => {
   const box = node.absoluteBoundingBox;
   if (!box || !claim(ctx)) return null;
-  const place = placementOf(node, box, parent);
+  const place = placementOf(node, box, parent, local);
   const own = { width: place.width, height: place.height, x: box.x, y: box.y };
   const base: Record<string, unknown> = {
     id: createId(),
@@ -300,6 +326,11 @@ const convert = (node: FigmaNode, parent: Box, parentFlex: boolean, ctx: Ctx): u
   }
   const fill = node.type === "TEXT" ? undefined : fillOf(node.fills, own, ctx);
   const stroke = node.type === "TEXT" ? undefined : strokeOf(node, ctx);
+  if (visible(node.strokes).length > 0 && node.type !== "TEXT") {
+    if (node.strokeAlign === "INSIDE" || node.strokeAlign === "OUTSIDE") {
+      ctx.warnings.add("inside and outside strokes are drawn centered on the outline");
+    }
+  }
   const effects = effectsOf(node, ctx);
   const paint = {
     ...(fill !== undefined ? { fill } : {}),
@@ -313,12 +344,15 @@ const convert = (node: FigmaNode, parent: Box, parentFlex: boolean, ctx: Ctx): u
     case "COMPONENT_SET":
     case "INSTANCE":
     case "SECTION": {
+      if (node.type === "INSTANCE") {
+        ctx.warnings.add("component instances became plain frames (not linked to a component)");
+      }
       const flex = node.layoutMode === "HORIZONTAL" || node.layoutMode === "VERTICAL";
       if (flex && node.layoutWrap === "WRAP") {
         ctx.warnings.add("wrapping auto layout became a single row or column");
       }
       const children = (node.children ?? []).flatMap((child) => {
-        const converted = convert(child, own, flex, ctx);
+        const converted = convert(child, own, flex, ctx, { x: 0, y: 0 });
         return converted ? [converted] : [];
       });
       return {
@@ -348,8 +382,10 @@ const convert = (node: FigmaNode, parent: Box, parentFlex: boolean, ctx: Ctx): u
       };
     }
     case "GROUP": {
+      if (effects) ctx.warnings.add("effects on groups were dropped");
+      const origin = translationOf(node);
       const children = (node.children ?? []).flatMap((child) => {
-        const converted = convert(child, own, false, ctx);
+        const converted = convert(child, own, false, ctx, origin);
         return converted ? [converted] : [];
       });
       return { ...base, type: "group", children };
@@ -411,6 +447,7 @@ const convert = (node: FigmaNode, parent: Box, parentFlex: boolean, ctx: Ctx): u
         ctx.warnings.add("vectors without geometry were skipped (export with geometry=paths)");
         return null;
       }
+      if (!filled && effects) ctx.warnings.add("effects on stroke-only vectors were dropped");
       // Only a stroke: its outline is the shape, painted with the stroke color.
       const strokeColor = (stroke as { color?: string } | undefined)?.color;
       return {
@@ -429,13 +466,31 @@ const convert = (node: FigmaNode, parent: Box, parentFlex: boolean, ctx: Ctx): u
   }
 };
 
-/** Drop props the node schema does not accept (Pego validates every node it stores). */
+/**
+ * Keep what the node schema accepts (Pego validates every node it stores). One invalid
+ * descendant drops only itself, not the frame around it.
+ */
+const validNode = (node: unknown, warnings: Set<string>): PegoNode | null => {
+  const fit = (value: unknown): PegoNode | null => {
+    const parsed = nodeSchema.safeParse(value);
+    return parsed.success ? parsed.data : null;
+  };
+  const record = node as { children?: unknown };
+  const children = Array.isArray(record.children)
+    ? record.children.flatMap((child) => {
+        const valid = validNode(child, warnings);
+        return valid ? [valid] : [];
+      })
+    : undefined;
+  const result = fit(children ? { ...record, children } : node);
+  if (!result) warnings.add("some layers did not fit Pego's format and were skipped");
+  return result;
+};
+
 const validNodes = (raw: unknown[], warnings: Set<string>): PegoNode[] =>
   raw.flatMap((node) => {
-    const parsed = nodeSchema.safeParse(node);
-    if (parsed.success) return [parsed.data];
-    warnings.add("some layers did not fit Pego's format and were skipped");
-    return [];
+    const valid = validNode(node, warnings);
+    return valid ? [valid] : [];
   });
 
 /**
@@ -469,10 +524,14 @@ export const convertFigmaNodes = (
   return { nodes: validNodes(raw, ctx.warnings), warnings: [...ctx.warnings], count: ctx.count };
 };
 
-/** imageRefs of every image fill in the trees (to fetch before converting). */
+/**
+ * imageRefs of the image fills the converter uses (the top visible fill of each layer), to fetch
+ * before converting.
+ */
 export const imageRefsOf = (nodes: readonly FigmaNode[], into = new Set<string>()): Set<string> => {
   for (const node of nodes) {
-    for (const paint of node.fills ?? []) if (paint.imageRef) into.add(paint.imageRef);
+    const top = node.type === "TEXT" ? undefined : visible(node.fills).at(-1);
+    if (top?.type === "IMAGE" && top.imageRef) into.add(top.imageRef);
     if (node.children) imageRefsOf(node.children, into);
   }
   return into;

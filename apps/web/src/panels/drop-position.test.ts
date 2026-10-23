@@ -5,7 +5,7 @@ import { buildMoveOp, dropZoneAt } from "./drop-position";
 
 const rect = (id: string) => ({ type: "rectangle" as const, id, x: 0, y: 0 });
 const doc: PegoDocument = {
-  version: 3,
+  version: 4,
   id: "d",
   name: "d",
   variables: {},

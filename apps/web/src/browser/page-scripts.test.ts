@@ -26,7 +26,7 @@ describe("page scripts", () => {
       expect(compiles(describeScript(target))).not.toThrow();
       expect(compiles(boxScript(target))).not.toThrow();
     }
-    expect(compiles(pickerStartScript)).not.toThrow();
+    expect(compiles(pickerStartScript("0123456789abcdef0123456789abcdef"))).not.toThrow();
     expect(compiles(pickerStopScript)).not.toThrow();
   });
 

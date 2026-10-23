@@ -4,7 +4,7 @@ import { applyOp, findNode, type PegoDocument } from "@pego/doc";
 import { instanceOp, listComponents } from "./components";
 
 const doc: PegoDocument = {
-  version: 3,
+  version: 4,
   id: "d",
   name: "d",
   variables: {},
