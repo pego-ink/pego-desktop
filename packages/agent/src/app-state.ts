@@ -18,7 +18,7 @@ export type AppStateBrowser = {
   url: string;
   title?: string;
   /** The element picked with the browser's picker. */
-  picked?: { label: string; selector?: string } | null;
+  picked?: { label: string; selector?: string; path?: string } | null;
 };
 
 export type AppState = {
@@ -64,7 +64,7 @@ export const appStateContext = (state: AppState): string => {
     const picked = browser.picked
       ? `; picked element: ${browser.picked.label}${
           browser.picked.selector ? ` (selector \`${browser.picked.selector}\`)` : ""
-        }`
+        }${browser.picked.path ? `, path ${browser.picked.path}` : ""}`
       : "";
     lines.push(`- In-app browser: ${page}${picked}`);
   }

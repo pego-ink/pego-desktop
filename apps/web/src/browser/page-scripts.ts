@@ -1,5 +1,5 @@
 import type { BrowserTarget } from "@pego/agent";
-import { ELEMENT_PATH_SOURCE } from "./picked-element";
+import { COMPONENT_NAMES_SOURCE, ELEMENT_PATH_SOURCE } from "./picked-element";
 
 /**
  * Code that runs INSIDE the browsed page, as plain JavaScript strings (never `fn.toString()`:
@@ -592,55 +592,109 @@ return JSON.stringify({ok:out.join("\n")});
 export const describeScript = (target: BrowserTarget): string =>
   wrap(COMMON + "var TARGET=" + targetJson(target) + ";" + DESCRIBE_BODY);
 
-const PICKER_BODY =
+/**
+ * Shared by the picker and `selectBySelectorScript`: `pickInfo(el)` is what the editor learns about
+ * an element (tag, id, first class, start of its text, a unique selector, and the path of
+ * ancestors from body), and `markPicked(el)` makes it the picked element.
+ */
+const PICK_HELPERS =
   `var pegoPath=${ELEMENT_PATH_SOURCE};\n` +
+  String.raw`
+function pegoUnique(s){try{return document.querySelectorAll(s).length===1}catch(e){return false}}
+function pegoBrief(el){
+  var cls=typeof el.className==="string"?el.className.trim().split(/\s+/)[0]||"":"";
+  return {tag:el.tagName.toLowerCase(),id:el.id||"",cls:cls,selector:pegoPath(el,CSS.escape,pegoUnique)};
+}
+function pickInfo(el){
+  var info=pegoBrief(el),path=[];
+  info.text=(el.textContent||"").replace(/\s+/g," ").trim().slice(0,40);
+  for(var n=el;n&&n.nodeType===1&&n!==document.documentElement;n=n.parentElement)path.unshift(pegoBrief(n));
+  info.path=path.slice(-30);
+  info.type="picked";
+  return info;
+}
+function markPicked(el){
+  var prev=document.querySelector("[data-pego-picked]");
+  if(prev&&prev!==el)prev.removeAttribute("data-pego-picked");
+  el.setAttribute("data-pego-picked","");
+}
+`;
+
+const PICKER_BODY =
+  PICK_HELPERS +
   String.raw`
 var KEY="__pegoPickerStop";
 if(typeof window[KEY]==="function")window[KEY]();
 var root=document.documentElement,prevCursor=root.style.cursor;
-var hl=document.createElement("div");
-hl.setAttribute("data-pego-overlay","");
-hl.style.cssText="position:fixed;left:0;top:0;width:0;height:0;display:none;box-sizing:border-box;pointer-events:none;z-index:2147483647;border:2px solid #4f46e5;background:rgba(79,70,229,0.12)";
-var chip=document.createElement("div");
-chip.style.cssText="position:absolute;left:-2px;top:-22px;padding:2px 6px;font:11px/16px ui-monospace,Menlo,monospace;color:#fff;background:#4f46e5;white-space:nowrap;border-radius:3px";
-hl.appendChild(chip);
-root.appendChild(hl);
-root.style.cursor="crosshair";
-var current=null;
+function makeBox(border,fill){
+  var b=document.createElement("div");
+  b.setAttribute("data-pego-overlay","");
+  b.style.cssText="position:fixed;left:0;top:0;width:0;height:0;display:none;box-sizing:border-box;pointer-events:none;z-index:2147483647;border:"+border+";background:"+fill;
+  var c=document.createElement("div");
+  c.style.cssText="position:absolute;left:-2px;top:-22px;padding:2px 6px;font:11px/16px ui-monospace,Menlo,monospace;color:#fff;background:#4f46e5;white-space:nowrap;border-radius:3px";
+  b.appendChild(c);root.appendChild(b);
+  return {box:b,chip:c};
+}
+var hover=makeBox("2px solid #4f46e5","rgba(79,70,229,0.12)");
+var chosen=makeBox("1px solid #4f46e5","rgba(79,70,229,0.06)");
+var current=null,picked=document.querySelector("[data-pego-picked]");
+var lastChild=new WeakMap();
 function send(m){console.debug("__pego__:"+JSON.stringify(m))}
-function own(n){return n===hl||hl.contains(n)}
-function place(el){
+function own(n){return n===hover.box||hover.box.contains(n)||n===chosen.box||chosen.box.contains(n)}
+function place(o,el){
+  if(!el){o.box.style.display="none";return}
   var r=el.getBoundingClientRect();
-  hl.style.display="block";
-  hl.style.left=r.left+"px";hl.style.top=r.top+"px";
-  hl.style.width=r.width+"px";hl.style.height=r.height+"px";
-  chip.textContent=el.tagName.toLowerCase()+" "+Math.round(r.width)+" x "+Math.round(r.height);
-  chip.style.top=r.top<24?"auto":"-22px";
-  chip.style.bottom=r.top<24?"-22px":"auto";
+  o.box.style.display="block";
+  o.box.style.left=r.left+"px";o.box.style.top=r.top+"px";
+  o.box.style.width=r.width+"px";o.box.style.height=r.height+"px";
+  o.chip.textContent=el.tagName.toLowerCase()+" "+Math.round(r.width)+" x "+Math.round(r.height);
+  o.chip.style.top=r.top<24?"auto":"-22px";
+  o.chip.style.bottom=r.top<24?"-22px":"auto";
+}
+function pick(el){
+  markPicked(el);picked=el;place(chosen,el);
+  send(pickInfo(el));
+}
+function visibleKids(el){
+  return Array.prototype.filter.call(el.children,function(c){
+    if(own(c))return false;var r=c.getBoundingClientRect();return r.width>0||r.height>0;
+  });
 }
 function hit(e){var t=e.target;return t&&t.nodeType===1&&!own(t)?t:null}
-function onMove(e){var t=hit(e);if(!t)return;current=t;place(t)}
+function onMove(e){var t=hit(e);if(!t)return;current=t;place(hover,t)}
 function onClick(e){
   var t=hit(e);
   if(!t)return;
   e.preventDefault();e.stopPropagation();e.stopImmediatePropagation();
-  var prev=document.querySelector("[data-pego-picked]");
-  if(prev&&prev!==t)prev.removeAttribute("data-pego-picked");
-  t.setAttribute("data-pego-picked","");
-  var text=(t.textContent||"").replace(/\s+/g," ").trim().slice(0,40);
-  var selector=pegoPath(t,CSS.escape,function(s){try{return document.querySelectorAll(s).length===1}catch(e){return false}});
-  var cls=typeof t.className==="string"?t.className.trim().split(/\s+/)[0]||"":"";
-  stop();
-  send({type:"picked",tag:t.tagName.toLowerCase(),id:t.id||"",cls:cls,text:text,selector:selector});
+  pick(t);
 }
 function swallow(e){if(hit(e)){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}}
 function onKey(e){
-  if(e.key!=="Escape")return;
+  if(e.key==="Escape"){
+    e.preventDefault();e.stopPropagation();
+    stop();send({type:"pick-cancelled"});return;
+  }
+  if(!picked||!document.contains(picked))return;
+  var next=null,parent=picked.parentElement;
+  if(e.key==="Enter"){
+    e.preventDefault();e.stopPropagation();
+    send({type:"pick-action",action:e.metaKey||e.ctrlKey?"screenshot":"import"});return;
+  }
+  if(e.key==="ArrowUp"&&parent&&parent!==root){lastChild.set(parent,picked);next=parent}
+  if(e.key==="ArrowDown"){
+    var kids=visibleKids(picked),kept=lastChild.get(picked);
+    next=kids.indexOf(kept)>=0?kept:kids[0]||null;
+  }
+  if((e.key==="ArrowLeft"||e.key==="ArrowRight")&&parent){
+    var sibs=visibleKids(parent),at=sibs.indexOf(picked);
+    next=sibs[at+(e.key==="ArrowLeft"?-1:1)]||null;
+  }
+  if(!next)return;
   e.preventDefault();e.stopPropagation();
-  stop();
-  send({type:"pick-cancelled"});
+  pick(next);
+  next.scrollIntoView({block:"nearest",inline:"nearest"});
 }
-function onViewport(){if(current)place(current)}
+function onViewport(){if(current)place(hover,current);if(picked)place(chosen,picked)}
 var swallowed=["mousedown","mouseup","pointerdown","pointerup","auxclick","dblclick","contextmenu"];
 function stop(){
   window.removeEventListener("mousemove",onMove,true);
@@ -650,8 +704,8 @@ function stop(){
   window.removeEventListener("resize",onViewport,true);
   swallowed.forEach(function(n){window.removeEventListener(n,swallow,true)});
   root.style.cursor=prevCursor;
-  hl.remove();
-  delete window[KEY];
+  hover.box.remove();chosen.box.remove();
+  delete window[KEY];delete window.__pegoPickerShow;
 }
 window.addEventListener("mousemove",onMove,true);
 window.addEventListener("click",onClick,true);
@@ -659,11 +713,19 @@ window.addEventListener("keydown",onKey,true);
 window.addEventListener("scroll",onViewport,true);
 window.addEventListener("resize",onViewport,true);
 swallowed.forEach(function(n){window.addEventListener(n,swallow,true)});
+root.style.cursor="crosshair";
+if(picked)place(chosen,picked);
 window[KEY]=stop;
+// A crumb picked in the editor while the picker is armed moves its outline too.
+window.__pegoPickerShow=function(el){picked=el;place(chosen,el)};
 return JSON.stringify({ok:true});
 `;
 
-/** Arms the element picker in the page (hover highlights, click picks, Escape cancels). */
+/**
+ * Arms the element picker in the page: hover highlights, a click picks (the picker stays armed),
+ * arrows walk the tree (↑ parent, ↓ child, ←/→ siblings), Enter asks to import and ⌘/Ctrl+Enter
+ * to screenshot the picked element, Escape disarms.
+ */
 export const pickerStartScript: string = wrap(PICKER_BODY);
 
 /** Removes the picker (a no-op when it is not armed). */
@@ -702,3 +764,28 @@ export const unwrapEvaluation = (response: unknown): unknown => {
   if (parsed.error !== undefined) throw new Error(parsed.error);
   return parsed.ok;
 };
+
+/** Pick the element `selector` matches (a crumb clicked in the editor); returns `pickInfo`. */
+export const selectBySelectorScript = (selector: string): string =>
+  wrap(
+    PICK_HELPERS +
+      "var el=document.querySelector(" +
+      JSON.stringify(selector) +
+      ');if(!el)throw new Error("That element is no longer on the page");' +
+      "markPicked(el);" +
+      'if(typeof window.__pegoPickerShow==="function")window.__pegoPickerShow(el);' +
+      'el.scrollIntoView({block:"nearest",inline:"nearest"});' +
+      "return JSON.stringify({ok:pickInfo(el)});",
+  );
+
+/**
+ * Component names along the picked element's path. Runs in the page's own world (not the isolated
+ * one): only there are the framework's properties on DOM nodes visible. Reads, never writes.
+ */
+export const componentNamesScript: string = wrap(
+  'var el=document.querySelector("[data-pego-picked]");' +
+    "if(!el)return JSON.stringify({ok:[]});" +
+    "return JSON.stringify({ok:(" +
+    COMPONENT_NAMES_SOURCE +
+    ")(el)});",
+);
