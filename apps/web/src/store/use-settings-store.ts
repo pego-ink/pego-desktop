@@ -1,4 +1,10 @@
 import { create } from "zustand";
+import {
+  DEFAULT_CUSTOM_AGENT_NAMES,
+  isAgentNameSet,
+  normalizeCustomNames,
+  type AgentNameSet,
+} from "@/agent/agent-names";
 
 /** Editor preferences, persisted per browser/app install. */
 export type EditorSettings = {
@@ -9,6 +15,10 @@ export type EditorSettings = {
   wheelBehavior: "pan" | "zoom";
   /** Round positions and sizes to whole pixels while moving/resizing/drawing. */
   snapToPixel: boolean;
+  /** Names on the agents' canvas cursors (agent/agent-names). */
+  agentNameSet: AgentNameSet;
+  /** The "custom" set, one name per slot (may hold blanks while being edited). */
+  customAgentNames: string[];
 };
 
 export const DEFAULT_SETTINGS: EditorSettings = {
@@ -16,6 +26,8 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   nudgeLarge: 10,
   wheelBehavior: "pan",
   snapToPixel: true,
+  agentNameSet: "pego",
+  customAgentNames: [...DEFAULT_CUSTOM_AGENT_NAMES],
 };
 
 const KEY = "pego:settings.v1";
@@ -35,6 +47,8 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
         ? v.wheelBehavior
         : DEFAULT_SETTINGS.wheelBehavior,
     snapToPixel: typeof v.snapToPixel === "boolean" ? v.snapToPixel : DEFAULT_SETTINGS.snapToPixel,
+    agentNameSet: isAgentNameSet(v.agentNameSet) ? v.agentNameSet : DEFAULT_SETTINGS.agentNameSet,
+    customAgentNames: normalizeCustomNames(v.customAgentNames),
   };
 };
 
@@ -76,7 +90,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
   };
 });
 
-export type SettingsTab = "general" | "agent" | "shortcuts" | "about";
+export type SettingsTab = "general" | "agent" | "agent-names" | "shortcuts" | "about";
 
 type SettingsModalState = {
   open: boolean;

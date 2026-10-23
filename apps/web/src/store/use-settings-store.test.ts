@@ -42,6 +42,13 @@ describe("mergeSettings", () => {
       wheelBehavior: "zoom",
       snapToPixel: false,
     }));
+  test("agent names: a known set and the custom names are kept, anything else dropped", () => {
+    const merged = store.mergeSettings({ agentNameSet: "custom", customAgentNames: ["Ayu"] });
+    expect(merged.agentNameSet).toBe("custom");
+    expect(merged.customAgentNames[0]).toBe("Ayu");
+    expect(merged.customAgentNames).toHaveLength(10);
+    expect(store.mergeSettings({ agentNameSet: "wizards" }).agentNameSet).toBe("pego");
+  });
 });
 
 describe("useSettingsStore", () => {

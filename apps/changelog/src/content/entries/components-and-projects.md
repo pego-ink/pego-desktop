@@ -26,3 +26,7 @@ Ask Claude Code to change a project by name and it edits that project in a backg
 A right-click now acts on what you selected. Right-click a frame's name above it to get that frame's full menu, and right-clicking inside a selected frame keeps it selected instead of switching to a layer inside it or clearing the selection.
 
 The menu also ends with **Settings**, even on empty canvas: turn snapping to whole pixels on or off, or open all settings.
+
+## Name your agents
+
+**Settings › Agent names** picks the names on the agents' canvas cursors: Pego (the default, every agent is called Pego), Artists, Philosophers, Inventors, Mythic, Scientists, or your own ten names. Each name keeps its own color, so you can tell at a glance which agent is working where.
