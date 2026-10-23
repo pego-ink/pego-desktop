@@ -6,9 +6,18 @@ import {
   parsePlan,
   planOutputSchema,
 } from "./prompts";
+import { coreSkills } from "./skills/index";
 import { agentTools } from "./tools";
 
 describe("prompts", () => {
+  test("prompts with the working rules name every core skill", () => {
+    for (const prompt of [EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
+      expect(prompt).toContain("The core and ui-polish skills apply to every design");
+      for (const skill of coreSkills()) expect(prompt).toContain(skill.id);
+    }
+    expect(CLAUDE_CODE_SYSTEM).toContain("get_skill for core, ui-polish and the matching skill");
+  });
+
   test("are non-empty and free of volatile content", () => {
     for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
       expect(prompt.length).toBeGreaterThan(500);
