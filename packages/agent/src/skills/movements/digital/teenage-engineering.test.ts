@@ -62,6 +62,15 @@ describe("teenage-engineering style skill", () => {
     expect(variablesSchema.safeParse(swapped).success).toBe(true);
   });
 
+  test("names the Pego limits the dev-app check ran into", () => {
+    // A ref cannot repaint its component root, so key variants live on an inner cap frame.
+    expect(skill.content).toContain("inner cap frame");
+    // check_layout warns when the sticker only partly overlaps the shape under it.
+    expect(skill.content).toContain("fully inside the shape it sits on");
+    // Variables are document-wide: a dark design beside light ones gets dark- variables.
+    expect(skill.content).toContain("dark-bg");
+  });
+
   test("has the mapping, the swap and the three recipes", () => {
     for (const part of [
       "## Hardware to UI",
