@@ -37,11 +37,26 @@ describe("mergeSettings", () => {
         snapToPixel: 1,
       }),
     ).toEqual(store.DEFAULT_SETTINGS));
+  test("interface style: docked or floating, anything else falls back to docked", () => {
+    expect(store.mergeSettings({ interfaceStyle: "floating" }).interfaceStyle).toBe("floating");
+    expect(store.mergeSettings({ interfaceStyle: "compact" }).interfaceStyle).toBe("docked");
+  });
+  test("toolbar position: a known side is kept, anything else falls back to bottom", () => {
+    expect(store.mergeSettings({ toolbarPosition: "left" }).toolbarPosition).toBe("left");
+    expect(store.mergeSettings({ toolbarPosition: "middle" }).toolbarPosition).toBe("bottom");
+  });
   test("valid wheel behaviour and snap kept", () =>
     expect(store.mergeSettings({ wheelBehavior: "zoom", snapToPixel: false })).toMatchObject({
       wheelBehavior: "zoom",
       snapToPixel: false,
     }));
+  test("agent names: a known set and the custom names are kept, anything else dropped", () => {
+    const merged = store.mergeSettings({ agentNameSet: "custom", customAgentNames: ["Ayu"] });
+    expect(merged.agentNameSet).toBe("custom");
+    expect(merged.customAgentNames[0]).toBe("Ayu");
+    expect(merged.customAgentNames).toHaveLength(10);
+    expect(store.mergeSettings({ agentNameSet: "wizards" }).agentNameSet).toBe("pego");
+  });
 });
 
 describe("useSettingsStore", () => {

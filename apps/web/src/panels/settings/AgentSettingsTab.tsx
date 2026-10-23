@@ -3,6 +3,7 @@ import { CustomProvidersSection } from "@/panels/agent/custom-provider/CustomPro
 import { ApiKeySection } from "@/panels/settings/agent/ApiKeySection";
 import { BridgeSection } from "@/panels/settings/agent/BridgeSection";
 import { DefaultAgentSection } from "@/panels/settings/agent/DefaultAgentSection";
+import { ExtensionSection } from "@/panels/settings/agent/ExtensionSection";
 import { InstallSection } from "@/panels/settings/agent/InstallSection";
 import { LocalAgentsSection } from "@/panels/settings/agent/LocalAgentsSection";
 
@@ -43,6 +44,7 @@ export const AgentSettingsTab = ({ section }: { section?: string }) => {
       />
       <InstallSection flashing={flash === "install"} />
       <BridgeSection flashing={flash === "bridge"} />
+      <ExtensionSection flashing={flash === "extension"} />
     </div>
   );
 };

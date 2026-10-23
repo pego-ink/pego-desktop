@@ -3,6 +3,8 @@ import { googleFontsUrl } from "./fonts";
 import type { BuildCtx, Decl, IrEl, IrIcon, IrNode } from "./ir";
 import { cssVarName, kebabCase, uniqueName } from "./naming";
 import { px } from "./build";
+import { COUNT_UP_SCRIPT, motionStylesheet } from "./motion-css";
+import { SHADER_RUNTIME } from "./shader-export";
 import type { ExportFile, IconProvider } from "./types";
 
 const INDENT = "  ";
@@ -161,12 +163,20 @@ export const emitHtml = (
       : []),
     '<link rel="stylesheet" href="styles.css" />',
   ];
-  const scripts = state.usedLucideFallback
-    ? [
-        line(2, '<script src="https://unpkg.com/lucide@latest"></script>'),
-        line(2, "<script>lucide.createIcons();</script>"),
-      ]
-    : [];
+  const scripts = [
+    ...(state.usedLucideFallback
+      ? [
+          line(2, '<script src="https://unpkg.com/lucide@latest"></script>'),
+          line(2, "<script>lucide.createIcons();</script>"),
+        ]
+      : []),
+    ...(ctx.countUp ? COUNT_UP_SCRIPT.split("\n").map((text) => line(2, text)) : []),
+    ...(ctx.shaders
+      ? `<script>\n(${SHADER_RUNTIME})(document);\n</script>`
+          .split("\n")
+          .map((text) => line(2, text))
+      : []),
+  ];
   const html = [
     "<!doctype html>",
     '<html lang="en">',
@@ -180,7 +190,8 @@ export const emitHtml = (
     "</html>",
     "",
   ].join("\n");
-  const css = `${rootVariables(ctx)}${RESET}\n${state.rules.map(cssBlock).join("\n\n")}\n`;
+  const motion = motionStylesheet(ctx.motion);
+  const css = `${rootVariables(ctx)}${RESET}\n${state.rules.map(cssBlock).join("\n\n")}\n${motion ? `\n${motion}\n` : ""}`;
   return [
     { path: "index.html", contents: html },
     { path: "styles.css", contents: css },

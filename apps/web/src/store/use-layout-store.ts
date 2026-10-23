@@ -37,6 +37,8 @@ type LayoutState = {
   /** The user hid the right column (it stays hidden whatever is selected). */
   rightHidden: boolean;
   pressRailTab: (tab: RailTab) => void;
+  /** Show this tab's panel (never collapses it, unlike `pressRailTab`). */
+  openRailTab: (tab: RailTab) => void;
   togglePropertiesPinned: () => void;
   toggleRight: () => void;
   /** Ctrl/⌘ + \: hide both side panels, or show both when any is hidden. */
@@ -49,6 +51,11 @@ export const useLayoutStore = create<LayoutState>((set, get) => ({
   rightHidden: readFlag(RIGHT_KEY),
   pressRailTab: (tab) => {
     const rail = pressTab(get().rail, tab);
+    writeRailState(rail);
+    set({ rail });
+  },
+  openRailTab: (tab) => {
+    const rail = { tab, open: true };
     writeRailState(rail);
     set({ rail });
   },

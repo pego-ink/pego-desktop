@@ -52,6 +52,10 @@ const bridgePortFromLocation = (): number => {
 
 export const bridgeUrl = (port = bridgePortFromLocation()) => `ws://127.0.0.1:${port}/editor`;
 
+/** An HTTP route of the local bridge, e.g. `/fetch-image` (same port as the editor socket). */
+export const bridgeHttpUrl = (path: string, port = bridgePortFromLocation()) =>
+  `http://127.0.0.1:${port}${path}`;
+
 const defaultBackoff = (attempt: number) => Math.min(1_000 * 2 ** attempt, 30_000);
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>
@@ -291,9 +295,10 @@ const pendingProject = new Map<string, (response: ProjectResponse) => void>();
 
 /** Ask the bridge for the design folder listing, or one file's text. Rejects when offline. */
 export const requestProject = (
-  action: "list" | "read" | "projects" | "create_project",
+  action: "list" | "read" | "projects" | "create_project" | "trash_project",
   path?: string,
   name?: string,
+  projectId?: string,
 ): Promise<ProjectResponse> =>
   new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
@@ -313,6 +318,7 @@ export const requestProject = (
       action,
       ...(path === undefined ? {} : { path }),
       ...(name === undefined ? {} : { name }),
+      ...(projectId === undefined ? {} : { projectId }),
     });
     if (!sent) {
       clearTimeout(timer);

@@ -1,7 +1,9 @@
 /// <reference types="bun" />
 import { afterAll, beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
+import { emptySession } from "@/agent/sessions/session-model";
 import { setVisibleStatus } from "@/agent/test-utils";
+import { useAgentStore } from "@/agent/use-agent-store";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { captureLive, documentTitle, isProjectDesign } from "./live-document";
@@ -15,6 +17,9 @@ let asked = 0;
 
 beforeEach(() => {
   resetLiveDocument();
+  // Start from one fresh chat session: other suites may leave a visible session id with no live
+  // entry, and then setVisibleStatus("running") would not count as a run.
+  useAgentStore.getState().resetSessions(emptySession());
   setVisibleStatus("idle");
   confirmAnswer = true;
   asked = 0;

@@ -1,4 +1,5 @@
 import type { Layout, Op, PegoDocument } from "@pego/doc";
+import type { BrowserHost } from "./browser-types";
 
 /** A step of the agent's plan, shown in the agent panel. */
 export type PlanStep = { id: string; title: string; detail?: string };
@@ -40,6 +41,12 @@ export type ToolHost = {
   /** Icon names available to `icon` nodes (lucide, kebab-case). */
   listIcons?: () => string[];
   /**
+   * The first family of a CSS font stack (already split, unquoted, in order) that the editor can
+   * render, or the closest available substitute for well-known system/web fonts; undefined when
+   * nothing fits (the converter then keeps its own default).
+   */
+  resolveFont?: (families: string[]) => string | undefined;
+  /**
    * Images the user attached to the current run, for `place_image` with src "attachment:<id>".
    * Returns a data: URL, or undefined for an unknown id.
    */
@@ -61,10 +68,42 @@ export type ToolHost = {
     width: number;
     height: number;
   }) => Promise<{ src: string; alt?: string }>;
+  /**
+   * Search free-to-use photos (stock images with an open license). `search_images` returns
+   * `unsupported` without it. Results are untrusted: their src is checked like place_image's.
+   */
+  searchImages?: (request: {
+    query: string;
+    count: number;
+    orientation?: "landscape" | "portrait" | "square";
+  }) => Promise<StockImage[]>;
+  /** The in-app browser (desktop app only); `browser` returns `unsupported` without it. */
+  browser?: BrowserHost;
 };
 
-/** Base64 PNG attached to a tool result (screenshots). */
-export type ToolImage = { mediaType: "image/png"; data: string; width: number; height: number };
+/** A photo from an image search, with what crediting it needs. */
+export type StockImage = {
+  /** Full-size image, https, loadable on the canvas. */
+  src: string;
+  /** Small preview, https. */
+  thumb: string;
+  width?: number;
+  height?: number;
+  title: string;
+  creator?: string;
+  /** License label, e.g. "CC BY 2.0" or "CC0 1.0". */
+  license: string;
+  /** The image's page (credit and license details). */
+  pageUrl: string;
+  /** Where the search ran, e.g. "Openverse". */
+  provider: string;
+};
+
+/** Image media types a tool result may carry. */
+export type ToolImageType = "image/png" | "image/jpeg" | "image/webp";
+
+/** Base64 image attached to a tool result (screenshots). */
+export type ToolImage = { mediaType: ToolImageType; data: string; width: number; height: number };
 
 /** Tool output in a provider-neutral shape (maps to tool_result / MCP CallToolResult). */
 export type ToolResult = { content: string; isError: boolean; images?: ToolImage[] };

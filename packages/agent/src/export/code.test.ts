@@ -163,4 +163,23 @@ describe("edge cases", () => {
     )?.contents;
     expect(tsx).toContain('viewBox="0 0 60 80"');
   });
+
+  test("hidden layers are left out of the code", () => {
+    const doc = docWith({
+      type: "frame" as const,
+      id: "card",
+      x: 0,
+      y: 0,
+      layout: "vertical" as const,
+      children: [
+        { type: "text" as const, id: "shown", x: 0, y: 0, content: "Shown" },
+        { type: "text" as const, id: "hidden", x: 0, y: 0, content: "Secret", visible: false },
+      ],
+    });
+    const html = exportCode(doc, "card", { format: "html-css" })
+      .map((f) => f.contents)
+      .join("\n");
+    expect(html).toContain("Shown");
+    expect(html).not.toContain("Secret");
+  });
 });

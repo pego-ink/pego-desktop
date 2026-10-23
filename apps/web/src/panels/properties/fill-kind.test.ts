@@ -21,6 +21,15 @@ describe("fill kinds", () => {
     expect(convertFill("#000", "image")).toBeNull();
   });
 
+  test("shader starts as aurora and gives its first color back", () => {
+    const shader = convertFill("#000", "shader");
+    expect(shader).toEqual({ type: "shader", preset: "aurora" });
+    expect(kindOfFill(shader!)).toBe("shader");
+    expect(convertFill(shader!, "shader")).toBe(shader);
+    // Back to solid takes the shader's first color.
+    expect(convertFill(shader!, "solid")).toBe("#0F172A");
+  });
+
   test("addStop inserts between the last two stops", () => {
     expect(
       addStop([

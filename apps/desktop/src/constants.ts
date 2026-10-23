@@ -29,6 +29,12 @@ const FONT_CDN_ORIGIN = "https://cdn.jsdelivr.net";
 const CUSTOM_PROVIDER_CONNECT = "https: http://localhost:* http://127.0.0.1:*";
 
 /**
+ * The image search's thumbnails and photos (Assets › Images): shown with plain <img> tags, so
+ * `img-src` must allow Openverse's image proxy. The canvas fetches photos (connect-src https:).
+ */
+export const IMAGE_SEARCH_ORIGIN = "https://api.openverse.org";
+
+/**
  * CSP for the packaged app. CanvasKit needs `wasm-unsafe-eval`; Tailwind/Radix inject inline
  * styles, so styles allow `unsafe-inline` (scripts do not).
  */
@@ -36,7 +42,7 @@ export const CONTENT_SECURITY_POLICY = [
   "default-src 'self'",
   "script-src 'self' 'wasm-unsafe-eval'",
   `style-src 'self' 'unsafe-inline' ${FONT_STYLE_ORIGIN}`,
-  "img-src 'self' data: blob:",
+  `img-src 'self' data: blob: ${IMAGE_SEARCH_ORIGIN}`,
   `font-src 'self' data: ${FONT_FILE_ORIGIN}`,
   `connect-src 'self' https://api.anthropic.com ${FONT_CDN_ORIGIN} ${CUSTOM_PROVIDER_CONNECT} ws://${BRIDGE_HOST}:${BRIDGE_PORT} http://${BRIDGE_HOST}:${BRIDGE_PORT}`,
   "worker-src 'self' blob:",

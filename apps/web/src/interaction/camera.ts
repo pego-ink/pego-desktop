@@ -31,12 +31,14 @@ export const zoomAtPoint = (camera: Camera, nextZoom: number, sx: number, sy: nu
   return { zoom, panX: sx - docX * zoom, panY: sy - docY * zoom };
 };
 
+/**
+ * The part of the canvas the user can see, in canvas px: all of it, or (floating panels) the
+ * area between them. `x`/`y` default to 0.
+ */
+export type ViewRect = { x?: number; y?: number; width: number; height: number };
+
 /** Camera that centers `bounds` inside the viewport with `padding` px around it. */
-export const fitCamera = (
-  bounds: Box,
-  viewport: { width: number; height: number },
-  padding = FIT_PADDING,
-): Camera => {
+export const fitCamera = (bounds: Box, viewport: ViewRect, padding = FIT_PADDING): Camera => {
   const availW = Math.max(viewport.width - padding * 2, 1);
   const availH = Math.max(viewport.height - padding * 2, 1);
   const zoom = clampZoom(
@@ -44,8 +46,8 @@ export const fitCamera = (
   );
   return {
     zoom,
-    panX: (viewport.width - bounds.width * zoom) / 2 - bounds.x * zoom,
-    panY: (viewport.height - bounds.height * zoom) / 2 - bounds.y * zoom,
+    panX: (viewport.x ?? 0) + (viewport.width - bounds.width * zoom) / 2 - bounds.x * zoom,
+    panY: (viewport.y ?? 0) + (viewport.height - bounds.height * zoom) / 2 - bounds.y * zoom,
   };
 };
 

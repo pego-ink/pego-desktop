@@ -1,4 +1,5 @@
 import { sampleDoc, type Op } from "@pego/doc";
+import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { cancelPendingDecisions } from "./decisions";
 import { runClaims } from "./run-claims";
@@ -12,6 +13,9 @@ export const resetStores = () => {
   clearRuns();
   runClaims.clear();
   useDocumentStore.getState().load(sampleDoc);
+  // One open tab showing the sample document (the app itself opens on Home with none).
+  const tab = { id: "tab-test", kind: "local" as const, name: "Untitled", dir: null, saved: null };
+  useWorkspaceStore.setState({ workspaces: [tab], liveId: tab.id, view: "editor" });
   const session = emptySession();
   const agent = useAgentStore.getState();
   agent.resetSessions(session);

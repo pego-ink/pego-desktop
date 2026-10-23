@@ -11,6 +11,7 @@ import {
   pageOrFirst,
   linearGradientPoints,
   MAX_INSTANCE_DEPTH,
+  flipOf,
   resolveColor,
   resolveInstance,
   resolveNumber,
@@ -23,7 +24,11 @@ import {
   type PegoDocument,
   type PegoNode,
   type ShadowEffect,
+  type ShaderFill,
   findRenderedNode,
+  countUpText,
+  motionFrame,
+  resolveString,
 } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { getIconPath } from "@/canvas/icons";
@@ -32,6 +37,7 @@ import { getParagraph } from "@/canvas/measure-text";
 import { createLruCache } from "@/canvas/render-cache";
 import { drawImageNode } from "@/canvas/render-image-node";
 import { strokePathWithExtras } from "@/canvas/render-path-extras";
+import { makeShaderFill } from "@/canvas/render-shader";
 import type { Camera } from "@/canvas/types";
 
 type Paints = { fill: Paint; stroke: Paint; layer: Paint; iconStroke: Paint; effect: Paint };
@@ -43,6 +49,10 @@ type Scene = {
   layout: Layout;
   paints: Paints;
   hiddenIds: ReadonlySet<string>;
+  /** Milliseconds into a motion preview; undefined draws every node as designed. */
+  motionTime: number | undefined;
+  /** Seconds on the shader clock (`iTime` of shader fills). */
+  shaderTime: number;
 };
 
 const BACKGROUND = "#141418";
@@ -83,7 +93,7 @@ const decodeImage = (ck: CanvasKit, src: string) => {
 /** Shader for a gradient or image fill sized to the node's box; null when it cannot be drawn. */
 const fillShader = (
   scene: Scene,
-  fill: Exclude<Fill, string>,
+  fill: Exclude<Fill, string | ShaderFill>,
   width: number,
   height: number,
 ): Shader | null => {
@@ -349,6 +359,17 @@ const fillWith = (
     draw(paint);
     return;
   }
+  if (fill.type === "shader") {
+    // Made per draw (its time and size change), so it is deleted right after.
+    const shader = makeShaderFill(ck, fill, scene.doc.variables, width, height, scene.shaderTime);
+    if (!shader) return;
+    paint.setColor(ck.BLACK);
+    paint.setShader(shader);
+    draw(paint);
+    paint.setShader(null);
+    shader.delete();
+    return;
+  }
   const shader = fillShader(scene, fill, width, height);
   if (!shader) return;
   paint.setColor(ck.BLACK);
@@ -465,6 +486,14 @@ const drawContent = (scene: Scene, node: PegoNode, box: Box) => {
   }
 };
 
+/** A text with `countUp` shows its numbers scaled by the entrance progress while it plays. */
+const countingNode = (scene: Scene, node: PegoNode, progress: number | undefined): PegoNode => {
+  if (node.type !== "text" || progress === undefined || progress >= 1 || !node.animation?.countUp)
+    return node;
+  const content = countUpText(resolveString(node.content, scene.doc.variables), progress);
+  return { ...node, content };
+};
+
 const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth: number) => {
   const { canvas, doc, layout, paints, res } = scene;
   for (const raw of nodes) {
@@ -473,13 +502,36 @@ const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth:
     const box = layout.get(node.id);
     if (!box) continue;
 
-    const opacity = Math.min(1, Math.max(0, resolveNumber(node.opacity, doc.variables, 1)));
+    const motion =
+      scene.motionTime !== undefined && node.type !== "page" && node.animation
+        ? motionFrame(node.animation, scene.motionTime)
+        : undefined;
+    const opacity =
+      Math.min(1, Math.max(0, resolveNumber(node.opacity, doc.variables, 1))) *
+      (motion?.opacity ?? 1);
     const rotation = resolveNumber(node.rotation, doc.variables, 0);
 
     canvas.save();
     const placement = nodePlacement(box, parent, rotation);
-    canvas.translate(placement.x, placement.y);
+    canvas.translate(placement.x + (motion?.dx ?? 0), placement.y + (motion?.dy ?? 0));
     if (placement.angle !== 0) canvas.rotate(placement.angle, 0, 0);
+    // The entrance scales about its origin inside the box, like CSS `scale` with
+    // `transform-origin` (the exported keyframes do the same).
+    if (motion && (motion.scaleX !== 1 || motion.scaleY !== 1)) {
+      const ox = motion.originX * box.width;
+      const oy = motion.originY * box.height;
+      canvas.translate(ox, oy);
+      canvas.scale(motion.scaleX, motion.scaleY);
+      canvas.translate(-ox, -oy);
+    }
+    // Mirror around the box center, after the rotation (rotate, then flip, like CSS
+    // `rotate() scale(-1, 1)`): the box stays put, content, children and shadows mirror.
+    const flip = flipOf(node);
+    if (flip.x || flip.y) {
+      canvas.translate(box.width / 2, box.height / 2);
+      canvas.scale(flip.x ? -1 : 1, flip.y ? -1 : 1);
+      canvas.translate(-box.width / 2, -box.height / 2);
+    }
     if (opacity < 1) {
       paints.layer.setAlphaf(opacity);
       canvas.saveLayer(paints.layer);
@@ -496,7 +548,7 @@ const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth:
       filter.delete();
     }
 
-    drawContent(scene, node, box);
+    drawContent(scene, countingNode(scene, node, motion?.progress), box);
 
     if (node.type === "frame" || node.type === "group") {
       canvas.save();
@@ -539,6 +591,10 @@ export const renderDocument = (
     background?: string | null;
     /** Page to draw (null/omitted = the first page). */
     pageId?: string | null;
+    /** Milliseconds into a motion preview: draws every `animation` at that moment. */
+    motionTime?: number;
+    /** Seconds passed to shader fills as `iTime` (default 0, their first frame). */
+    shaderTime?: number;
   } = {},
 ) => {
   const background = options.background === undefined ? BACKGROUND : options.background;
@@ -553,6 +609,8 @@ export const renderDocument = (
     layout,
     paints: getPaints(res.ck),
     hiddenIds: options.hiddenIds ?? NO_HIDDEN_IDS,
+    motionTime: options.motionTime,
+    shaderTime: options.shaderTime ?? 0,
   };
   if (options.rootId === undefined) {
     drawNodes(scene, pageOrFirst(doc, options.pageId).children, ORIGIN, 0);

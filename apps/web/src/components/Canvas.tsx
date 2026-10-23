@@ -16,18 +16,33 @@ import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
+import { CanvasContextMenu } from "@/components/CanvasContextMenu";
+import { COMPONENT_MIME } from "@/assets/components";
+import { dropComponent } from "@/assets/drop-component";
+import {
+  GENERATED_IMAGE_MIME,
+  placeImageLayer,
+  placeStockImage,
+  readDroppedGeneratedImage,
+  readDroppedStockImage,
+  STOCK_IMAGE_MIME,
+} from "@/images/stock-image";
 import { useImagePaste } from "@/interaction/use-image-paste";
+import { useLayerCopy } from "@/interaction/layer-clipboard";
 import { AgentCursors } from "@/components/AgentCursor";
 import { dropFiles } from "@/interaction/drop-files";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { SelectionPrompt } from "@/components/SelectionPrompt";
 import { Toolbar } from "@/components/Toolbar";
+import { ViewStage } from "@/components/ViewStage";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useFontEvents } from "@/fonts/font-events";
 import { getToolHandler, useToolPreview } from "@/interaction/tool-handlers";
 import { useTextEditStore } from "@/store/use-text-edit-store";
 import { useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { currentMotionTime, useMotionStore } from "@/motion/use-motion-store";
+import { selectionHasMovingShader } from "@/canvas/shader-activity";
 
 /** Everything the cached document layer depends on; any change forces a re-render of the layer. */
 type LayerKey = {
@@ -43,6 +58,10 @@ type LayerKey = {
   background: string;
   fonts: number;
   layers: number;
+  /** Milliseconds into a motion preview (a new frame every time), or undefined. */
+  motionTime: number | undefined;
+  /** Shader clock in seconds; it only runs while shader fills move. */
+  shaderTime: number;
 };
 
 const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
@@ -58,7 +77,9 @@ const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
   a.pageId === b.pageId &&
   a.background === b.background &&
   a.fonts === b.fonts &&
-  a.layers === b.layers;
+  a.layers === b.layers &&
+  a.motionTime === b.motionTime &&
+  a.shaderTime === b.shaderTime;
 
 export const Canvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -67,6 +88,7 @@ export const Canvas = () => {
 
   useCanvasPointer(canvasRef);
   useImagePaste();
+  useLayerCopy();
   useEditorShortcuts();
 
   // Cursor follows interaction state without re-rendering React. The active tool's own cursor
@@ -103,6 +125,9 @@ export const Canvas = () => {
     let cleanup = () => {};
     const selectFocusGroups = createFocusGroupsSelector();
     let shownFocus: AgentFocusGroup[] = [];
+    /** Seconds of shader time so far, and when it last advanced (null while stopped). */
+    let shaderClock = 0;
+    let shaderTick: number | null = null;
 
     void loadCanvasKit()
       .then((res) => {
@@ -148,7 +173,13 @@ export const Canvas = () => {
             key.doc,
             key.layout,
             { panX: key.panX, panY: key.panY, zoom: key.zoom },
-            { hiddenIds, pageId: key.pageId, background: key.background },
+            {
+              hiddenIds,
+              pageId: key.pageId,
+              background: key.background,
+              motionTime: key.motionTime,
+              shaderTime: key.shaderTime,
+            },
           );
           canvas.restore();
         };
@@ -158,6 +189,15 @@ export const Canvas = () => {
           const dpr = window.devicePixelRatio || 1;
           const canvas = surface.getCanvas();
           const { doc, selection, hoveredId, pageId } = useDocumentStore.getState();
+          // Shader fills move (their clock runs) while selected or during a motion preview; it
+          // stops where it was otherwise, so the next start does not jump.
+          const shadersMove =
+            !prefersReducedMotion() &&
+            (useMotionStore.getState().startedAt !== null ||
+              selectionHasMovingShader(doc, selection));
+          const now = performance.now();
+          if (shadersMove && shaderTick !== null) shaderClock += (now - shaderTick) / 1000;
+          shaderTick = shadersMove ? now : null;
           const { camera } = useViewportStore.getState();
           const { marquee, dropLine } = useInteractionState.getState();
           const layout = getLayout(doc);
@@ -177,6 +217,8 @@ export const Canvas = () => {
             background: CANVAS_BACKGROUND[useThemeStore.getState().resolved],
             fonts: useFontEvents.getState().version,
             layers: useLayerEvents.getState().version,
+            motionTime: currentMotionTime(),
+            shaderTime: shaderClock,
           };
 
           if (!sameKey(layerKey, key)) {
@@ -213,12 +255,15 @@ export const Canvas = () => {
             agentFocus,
             suppressSelection: toolHandler?.hidesSelection?.() ?? false,
             time: focusAnimated ? performance.now() : undefined,
+            pageId,
+            theme: useThemeStore.getState().resolved,
           });
           toolHandler?.renderOverlay?.(res, canvas, camera);
           canvas.restore();
           surface.flush();
-          // The agent focus box animates: keep frames coming only while it is on screen.
-          if (focusAnimated) schedule();
+          // The agent focus box animates: keep frames coming only while it is on screen. A motion
+          // preview does too, until it ends (the store change then draws the final frame).
+          if (focusAnimated || key.motionTime !== undefined || shadersMove) schedule();
         };
 
         const draw = () => {
@@ -288,8 +333,9 @@ export const Canvas = () => {
           useLayerEvents.subscribe(schedule),
           useToolPreview.subscribe(schedule),
           useToolStore.subscribe(schedule),
+          useMotionStore.subscribe(schedule),
           useAgentStore.subscribe((state) => {
-            // Only a change of some run's focus box (ids, tint, title) needs a frame.
+            // Only a change of some run's focus box (ids, tint) needs a frame.
             const groups = selectFocusGroups(state);
             if (groups === shownFocus) return;
             shownFocus = groups;
@@ -324,6 +370,16 @@ export const Canvas = () => {
       ref={containerRef}
       className="relative h-full w-full overflow-hidden"
       onDragOver={(event) => {
+        // A component from the Assets panel: an instance goes where it is dropped.
+        if (
+          event.dataTransfer.types.includes(COMPONENT_MIME) ||
+          event.dataTransfer.types.includes(STOCK_IMAGE_MIME) ||
+          event.dataTransfer.types.includes(GENERATED_IMAGE_MIME)
+        ) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          return;
+        }
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
@@ -333,6 +389,34 @@ export const Canvas = () => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
       }}
       onDrop={(event) => {
+        const photo = event.dataTransfer.getData(STOCK_IMAGE_MIME);
+        if (photo) {
+          event.preventDefault();
+          const image = readDroppedStockImage(photo);
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (image)
+            placeStockImage(image, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+          return;
+        }
+        const generated = event.dataTransfer.getData(GENERATED_IMAGE_MIME);
+        if (generated) {
+          event.preventDefault();
+          const image = readDroppedGeneratedImage(generated);
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (image)
+            placeImageLayer({ src: image.src, name: "Generated image", alt: image.prompt }, image, {
+              x: event.clientX - rect.left,
+              y: event.clientY - rect.top,
+            });
+          return;
+        }
+        const componentId = event.dataTransfer.getData(COMPONENT_MIME);
+        if (componentId) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          dropComponent(componentId, event.clientX - rect.left, event.clientY - rect.top);
+          return;
+        }
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
         setDropping(false);
@@ -344,11 +428,13 @@ export const Canvas = () => {
         );
       }}
     >
-      <canvas
-        ref={canvasRef}
-        tabIndex={-1}
-        className="absolute inset-0 h-full w-full touch-none outline-none"
-      />
+      <CanvasContextMenu>
+        <canvas
+          ref={canvasRef}
+          tabIndex={-1}
+          className="absolute inset-0 h-full w-full touch-none outline-none"
+        />
+      </CanvasContextMenu>
       {dropping ? (
         <div className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/5">
           <span className="rounded-md bg-card px-3 py-1.5 text-xs text-foreground shadow-sm">
@@ -359,7 +445,9 @@ export const Canvas = () => {
       <TextEditorOverlay />
       <AgentCursors />
       <SelectionPrompt canvasRef={canvasRef} />
-      <Toolbar />
+      <ViewStage>
+        <Toolbar />
+      </ViewStage>
     </div>
   );
 };

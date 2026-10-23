@@ -1,5 +1,8 @@
 import type { Canvas as SkCanvas, Paint, Paragraph, Path } from "canvaskit-wasm";
-import type { Box, Layout, PegoDocument } from "@pego/doc";
+import { findNode, resolveNumber, type Box, type Layout, type PegoDocument } from "@pego/doc";
+import { cursorRects } from "@/canvas/agent-cursor-rects";
+import type { Rect } from "@/canvas/agent-cursor-motion";
+import { boundsOfPoints, placeGeneratingLabel } from "@/canvas/agent-focus-label";
 import type { AgentFocusGroup } from "@/agent/focus-groups";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { buildNodeOutline } from "@/canvas/node-outline";
@@ -14,10 +17,10 @@ import {
   getSelectionFrame,
   labelAnchor,
   toScreenMatrix,
-  topmostCorner,
   type SelectionFrame,
 } from "@/interaction/selection-frame";
-import { HANDLES } from "@/interaction/transform";
+import { CORNER_HANDLES } from "@/interaction/transform";
+import { CAPTION_FONT_SIZE, frameCaptions, type FrameCaption } from "./frame-captions";
 
 export const ACCENT = "#B79CFF";
 const LABEL_TEXT = "#141418";
@@ -43,15 +46,25 @@ export type OverlayState = {
   suppressSelection?: boolean;
   /** `performance.now()` for the agent focus animation; omit for a static box (reduced motion). */
   time?: number;
+  /** The shown page: its top-level frames get name captions. */
+  pageId?: string | null;
+  /** Canvas theme, for caption colors that read on its background. */
+  theme?: "light" | "dark";
 };
 
 const DASH: number[] = [5, 4];
 const DASH_PERIOD = DASH[0]! + DASH[1]!;
-/** Dash travel speed (ms per px) and fill pulse period (ms) of the agent focus box. */
+/** Dash travel speed (ms per px) of the agent focus outline. */
 const DASH_MS_PER_PX = 70;
-const PULSE_PERIOD_MS = 1800;
-const FOCUS_FILL_ALPHA = 0.078;
-const FOCUS_FILL_PULSE = 0.035;
+/** Skeleton wash and highlight-band opacity, and the band's sweep period (ms). */
+const SKELETON_BASE_ALPHA = 0.07;
+const SKELETON_SHIMMER_ALPHA = 0.16;
+const SHIMMER_PERIOD_MS = 1800;
+/** "Generating" pill spinner: diameter, gap to the text (px), turn period (ms), arc sweep (deg). */
+const SPINNER_SIZE = 8;
+const SPINNER_GAP = 5;
+const SPINNER_PERIOD_MS = 900;
+const SPINNER_SWEEP = 270;
 
 type Kit = {
   fill: Paint;
@@ -119,6 +132,70 @@ const getLabel = (res: CanvasKitResources, text: string, fontSize: number): Para
     return paragraph;
   } finally {
     builder.delete();
+  }
+};
+
+/** Caption colors per theme: plain, hovered, components and instances. */
+const CAPTION_COLORS = {
+  light: { frame: "#6E6E7A", hover: "#18181D", component: "#8B5CF6" },
+  dark: { frame: "#9A9AA6", hover: "#E6E6EB", component: "#B79CFF" },
+} as const;
+
+/** A one-line caption cut to `width` with an ellipsis (cached like labels). */
+const getCaption = (
+  res: CanvasKitResources,
+  text: string,
+  color: string,
+  width: number,
+): Paragraph => {
+  const { paragraphs } = getKit(res);
+  // Widths in 8px steps keep the cache small while zooming.
+  const room = Math.max(8, Math.floor(width / 8) * 8);
+  const key = `caption|${color}|${room}|${text}`;
+  const cached = paragraphs.get(key);
+  if (cached) return cached;
+  const { ck, fontMgr, fontFamily } = res;
+  const style = new ck.ParagraphStyle({
+    textStyle: {
+      color: colorOf(res, color),
+      fontFamilies: [fontFamily],
+      fontSize: CAPTION_FONT_SIZE,
+      fontStyle: { weight: { value: 500 } },
+    },
+    maxLines: 1,
+    ellipsis: "…",
+  });
+  const builder = ck.ParagraphBuilder.Make(style, fontMgr);
+  try {
+    builder.addText(text);
+    const paragraph = builder.build();
+    paragraph.layout(room);
+    paragraphs.set(key, paragraph);
+    return paragraph;
+  } finally {
+    builder.delete();
+  }
+};
+
+/** Name captions above the shown page's top-level frames; the selected ones in the accent. */
+const drawCaptions = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  captions: readonly FrameCaption[],
+  selection: readonly string[],
+  hoveredId: string | null,
+  theme: "light" | "dark",
+) => {
+  const colors = CAPTION_COLORS[theme];
+  for (const caption of captions) {
+    const color = selection.includes(caption.id)
+      ? ACCENT
+      : caption.id === hoveredId
+        ? colors.hover
+        : caption.kind === "frame"
+          ? colors.frame
+          : colors.component;
+    canvas.drawParagraph(getCaption(res, caption.text, color, caption.width), caption.x, caption.y);
   }
 };
 
@@ -227,7 +304,7 @@ const drawHandles = (
     width: HANDLE_SIZE,
     height: HANDLE_SIZE,
   };
-  for (const handle of HANDLES) {
+  for (const handle of CORNER_HANDLES) {
     const c = frameHandlePoint(screen, frame.box.width, frame.box.height, handle);
     withMatrix(canvas, { a: ux.x, b: ux.y, c: uy.x, d: uy.y, e: c.x, f: c.y }, () => {
       fillRect(res, canvas, rect, "#FFFFFF");
@@ -272,23 +349,97 @@ const drawSizeLabel = (
     (w) => ({ x: anchor.x - w / 2, y: anchor.y + HANDLE_SIZE + 4 }),
   );
 
-/** Small pill (the run's session title) sitting above a focused box's topmost corner. */
-const drawAgentTag = (
+/** Corner radius of the node's box (clamped; ellipses are round) so the skeleton follows its shape. */
+const skeletonRadius = (doc: PegoDocument, id: string, width: number, height: number): number => {
+  const node = findNode(doc, id);
+  if (!node) return 0;
+  const max = Math.min(width, height) / 2;
+  if (node.type === "ellipse") return max;
+  if (node.type === "frame" || node.type === "rectangle" || node.type === "image")
+    return Math.min(max, Math.max(0, resolveNumber(node.cornerRadius, doc.variables, 0)));
+  return 0;
+};
+
+/**
+ * Loading skeleton of one focused node (local space): a soft run-tinted wash plus a diagonal
+ * highlight band sweeping across it. `time` is the shared canvas clock; without it (reduced
+ * motion) only the static wash is drawn.
+ */
+const drawSkeleton = (
   res: CanvasKitResources,
   canvas: SkCanvas,
-  corner: { x: number; y: number },
-  label: string,
   color: string,
-) =>
-  drawPill(
-    res,
-    canvas,
-    label,
-    10,
-    { x: 6, y: 2 },
-    (_w, h) => ({ x: corner.x, y: corner.y - h - 3 }),
-    color,
+  width: number,
+  height: number,
+  radius: number,
+  time: number | undefined,
+) => {
+  const { ck } = res;
+  const { fill } = getKit(res);
+  const rect = ck.XYWHRect(0, 0, width, height);
+  const tint = colorOf(res, color);
+  canvas.save();
+  canvas.clipRRect(ck.RRectXY(rect, radius, radius), ck.ClipOp.Intersect, true);
+  fill.setColor(tint);
+  fill.setAlphaf(SKELETON_BASE_ALPHA);
+  canvas.drawRect(rect, fill);
+  if (time !== undefined) {
+    const length = Math.hypot(width, height) || 1;
+    const band = length * 0.5;
+    // Band start along the diagonal, as a fraction of its length: sweeps from fully before to after.
+    const start =
+      -band / length + ((time % SHIMMER_PERIOD_MS) / SHIMMER_PERIOD_MS) * (1 + band / length);
+    const end = start + band / length;
+    const clear = Float32Array.of(tint[0]!, tint[1]!, tint[2]!, 0);
+    const peak = Float32Array.of(tint[0]!, tint[1]!, tint[2]!, SKELETON_SHIMMER_ALPHA);
+    const shader = ck.Shader.MakeLinearGradient(
+      [width * start, height * start],
+      [width * end, height * end],
+      [clear, peak, clear],
+      [0, 0.5, 1],
+      ck.TileMode.Clamp,
+    );
+    fill.setShader(shader);
+    canvas.drawRect(rect, fill);
+    fill.setShader(null);
+    shader.delete();
+  }
+  canvas.restore();
+};
+
+/** One "Generating" pill per run: spinner + text in the run colour, constant screen size. */
+const drawGeneratingLabel = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  union: Rect,
+  color: string,
+  time: number | undefined,
+) => {
+  const { ck } = res;
+  const { fill, stroke } = getKit(res);
+  const paragraph = getLabel(res, "Generating", 10);
+  const pad = { x: 6, y: 2 };
+  const w = pad.x * 2 + SPINNER_SIZE + SPINNER_GAP + paragraph.getLongestLine();
+  const h = paragraph.getHeight() + pad.y * 2;
+  const { x, y } = placeGeneratingLabel(union, { width: w, height: h }, cursorRects());
+  fill.setColor(colorOf(res, color));
+  canvas.drawRRect(ck.RRectXY(ck.XYWHRect(x, y, w, h), 4, 4), fill);
+  const cx = x + pad.x + SPINNER_SIZE / 2;
+  const cy = y + h / 2;
+  const r = SPINNER_SIZE / 2 - 0.75;
+  stroke.setStrokeWidth(1.5);
+  stroke.setStrokeCap(ck.StrokeCap.Round);
+  stroke.setColor(colorOf(res, LABEL_TEXT));
+  canvas.drawArc(
+    ck.LTRBRect(cx - r, cy - r, cx + r, cy + r),
+    time === undefined ? -90 : ((time / SPINNER_PERIOD_MS) * 360) % 360,
+    SPINNER_SWEEP,
+    false,
+    stroke,
   );
+  stroke.setStrokeCap(ck.StrokeCap.Butt);
+  canvas.drawParagraph(paragraph, x + pad.x + SPINNER_SIZE + SPINNER_GAP, y + pad.y);
+};
 
 const drawAgentFocus = (
   res: CanvasKitResources,
@@ -296,47 +447,50 @@ const drawAgentFocus = (
   doc: PegoDocument,
   layout: Layout,
   camera: Camera,
-  { ids, color, label }: AgentFocusGroup,
+  { ids, color }: AgentFocusGroup,
   time: number | undefined,
 ) => {
   const { ck } = res;
-  const { fill, stroke } = getKit(res);
+  const { stroke } = getKit(res);
   const { zoom } = camera;
   const animated = time !== undefined;
-  const pulse = animated ? 0.5 + 0.5 * Math.sin((time * 2 * Math.PI) / PULSE_PERIOD_MS) : 0.5;
   // The box is drawn in node-local space (scaled by zoom), so dashes are specified in local units.
   const dash = ck.PathEffect.MakeDash(
     DASH.map((v) => v / zoom),
     (animated ? (time / DASH_MS_PER_PX) % DASH_PERIOD : 0) / zoom,
   );
+  const corners: { x: number; y: number }[] = [];
   try {
     for (const id of ids) {
       const frame = getSelectionFrame(doc, layout, id);
       if (!frame) continue;
       const screen = toScreenMatrix(camera, frame.matrix);
-      const rect = ck.XYWHRect(0, 0, frame.box.width, frame.box.height);
+      const { width, height } = frame.box;
+      corners.push(...frameCorners(screen, width, height));
+      const rect = ck.XYWHRect(0, 0, width, height);
       withMatrix(canvas, screen, () => {
-        fill.setColor(colorOf(res, color));
-        fill.setAlphaf(FOCUS_FILL_ALPHA + (pulse - 0.5) * FOCUS_FILL_PULSE);
-        canvas.drawRect(rect, fill);
+        drawSkeleton(
+          res,
+          canvas,
+          color,
+          width,
+          height,
+          skeletonRadius(doc, id, width, height),
+          time,
+        );
         stroke.setStrokeWidth(1.5 / zoom);
         stroke.setColor(colorOf(res, color));
         stroke.setPathEffect(dash);
         canvas.drawRect(rect, stroke);
         stroke.setPathEffect(null);
       });
-      drawAgentTag(
-        res,
-        canvas,
-        topmostCorner(frameCorners(screen, frame.box.width, frame.box.height)),
-        label,
-        color,
-      );
     }
   } finally {
     stroke.setPathEffect(null);
     dash.delete();
   }
+  const union = boundsOfPoints(corners);
+  if (union) drawGeneratingLabel(res, canvas, union, color, time);
 };
 
 /** Insertion line between auto-layout siblings, drawn as a fixed-width screen-space stroke. */
@@ -364,8 +518,19 @@ export const renderOverlay = (
     agentFocus,
     suppressSelection,
     time,
+    pageId = null,
+    theme = "light",
   }: OverlayState,
 ) => {
+  drawCaptions(
+    res,
+    canvas,
+    frameCaptions(doc, layout, camera, pageId),
+    selection,
+    hoveredId,
+    theme,
+  );
+
   for (const group of agentFocus ?? []) {
     if (group.ids.length > 0) drawAgentFocus(res, canvas, doc, layout, camera, group, time);
   }

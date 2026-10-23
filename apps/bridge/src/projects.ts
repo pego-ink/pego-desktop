@@ -29,7 +29,7 @@ export const projectSlug = (name: string): string =>
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "") || "project";
 
-const readMeta = async (
+export const readMeta = async (
   dir: string,
 ): Promise<{ id: string; name: string; createdAt: string } | null> => {
   try {

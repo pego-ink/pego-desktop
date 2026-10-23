@@ -1,5 +1,7 @@
 import {
+  shaderFallbackColor,
   findNode,
+  flipOf,
   isContainer,
   MAX_INSTANCE_DEPTH,
   resolveColor,
@@ -71,6 +73,9 @@ const newId = (ctx: Ctx, prefix: string): string => `${prefix}${++ctx.idCount}`;
 const fillAttrs = (ctx: Ctx, fill: Fill | undefined, w: number, h: number, minX = 0, minY = 0) => {
   if (fill === undefined) return paintAttrs("fill", undefined);
   if (typeof fill === "string") return paintAttrs("fill", color(ctx, fill));
+  // SVG cannot run a shader: its first color stands in.
+  if (fill.type === "shader")
+    return paintAttrs("fill", shaderFallbackColor(fill, ctx.doc.variables));
   const id = newId(ctx, "paint");
   const angle = fill.type === "linear" ? num(ctx, fill.angle, 180) : 0;
   const area = { x: minX, y: minY, width: w, height: h };
@@ -382,12 +387,24 @@ const renderNode = (
   const transform = [
     dx !== 0 || dy !== 0 ? `translate(${round(dx)} ${round(dy)})` : "",
     rotation !== 0 ? `rotate(${round(-rotation)})` : "",
+    flipTransform(node, box),
   ]
     .filter(Boolean)
     .join(" ");
   const blur = blurFilter(ctx, effectsOf(node));
   if (!transform && opacity === 1 && !blur) return body;
   return `<g${transform ? ` transform="${transform}"` : ""}${opacity < 1 ? ` opacity="${round(opacity)}"` : ""}${blur}>${body}</g>`;
+};
+
+/**
+ * Mirror around the box center, applied after the rotation like the canvas does:
+ * `translate(w 0) scale(-1 1)` for flipX (x -> w - x), the same for y.
+ */
+const flipTransform = (node: PegoNode, box: Box): string => {
+  const { x: flipX, y: flipY } = flipOf(node);
+  if (!flipX && !flipY) return "";
+  const move = `translate(${flipX ? round(box.width) : 0} ${flipY ? round(box.height) : 0})`;
+  return `${move} scale(${flipX ? -1 : 1} ${flipY ? -1 : 1})`;
 };
 
 /**

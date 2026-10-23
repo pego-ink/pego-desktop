@@ -1,0 +1,12 @@
+---
+import type { Tag } from "@/content/schema";
+
+interface Props {
+  tags: Tag[];
+}
+const { tags } = Astro.props;
+---
+
+<ul class="tags" aria-label="Type of change">
+  {tags.map((tag) => <li class={`tag tag-${tag}`}>{tag}</li>)}
+</ul>

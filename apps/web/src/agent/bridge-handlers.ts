@@ -1,5 +1,6 @@
 import {
   EDITOR_OPS,
+  toolAnnotations,
   toolByName,
   type BridgeToEditor,
   type EditorToBridge,
@@ -21,7 +22,11 @@ import {
 import { cancelPendingDecisions } from "./decisions";
 import { allRuns, getRun, unregisterRun, type RunEntry } from "./run-registry";
 import { createToolHost } from "./tool-host";
+import { showEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
+import { projectTarget } from "@/workspace/background-project";
+import { importCaptureFromBridge } from "@/browser/extension-import";
+import { readTarget, type DocumentTarget } from "@/workspace/document-target";
 
 /** Consecutive Claude Code (MCP) calls arriving within this window share one undo step. */
 export const MCP_GROUP_WINDOW_MS = 2_000;
@@ -87,7 +92,30 @@ export const createBridgeHandlers = ({
     countTransactions: false,
     focusFromOps: true,
   });
-  let lastMcpCallAt = Number.NEGATIVE_INFINITY;
+  /** When each MCP host last got a call: edits to one project never extend another's undo group. */
+  const lastCallAt = new Map<ReturnType<typeof createToolHost>, number>();
+  /** One host per project an MCP client edits by name (its tab, shown or in the background). */
+  const projectHosts = new Map<string, ReturnType<typeof createToolHost>>();
+  const projectHost = (target: DocumentTarget, name: string) => {
+    // Forget hosts whose tab was closed or now holds another document.
+    for (const [key, host] of projectHosts) {
+      const [workspaceId, docId] = key.split("/") as [string, string];
+      if (readTarget({ workspaceId, docId })) continue;
+      projectHosts.delete(key);
+      lastCallAt.delete(host);
+    }
+    const key = `${target.workspaceId}/${target.docId}`;
+    const cached = projectHosts.get(key);
+    if (cached) return cached;
+    const created = createToolHost({
+      label: () => `${MCP_LABEL} · ${name}`,
+      countTransactions: false,
+      focusFromOps: true,
+      target,
+    });
+    projectHosts.set(key, created);
+    return created;
+  };
 
   const handleToolCall = async (message: Extract<BridgeToEditor, { type: "tool_call" }>) => {
     const reply = (content: string, isError: boolean, images?: ToolImage[]) =>
@@ -128,6 +156,11 @@ export const createBridgeHandlers = ({
       const outcome = switchTabForBridge(message.input);
       return void reply(outcome.content, outcome.isError);
     }
+    if (message.tool === EDITOR_OPS.importCapture) {
+      const outcome = await importCaptureFromBridge(message.input);
+      if (!outcome.isError) mcpHost.run.appendLog({ kind: "info", text: outcome.content });
+      return void reply(outcome.content, outcome.isError);
+    }
     if (message.tool === EDITOR_OPS.markSaved) {
       const outcome = markSavedFromBridge(message.input);
       return void reply(outcome.content, outcome.isError);
@@ -143,9 +176,29 @@ export const createBridgeHandlers = ({
       if (!run) return void reply("No matching active run in the editor.", true);
       host = run.host;
     } else if (source.kind === "mcp") {
+      if (source.project) {
+        // A named project is edited in its own tab, in the background when another is shown.
+        try {
+          host = projectHost(await projectTarget(source.project), source.project.name);
+        } catch (error) {
+          return void reply(
+            error instanceof Error ? error.message : `Could not open ${source.project.name}.`,
+            true,
+          );
+        }
+      } else {
+        // The app opens on Home: an edit from Claude Code shows the editor first (a new tab when
+        // none is open), so it never lands in a document nobody can see.
+        const { view, liveId } = useWorkspaceStore.getState();
+        if (!toolAnnotations(message.tool).readOnlyHint && (view !== "editor" || liveId === null)) {
+          showEditor();
+        }
+      }
       const at = now();
-      if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) mcpHost.newGroup();
-      lastMcpCallAt = at;
+      if (at - (lastCallAt.get(host) ?? Number.NEGATIVE_INFINITY) > MCP_GROUP_WINDOW_MS) {
+        host.newGroup();
+      }
+      lastCallAt.set(host, at);
     } else {
       return void reply("Unknown tool call source.", true);
     }
@@ -153,7 +206,7 @@ export const createBridgeHandlers = ({
     try {
       const result = await spec.run(message.input, host);
       if (source.kind === "mcp") {
-        mcpHost.run.appendLog({
+        host.run.appendLog({
           kind: "tool",
           text: "",
           tool: { name: message.tool, isError: result.isError },

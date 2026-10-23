@@ -6,6 +6,8 @@ export type LayerRowData = {
   parentId: string | null;
   hasChildren: boolean;
   expanded: boolean;
+  /** Hidden on the canvas: the layer itself, or one of its parents. */
+  hidden: boolean;
 };
 
 /** Visible rows in document order. Containers are expanded unless their id is in `collapsed`. */
@@ -16,15 +18,21 @@ export const flattenLayers = (
   pageId: string | null = null,
 ): LayerRowData[] => {
   const rows: LayerRowData[] = [];
-  const walk = (nodes: PegoNode[], depth: number, parentId: string | null) => {
+  const walk = (
+    nodes: PegoNode[],
+    depth: number,
+    parentId: string | null,
+    parentHidden: boolean,
+  ) => {
     for (const node of nodes) {
       const hasChildren = isContainer(node) && node.children.length > 0;
       const expanded = hasChildren && !collapsed.has(node.id);
-      rows.push({ node, depth, parentId, hasChildren, expanded });
-      if (isContainer(node) && expanded) walk(node.children, depth + 1, node.id);
+      const hidden = parentHidden || node.visible === false;
+      rows.push({ node, depth, parentId, hasChildren, expanded, hidden });
+      if (isContainer(node) && expanded) walk(node.children, depth + 1, node.id, hidden);
     }
   };
-  walk(pageOrFirst(doc, pageId).children, 0, null);
+  walk(pageOrFirst(doc, pageId).children, 0, null, false);
   return rows;
 };
 
@@ -51,4 +59,20 @@ export const layerLabel = (doc: PegoDocument, node: PegoNode): string => {
   if (node.name) return node.name;
   if (node.type !== "ref") return node.type;
   return findNode(doc, node.ref)?.name || "Instance";
+};
+
+/**
+ * Shift-click in the list: every visible row from `anchorId` to `id`, in list order. Just `id`
+ * when the anchor is not listed (collapsed away, or nothing was clicked yet).
+ */
+export const rangeIds = (
+  rows: readonly LayerRowData[],
+  anchorId: string | null,
+  id: string,
+): string[] => {
+  const from = rows.findIndex((row) => row.node.id === anchorId);
+  const to = rows.findIndex((row) => row.node.id === id);
+  if (from === -1 || to === -1) return [id];
+  const [start, end] = from <= to ? [from, to] : [to, from];
+  return rows.slice(start, end + 1).map((row) => row.node.id);
 };

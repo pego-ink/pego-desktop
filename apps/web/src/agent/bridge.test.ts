@@ -14,6 +14,7 @@ import { emptySession } from "./sessions/session-model";
 import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
+import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 
 class FakeSocket implements SocketLike {
   sent: string[] = [];
@@ -281,6 +282,109 @@ describe("bridge handlers", () => {
     expect(visible().transactionCount).toBe(0);
   });
 
+  describe("MCP calls naming a project", () => {
+    const target = (id: string) => ({
+      id,
+      name: `Project ${id}`,
+      dir: `/design/${id}`,
+      mainFile: `/design/${id}/project.pego`,
+      hasMainFile: false,
+    });
+    const hosts: unknown[] = [];
+    const setupProjects = () => {
+      hosts.length = 0;
+      const sent: EditorToBridge[] = [];
+      let now = 10_000;
+      const handlers = createBridgeHandlers({
+        send: (m) => (sent.push(m), true),
+        now: () => now,
+        findTool: () => ({
+          name: "add",
+          description: "",
+          inputSchema: {},
+          run: async (input, host) => {
+            hosts.push(host);
+            const page = host.getDoc().children[0]!.id;
+            host.applyOps([
+              {
+                op: "insert",
+                parentId: page,
+                node: { type: "rectangle", id: (input as { id: string }).id, x: 0, y: 0 },
+              },
+            ]);
+            return { content: "ok", isError: false };
+          },
+        }),
+      });
+      const call = (callId: string, id: string | null) =>
+        handlers.handleMessage({
+          type: "tool_call",
+          callId,
+          tool: "add",
+          input: { id: `n-${callId}` },
+          source: id ? { kind: "mcp", project: target(id) } : { kind: "mcp" },
+        });
+      const pastOf = (id: string) =>
+        useWorkspaceStore.getState().workspaces.find((w) => w.id === id)?.saved?.history.past ?? [];
+      return { sent, call, pastOf, advance: (ms: number) => (now += ms) };
+    };
+
+    test("a call is routed to the project's own background tab and host", async () => {
+      const { call, sent, pastOf } = setupProjects();
+      const shownBefore = useDocumentStore.getState().doc;
+      await call("1", "projA");
+      await call("2", "projB");
+      await call("3", "projA");
+      expect(sent.map((m) => m.type === "tool_result" && m.isError)).toEqual([false, false, false]);
+      expect(useDocumentStore.getState().doc).toBe(shownBefore);
+      expect(hosts[0]).toBe(hosts[2]);
+      expect(hosts[0]).not.toBe(hosts[1]);
+      expect(pastOf("projA").length).toBeGreaterThan(0);
+      expect(pastOf("projB").length).toBeGreaterThan(0);
+    });
+
+    test("undo groups are per host: a call for B within 2s does not extend A's group", async () => {
+      const { call, advance, pastOf } = setupProjects();
+      await call("1", "projA");
+      advance(500);
+      await call("2", "projB");
+      expect(pastOf("projA")).toHaveLength(1);
+      expect(pastOf("projB")).toHaveLength(1);
+      advance(500);
+      await call("3", "projA");
+      expect(pastOf("projA")).toHaveLength(1);
+      advance(5_000);
+      await call("4", "projA");
+      expect(pastOf("projA")).toHaveLength(2);
+    });
+
+    test("a host is dropped when its tab closes, and a new one is made on reopening", async () => {
+      const { call } = setupProjects();
+      await call("1", "projA");
+      useWorkspaceStore.setState((state) => ({
+        workspaces: state.workspaces.filter((w) => w.id !== "projA"),
+      }));
+      await call("2", "projB");
+      await call("3", "projA");
+      expect(hosts[2]).not.toBe(hosts[0]);
+    });
+
+    test("an unreadable design is an error result and no tab is created", async () => {
+      const { sent } = setupProjects();
+      const handlers = createBridgeHandlers({ send: (m) => (sent.push(m), true) });
+      await handlers.handleMessage({
+        type: "tool_call",
+        callId: "x",
+        tool: "get_document",
+        input: {},
+        source: { kind: "mcp", project: { ...target("projC"), hasMainFile: true } },
+      });
+      const result = sent.at(-1);
+      expect(result?.type === "tool_result" && result.isError).toBe(true);
+      expect(useWorkspaceStore.getState().workspaces.some((w) => w.id === "projC")).toBe(false);
+    });
+  });
+
   test("tool_result carries images from the tool result", async () => {
     const image = { mediaType: "image/png" as const, data: "AAAA", width: 2, height: 1 };
     const sent: EditorToBridge[] = [];
@@ -314,6 +418,36 @@ describe("bridge handlers", () => {
       isError: false,
       images: [image],
     });
+  });
+
+  test("an MCP edit from Home opens a tab; a read stays on Home", async () => {
+    useWorkspaceStore.setState({ workspaces: [], liveId: null, view: "dashboard" });
+    const handlers = createBridgeHandlers({
+      send: () => true,
+      findTool: (name) => ({
+        name,
+        description: "",
+        inputSchema: {},
+        run: async () => ({ content: "ok", isError: false }),
+      }),
+    });
+    const call = (tool: string) =>
+      handlers.handleMessage({
+        type: "tool_call",
+        callId: tool,
+        tool,
+        input: {},
+        source: { kind: "mcp" },
+      });
+
+    await call("get_document");
+    expect(useWorkspaceStore.getState().liveId).toBeNull();
+    expect(useWorkspaceStore.getState().view).toBe("dashboard");
+
+    await call("batch_design");
+    expect(useWorkspaceStore.getState().workspaces).toHaveLength(1);
+    expect(useWorkspaceStore.getState().liveId).not.toBeNull();
+    expect(useWorkspaceStore.getState().view).toBe("editor");
   });
 
   test("tool errors and unknown tools reply with isError", async () => {

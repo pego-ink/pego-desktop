@@ -103,9 +103,12 @@ const toSavedWorkspace = (stored: AutosavedTab[], activeIndex: number): SavedWor
   return snapshot;
 };
 
-/** Restore the tabs (and their documents) of an autosave record. */
+/**
+ * Restore the tabs (and their documents) of an autosave record. The app always opens on Home:
+ * the tabs come back, the last one shown stays loaded behind it.
+ */
 export const applyAutosaveRecord = (record: AutosaveRecord): void => {
-  // Every tab was closed: start with the default one.
+  // Every tab was closed: Home with no tab.
   if (record.workspaces?.length === 0) return;
   if (record.workspaces?.length) {
     const saved = record.workspaces.map((workspace) =>
@@ -115,7 +118,7 @@ export const applyAutosaveRecord = (record: AutosaveRecord): void => {
       record.workspaces.map(({ id, name, dir, kind }) => ({ id, name, dir, kind })),
       saved,
       record.liveIndex ?? 0,
-      record.view ?? "editor",
+      "dashboard",
     );
     return;
   }
@@ -135,7 +138,7 @@ export const applyAutosaveRecord = (record: AutosaveRecord): void => {
     [{ id: newWorkspaceId(), name: "Untitled", dir: null, kind: "local" }],
     [workspace],
     0,
-    "editor",
+    "dashboard",
   );
 };
 

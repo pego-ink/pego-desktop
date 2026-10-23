@@ -98,7 +98,7 @@ describe("isUpdateStatus", () => {
       {},
       { state: "bogus" },
       { state: "ready" },
-      { state: "ready", version: 3 },
+      { state: "ready", version: 4 },
       { state: "downloading", version: "1", percent: 101 },
       { state: "downloading", version: "1", percent: "5" },
       { state: "error", message: "x".repeat(1000) },

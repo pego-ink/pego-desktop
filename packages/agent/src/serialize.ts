@@ -3,6 +3,7 @@ import {
   isContainer,
   OpError,
   pageOrFirst,
+  type Animation,
   type Effect,
   type Fill,
   type PegoDocument,
@@ -50,6 +51,11 @@ const fmtFill = (fill: Fill): string => {
   if (typeof fill === "string") return fmt(fill);
   if (fill.type === "image")
     return `image(${fill.fit},${Math.round((fill.src.length * 3) / 4 / 1024)}KB)`;
+  if (fill.type === "shader") {
+    const uniforms = Object.entries(fill.uniforms ?? {}).map(([k, v]) => `${k}=${fmt(v)}`);
+    const code = fill.preset === "custom" ? [`code=${(fill.code ?? "").length}chars`] : [];
+    return `shader(${[fill.preset, ...uniforms, ...code].join(",")})`;
+  }
   const stops = fill.stops.map((stop) => `${stop.color} ${stop.position}`).join(",");
   if (fill.type === "linear") return `linear(${fill.angle},${stops})`;
   return `radial(${fill.center.join(" ")},${fill.radius.join(" ")},${stops})`;
@@ -61,6 +67,16 @@ const fmtEffect = (effect: Effect): string => {
   const parts = [effect.x, effect.y, effect.blur];
   if (effect.spread !== undefined) parts.push(effect.spread);
   return `${effect.inner ? "inner-shadow" : "shadow"}(${[...parts, effect.color].join(",")})`;
+};
+
+/** `grow_up(delay=150,duration=500,easing=spring,countUp)`: only the fields that are set. */
+const fmtAnimation = (animation: Animation): string => {
+  const parts: string[] = [];
+  if (animation.delay !== undefined) parts.push(`delay=${animation.delay}`);
+  if (animation.duration !== undefined) parts.push(`duration=${animation.duration}`);
+  if (animation.easing !== undefined) parts.push(`easing=${animation.easing}`);
+  if (animation.countUp) parts.push("countUp");
+  return parts.length > 0 ? `${animation.preset}(${parts.join(",")})` : animation.preset;
 };
 
 /** Props in a fixed order. Defaults (x/y = 0, layout none, iconSet lucide) are omitted. */
@@ -78,11 +94,15 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
   push("width", n.width);
   push("height", n.height);
   push("rotation", n.rotation);
+  if (n.flipX) push("flipX", true);
+  if (n.flipY) push("flipY", true);
   push("opacity", n.opacity);
   if (n.fill !== undefined) tokens.push(`fill=${fmtFill(n.fill as Fill)}`);
   if (n.stroke) tokens.push(`stroke=${fmtStroke(n.stroke as Stroke)}`);
   const effects = n.effects as Effect[] | undefined;
   if (effects && effects.length > 0) tokens.push(`effects=${effects.map(fmtEffect).join("+")}`);
+  const animation = n.animation as Animation | undefined;
+  if (animation) tokens.push(`animation=${fmtAnimation(animation)}`);
   push("cornerRadius", n.cornerRadius);
   if (n.clip) push("clip", true);
   if (n.type === "frame") {
@@ -138,6 +158,12 @@ const nodeLine = (node: PegoNode, indent: number, showPosition: boolean, summary
   const parts = [head];
   if (node.name) parts.push(JSON.stringify(node.name));
   if (node.reusable) parts.push("[component]");
+  // Hidden layers are not on the canvas; set visible: true (update_node) to show one again.
+  if (node.visible === false) parts.push("[hidden]");
+  // A slot: instances may fill it (descendants[slotId].children), ideally with these components.
+  if (node.type === "frame" && node.slot) {
+    parts.push(node.slot.length > 0 ? `[slot: ${node.slot.join(", ")}]` : "[slot]");
+  }
   parts.push(...propTokens(node, showPosition));
   if (summary) parts.push(summary);
   return parts.join(" ");

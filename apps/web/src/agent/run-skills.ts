@@ -1,5 +1,5 @@
 import {
-  coreSkill,
+  coreSkills,
   findSkill,
   skillToMarkdown,
   suggestSkills,
@@ -13,16 +13,15 @@ const pickById = (id: string, category: "design" | "style"): Skill | undefined =
 };
 
 /**
- * Which skills apply to a run: [core, design?, style?]. `selectedId` (design) and
+ * Which skills apply to a run: [...core, design?, style?]. `selectedId` (design) and
  * `selectedStyleId`: undefined = auto-detect from the prompt, null = none, string = that skill.
- * An id of the wrong category is ignored. The core skill always comes first.
+ * An id of the wrong category is ignored. The core skills always come first.
  */
 export const resolveRunSkills = (
   prompt: string,
   selectedId?: string | null,
   selectedStyleId?: string | null,
 ): Skill[] => {
-  const core = coreSkill();
   const design =
     selectedId === undefined
       ? suggestSkills(prompt, { limit: 1 })[0]
@@ -35,7 +34,7 @@ export const resolveRunSkills = (
       : selectedStyleId === null
         ? undefined
         : pickById(selectedStyleId, "style");
-  return [...(core ? [core] : []), ...(design ? [design] : []), ...(style ? [style] : [])];
+  return [...coreSkills(), ...(design ? [design] : []), ...(style ? [style] : [])];
 };
 
 /** Run-log line(s): one per chosen skill ("Using style:" for a style), or the core skill when it is the only one. */

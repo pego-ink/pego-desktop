@@ -11,11 +11,58 @@ import {
   ReadResourceRequestSchema,
   type CallToolResult,
 } from "@modelcontextprotocol/sdk/types.js";
-import { agentTools, CLAUDE_CODE_SYSTEM, toolAnnotations } from "@pego/agent";
+import { agentTools, CLAUDE_CODE_SYSTEM, toolAnnotations, type ProjectTarget } from "@pego/agent";
 import type { CallTool, ToolOutcome, ToolSource } from "./editor-hub";
 import { getPegoPrompt, pegoPrompts } from "./mcp-prompts";
 import { listPegoResources, readPegoResource } from "./mcp-resources";
 import { FILE_TOOLS, FILE_TOOLS_INSTRUCTIONS, isFileTool, runFileTool } from "./file-tools";
+import { findProject, listProjects } from "./projects";
+
+/** The `project` argument every agent tool takes over the terminal endpoint. */
+const PROJECT_PARAM = {
+  type: "string",
+  description:
+    "Optional id or name of the design project to edit (list_projects shows them). It is edited in the background when the editor shows another one. Omit it to edit the document shown in the editor.",
+} as const;
+
+/** An agent tool's JSON Schema with the `project` argument added. */
+const withProjectParam = (schema: Record<string, unknown>) => ({
+  ...schema,
+  properties: {
+    ...(schema.properties as Record<string, unknown> | undefined),
+    project: PROJECT_PARAM,
+  },
+});
+
+/**
+ * Split the `project` argument off a tool call and resolve it in the design folder. Returns the
+ * input without it, and the project (or an error to show the agent).
+ */
+export const resolveProjectArg = async (
+  input: Record<string, unknown>,
+  designDir: string | null,
+): Promise<{ input: Record<string, unknown>; project?: ProjectTarget } | { error: string }> => {
+  const { project: query, ...rest } = input;
+  if (query === undefined) return { input: rest };
+  if (typeof query !== "string" || !query.trim())
+    return { error: "project must be an id or a name." };
+  if (!designDir) return { error: "This bridge has no design folder, so it has no projects." };
+  const projects = await listProjects(designDir);
+  const found = findProject(projects, query);
+  if (!("project" in found)) {
+    const names = (found.matches.length > 1 ? found.matches : projects)
+      .map((project) => `${project.name} (id ${project.id})`)
+      .join(", ");
+    return {
+      error:
+        found.matches.length > 1
+          ? `"${query}" matches several projects; use an id: ${names}.`
+          : `No project "${query}". Projects: ${names || "none"}.`,
+    };
+  }
+  const { id, name, dir, mainFile, hasMainFile } = found.project;
+  return { input: rest, project: { id, name, dir, mainFile, hasMainFile } };
+};
 
 const MAX_TOOL_INPUT_BYTES = 1024 * 1024;
 /** Reported to MCP clients; bump with user-visible changes to the tool surface. */
@@ -58,6 +105,8 @@ export const createPegoMcpServer = (options: {
   );
   server.server.registerCapabilities({ tools: {}, resources: {}, prompts: {} });
   const sourceOf = () => options.source({ clientName: options.clientName });
+  // The terminal endpoint (with the file tools) lets every agent tool name the project it edits.
+  const projectTargets = options.fileTools === true;
 
   server.server.setRequestHandler(ListToolsRequestSchema, () => ({
     tools: agentTools
@@ -67,7 +116,10 @@ export const createPegoMcpServer = (options: {
           name: tool.name,
           title: annotations.title,
           description: tool.description,
-          inputSchema: { type: "object" as const, ...tool.inputSchema },
+          inputSchema: {
+            type: "object" as const,
+            ...(projectTargets ? withProjectParam(tool.inputSchema) : tool.inputSchema),
+          },
           annotations,
         };
       })
@@ -93,7 +145,18 @@ export const createPegoMcpServer = (options: {
     if (JSON.stringify(input ?? {}).length > MAX_TOOL_INPUT_BYTES) {
       return toCallToolResult({ content: "Tool input is too large.", isError: true });
     }
-    return toCallToolResult(await options.callTool(name, input ?? {}, sourceOf()));
+    const source = sourceOf();
+    if (projectTargets && source.kind === "mcp") {
+      const resolved = await resolveProjectArg(input ?? {}, options.designDir ?? null);
+      if ("error" in resolved) return toCallToolResult({ content: resolved.error, isError: true });
+      return toCallToolResult(
+        await options.callTool(name, resolved.input, {
+          ...source,
+          ...(resolved.project ? { project: resolved.project } : {}),
+        }),
+      );
+    }
+    return toCallToolResult(await options.callTool(name, input ?? {}, source));
   });
 
   server.server.setRequestHandler(ListResourcesRequestSchema, () => ({

@@ -13,6 +13,7 @@ import {
   type PegoNode,
   type TextNode,
 } from "@pego/doc";
+import { checkPolish, sourceId } from "./check-polish";
 import { compositeOver, contrastRatio, parseHex, wcagAaThreshold, type Rgba } from "./color";
 
 export type Severity = "error" | "warning" | "info";
@@ -120,6 +121,8 @@ type Context = {
   doc: PegoDocument;
   layout: Layout;
   issues: LayoutIssue[];
+  /** Keys of polish findings already reported (one per component source node). */
+  polishSeen: Set<string>;
 };
 
 const report = (
@@ -140,11 +143,35 @@ const checkNode = (
   node: PegoNode,
   parent: PegoNode | null,
   ancestors: PegoNode[],
+  source: string,
 ): void => {
   const { doc, layout } = ctx;
   const box = layout.get(node.id);
   const suffix = node.id.includes("/") ? INSTANCE_HINT : "";
   const children = isContainer(node) ? node.children : [];
+
+  // Structure: the top level of a page holds screens, standalone pieces (each one frame) and
+  // instances, never loose layers; those frames carry a name. Library pages and components
+  // (reusable nodes) are exempt.
+  if (parent?.type === "page" && !parent.library && !node.reusable) {
+    if (node.type !== "frame" && node.type !== "group" && node.type !== "ref") {
+      report(
+        ctx,
+        "info",
+        node,
+        `${node.type} sits loose at the top level of the page`,
+        "Move it into the screen or section frame it belongs to (move_node), or wrap it together with the layers that make up the same thing (a drawing, a logo, a chart) in one frame or group named after the whole.",
+      );
+    } else if (node.type !== "ref" && !node.name?.trim()) {
+      report(
+        ctx,
+        "info",
+        node,
+        `top-level ${node.type} has no name`,
+        'Name it after what it is (for example "Home - Desktop", "Logo", "Cloud") so the layers and the agent can find it.',
+      );
+    }
+  }
 
   // Zero-size and empty containers.
   if (box && (box.width <= EPSILON || box.height <= EPSILON)) {
@@ -233,6 +260,21 @@ const checkNode = (
     }
   }
 
+  // Polish (the ui-polish skill's rules), once per source node and measured values. ancestors[0] is the
+  // page, so ancestors[1] is the screen (top-level frame) holding this node.
+  const screenNode = parent?.type === "page" ? undefined : ancestors[1];
+  const screen = (screenNode && layout.get(screenNode.id)) ?? null;
+  for (const found of checkPolish(doc, layout, node, source, screen)) {
+    if (ctx.polishSeen.has(found.key)) continue;
+    ctx.polishSeen.add(found.key);
+    const where = found.node.id.includes("/")
+      ? INSTANCE_HINT
+      : found.component
+        ? ` "${label(found.node)}" is an instance of component "${found.component}": fix the component, or this instance's overrides if they cause it.`
+        : "";
+    report(ctx, found.severity, found.node, found.issue, `${found.hint}${where}`);
+  }
+
   if (!isContainer(node)) return;
 
   // Flex children with x/y (ignored by layout).
@@ -277,11 +319,16 @@ const checkNode = (
   }
 
   // fill_container where the parent hugs and every child fills (nothing gives the parent a size).
+  // On the cross axis of a flex frame that is the equal-size idiom: the frame hugs the largest
+  // child and layout stretches the others to it, so only a size of 0 is a problem there.
   if (node.type === "frame" && children.length > 0) {
+    const cross =
+      node.layout === "horizontal" ? "height" : node.layout === "vertical" ? "width" : undefined;
     for (const axis of ["width", "height"] as const) {
       if (!isHugging(node, axis)) continue;
       if (!children.every((child) => child[axis] === "fill_container")) continue;
       const parentSize = box ? box[axis] : undefined;
+      if (axis === cross && parentSize !== undefined && parentSize > EPSILON) continue;
       report(
         ctx,
         parentSize !== undefined && parentSize <= EPSILON ? "error" : "warning",
@@ -310,7 +357,9 @@ const walk = (
       : node;
   if (!expanded) return;
   const nowInScope = inScope || scopeId === undefined || node.id === scopeId;
-  if (nowInScope) checkNode(ctx, expanded, parent, ancestors);
+  // An instance root keeps the ref's own id; its source is the component.
+  const source = node.type === "ref" ? node.ref : sourceId(node.id);
+  if (nowInScope) checkNode(ctx, expanded, parent, ancestors, source);
   if (!isContainer(expanded)) return;
   const nextAncestors = [...ancestors, expanded];
   for (const child of expanded.children) {
@@ -323,7 +372,7 @@ export const checkLayout = (doc: PegoDocument, layout: Layout, nodeId?: string):
   if (nodeId !== undefined && !findLocation(doc, nodeId)) {
     throw new Error(`node "${nodeId}" not found`);
   }
-  const ctx: Context = { doc, layout, issues: [] };
+  const ctx: Context = { doc, layout, issues: [], polishSeen: new Set() };
   for (const node of doc.children) walk(ctx, node, null, [], 0, nodeId, false);
 
   const sorted = ctx.issues

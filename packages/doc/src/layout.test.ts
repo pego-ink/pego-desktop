@@ -13,7 +13,7 @@ const measureText: TextMeasurer = (node, maxWidth) => {
 
 const makeDoc = (children: unknown[], variables: Record<string, unknown> = {}): PegoDocument =>
   documentSchema.parse({
-    version: 3,
+    version: 7,
     id: "doc",
     name: "Test",
     variables,
@@ -644,5 +644,28 @@ describe("performance", () => {
     const elapsed = performance.now() - start;
     expect(layout.size).toBeGreaterThanOrEqual(2000);
     expect(elapsed).toBeLessThan(1000);
+  });
+});
+
+describe("hidden layers", () => {
+  test("a hidden layer and its children get no box and take no room in a flex row", () => {
+    const layout = layoutOf([
+      {
+        type: "frame",
+        id: "f",
+        layout: "horizontal",
+        gap: 10,
+        children: [
+          rect("a", { width: 20, height: 20 }),
+          { type: "group", id: "g", visible: false, children: [rect("inner", { width: 5 })] },
+          rect("b", { width: 20, height: 20 }),
+        ],
+      },
+      rect("top", { visible: false, width: 10, height: 10 }),
+    ]);
+    expect(layout.has("g")).toBe(false);
+    expect(layout.has("inner")).toBe(false);
+    expect(layout.has("top")).toBe(false);
+    expect(box(layout, "b").x).toBe(30);
   });
 });

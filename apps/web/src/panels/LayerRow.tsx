@@ -1,5 +1,5 @@
 import { memo, useRef, type DragEvent, type MouseEvent } from "react";
-import { ChevronRightIcon } from "lucide-react";
+import { ChevronRightIcon, EyeIcon, EyeOffIcon } from "lucide-react";
 import type { PegoNode } from "@pego/doc";
 import { cn } from "@pego/ui/lib/utils";
 import { LayerIcon } from "@/panels/LayerIcon";
@@ -8,6 +8,8 @@ import type { DropZone } from "@/panels/drop-position";
 const INDENT_PX = 16;
 const BASE_PAD_PX = 8;
 
+export type SelectMode = "replace" | "toggle" | "range";
+
 export type LayerRowProps = {
   node: PegoNode;
   /** Display name from `layerLabel`. */
@@ -15,6 +17,8 @@ export type LayerRowProps = {
   depth: number;
   hasChildren: boolean;
   expanded: boolean;
+  /** Hidden on the canvas (itself or a parent): drawn dimmed. */
+  hidden: boolean;
   selected: boolean;
   hovered: boolean;
   renaming: boolean;
@@ -22,7 +26,9 @@ export type LayerRowProps = {
   drop: DropZone | null;
   dragging: boolean;
   onToggle: (id: string) => void;
-  onSelect: (id: string, additive: boolean) => void;
+  /** Plain click replaces the selection, ⌘/Ctrl toggles the row, Shift selects a range. */
+  onSelect: (id: string, mode: SelectMode) => void;
+  onToggleVisible: (id: string) => void;
   onHover: (id: string | null) => void;
   onStartRename: (id: string) => void;
   /** `name === null` means the rename was cancelled. */
@@ -39,6 +45,7 @@ const LayerRowImpl = ({
   depth,
   hasChildren,
   expanded,
+  hidden,
   selected,
   hovered,
   renaming,
@@ -46,6 +53,7 @@ const LayerRowImpl = ({
   dragging,
   onToggle,
   onSelect,
+  onToggleVisible,
   onHover,
   onStartRename,
   onEndRename,
@@ -57,8 +65,12 @@ const LayerRowImpl = ({
   const cancelled = useRef(false);
   const indent = BASE_PAD_PX + depth * INDENT_PX;
 
+  const ownHidden = node.visible === false;
   const handleClick = (event: MouseEvent) =>
-    onSelect(node.id, event.shiftKey || event.metaKey || event.ctrlKey);
+    onSelect(
+      node.id,
+      event.shiftKey ? "range" : event.metaKey || event.ctrlKey ? "toggle" : "replace",
+    );
 
   return (
     <div
@@ -75,7 +87,7 @@ const LayerRowImpl = ({
       onMouseLeave={() => onHover(null)}
       onKeyDown={(event) => {
         if (renaming) return;
-        if (event.key === "Enter") onSelect(node.id, event.shiftKey);
+        if (event.key === "Enter") onSelect(node.id, event.shiftKey ? "range" : "replace");
         if (event.key === "F2") onStartRename(node.id);
       }}
       onDragStart={(event) => onDragStartRow(node.id, event)}
@@ -87,7 +99,7 @@ const LayerRowImpl = ({
       onDragEnd={onDragEndRow}
       style={{ paddingLeft: indent }}
       className={cn(
-        "relative flex h-7 cursor-default items-center gap-1.5 pr-3 text-[13px] text-foreground outline-none select-none focus-visible:bg-accent/60",
+        "group/row relative flex h-7 cursor-default items-center gap-1.5 pr-1.5 text-[13px] text-foreground outline-none select-none focus-visible:bg-accent/60",
         hovered && !selected && "bg-accent/50",
         selected && "bg-accent",
         dragging && "opacity-40",
@@ -125,7 +137,7 @@ const LayerRowImpl = ({
           )}
         />
       </button>
-      <LayerIcon node={node} />
+      <LayerIcon node={node} className={cn(hidden && "opacity-40")} />
       {renaming ? (
         <input
           autoFocus
@@ -151,8 +163,28 @@ const LayerRowImpl = ({
           className="h-5 min-w-0 flex-1 rounded-sm border border-ring bg-background px-1 text-[13px] outline-none"
         />
       ) : (
-        <span className="min-w-0 flex-1 truncate">{label}</span>
+        <span className={cn("min-w-0 flex-1 truncate", hidden && "text-muted-foreground")}>
+          {label}
+        </span>
       )}
+      <button
+        type="button"
+        tabIndex={-1}
+        aria-label={ownHidden ? `Show ${label}` : `Hide ${label}`}
+        title={ownHidden ? "Show" : "Hide"}
+        onClick={(event) => {
+          event.stopPropagation();
+          onToggleVisible(node.id);
+        }}
+        onDoubleClick={(event) => event.stopPropagation()}
+        className={cn(
+          "flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background/60 hover:text-foreground",
+          // Shown on hover, and always for a layer that is hidden itself.
+          !ownHidden && "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
+        )}
+      >
+        {ownHidden ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}
+      </button>
     </div>
   );
 };

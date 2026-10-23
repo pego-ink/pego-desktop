@@ -1,0 +1,92 @@
+name: Deploy Web
+
+# Builds the web editor (apps/web) and deploys it as a static-assets Worker (apps/web/wrangler.jsonc):
+# - push to main: Worker "pego-web" on app.pego.ink, the "production" deployment
+# - push to dev: Worker "pego-web-dev" (wrangler env "dev") on dev.pego.ink, a "preview" deployment
+# - same-repo PR: a preview version of "pego-web" under the alias "pr-<number>" (workers.dev)
+# Each run is recorded as a GitHub deployment (the repo's Deployments sidebar). Needs the repo
+# secrets CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID.
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "bun.lock"
+      - "package.json"
+      - ".github/workflows/deploy-web.yml"
+  pull_request:
+    paths:
+      - "apps/web/**"
+      - "packages/**"
+      - "bun.lock"
+      - "package.json"
+      - ".github/workflows/deploy-web.yml"
+
+permissions:
+  contents: read
+  deployments: write
+
+concurrency:
+  group: deploy-web-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    # Fork PRs get no secrets, so they cannot deploy.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
+      # main | dev | alias (PRs)
+      TARGET: ${{ github.event_name == 'push' && github.ref_name || 'alias' }}
+      PREVIEW_ALIAS: pr-${{ github.event.number }}
+      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.11
+      - run: bun install --frozen-lockfile
+      - run: bun run --cwd apps/web build
+
+      - name: Start GitHub deployment
+        run: |
+          # required_contexts=[] skips the commit-status check (CI runs in parallel).
+          id="$(jq -n --arg ref "$SHA" --arg env "$ENVIRONMENT" '{
+              ref: $ref, environment: $env, auto_merge: false, required_contexts: [],
+              transient_environment: ($env == "preview"), production_environment: ($env == "production")
+            }' | gh api "repos/${GITHUB_REPOSITORY}/deployments" --input - --jq .id)"
+          echo "DEPLOYMENT_ID=$id" >> "$GITHUB_ENV"
+          gh api "repos/${GITHUB_REPOSITORY}/deployments/$id/statuses" -f state=in_progress >/dev/null
+
+      - name: Deploy to Cloudflare
+        working-directory: apps/web
+        env:
+          WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
+        run: |
+          if [ "$TARGET" = main ] || [ "$TARGET" = dev ]; then
+            if [ "$TARGET" = dev ]; then env_args=(--env dev); else env_args=(); fi
+            bunx wrangler@4.152.0 deploy "${env_args[@]}" --message "$SHA"
+            # Prefer the custom domain ("app.pego.ink (custom domain)") over workers.dev.
+            url="$(jq -r 'select(.type == "deploy") | .targets
+              | (map(select(endswith(" (custom domain)")) | "https://" + rtrimstr(" (custom domain)"))[0] // .[0])
+              // empty' "$WRANGLER_OUTPUT_FILE_PATH")"
+          else
+            bunx wrangler@4.152.0 versions upload --preview-alias "$PREVIEW_ALIAS" --message "$SHA"
+            url="$(jq -r 'select(.type == "version-upload") | .preview_alias_url // .preview_url // empty' "$WRANGLER_OUTPUT_FILE_PATH")"
+          fi
+          echo "DEPLOY_URL=$url" >> "$GITHUB_ENV"
+
+      - name: Finish GitHub deployment
+        if: always() && env.DEPLOYMENT_ID != ''
+        env:
+          STATE: ${{ job.status == 'success' && 'success' || 'failure' }}
+        run: |
+          jq -n --arg state "$STATE" --arg url "${DEPLOY_URL:-}" \
+            '{state: $state, auto_inactive: true} + (if $url == "" then {} else {environment_url: $url} end)' |
+            gh api "repos/${GITHUB_REPOSITORY}/deployments/${DEPLOYMENT_ID}/statuses" --input - >/dev/null

@@ -10,6 +10,8 @@ import { toggleAutoSave } from "./autosave-actions";
 import { isFileAutosaveSupported } from "./file-autosave";
 import { useAutosaveStore } from "./use-autosave-store";
 import { cn } from "@pego/ui/lib/utils";
+import { FigmaImportDialog, useFigmaImportDialog } from "@/import/FigmaImportDialog";
+import { SaveAsProjectDialog, openSaveAsProject } from "./SaveAsProjectDialog";
 import {
   WINDOW_CONTROLS_GUTTER_CLASS,
   WINDOW_DRAG_CLASS,
@@ -25,6 +27,12 @@ const ITEMS = [
   { label: "Open…", shortcut: `${MOD}O`, run: openFile },
   { label: "Save", shortcut: `${MOD}S`, run: saveFile },
   { label: "Save as…", shortcut: `${SHIFT}${MOD}S`, run: saveFileAs },
+  { label: "Save as project…", shortcut: null, run: openSaveAsProject },
+  {
+    label: "Import from Figma…",
+    shortcut: null,
+    run: () => useFigmaImportDialog.getState().setOpen(true),
+  },
 ] as const;
 
 export const FileMenu = () => {
@@ -177,6 +185,8 @@ export const FileMenu = () => {
           </div>
         </div>
       ) : null}
+      <FigmaImportDialog />
+      <SaveAsProjectDialog />
     </div>
   );
 };

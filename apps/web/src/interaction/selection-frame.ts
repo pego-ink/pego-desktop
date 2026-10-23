@@ -7,7 +7,7 @@ import {
   type Affine,
 } from "@/canvas/node-transform";
 import type { Camera } from "@/canvas/types";
-import { HANDLES, handlePoint, resizeBox, type Handle } from "./transform";
+import { CORNER_HANDLES, handlePoint, resizeBox, type Handle } from "./transform";
 
 type Point = { x: number; y: number };
 
@@ -31,7 +31,7 @@ const buildFrame = (doc: PegoDocument, layout: Layout, id: string): SelectionFra
   const box = layout.get(id);
   const path = findNodePath(doc, id);
   if (!box || !path) return null;
-  const matrix = nodeToDocAffine(doc, layout, path);
+  const matrix = nodeToDocAffine(doc, layout, path, false);
   const parentMatrix = nodeToDocAffine(doc, layout, path.slice(0, -1));
   return matrix && parentMatrix ? { matrix, parentMatrix, box } : null;
 };
@@ -90,8 +90,9 @@ export const frameAxes = (m: Affine): { ux: Point; uy: Point } => {
 };
 
 /**
- * Handle whose rotated square (half side `radius`, aligned to the node's axes like the drawn
- * handle) contains the screen point, or null. `m` is local -> screen.
+ * Handle under the screen point, or null. Corners are the drawn squares (half side `radius`,
+ * aligned to the node's axes); an edge (n/e/s/w) is a band `radius` wide along its whole length,
+ * since only the corners are drawn. Corners win where they overlap an edge. `m` is local -> screen.
  */
 export const hitFrameHandle = (
   m: Affine,
@@ -102,14 +103,36 @@ export const hitFrameHandle = (
   radius: number,
 ): Handle | null => {
   const { ux, uy } = frameAxes(m);
-  for (const handle of HANDLES) {
+  for (const handle of CORNER_HANDLES) {
     const p = frameHandlePoint(m, width, height, handle);
     const dx = x - p.x;
     const dy = y - p.y;
     if (Math.abs(dx * ux.x + dy * ux.y) <= radius && Math.abs(dx * uy.x + dy * uy.y) <= radius)
       return handle;
   }
+  for (const [handle, from, to] of EDGES) {
+    const a = frameHandlePoint(m, width, height, from);
+    const b = frameHandlePoint(m, width, height, to);
+    if (distanceToSegment(x, y, a, b) <= radius) return handle;
+  }
   return null;
+};
+
+const EDGES: readonly [Handle, Handle, Handle][] = [
+  ["n", "nw", "ne"],
+  ["e", "ne", "se"],
+  ["s", "se", "sw"],
+  ["w", "sw", "nw"],
+];
+
+/** Screen distance from (x, y) to the segment a–b. */
+const distanceToSegment = (x: number, y: number, a: Point, b: Point): number => {
+  const vx = b.x - a.x;
+  const vy = b.y - a.y;
+  const length2 = vx * vx + vy * vy;
+  const t =
+    length2 === 0 ? 0 : Math.max(0, Math.min(1, ((x - a.x) * vx + (y - a.y) * vy) / length2));
+  return Math.hypot(x - (a.x + t * vx), y - (a.y + t * vy));
 };
 
 const AXIS_CURSORS = ["ew-resize", "nwse-resize", "ns-resize", "nesw-resize"] as const;

@@ -15,7 +15,7 @@ import {
   type DocumentCore,
 } from "@/store/use-document-store";
 import { showPage, showPageOf } from "@/pages/page-actions";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, visibleRect } from "@/store/use-viewport-store";
 import {
   commitToTarget,
   extendTarget,
@@ -23,9 +23,12 @@ import {
   readTarget,
   type DocumentTarget,
 } from "@/workspace/document-target";
+import { sharedBrowserHost } from "@/browser/browser-host";
+import { resolveFont } from "@/fonts/resolve-font";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
 import { generateImage } from "./generate-image";
+import { searchOpenverse } from "@/images/openverse";
 import { requestDecision } from "./decisions";
 import { runClaims } from "./run-claims";
 import { getRun } from "./run-registry";
@@ -191,7 +194,7 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     const layout = getLayout(useDocumentStore.getState().doc);
     const boxes = ids.flatMap((id) => layout.get(id) ?? []);
     const viewport = useViewportStore.getState();
-    const camera = focusCamera(boxes, viewport.size);
+    const camera = focusCamera(boxes, visibleRect(viewport));
     if (camera) viewport.animateTo(camera);
   };
 
@@ -228,6 +231,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     return renderNodeImage(res, doc, getLayout(doc), nodeId, imageOptions);
   };
 
+  const browser = sharedBrowserHost();
+
   return {
     getDoc: () => state().doc,
     getLayout: () => getLayout(state().doc),
@@ -239,6 +244,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     listIcons: listIconNames,
     renderImage,
     generateImage,
+    searchImages: (request) => searchOpenverse(request),
+    resolveFont,
     getAttachment: (id) => findAttachmentSrc(options.attachments ?? [], id),
     applyOps,
     setFocus: (ids) => run.set({ focusIds: ids }),
@@ -250,5 +257,6 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     },
     run,
     ...(target ? { target } : {}),
+    ...(browser ? { browser } : {}),
   };
 };

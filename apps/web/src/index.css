@@ -27,3 +27,21 @@ textarea,
   -webkit-user-select: text;
   user-select: text;
 }
+
+/* Agent composer (Tiptap): no focus ring on the text, and the placeholder. */
+.pego-composer .tiptap:focus {
+  outline: none;
+}
+.pego-composer .tiptap p.is-editor-empty:first-child::before {
+  content: attr(data-placeholder);
+  float: left;
+  height: 0;
+  pointer-events: none;
+  color: var(--muted-foreground);
+}
+/* Web links in the prompt: underlined, opened with Cmd/Ctrl-click. */
+.pego-composer .pego-prompt-link {
+  text-decoration: underline;
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 2px;
+}

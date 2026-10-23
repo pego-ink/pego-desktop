@@ -1,0 +1,20 @@
+// The hosted web editor: a static-assets Worker (no script) serving the Vite build.
+// Deployed by .github/workflows/deploy-web.yml; build first with `bun run --cwd apps/web build`.
+{
+  "name": "pego-web",
+  "compatibility_date": "2026-10-01",
+  "assets": {
+    "directory": "./dist",
+    "not_found_handling": "single-page-application",
+  },
+  // Production lives on app.pego.ink; workers.dev stays on because preview aliases need it.
+  "routes": [{ "pattern": "app.pego.ink", "custom_domain": true }],
+  "workers_dev": true,
+  "preview_urls": true,
+  "env": {
+    // The dev branch, deployed in full to its own Worker "pego-web-dev" on dev.pego.ink.
+    "dev": {
+      "routes": [{ "pattern": "dev.pego.ink", "custom_domain": true }],
+    },
+  },
+}

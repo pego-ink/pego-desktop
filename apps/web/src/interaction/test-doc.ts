@@ -2,7 +2,7 @@ import type { Layout, PegoDocument } from "@pego/doc";
 
 /** Fixture: two top-level frames, a clipped frame, a group, an instance, and a flex frame. */
 export const fixtureDoc: PegoDocument = {
-  version: 3,
+  version: 7,
   id: "d",
   name: "d",
   variables: {},

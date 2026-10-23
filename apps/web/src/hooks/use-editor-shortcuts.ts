@@ -1,18 +1,26 @@
 import { useEffect } from "react";
-import { findNode, type Op } from "@pego/doc";
+import { findNode } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { contentBounds } from "@/interaction/camera";
 import { ZOOM_STEP, selectionBounds } from "@/interaction/zoom-utils";
 import { useInteractionState } from "@/interaction/interaction-state";
-import { duplicateOps } from "@/interaction/duplicate";
 import { escapeSelection } from "@/interaction/selection";
-import { nudgeOps, topmostSelected } from "@/interaction/transform";
+import { nudgeOps } from "@/interaction/transform";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { isTextEditing, useTextEditStore } from "@/store/use-text-edit-store";
 import { SHIFT_TOOL_KEYS, TOOL_KEYS, useToolStore } from "@/store/use-tool-store";
 import { getToolHandler } from "@/interaction/tool-handlers";
 import { nudgeStep } from "@/interaction/nudge";
 import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
+import { runPasteReplace } from "@/interaction/clipboard-actions";
+import { copySelectionForAgent } from "@/interaction/agent-reference";
+import { flipSelection } from "@/interaction/flip";
+import {
+  runDelete,
+  runDuplicate,
+  runStructure,
+  type StructureAction,
+} from "@/interaction/structure-actions";
 import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { desktopApi } from "@/desktop/desktop-api";
@@ -24,6 +32,24 @@ const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigat
 const isEditable = (target: EventTarget | null): boolean => {
   if (!(target instanceof HTMLElement)) return false;
   return target.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName);
+};
+
+/**
+ * Group ⌘G, Frame ⌘⌥G, Ungroup ⌘⇧G, Create/Detach component ⌘⌥K, Detach instance ⌘⌥X,
+ * Bring to front ] and Send to back [, Add flex layout ⇧A, Remove flex layout ⇧⌥A, Hide/Show ⇧⌘H.
+ */
+const structureShortcut = (e: KeyboardEvent, mod: boolean): StructureAction | null => {
+  if (mod && e.code === "KeyG") {
+    if (e.altKey) return e.shiftKey ? null : "frame";
+    return e.shiftKey ? "ungroup" : "group";
+  }
+  if (mod && e.shiftKey && !e.altKey && e.code === "KeyH") return "toggle-visible";
+  if (!mod && e.shiftKey && e.code === "KeyA") return e.altKey ? "remove-flex" : "add-flex";
+  if (mod && e.altKey && !e.shiftKey && e.code === "KeyK") return "component";
+  if (mod && e.altKey && !e.shiftKey && e.code === "KeyX") return "detach-instance";
+  if (!mod && !e.altKey && !e.shiftKey && e.code === "BracketRight") return "front";
+  if (!mod && !e.altKey && !e.shiftKey && e.code === "BracketLeft") return "back";
+  return null;
 };
 
 /** Select every top-level node of the shown page (never the surrounding UI text). */
@@ -52,8 +78,6 @@ const ARROW_DELTAS: Record<string, [number, number]> = {
   ArrowDown: [0, 1],
 };
 
-const DUPLICATE_OFFSET = 10;
-
 /** Global editor keyboard shortcuts: history, delete, nudge, selection, zoom, space-to-pan. */
 export const useEditorShortcuts = () => {
   useEffect(() => {
@@ -78,6 +102,8 @@ export const useEditorShortcuts = () => {
         return;
       }
       if (isEditable(e.target) || isTextEditing()) return;
+      // A dialog or menu already closed itself on this Escape; don't also drop the selection.
+      if (e.key === "Escape" && e.defaultPrevented) return;
       // The active tool gets first pick (e.g. the pen finishing a path on Enter/Escape).
       if (getToolHandler(useToolStore.getState().tool)?.onKeyDown?.(e)) {
         e.preventDefault();
@@ -132,6 +158,11 @@ export const useEditorShortcuts = () => {
         selectAllNodes();
         return;
       }
+      if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        void copySelectionForAgent();
+        return;
+      }
       if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         useToolStore.getState().setTool("image");
@@ -139,15 +170,29 @@ export const useEditorShortcuts = () => {
       }
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
-        const plan = duplicateOps(doc.doc, doc.selection, DUPLICATE_OFFSET);
-        if (plan.ops.length === 0) return;
-        if (doc.commit(plan.ops, { label: "Duplicate" }))
-          useDocumentStore.getState().select(plan.ids);
+        runDuplicate();
         return;
       }
       if (mod && !e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
         e.preventDefault();
         if (doc.selection.length > 0) useSelectionPrompt.getState().toggle();
+        return;
+      }
+      // Structure: Alt changes e.key on macOS, so these read the physical key.
+      const structure = structureShortcut(e, mod);
+      if (structure) {
+        e.preventDefault();
+        if (doc.selection.length > 0) runStructure(structure);
+        return;
+      }
+      if (mod && e.shiftKey && !e.altKey && e.code === "KeyR") {
+        e.preventDefault();
+        if (doc.selection.length > 0) void runPasteReplace();
+        return;
+      }
+      if (!mod && !e.altKey && e.shiftKey && (e.code === "KeyH" || e.code === "KeyV")) {
+        e.preventDefault();
+        if (doc.selection.length > 0) flipSelection(e.code === "KeyH" ? "x" : "y");
         return;
       }
       if (mod) return;
@@ -175,11 +220,9 @@ export const useEditorShortcuts = () => {
       }
 
       if (e.key === "Delete" || e.key === "Backspace") {
-        const ids = topmostSelected(doc.doc, doc.selection);
-        if (ids.length === 0) return;
+        if (doc.selection.length === 0) return;
         e.preventDefault();
-        const ops: Op[] = ids.map((id) => ({ op: "delete", id }));
-        doc.commit(ops, { label: "Delete" });
+        runDelete();
         return;
       }
       if (e.key === "Escape") {

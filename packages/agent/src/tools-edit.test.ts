@@ -468,3 +468,42 @@ describe("copy_nodes", () => {
     expect(host.calls.applyOps).toHaveLength(0);
   });
 });
+
+describe("flipX / flipY", () => {
+  test("update and insert accept the mirror flags, and false/null clear them", async () => {
+    const host = createFakeHost();
+    const inserted = await call(
+      "batch_design",
+      {
+        operations: [
+          {
+            op: "insert",
+            parent: null,
+            as: "box",
+            node: { type: "rectangle", width: 40, height: 20, flipX: true },
+          },
+        ],
+      },
+      host,
+    );
+    expect(inserted.isError).toBeFalsy();
+    const id = inserted.data.aliases.box as string;
+    expect(node(host.doc(), id)).toMatchObject({ flipX: true });
+
+    const updated = await call(
+      "batch_design",
+      { operations: [{ op: "update", target: id, props: { flipY: true, flipX: null } }] },
+      host,
+    );
+    expect(updated.isError).toBeFalsy();
+    expect(node(host.doc(), id)).toMatchObject({ flipY: true });
+    expect(node(host.doc(), id).flipX).toBeUndefined();
+  });
+
+  test("flip props are in the tool schemas", async () => {
+    const { editTools: tools } = await import("./tools-edit");
+    const text = JSON.stringify(tools.map((t) => t.inputSchema));
+    expect(text).toContain("flipX");
+    expect(text).toContain("flipY");
+  });
+});

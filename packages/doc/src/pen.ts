@@ -64,6 +64,7 @@ const KEYS_BY_TYPE: Record<string, readonly string[]> = {
 };
 /** Props handled by dedicated conversions below. */
 const CONVERTED_KEYS = new Set([
+  "enabled",
   "type",
   "children",
   "padding",
@@ -157,6 +158,8 @@ class Importer {
 
     const out: Json = { type };
     for (const key of keys) if (raw[key] !== undefined) out[key] = raw[key];
+    // Pen hides a layer with `enabled: false`.
+    if (raw.enabled === false) out.visible = false;
     for (const key of Object.keys(raw)) {
       if (!keys.includes(key) && !CONVERTED_KEYS.has(key) && !SILENT_KEYS.has(key)) {
         this.warn(`Property "${key}" on ${String(type)} is not supported and was dropped`);

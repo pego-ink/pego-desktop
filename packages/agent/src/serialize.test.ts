@@ -3,7 +3,7 @@ import { documentSchema, sampleDoc, type PegoDocument } from "@pego/doc";
 import { serializeDocument } from "./serialize";
 
 const doc: PegoDocument = documentSchema.parse({
-  version: 3,
+  version: 7,
   id: "d",
   name: "App",
   variables: { gap: { type: "number", value: 8 }, accent: { type: "color", value: "#0E7C5A" } },
@@ -122,7 +122,7 @@ describe("serializeDocument", () => {
 
 describe("serializeDocument image nodes", () => {
   const withImage = documentSchema.parse({
-    version: 3,
+    version: 7,
     id: "d",
     name: "Img",
     variables: {},
@@ -173,7 +173,7 @@ describe("serializeDocument image nodes", () => {
 
 describe("serializeDocument v1 props", () => {
   const v1: PegoDocument = documentSchema.parse({
-    version: 3,
+    version: 7,
     id: "d",
     name: "Effects",
     children: [
@@ -221,7 +221,7 @@ describe("serializeDocument fills", () => {
   test("gradients inline, images by size", () => {
     const text = serializeDocument(
       documentSchema.parse({
-        version: 3,
+        version: 7,
         id: "d",
         name: "Fills",
         children: [
@@ -256,5 +256,87 @@ describe("serializeDocument fills", () => {
     );
     expect(text).toContain("fill=linear(90,#000000 0,$accent 1)");
     expect(text).toContain("fill=image(cover,3KB)");
+  });
+
+  test("hidden layers are marked", () => {
+    const doc = {
+      ...sampleDoc,
+      children: [
+        {
+          ...sampleDoc.children[0]!,
+          children: [{ type: "rectangle" as const, id: "r", x: 0, y: 0, visible: false }],
+        },
+      ],
+    };
+    expect(serializeDocument(doc)).toContain("rectangle#r [hidden]");
+  });
+
+  test("animations show their preset and the fields that are set", () => {
+    const doc = {
+      ...sampleDoc,
+      children: [
+        {
+          ...sampleDoc.children[0]!,
+          children: [
+            {
+              type: "rectangle" as const,
+              id: "bar",
+              x: 0,
+              y: 0,
+              animation: { preset: "grow_up" as const, delay: 150, easing: "spring" as const },
+            },
+            {
+              type: "text" as const,
+              id: "pct",
+              x: 0,
+              y: 0,
+              content: "70%",
+              animation: { preset: "fade" as const, countUp: true },
+            },
+            {
+              type: "ellipse" as const,
+              id: "dot",
+              x: 0,
+              y: 0,
+              animation: { preset: "pop" as const },
+            },
+          ],
+        },
+      ],
+    };
+    const text = serializeDocument(doc);
+    expect(text).toContain("animation=grow_up(delay=150,easing=spring)");
+    expect(text).toContain("animation=fade(countUp)");
+    expect(text).toContain("animation=pop");
+  });
+
+  test("shader fills show their preset, uniforms and code size", () => {
+    const doc = {
+      ...sampleDoc,
+      children: [
+        {
+          ...sampleDoc.children[0]!,
+          children: [
+            {
+              type: "rectangle" as const,
+              id: "bg",
+              x: 0,
+              y: 0,
+              fill: { type: "shader" as const, preset: "waves" as const, uniforms: { lines: 8 } },
+            },
+            {
+              type: "ellipse" as const,
+              id: "own",
+              x: 0,
+              y: 0,
+              fill: { type: "shader" as const, preset: "custom" as const, code: "abcd" },
+            },
+          ],
+        },
+      ],
+    };
+    const text = serializeDocument(doc);
+    expect(text).toContain("fill=shader(waves,lines=8)");
+    expect(text).toContain("fill=shader(custom,code=4chars)");
   });
 });

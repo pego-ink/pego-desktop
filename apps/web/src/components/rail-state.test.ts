@@ -5,6 +5,7 @@ import {
   parseRailState,
   pressTab,
   railTabForShortcut,
+  railTabsFor,
 } from "./rail-state";
 
 const key = (code: string, mods: Partial<KeyboardEvent> = {}) => ({
@@ -28,6 +29,18 @@ describe("parseRailState", () => {
     expect(parseRailState('{"tab":"nope","open":"x"}')).toEqual(DEFAULT_RAIL_STATE);
     expect(parseRailState("{oops")).toEqual(DEFAULT_RAIL_STATE);
     expect(parseRailState("null")).toEqual(DEFAULT_RAIL_STATE);
+  });
+});
+
+describe("railTabsFor", () => {
+  test("browser only when the desktop shell has it", () => {
+    expect(railTabsFor(false).map((t) => t.id)).toEqual(["agent", "layers", "assets"]);
+    expect(railTabsFor(true).map((t) => t.id)).toEqual(["agent", "layers", "assets", "browser"]);
+  });
+  test("persisted browser tab falls back without it", () => {
+    const raw = '{"tab":"browser","open":false}';
+    expect(parseRailState(raw)).toEqual({ tab: "agent", open: false });
+    expect(parseRailState(raw, railTabsFor(true))).toEqual({ tab: "browser", open: false });
   });
 });
 
@@ -60,8 +73,11 @@ describe("railTabForShortcut", () => {
     expect(railTabForShortcut(key("Digit2"))).toBe("layers");
     expect(railTabForShortcut(key("Digit3"))).toBe("assets");
   });
-  test("ignores other combos", () => {
+  test("alt+4 is the browser only where offered", () => {
     expect(railTabForShortcut(key("Digit4"))).toBeNull();
+    expect(railTabForShortcut(key("Digit4"), railTabsFor(true))).toBe("browser");
+  });
+  test("ignores other combos", () => {
     expect(railTabForShortcut(key("Digit1", { shiftKey: true }))).toBeNull();
     expect(railTabForShortcut(key("Digit1", { metaKey: true }))).toBeNull();
     expect(railTabForShortcut(key("Digit1", { altKey: false }))).toBeNull();

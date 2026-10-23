@@ -1,23 +1,58 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CopyIcon,
+  DownloadIcon,
   FolderIcon,
   ImageOffIcon,
+  MoreHorizontalIcon,
   PlusIcon,
   SearchIcon,
   TerminalIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { ProjectInfo } from "@pego/agent";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@pego/ui/components/alert-dialog";
 import { Button } from "@pego/ui/components/button";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@pego/ui/components/context-menu";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@pego/ui/components/dropdown-menu";
 import { Input } from "@pego/ui/components/input";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { useThemeStore } from "@/theme/theme";
 import { getProjectPreview, type ProjectPreview } from "./project-preview";
+import { trashConfirmText } from "./trash-project-model";
+import { exportProject, PROJECT_EXPORTS } from "./project-export";
 import {
+  askTrashProject,
   createProjectFromDashboard,
+  dismissTrashConfirm,
   refreshProjects,
+  trashConfirmedProject,
   useDashboardStore,
+  useTrashConfirm,
 } from "./use-dashboard-store";
 import { openProject } from "@/project/use-project-store";
 import { openFile } from "@/persistence/file-actions";
@@ -89,55 +124,140 @@ const ProjectThumbnail = ({ project }: { project: ProjectInfo }) => {
 };
 
 const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean }) => (
-  <div
-    role="button"
-    tabIndex={0}
-    className="group flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
-    onClick={() => void openProject(project)}
-    onKeyDown={(event) => {
-      if (event.key === "Enter") void openProject(project);
-    }}
-  >
-    <ProjectThumbnail project={project} />
-    <div className="flex items-start justify-between gap-2 px-1">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-foreground [&_svg]:size-3.5">
-          <FolderIcon />
-        </span>
-        <div className="min-w-0">
-          <div className="truncate text-sm font-medium text-foreground">{project.name}</div>
-          <div className="truncate text-[11px] text-muted-foreground">
-            design/{project.relativeDir}
-          </div>
-        </div>
-      </div>
-      {open ? (
-        <span className="shrink-0 rounded-sm bg-accent px-1.5 py-0.5 text-[10px] text-foreground">
-          Open
-        </span>
-      ) : null}
-    </div>
-    <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
-      <span>
-        {project.fileCount} file{project.fileCount === 1 ? "" : "s"} · {ago(project.modifiedAt)}
-      </span>
-      <button
-        type="button"
-        title="Copy project id"
-        className="flex items-center gap-1 rounded-sm px-1 font-mono hover:bg-accent hover:text-foreground [&_svg]:size-3"
-        onClick={(event) => {
-          event.stopPropagation();
-          void navigator.clipboard
-            ?.writeText(project.id)
-            .then(() => toast.success("Project id copied"));
+  <ContextMenu>
+    <ContextMenuTrigger asChild>
+      <div
+        role="button"
+        tabIndex={0}
+        className="group relative flex cursor-pointer flex-col gap-3 rounded-lg border border-border bg-card p-3 text-left transition-colors hover:border-ring/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        onClick={() => void openProject(project)}
+        onKeyDown={(event) => {
+          // Enter on the inner menu buttons must not open the project.
+          if (event.key === "Enter" && event.target === event.currentTarget)
+            void openProject(project);
         }}
       >
-        {project.id}
-        <CopyIcon />
-      </button>
-    </div>
-  </div>
+        <ProjectThumbnail project={project} />
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button
+              variant="secondary"
+              size="icon-xs"
+              aria-label={`More actions for ${project.name}`}
+              className="absolute top-5 right-5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MoreHorizontalIcon />
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent
+            align="end"
+            sideOffset={4}
+            className="min-w-52"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="px-2 pt-1 pb-0.5 text-[11px] text-muted-foreground">Export</div>
+            {PROJECT_EXPORTS.map(({ kind, label }) => (
+              <DropdownMenuItem key={kind} onSelect={() => void exportProject(project, kind)}>
+                <DownloadIcon className="size-3.5" />
+                {label}
+              </DropdownMenuItem>
+            ))}
+            <div role="separator" className="-mx-1 my-1 h-px bg-border" />
+            <DropdownMenuItem
+              className="text-destructive data-[highlighted]:text-destructive"
+              onSelect={() => askTrashProject(project)}
+            >
+              <Trash2Icon className="size-3.5" />
+              Move to Trash
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+        <div className="flex items-start justify-between gap-2 px-1">
+          <div className="flex min-w-0 items-center gap-2">
+            <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent text-foreground [&_svg]:size-3.5">
+              <FolderIcon />
+            </span>
+            <div className="min-w-0">
+              <div className="truncate text-sm font-medium text-foreground">{project.name}</div>
+              <div className="truncate text-[11px] text-muted-foreground">
+                design/{project.relativeDir}
+              </div>
+            </div>
+          </div>
+          {open ? (
+            <span className="shrink-0 rounded-sm bg-accent px-1.5 py-0.5 text-[10px] text-foreground">
+              Open
+            </span>
+          ) : null}
+        </div>
+        <div className="flex items-center justify-between px-1 text-[11px] text-muted-foreground">
+          <span>
+            {project.fileCount} file{project.fileCount === 1 ? "" : "s"} · {ago(project.modifiedAt)}
+          </span>
+          <button
+            type="button"
+            title="Copy project id"
+            className="flex items-center gap-1 rounded-sm px-1 font-mono hover:bg-accent hover:text-foreground [&_svg]:size-3"
+            onClick={(event) => {
+              event.stopPropagation();
+              void navigator.clipboard
+                ?.writeText(project.id)
+                .then(() => toast.success("Project id copied"));
+            }}
+          >
+            {project.id}
+            <CopyIcon />
+          </button>
+        </div>
+      </div>
+    </ContextMenuTrigger>
+    <ContextMenuContent className="min-w-44" onClick={(event) => event.stopPropagation()}>
+      <ContextMenuItem onSelect={() => void openProject(project)}>Open</ContextMenuItem>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger>Export</ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          {PROJECT_EXPORTS.map(({ kind, label }) => (
+            <ContextMenuItem key={kind} onSelect={() => void exportProject(project, kind)}>
+              {label}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+      <ContextMenuSeparator />
+      <ContextMenuItem destructive onSelect={() => askTrashProject(project)}>
+        Move to Trash
+      </ContextMenuItem>
+    </ContextMenuContent>
+  </ContextMenu>
 );
+
+/** "Move “name” to the Trash?" for the project picked in a card menu. */
+const TrashProjectDialog = () => {
+  const { open, project } = useTrashConfirm();
+  const text = project ? trashConfirmText(project) : null;
+  return (
+    <AlertDialog open={open} onOpenChange={(next) => (next ? undefined : dismissTrashConfirm())}>
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{text?.title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            <code data-selectable className="block truncate font-mono text-foreground">
+              {text?.folder}
+            </code>
+            <span className="mt-1 block">{text?.hint}</span>
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel>{text?.cancel}</AlertDialogCancel>
+          <AlertDialogAction variant="destructive" onClick={() => void trashConfirmedProject()}>
+            {text?.confirm}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+};
 
 /** Home page: every project of the repository, a way to create one, and how to use them from Claude Code. */
 export const Dashboard = () => {
@@ -293,6 +413,7 @@ export const Dashboard = () => {
           </div>
         ) : null}
       </div>
+      <TrashProjectDialog />
     </div>
   );
 };

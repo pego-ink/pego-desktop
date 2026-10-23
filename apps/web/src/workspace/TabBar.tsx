@@ -7,6 +7,7 @@ import {
   type CSSProperties,
   type KeyboardEvent,
   type PointerEvent,
+  type ReactNode,
 } from "react";
 import { FileIcon, FolderIcon, HomeIcon, PlusIcon, XIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
@@ -40,15 +41,19 @@ const FADE = 20;
 
 /**
  * Shape shared by every tab. The active tab is a filled block in the colour of the toolbar below
- * it, with Chrome-style concave feet; inactive tabs are bare until hovered.
+ * it, with Chrome-style concave feet; inactive tabs are bare until hovered. In the floating
+ * interface nothing sits below the tabs, so the active one is a card-colored pill instead.
  */
-const tabClass = (active: boolean, dragging: boolean) =>
+const tabClass = (active: boolean, dragging: boolean, floating = false) =>
   cn(
-    "tab group/tab relative flex h-9 cursor-default items-center select-none rounded-t-lg text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset",
+    "tab group/tab relative flex cursor-default items-center select-none text-muted-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50 focus-visible:ring-inset",
+    floating ? "h-8 rounded-lg" : "h-9 rounded-t-lg",
     WINDOW_NO_DRAG_CLASS,
     "hover:text-foreground",
     active &&
-      "z-10 bg-card text-foreground before:pointer-events-none before:absolute before:bottom-0 before:-left-2 before:size-2 before:[background:radial-gradient(circle_at_0_0,transparent_8px,var(--card)_8.5px)] after:pointer-events-none after:absolute after:right-[-8px] after:bottom-0 after:size-2 after:[background:radial-gradient(circle_at_100%_0,transparent_8px,var(--card)_8.5px)]",
+      (floating
+        ? "z-10 bg-card text-foreground shadow-[0_0_0_1px_var(--border),0_4px_12px_rgb(0_0_0/0.14)]"
+        : "z-10 bg-card text-foreground before:pointer-events-none before:absolute before:bottom-0 before:-left-2 before:size-2 before:[background:radial-gradient(circle_at_0_0,transparent_8px,var(--card)_8.5px)] after:pointer-events-none after:absolute after:right-[-8px] after:bottom-0 after:size-2 after:[background:radial-gradient(circle_at_100%_0,transparent_8px,var(--card)_8.5px)]"),
     dragging && "z-20 text-foreground",
   );
 
@@ -78,6 +83,7 @@ const Separator = ({ hidden }: { hidden: boolean }) => (
 type DragState = { id: string; from: number; to: number; dx: number; width: number };
 
 type DocumentTabProps = {
+  floating: boolean;
   workspace: Workspace;
   index: number;
   active: boolean;
@@ -93,6 +99,7 @@ type DocumentTabProps = {
 };
 
 const DocumentTab = ({
+  floating,
   workspace,
   index,
   active,
@@ -128,7 +135,7 @@ const DocumentTab = ({
       data-tab-id={workspace.id}
       style={style}
       className={cn(
-        tabClass(active, dragging),
+        tabClass(active, dragging, floating),
         "w-[220px] min-w-[100px] shrink",
         drag && !dragging && "transition-transform duration-(--duration-base) ease-out",
         dragging && "touch-none",
@@ -224,7 +231,14 @@ type Edges = { start: boolean; end: boolean };
  * Window-wide tab bar (Chrome-shaped, Figma-flat): update pill, Home, one tab per workspace and a
  * "+" button. On macOS desktop it sits right of the traffic lights and drags the window.
  */
-export const TabBar = () => {
+type TabBarProps = {
+  /** The floating interface: tabs as pills on the canvas-colored top row. */
+  floating?: boolean;
+  /** Shown at the trailing end of the row (the floating interface's header pill). */
+  trailing?: ReactNode;
+};
+
+export const TabBar = ({ floating = false, trailing }: TabBarProps = {}) => {
   const workspaces = useWorkspaceStore((s) => s.workspaces);
   const liveId = useWorkspaceStore((s) => s.liveId);
   const view = useWorkspaceStore((s) => s.view);
@@ -391,7 +405,8 @@ export const TabBar = () => {
   return (
     <div
       className={cn(
-        "flex h-10 shrink-0 items-end gap-1 bg-background pr-2",
+        "flex shrink-0 gap-1 pr-2",
+        floating ? "h-12 items-center" : "h-10 items-end bg-background",
         windowControls ? WINDOW_CONTROLS_INSET_CLASS : "pl-2",
         desktop && "[-webkit-app-region:drag]",
       )}
@@ -400,7 +415,7 @@ export const TabBar = () => {
       <div
         role="tablist"
         aria-label="Documents"
-        className="flex h-full min-w-0 items-end"
+        className={cn("flex h-full min-w-0", floating ? "items-center" : "items-end")}
         onWheel={(event) => {
           const el = scrollerRef.current;
           if (el && event.deltaX === 0 && event.deltaY !== 0) el.scrollLeft += event.deltaY;
@@ -412,7 +427,7 @@ export const TabBar = () => {
           aria-label="Home"
           tabIndex={focusId === HOME_TAB_ID ? 0 : -1}
           title="Home"
-          className={cn(tabClass(dashboard, false), "mr-1 w-10 shrink-0 justify-center")}
+          className={cn(tabClass(dashboard, false, floating), "mr-1 w-10 shrink-0 justify-center")}
           onPointerDown={(event) => {
             if (event.button === 0) activateTab(HOME_TAB_ID);
           }}
@@ -425,11 +440,15 @@ export const TabBar = () => {
           ref={scrollerRef}
           onScroll={updateEdges}
           style={maskStyle}
-          className="relative flex h-full min-w-0 items-end overflow-x-auto overflow-y-hidden pr-2 pl-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+          className={cn(
+            "relative flex h-full min-w-0 overflow-x-auto overflow-y-hidden pr-2 pl-2 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            floating ? "items-center gap-1" : "items-end",
+          )}
         >
           {workspaces.map((workspace, index) => (
             <DocumentTab
               key={workspace.id}
+              floating={floating}
               workspace={workspace}
               index={index}
               active={workspace.id === activeId}
@@ -450,11 +469,20 @@ export const TabBar = () => {
         size="icon-xs"
         aria-label="New tab"
         title={`New tab (${MOD}T)`}
-        className={cn("mb-1.5 size-7 shrink-0 text-muted-foreground", WINDOW_NO_DRAG_CLASS)}
+        className={cn(
+          "size-7 shrink-0 text-muted-foreground",
+          !floating && "mb-1.5",
+          WINDOW_NO_DRAG_CLASS,
+        )}
         onClick={() => runTabAction({ kind: "new" })}
       >
         <PlusIcon className="size-4" />
       </Button>
+      {trailing ? (
+        <div className={cn("ml-auto flex shrink-0 items-center", WINDOW_NO_DRAG_CLASS)}>
+          {trailing}
+        </div>
+      ) : null}
       <CloseConfirmDialog />
     </div>
   );

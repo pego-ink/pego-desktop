@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, test } from "bun:test";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { cancelPendingDecisions, RunCancelledError } from "./decisions";
-import { createFocusGroupsSelector, focusGroupsOf, focusLabel } from "./focus-groups";
+import { createFocusGroupsSelector, focusGroupsOf } from "./focus-groups";
 import { pickColorIndex, runColor, RUN_COLORS } from "./run-colors";
 import { registerRun, startBlock, unregisterRun } from "./run-registry";
 import { emptySession } from "./sessions/session-model";
@@ -47,6 +47,23 @@ describe("run colors", () => {
     expect(pickColorIndex([0, 2])).toBe(1);
     expect(pickColorIndex([0, 1, 2, 3], 4)).toBe(0);
     expect(runColor(RUN_COLORS.length)).toBe(RUN_COLORS[0]);
+  });
+
+  test("ten slots, one per agent name: the lowest free one, wrapping once all are taken", () => {
+    expect(RUN_COLORS).toHaveLength(10);
+    expect(pickColorIndex([0, 1, 2])).toBe(3);
+    expect(pickColorIndex([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])).toBe(0);
+  });
+
+  test("a session keeps its slot from turn to turn while it is free", () => {
+    const { background } = twoSessions();
+    const front = visible().id;
+    const frontSlot = visible().colorIndex;
+    // The background run finishes; the front one starts its next turn: same slot (and name).
+    agent().patchSession(background, { status: "done" });
+    agent().patchSession(front, { status: "done" });
+    agent().beginRun(front, "fg-2", "Next turn");
+    expect(visible().colorIndex).toBe(frontSlot);
   });
 });
 
@@ -97,14 +114,14 @@ describe("per-session live state", () => {
 });
 
 describe("focus groups", () => {
-  test("one tinted, labelled group per running session that touches nodes", () => {
+  test("one tinted group per running session that touches nodes", () => {
     const { background } = twoSessions();
     runScope("bg").set({ focusIds: ["rect-1"] });
     runScope("fg").set({ focusIds: ["text-1"] });
     const groups = focusGroupsOf(agent().liveSessions);
-    expect(groups.map((g) => [g.key, g.ids, g.label])).toEqual([
-      ["bg", ["rect-1"], "Landing page"],
-      ["fg", ["text-1"], "Pricing table"],
+    expect(groups.map((g) => [g.key, g.ids])).toEqual([
+      ["bg", ["rect-1"]],
+      ["fg", ["text-1"]],
     ]);
     expect(groups[0]?.color).toBe(runColor(agent().liveSessions[background]!.colorIndex));
     expect(groups[0]?.color).not.toBe(groups[1]?.color);
@@ -119,10 +136,6 @@ describe("focus groups", () => {
     expect(select(agent())).toBe(first);
     runScope("bg").set({ focusIds: ["text-1"] });
     expect(select(agent())).not.toBe(first);
-  });
-
-  test("labels are cut to one short line", () => {
-    expect(focusLabel("A very long session title that goes on", 12)).toBe("A very long…");
   });
 });
 

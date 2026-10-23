@@ -13,7 +13,7 @@ const sides = (description: string): JsonSchema => ({
 const fillValue: JsonSchema = {
   anyOf: [{ type: "string" }, { type: "object" }],
   description:
-    "Hex color or $variable; shapes also take a gradient or image object (see node format).",
+    "Hex color or $variable; shapes also take a gradient, image or shader object (see node format).",
 };
 const sizing: JsonSchema = {
   type: ["number", "string"],
@@ -30,10 +30,55 @@ const nodePropSchemas: Record<string, JsonSchema> = {
   width: sizing,
   height: sizing,
   rotation: numberValue,
+  flipX: {
+    type: "boolean",
+    description: "Mirror left-right around the node's center. Not on pages.",
+  },
+  flipY: {
+    type: "boolean",
+    description: "Mirror top-bottom around the node's center. Not on pages.",
+  },
   opacity: numberValue,
+  animation: {
+    type: ["object", "null"],
+    properties: {
+      preset: {
+        type: "string",
+        enum: [
+          "none",
+          "fade",
+          "slide_up",
+          "slide_down",
+          "slide_left",
+          "slide_right",
+          "grow_up",
+          "grow_right",
+          "scale",
+          "pop",
+        ],
+      },
+      delay: { type: "number", description: "ms after playback starts. Default 0." },
+      duration: { type: "number", description: "ms. Default 600." },
+      easing: { type: "string", enum: ["ease_out", "ease_in_out", "linear", "spring"] },
+      countUp: { type: "boolean", description: "Text only: numbers count up from 0." },
+    },
+    required: ["preset"],
+    description:
+      "Entrance played in preview and exports (the canvas shows the end state). Stagger siblings with delay. Not on pages.",
+  },
   reusable: {
     type: "boolean",
     description: "Marks this node as a component that ref nodes instantiate.",
+  },
+  visible: {
+    type: "boolean",
+    description: "false hides the layer and its children (not drawn, not exported). Default true.",
+  },
+  slot: {
+    type: "array",
+    items: { type: "string" },
+    description:
+      "Frame inside a component only. Makes it a slot: instances fill it with their own children, ideally with these component ids (may be empty).",
   },
   fill: fillValue,
   stroke: {
@@ -89,6 +134,11 @@ const nodePropSchemas: Record<string, JsonSchema> = {
       "Image only. fill covers the box, fit contains, crop is natural size, tile repeats.",
   },
   alt: { type: "string", description: "Image only. Alt text." },
+  source: {
+    type: "object",
+    description:
+      'Image only. Where a browser screenshot came from: {"url": "http(s)://...", "selector"?}. Set by the browser tools; used to refresh it.',
+  },
   viewBox: {
     type: "array",
     items: { type: "number" },
@@ -108,7 +158,7 @@ const nodePropSchemas: Record<string, JsonSchema> = {
   descendants: {
     type: "object",
     description:
-      'Ref only. Overrides keyed by the component\'s descendant id, e.g. {"label": {"content": "Buy"}}.',
+      'Ref only. Overrides keyed by the component\'s descendant id, e.g. {"label": {"content": "Buy"}}. To fill a slot frame use {"slotId": {"children": [nodes]}}.',
     additionalProperties: { type: "object" },
   },
 };
@@ -116,12 +166,12 @@ const nodePropSchemas: Record<string, JsonSchema> = {
 export const NODE_FORMAT_DESCRIPTION =
   "A node object. `type` is required: frame | group | rectangle | ellipse | path | text | icon | image | ref. " +
   "`id` is optional (assigned when omitted). Only frame and group take `children` (same node format, nested). " +
-  "Other fields apply per type: frame (layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke, effects), " +
+  "Other fields apply per type: frame (slot, layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke, effects), " +
   "rectangle (cornerRadius, fill, stroke, effects), ellipse (fill, stroke, effects), " +
   "path (geometry, viewBox, strokeCap, strokeJoin, startMarker, endMarker, fill, stroke, effects), " +
   "image (src, fit, cornerRadius, stroke, alt), " +
   "text (content, fontFamily, fontSize, fontWeight, fontStyle, lineHeight, letterSpacing, textAlign, fill, effects), icon (iconName, iconSet, fill, effects), " +
-  "ref (ref, descendants). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
+  "ref (ref, descendants). Every node also takes visible (false hides it). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
   'Shape fill may be {"type":"linear","angle":180,"stops":[{"color","position":0..1}, ...]} (angle like CSS: 0 up, 90 right), ' +
   '{"type":"radial","center":[0.5,0.5],"radius":[0.5,0.5],"stops":[...]} or {"type":"image","src":"data:image/...;base64,...","fit":"cover"|"contain"|"stretch"}. ' +
   'stroke: {"color","width"} with width one number or [top,right,bottom,left]. ' +
