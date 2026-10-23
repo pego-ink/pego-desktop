@@ -314,5 +314,8 @@ Two people contribute to `github.com/yolkmonday/pego`, so:
 - Coordinate before touching shared hot spots: `packages/doc/src/schema.ts`, `packages/doc/src/ops.ts`,
   `packages/agent/src/tools.ts`, root `package.json`.
 - On a `bun.lock` conflict, take `main`'s version and rerun `bun install`; never hand-edit it.
+- A Claude review bot (`.github/workflows/claude-review.yml`) comments on every same-repo PR into `dev`/`main`:
+  overlap with other open PRs, recent merges and active branches (so nobody builds the same feature twice),
+  plus a short code check. It never blocks merging; it needs the `CLAUDE_CODE_OAUTH_TOKEN` secret.
 - Every PR into `dev` carries a changelog entry (see Changelog) or the `no-changelog` label. Approvals for `dev`
   and `main` come from the code owner (`.github/CODEOWNERS`).
