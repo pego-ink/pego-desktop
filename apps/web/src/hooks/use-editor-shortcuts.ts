@@ -13,6 +13,7 @@ import { getToolHandler } from "@/interaction/tool-handlers";
 import { nudgeStep } from "@/interaction/nudge";
 import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
 import { runPasteReplace } from "@/interaction/clipboard-actions";
+import { copySelectionForAgent } from "@/interaction/agent-reference";
 import { flipSelection } from "@/interaction/flip";
 import {
   runDelete,
@@ -153,6 +154,11 @@ export const useEditorShortcuts = () => {
       if (mod && e.key.toLowerCase() === "a") {
         e.preventDefault();
         selectAllNodes();
+        return;
+      }
+      if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "c") {
+        e.preventDefault();
+        void copySelectionForAgent();
         return;
       }
       if (mod && e.shiftKey && !e.altKey && e.key.toLowerCase() === "k") {
