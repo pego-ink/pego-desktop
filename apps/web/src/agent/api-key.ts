@@ -37,23 +37,32 @@ const withStore = async <T>(
   }
 };
 
-/** Returns null when no key is saved or storage is unavailable (private mode, blocked). */
-export const loadApiKey = async (): Promise<string | null> => {
+/**
+ * A secret stored under `name` (the same rules as the API key: this browser only, never logged).
+ * Null when none is saved or storage is unavailable (private mode, blocked).
+ */
+export const loadSecret = async (name: string): Promise<string | null> => {
   try {
-    const value: unknown = await withStore("readonly", (store) => store.get(KEY));
+    const value: unknown = await withStore("readonly", (store) => store.get(name));
     return typeof value === "string" && value.length > 0 ? value : null;
   } catch {
-    // Deliberately no error detail: nothing about this call should risk leaking the key.
+    // Deliberately no error detail: nothing about this call should risk leaking the secret.
     return null;
   }
 };
 
-/** Saves the key (trimmed); `null` or an empty string removes it. Throws when storage fails. */
-export const saveApiKey = async (key: string | null): Promise<void> => {
-  const trimmed = key?.trim() ?? "";
+/** Saves a secret (trimmed); `null` or an empty string removes it. Throws when storage fails. */
+export const saveSecret = async (name: string, value: string | null): Promise<void> => {
+  const trimmed = value?.trim() ?? "";
   if (trimmed.length === 0) {
-    await withStore("readwrite", (store) => store.delete(KEY));
+    await withStore("readwrite", (store) => store.delete(name));
     return;
   }
-  await withStore("readwrite", (store) => store.put(trimmed, KEY));
+  await withStore("readwrite", (store) => store.put(trimmed, name));
 };
+
+/** Returns null when no key is saved or storage is unavailable (private mode, blocked). */
+export const loadApiKey = (): Promise<string | null> => loadSecret(KEY);
+
+/** Saves the key (trimmed); `null` or an empty string removes it. Throws when storage fails. */
+export const saveApiKey = (key: string | null): Promise<void> => saveSecret(KEY, key);

@@ -272,6 +272,15 @@ const browserTool = defineTool({
             src,
             fit: "fill",
             alt: `Screenshot of ${page.title || page.url}`.slice(0, 500),
+            // Remembered so the user can refresh it from the live page later.
+            ...(page.url && target.kind !== "selection"
+              ? {
+                  source: {
+                    url: page.url,
+                    ...(target.kind === "query" ? { selector: target.selector } : {}),
+                  },
+                }
+              : {}),
             width: shot.width,
             height: shot.height,
             ...defaultPosition(host, null, undefined, undefined),

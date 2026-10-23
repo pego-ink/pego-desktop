@@ -216,6 +216,8 @@ export const Canvas = () => {
             agentFocus,
             suppressSelection: toolHandler?.hidesSelection?.() ?? false,
             time: focusAnimated ? performance.now() : undefined,
+            pageId,
+            theme: useThemeStore.getState().resolved,
           });
           toolHandler?.renderOverlay?.(res, canvas, camera);
           canvas.restore();

@@ -18,6 +18,7 @@ import {
   type SelectionFrame,
 } from "@/interaction/selection-frame";
 import { HANDLES } from "@/interaction/transform";
+import { CAPTION_FONT_SIZE, frameCaptions, type FrameCaption } from "./frame-captions";
 
 export const ACCENT = "#B79CFF";
 const LABEL_TEXT = "#141418";
@@ -43,6 +44,10 @@ export type OverlayState = {
   suppressSelection?: boolean;
   /** `performance.now()` for the agent focus animation; omit for a static box (reduced motion). */
   time?: number;
+  /** The shown page: its top-level frames get name captions. */
+  pageId?: string | null;
+  /** Canvas theme, for caption colors that read on its background. */
+  theme?: "light" | "dark";
 };
 
 const DASH: number[] = [5, 4];
@@ -119,6 +124,70 @@ const getLabel = (res: CanvasKitResources, text: string, fontSize: number): Para
     return paragraph;
   } finally {
     builder.delete();
+  }
+};
+
+/** Caption colors per theme: plain, hovered, components and instances. */
+const CAPTION_COLORS = {
+  light: { frame: "#6E6E7A", hover: "#18181D", component: "#8B5CF6" },
+  dark: { frame: "#9A9AA6", hover: "#E6E6EB", component: "#B79CFF" },
+} as const;
+
+/** A one-line caption cut to `width` with an ellipsis (cached like labels). */
+const getCaption = (
+  res: CanvasKitResources,
+  text: string,
+  color: string,
+  width: number,
+): Paragraph => {
+  const { paragraphs } = getKit(res);
+  // Widths in 8px steps keep the cache small while zooming.
+  const room = Math.max(8, Math.floor(width / 8) * 8);
+  const key = `caption|${color}|${room}|${text}`;
+  const cached = paragraphs.get(key);
+  if (cached) return cached;
+  const { ck, fontMgr, fontFamily } = res;
+  const style = new ck.ParagraphStyle({
+    textStyle: {
+      color: colorOf(res, color),
+      fontFamilies: [fontFamily],
+      fontSize: CAPTION_FONT_SIZE,
+      fontStyle: { weight: { value: 500 } },
+    },
+    maxLines: 1,
+    ellipsis: "…",
+  });
+  const builder = ck.ParagraphBuilder.Make(style, fontMgr);
+  try {
+    builder.addText(text);
+    const paragraph = builder.build();
+    paragraph.layout(room);
+    paragraphs.set(key, paragraph);
+    return paragraph;
+  } finally {
+    builder.delete();
+  }
+};
+
+/** Name captions above the shown page's top-level frames; the selected ones in the accent. */
+const drawCaptions = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  captions: readonly FrameCaption[],
+  selection: readonly string[],
+  hoveredId: string | null,
+  theme: "light" | "dark",
+) => {
+  const colors = CAPTION_COLORS[theme];
+  for (const caption of captions) {
+    const color = selection.includes(caption.id)
+      ? ACCENT
+      : caption.id === hoveredId
+        ? colors.hover
+        : caption.kind === "frame"
+          ? colors.frame
+          : colors.component;
+    canvas.drawParagraph(getCaption(res, caption.text, color, caption.width), caption.x, caption.y);
   }
 };
 
@@ -364,8 +433,19 @@ export const renderOverlay = (
     agentFocus,
     suppressSelection,
     time,
+    pageId = null,
+    theme = "light",
   }: OverlayState,
 ) => {
+  drawCaptions(
+    res,
+    canvas,
+    frameCaptions(doc, layout, camera, pageId),
+    selection,
+    hoveredId,
+    theme,
+  );
+
   for (const group of agentFocus ?? []) {
     if (group.ids.length > 0) drawAgentFocus(res, canvas, doc, layout, camera, group, time);
   }
