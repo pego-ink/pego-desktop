@@ -17,8 +17,7 @@ import { copySelectionForAgent } from "@/interaction/agent-reference";
 import { runCopyAs } from "@/interaction/copy-as";
 import { runPasteHere, runPasteReplace } from "@/interaction/clipboard-actions";
 import { flipSelection } from "@/interaction/flip";
-import { HIT_TOLERANCE_PX } from "@/interaction/hit-test";
-import { pickAt } from "@/interaction/selection";
+import { contextMenuTarget } from "@/interaction/pick-on-canvas";
 import { allClipped, allComponents, allVisible, componentOf } from "@/interaction/structure";
 import {
   goToComponent,
@@ -28,6 +27,7 @@ import {
 } from "@/interaction/structure-actions";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
+import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
@@ -39,6 +39,30 @@ const keys = (...parts: ("mod" | "alt" | "shift" | string)[]) =>
     : parts.map((part) => ({ mod: "Ctrl", alt: "Alt", shift: "Shift" })[part] ?? part).join("+");
 
 type DocPoint = { x: number; y: number };
+
+/** Canvas preferences and the settings modal, at the end of both canvas menus (like pen.dev). */
+const CanvasSettingsItems = () => {
+  const snapToPixel = useSettingsStore((s) => s.snapToPixel);
+  return (
+    <>
+      <ContextMenuCheckboxItem
+        checked={snapToPixel}
+        onCheckedChange={(checked) =>
+          useSettingsStore.getState().update({ snapToPixel: checked === true })
+        }
+      >
+        Snap to whole pixels
+      </ContextMenuCheckboxItem>
+      <ContextMenuSeparator />
+      <ContextMenuItem
+        shortcut={keys("mod", ",")}
+        onSelect={() => useSettingsModal.getState().openSettings("general")}
+      >
+        Open settings…
+      </ContextMenuItem>
+    </>
+  );
+};
 
 /** The selection's actions, shared by the canvas and the layers panel right-click menus. */
 export const SelectionMenuContent = ({ point }: { point?: DocPoint | null }) => {
@@ -197,10 +221,11 @@ export const SelectionMenuContent = ({ point }: { point?: DocPoint | null }) => 
       </ContextMenuItem>
       <ContextMenuSeparator />
       <ContextMenuSub>
-        <ContextMenuSubTrigger disabled={none}>Settings</ContextMenuSubTrigger>
+        <ContextMenuSubTrigger>Settings</ContextMenuSubTrigger>
         <ContextMenuSubContent>
           <ContextMenuItem
             shortcut={keys("mod", "shift", "H")}
+            disabled={none}
             onSelect={() => runStructure("toggle-visible")}
           >
             {allVisible(doc, selection) ? "Hide layer" : "Show layer"}
@@ -212,13 +237,15 @@ export const SelectionMenuContent = ({ point }: { point?: DocPoint | null }) => 
           >
             Clip content
           </ContextMenuCheckboxItem>
+          <ContextMenuSeparator />
+          <CanvasSettingsItems />
         </ContextMenuSubContent>
       </ContextMenuSub>
     </ContextMenuContent>
   );
 };
 
-/** Right-click menu on empty canvas: paste at the pointer, or select everything. */
+/** Right-click menu on empty canvas: paste at the pointer, select everything, canvas settings. */
 const EmptyMenuContent = ({ point }: { point: DocPoint | null }) => (
   <ContextMenuContent className="min-w-48">
     <ContextMenuItem onSelect={() => void runPasteHere(point ?? undefined)}>
@@ -233,13 +260,21 @@ const EmptyMenuContent = ({ point }: { point: DocPoint | null }) => (
     >
       Select all
     </ContextMenuItem>
+    <ContextMenuSeparator />
+    <ContextMenuSub>
+      <ContextMenuSubTrigger>Settings</ContextMenuSubTrigger>
+      <ContextMenuSubContent>
+        <CanvasSettingsItems />
+      </ContextMenuSubContent>
+    </ContextMenuSub>
   </ContextMenuContent>
 );
 
 /**
- * Right-click menu of the canvas. A right-click first selects what is under the pointer (like a
- * click; ⌘/Ctrl goes deep) unless it is already selected; on empty canvas it clears the selection
- * and opens a short menu. Paste here lands at the pointer.
+ * Right-click menu of the canvas. A right-click acts on the selection when it lands on a selected
+ * layer, inside one, or inside the selection's bounds; elsewhere it first selects what is under
+ * the pointer (like a click: a frame's caption picks the frame, ⌘/Ctrl goes deep). On empty canvas
+ * it clears the selection and opens a short menu. Paste here lands at the pointer.
  */
 export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
   const [point, setPoint] = useState<DocPoint | null>(null);
@@ -249,20 +284,17 @@ export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
     const state = useDocumentStore.getState();
     const rect = event.currentTarget.getBoundingClientRect();
     const { camera } = useViewportStore.getState();
-    const at = screenToDoc(camera, event.clientX - rect.left, event.clientY - rect.top);
-    const hit = pickAt(
-      state.doc,
+    const screen = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const target = contextMenuTarget(
+      state,
       getLayout(state.doc),
-      at.x,
-      at.y,
-      state.selection,
+      camera,
+      screen,
       event.metaKey || event.ctrlKey,
-      { tolerance: HIT_TOLERANCE_PX / camera.zoom, pageId: state.pageId },
     );
-    setPoint(at);
-    setEmpty(!hit);
-    if (!hit) state.select([]);
-    else if (!state.selection.includes(hit)) state.select([hit]);
+    setPoint(screenToDoc(camera, screen.x, screen.y));
+    setEmpty(target.empty);
+    if (target.selection !== state.selection) state.select([...target.selection]);
   };
 
   return (
