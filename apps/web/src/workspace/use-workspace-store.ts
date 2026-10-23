@@ -71,14 +71,13 @@ const localWorkspace = (id: string = newWorkspaceId(), name = UNTITLED): Workspa
   saved: null,
 });
 
-const createWorkspaceStore = () => {
-  const initial = localWorkspace();
-  return create<WorkspaceState>(() => ({
-    workspaces: [initial],
-    liveId: initial.id,
-    view: "editor",
+/** The app opens on Home with no tab; documents open from there (or from the restored tabs). */
+const createWorkspaceStore = () =>
+  create<WorkspaceState>(() => ({
+    workspaces: [],
+    liveId: null,
+    view: "dashboard",
   }));
-};
 
 /**
  * Dev hot reload re-runs this module; keep the same store so open tabs (and the background
