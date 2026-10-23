@@ -24,7 +24,7 @@ import { ShowRightPanelButton, usePanelShortcut } from "@/layout/PanelToggles";
 import { ThemeToggle } from "@/theme/ThemeToggle";
 import { CANVAS_BACKGROUND, useThemeStore } from "@/theme/theme";
 import { FLOATING_CARD, insetsWithin } from "@/layout/interface-style";
-import { useSettingsStore } from "@/store/use-settings-store";
+import { useFloatingInterface } from "@/layout/use-floating-interface";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { Dashboard } from "@/workspace/Dashboard";
 import { TabBar } from "@/workspace/TabBar";
@@ -134,6 +134,8 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
         </div>
       ))}
       <ResizeHandle
+        // Inside a floating card (which clips its content) the handle sits on the inner edge.
+        className={floating ? "right-0" : undefined}
         label="Resize left panel"
         value={panel.width}
         min={panel.min}
@@ -226,11 +228,18 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
     const { setInsets } = useViewportStore.getState();
     const measure = () =>
       setInsets(insetsWithin(container.getBoundingClientRect(), stage.getBoundingClientRect()));
+    // One update per frame while a panel is dragged wider or narrower.
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
     measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(schedule);
     observer.observe(container);
     observer.observe(stage);
     return () => {
+      cancelAnimationFrame(frame);
       observer.disconnect();
       setInsets(null);
     };
@@ -254,7 +263,9 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
           {rail}
           <LeftColumn floating />
         </div>
-        <div ref={stageRef} className="relative min-w-0 flex-1">
+        {/* With the panel closed its icon pill floats over the top left, so the stage (what fits
+            and centers aim at, and where the toolbar sits) starts below it. */}
+        <div ref={stageRef} className={cn("relative min-w-0 flex-1", !railOpen && "mt-[52px]")}>
           <div className="pointer-events-auto">
             <ZoomControl />
           </div>
@@ -274,7 +285,8 @@ export const EditorShell = () => {
   // Home shows with the Home view, and whenever no document tab is left (always, bridge or not).
   const dashboard = useWorkspaceStore((s) => s.view === "dashboard" || s.liveId === null);
   // The dashboard keeps the docked layout; the floating one is for the editor.
-  const floating = useSettingsStore((s) => s.interfaceStyle === "floating") && !dashboard;
+  // Narrow windows fall back to docked: the cards would leave almost no canvas.
+  const floating = useFloatingInterface() && !dashboard;
   const theme = useThemeStore((s) => s.resolved);
   usePanelShortcut();
 

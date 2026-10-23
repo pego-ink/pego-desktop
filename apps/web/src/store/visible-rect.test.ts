@@ -21,6 +21,14 @@ describe("visibleRect", () => {
       height: 844,
     });
   });
+  test("a stage too small to fit into (under 200px) falls back to the whole canvas", () => {
+    expect(visibleRect({ size, insets: { top: 8, right: 700, bottom: 8, left: 760 } })).toEqual({
+      x: 0,
+      y: 0,
+      width: 1600,
+      height: 860,
+    });
+  });
   test("panels wider than the window fall back to the whole canvas", () => {
     expect(
       visibleRect({

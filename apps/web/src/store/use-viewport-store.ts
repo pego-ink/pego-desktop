@@ -10,6 +10,9 @@ export type ViewInsets = { top: number; right: number; bottom: number; left: num
 
 const NO_INSETS: ViewInsets = { top: 0, right: 0, bottom: 0, left: 0 };
 
+/** Smallest visible side (px) worth fitting into; below it fits use the whole canvas. */
+const MIN_VISIBLE = 200;
+
 type ViewportState = {
   camera: Camera;
   /** Canvas element size in CSS pixels. */
@@ -51,8 +54,9 @@ export const visibleRect = (state: {
   const { size, insets } = state;
   const width = size.width - insets.left - insets.right;
   const height = size.height - insets.top - insets.bottom;
-  // Panels wider than the window: fall back to the whole canvas.
-  if (width < 1 || height < 1) return { x: 0, y: 0, width: size.width, height: size.height };
+  // Too little left between the panels to fit anything into: use the whole canvas.
+  if (width < MIN_VISIBLE || height < MIN_VISIBLE)
+    return { x: 0, y: 0, width: size.width, height: size.height };
   return { x: insets.left, y: insets.top, width, height };
 };
 

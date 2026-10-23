@@ -152,3 +152,14 @@ describe("the visible part of the canvas", () => {
     ).toBe(true);
   });
 });
+
+describe("the prompt box in part of the canvas", () => {
+  test("opens inside an offset view", () => {
+    const view = { x: 360, y: 8, width: 600, height: 400 };
+    const pos = placePromptBox({ x: 100, y: 500 }, { width: 320, height: 168 }, view);
+    expect(pos).toEqual({
+      x: 360 + VIEWPORT_MARGIN,
+      y: 8 + 400 - 168 - VIEWPORT_MARGIN,
+    });
+  });
+});

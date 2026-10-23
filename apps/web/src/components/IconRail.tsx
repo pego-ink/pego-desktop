@@ -81,10 +81,15 @@ export const IconRail = ({
     const buttons = Array.from(
       listRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [],
     );
-    // A row moves with Left/Right, a column with Up/Down.
-    const key = horizontal
-      ? ({ ArrowRight: "ArrowDown", ArrowLeft: "ArrowUp" } as Record<string, string>)[e.key]
-      : e.key;
+    // A row moves with Left/Right (Up/Down do nothing there), a column with Up/Down; Home and
+    // End work in both.
+    const ROW_KEYS: Record<string, string> = {
+      ArrowRight: "ArrowDown",
+      ArrowLeft: "ArrowUp",
+      ArrowDown: "",
+      ArrowUp: "",
+    };
+    const key = horizontal ? (ROW_KEYS[e.key] ?? e.key) : e.key;
     const next = moveRailFocus(
       buttons.indexOf(document.activeElement as HTMLButtonElement),
       key ?? "",
