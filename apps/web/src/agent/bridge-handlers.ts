@@ -24,6 +24,8 @@ import { allRuns, getRun, unregisterRun, type RunEntry } from "./run-registry";
 import { createToolHost } from "./tool-host";
 import { showEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
+import { projectTarget } from "@/workspace/background-project";
+import type { DocumentTarget } from "@/workspace/document-target";
 
 /** Consecutive Claude Code (MCP) calls arriving within this window share one undo step. */
 export const MCP_GROUP_WINDOW_MS = 2_000;
@@ -90,6 +92,21 @@ export const createBridgeHandlers = ({
     focusFromOps: true,
   });
   let lastMcpCallAt = Number.NEGATIVE_INFINITY;
+  /** One host per project an MCP client edits by name (its tab, shown or in the background). */
+  const projectHosts = new Map<string, ReturnType<typeof createToolHost>>();
+  const projectHost = (target: DocumentTarget, name: string) => {
+    const key = `${target.workspaceId}/${target.docId}`;
+    const cached = projectHosts.get(key);
+    if (cached) return cached;
+    const created = createToolHost({
+      label: () => `${MCP_LABEL} · ${name}`,
+      countTransactions: false,
+      focusFromOps: true,
+      target,
+    });
+    projectHosts.set(key, created);
+    return created;
+  };
 
   const handleToolCall = async (message: Extract<BridgeToEditor, { type: "tool_call" }>) => {
     const reply = (content: string, isError: boolean, images?: ToolImage[]) =>
@@ -145,14 +162,26 @@ export const createBridgeHandlers = ({
       if (!run) return void reply("No matching active run in the editor.", true);
       host = run.host;
     } else if (source.kind === "mcp") {
-      // The app opens on Home: an edit from Claude Code shows the editor first (a new tab when
-      // none is open), so it never lands in a document nobody can see.
-      const { view, liveId } = useWorkspaceStore.getState();
-      if (!toolAnnotations(message.tool).readOnlyHint && (view !== "editor" || liveId === null)) {
-        showEditor();
+      if (source.project) {
+        // A named project is edited in its own tab, in the background when another is shown.
+        try {
+          host = projectHost(await projectTarget(source.project), source.project.name);
+        } catch (error) {
+          return void reply(
+            error instanceof Error ? error.message : `Could not open ${source.project.name}.`,
+            true,
+          );
+        }
+      } else {
+        // The app opens on Home: an edit from Claude Code shows the editor first (a new tab when
+        // none is open), so it never lands in a document nobody can see.
+        const { view, liveId } = useWorkspaceStore.getState();
+        if (!toolAnnotations(message.tool).readOnlyHint && (view !== "editor" || liveId === null)) {
+          showEditor();
+        }
       }
       const at = now();
-      if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) mcpHost.newGroup();
+      if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) host.newGroup();
       lastMcpCallAt = at;
     } else {
       return void reply("Unknown tool call source.", true);
@@ -161,7 +190,7 @@ export const createBridgeHandlers = ({
     try {
       const result = await spec.run(message.input, host);
       if (source.kind === "mcp") {
-        mcpHost.run.appendLog({
+        host.run.appendLog({
           kind: "tool",
           text: "",
           tool: { name: message.tool, isError: result.isError },
