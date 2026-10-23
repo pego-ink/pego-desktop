@@ -1,6 +1,6 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
 import { appStateContext, mentionTitle, skills, type MentionRef } from "@pego/agent";
@@ -102,6 +102,10 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const [plain, setPlain] = useState("");
 
   const [link] = useState(() => new ComposerLink());
+  /** The user has been in the box: chips go at its caret instead of the end. */
+  const caretKnown = useRef(false);
+  const caretOf = (current: Editor) =>
+    caretKnown.current ? current.state.selection.to : undefined;
 
   const editor = useEditor({
     extensions: [
@@ -251,8 +255,20 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     editor.commands.focus("end");
   }, [editor, seed]);
 
-  // Like the canvas prompt, the composer ends with a chip for what is selected on the canvas; it
-  // follows the selection until text is typed after it.
+  // What is selected on the canvas (or picked in the browser) becomes a chip where the user is
+  // writing: another click swaps it, text typed after it keeps it and the next click adds one.
+  // Until the box was focused once, chips go at the end.
+  useEffect(() => {
+    if (!editor) return;
+    const markCaret = () => {
+      caretKnown.current = true;
+    };
+    editor.on("focus", markCaret);
+    return () => {
+      editor.off("focus", markCaret);
+    };
+  }, [editor]);
+
   useEffect(() => {
     if (!editor) return;
     const sync = (selection: readonly string[]) => {
@@ -263,6 +279,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         editor.state,
         "selection",
         selection.length > 0 && label !== null ? [{ ref, label }] : [],
+        caretOf(editor),
       );
       if (tr) editor.view.dispatch(tr);
     };
@@ -280,7 +297,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       const chips = picked
         ? [{ ref: { kind: "browser" as const, ...pick(picked) }, label: picked.label }]
         : [];
-      const tr = liveChipTransaction(editor.state, "browser", chips);
+      const tr = liveChipTransaction(editor.state, "browser", chips, caretOf(editor));
       if (tr) editor.view.dispatch(tr);
     };
     sync(useBrowserStore.getState().picked);

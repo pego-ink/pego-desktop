@@ -2,7 +2,7 @@
 import { describe, expect, test } from "bun:test";
 import { getSchema } from "@tiptap/core";
 import { Node } from "@tiptap/pm/model";
-import { EditorState } from "@tiptap/pm/state";
+import { EditorState, TextSelection } from "@tiptap/pm/state";
 import StarterKit from "@tiptap/starter-kit";
 import type { MentionRef } from "@pego/agent";
 import { composerToPrompt, type ComposerNode } from "./composer-doc";
@@ -94,5 +94,42 @@ describe("live selection chip", () => {
     expect(composerToPrompt(state.doc.toJSON() as ComposerNode).mentions).toEqual([
       { kind: "layer", ids: ["b"] },
     ]);
+  });
+
+  describe("at the caret", () => {
+    /** Select `ids` with the caret where the user left it; returns the new state. */
+    const click = (state: EditorState, ids: string[]) => {
+      const tr = liveChipTransaction(state, "selection", [chip(ids)], state.selection.to);
+      return tr ? state.apply(tr) : state;
+    };
+    const type = (state: EditorState, text: string) =>
+      state.apply(state.tr.insertText(text, state.selection.to));
+    const prompt = (state: EditorState) => {
+      const { text, mentions } = composerToPrompt(state.doc.toJSON() as ComposerNode);
+      return text.replace(/\uE000(\d+)\uE001/g, (_, i: string) => {
+        const ref = mentions[Number(i)];
+        return ref?.kind === "layer" ? `[${ref.ids.join("+")}]` : "[?]";
+      });
+    };
+
+    test("click, type, click, type: every click adds a chip where the user is writing", () => {
+      let state = type(stateOf([]), "add a background to ");
+      state = click(state, ["counter"]);
+      state = click(state, ["visitor"]); // a second click before typing swaps the chip
+      state = type(state, " then make ");
+      state = click(state, ["title"]);
+      state = type(state, " bold");
+      expect(prompt(state)).toBe("add a background to [visitor] then make [title] bold");
+    });
+
+    test("a click with the caret inside earlier text puts the chip there", () => {
+      let state = type(stateOf([]), "make  bold");
+      state = state.apply(state.tr.setSelection(TextSelection.create(state.doc, 6)));
+      state = click(state, ["title"]);
+      expect(prompt(state)).toBe("make [title] bold");
+      // Deselecting removes the chip that was just placed.
+      const tr = liveChipTransaction(state, "selection", [], state.selection.to);
+      expect(prompt(state.apply(tr!))).toBe("make  bold");
+    });
   });
 });
