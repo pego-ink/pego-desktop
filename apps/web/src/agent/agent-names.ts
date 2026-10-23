@@ -105,13 +105,17 @@ export const DEFAULT_CUSTOM_AGENT_NAMES: readonly string[] = Array.from(
   (_, index) => fallbackAgentName(index),
 );
 
+/** `value` cut to MAX_AGENT_NAME_LENGTH characters (code points, so an emoji is never split). */
+export const clipAgentName = (value: string): string =>
+  Array.from(value).slice(0, MAX_AGENT_NAME_LENGTH).join("");
+
 /** Stored custom names as exactly AGENT_NAME_COUNT strings, each cut to the length limit. */
 export const normalizeCustomNames = (raw: unknown): string[] => {
   const list = Array.isArray(raw) ? raw : [];
   return Array.from({ length: AGENT_NAME_COUNT }, (_, index) => {
     const value = list[index];
     return typeof value === "string"
-      ? value.slice(0, MAX_AGENT_NAME_LENGTH)
+      ? clipAgentName(value)
       : (DEFAULT_CUSTOM_AGENT_NAMES[index] ?? "");
   });
 };

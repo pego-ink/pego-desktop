@@ -5,6 +5,7 @@ import {
   AGENT_NAME_SET_IDS,
   AGENT_NAME_SETS,
   agentNames,
+  clipAgentName,
   fallbackAgentName,
   MAX_AGENT_NAME_LENGTH,
   type AgentNameSet,
@@ -82,16 +83,15 @@ export const AgentNamesSettingsTab = () => {
 
   const rename = (index: number, value: string) =>
     update({
-      customAgentNames: custom.map((name, slot) =>
-        slot === index ? value.slice(0, MAX_AGENT_NAME_LENGTH) : name,
-      ),
+      customAgentNames: custom.map((name, slot) => (slot === index ? clipAgentName(value) : name)),
     });
 
   return (
     <div>
       <p className="mb-5 text-xs text-muted-foreground">
-        Every agent working on the canvas takes the first free name below, with its color, and shows
-        it on its cursor. With Pego, all of them are called Pego and told apart by color.
+        Up to three agents can work at once. Each takes the first free name below, with its color,
+        and keeps it for its chat while it is free; the name shows on its cursor. With Pego, all of
+        them are called Pego and told apart by color.
       </p>
       <SettingsSection title="Name set">
         <NameSetPicker value={set} onChange={(next) => update({ agentNameSet: next })} />

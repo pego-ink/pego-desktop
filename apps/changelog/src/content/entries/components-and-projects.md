@@ -29,4 +29,4 @@ The menu also ends with **Settings**, even on empty canvas: turn snapping to who
 
 ## Name your agents
 
-**Settings › Agent names** picks the names on the agents' canvas cursors: Pego (the default, every agent is called Pego), Artists, Philosophers, Inventors, Mythic, Scientists, or your own ten names. Each name keeps its own color, so you can tell at a glance which agent is working where.
+**Settings › Agent names** picks the names on the agents' canvas cursors: Pego (the default, every agent is called Pego), Artists, Philosophers, Inventors, Mythic, Scientists, or your own ten names. Up to three agents work at once; each takes the first free name with its color and keeps it for its chat, so you can tell at a glance which agent is working where.
