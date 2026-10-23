@@ -16,6 +16,7 @@ import { useEditorShortcuts } from "@/hooks/use-editor-shortcuts";
 import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
+import { CanvasContextMenu } from "@/components/CanvasContextMenu";
 import { useImagePaste } from "@/interaction/use-image-paste";
 import { useLayerCopy } from "@/interaction/layer-clipboard";
 import { AgentCursors } from "@/components/AgentCursor";
@@ -346,11 +347,13 @@ export const Canvas = () => {
         );
       }}
     >
-      <canvas
-        ref={canvasRef}
-        tabIndex={-1}
-        className="absolute inset-0 h-full w-full touch-none outline-none"
-      />
+      <CanvasContextMenu>
+        <canvas
+          ref={canvasRef}
+          tabIndex={-1}
+          className="absolute inset-0 h-full w-full touch-none outline-none"
+        />
+      </CanvasContextMenu>
       {dropping ? (
         <div className="pointer-events-none absolute inset-2 z-10 flex items-center justify-center rounded-lg border-2 border-dashed border-primary/60 bg-primary/5">
           <span className="rounded-md bg-card px-3 py-1.5 text-xs text-foreground shadow-sm">
