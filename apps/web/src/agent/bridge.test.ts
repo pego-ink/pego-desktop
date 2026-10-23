@@ -14,6 +14,7 @@ import { emptySession } from "./sessions/session-model";
 import { resetStores, visible } from "./test-utils";
 import { createToolHost } from "./tool-host";
 import { useAgentStore } from "./use-agent-store";
+import { useWorkspaceStore } from "@/workspace/use-workspace-store";
 
 class FakeSocket implements SocketLike {
   sent: string[] = [];
@@ -314,6 +315,36 @@ describe("bridge handlers", () => {
       isError: false,
       images: [image],
     });
+  });
+
+  test("an MCP edit from Home opens a tab; a read stays on Home", async () => {
+    useWorkspaceStore.setState({ workspaces: [], liveId: null, view: "dashboard" });
+    const handlers = createBridgeHandlers({
+      send: () => true,
+      findTool: (name) => ({
+        name,
+        description: "",
+        inputSchema: {},
+        run: async () => ({ content: "ok", isError: false }),
+      }),
+    });
+    const call = (tool: string) =>
+      handlers.handleMessage({
+        type: "tool_call",
+        callId: tool,
+        tool,
+        input: {},
+        source: { kind: "mcp" },
+      });
+
+    await call("get_document");
+    expect(useWorkspaceStore.getState().liveId).toBeNull();
+    expect(useWorkspaceStore.getState().view).toBe("dashboard");
+
+    await call("batch_design");
+    expect(useWorkspaceStore.getState().workspaces).toHaveLength(1);
+    expect(useWorkspaceStore.getState().liveId).not.toBeNull();
+    expect(useWorkspaceStore.getState().view).toBe("editor");
   });
 
   test("tool errors and unknown tools reply with isError", async () => {
