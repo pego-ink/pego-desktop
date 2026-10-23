@@ -111,7 +111,6 @@ const GroupButton = ({ group, vertical, menuSide }: GroupButtonProps) => {
   );
 };
 
-/** Placement per position: centered on its edge of the canvas. */
 /**
  * Placement per position: centered on its edge of the canvas. Each stays clear of the zoom control
  * (bottom right) and the "show properties" button (top right): on a small canvas the toolbar
