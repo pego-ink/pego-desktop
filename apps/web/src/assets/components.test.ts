@@ -1,7 +1,16 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
 import { applyOp, findNode, type PegoDocument } from "@pego/doc";
-import { componentSections, dropInstanceOp, instanceOp, listComponents } from "./components";
+import {
+  canNestInstance,
+  componentSections,
+  deepestNestableFrameId,
+  dropInstanceOp,
+  instanceOp,
+  listComponents,
+  referencedComponents,
+  reuseEntries,
+} from "./components";
 
 const doc: PegoDocument = {
   version: 5,
@@ -115,5 +124,85 @@ describe("assets panel", () => {
     );
     expect(top).toMatchObject({ parentId: "p1", node: { x: 250, y: 180 } });
     expect(findNode(applyOp(doc, top), top.node.id)?.type).toBe("ref");
+  });
+});
+
+describe("instance cycles", () => {
+  const cyc: PegoDocument = {
+    version: 5,
+    id: "d",
+    name: "d",
+    variables: {},
+    children: [
+      {
+        type: "page",
+        id: "p",
+        name: "P",
+        x: 0,
+        y: 0,
+        children: [
+          {
+            type: "frame",
+            id: "A",
+            reusable: true,
+            x: 0,
+            y: 0,
+            layout: "none",
+            children: [{ type: "frame", id: "inner", x: 0, y: 0, layout: "none", children: [] }],
+          },
+          {
+            type: "frame",
+            id: "B",
+            reusable: true,
+            x: 0,
+            y: 0,
+            layout: "none",
+            children: [{ type: "ref", id: "rA", ref: "A", x: 0, y: 0 }],
+          },
+          { type: "frame", id: "plain", x: 0, y: 0, layout: "none", children: [] },
+        ],
+      },
+    ],
+  };
+
+  test("the component, its descendants and a component it instantiates are refused", () => {
+    expect(canNestInstance(cyc, "A", "A")).toBe(false);
+    expect(canNestInstance(cyc, "A", "inner")).toBe(false);
+    // B contains an instance of A, so an instance of B inside A would loop.
+    expect(canNestInstance(cyc, "B", "A")).toBe(false);
+    expect(canNestInstance(cyc, "B", "inner")).toBe(false);
+  });
+
+  test("other frames and pages are fine", () => {
+    expect(canNestInstance(cyc, "A", "plain")).toBe(true);
+    expect(canNestInstance(cyc, "A", "B")).toBe(true);
+    expect(canNestInstance(cyc, "A", "p")).toBe(true);
+  });
+
+  test("a hit path falls back past refused frames", () => {
+    expect(deepestNestableFrameId(cyc, ["A", "inner"], "A")).toBeNull();
+    expect(deepestNestableFrameId(cyc, ["plain"], "A")).toBe("plain");
+    expect(deepestNestableFrameId(cyc, null, "A")).toBeNull();
+  });
+
+  test("referencedComponents follows the chain", () => {
+    expect(referencedComponents(cyc, "B").map((n) => n.id)).toEqual(["A"]);
+    expect(referencedComponents(cyc, "A")).toEqual([]);
+  });
+});
+
+describe("reuseEntries", () => {
+  test("keeps the same objects when nothing changed", () => {
+    const first = listComponents(doc);
+    expect(
+      reuseEntries(
+        first,
+        listComponents(doc).map((e) => ({ ...e })),
+      ),
+    ).toBe(first);
+    const renamed = first.map((e, i) => (i === 0 ? { ...e, name: "New" } : { ...e }));
+    const out = reuseEntries(first, renamed);
+    expect(out).not.toBe(first);
+    expect(out[1]).toBe(first[1]);
   });
 });

@@ -13,18 +13,23 @@ const project = {
   name: "Shop",
   dir: "/design/shop",
   mainFile: "/design/shop/project.pego",
+  hasMainFile: false,
 };
+const existing = { ...project, hasMainFile: true };
 
 beforeEach(() => resetLiveDocument());
 
 describe("a project edited from a terminal agent", () => {
   test("its design loads with the project's id; a missing file starts a new design", async () => {
-    const loaded = await loadProjectSnapshot(project, async () => serializeDocument(sampleDoc));
+    const loaded = await loadProjectSnapshot(existing, async () => serializeDocument(sampleDoc));
     expect(loaded.doc.id).toBe("proj1234");
     expect(loaded.file).toMatchObject({ fileName: "project.pego", bridgePath: project.mainFile });
     // Adopting the id is a change the next save writes.
     expect(loaded.file.savedDoc).not.toBe(loaded.doc);
-    const fresh = await loadProjectSnapshot(project, async () => null);
+    const unread = async () => {
+      throw new Error("unread");
+    };
+    const fresh = await loadProjectSnapshot(project, unread);
     expect(fresh.doc).toMatchObject({ id: "proj1234", name: "Shop" });
   });
 
@@ -58,5 +63,49 @@ describe("a project edited from a terminal agent", () => {
     const [a, b] = await Promise.all([projectTarget(project), projectTarget(project)]);
     expect(a).toEqual(b);
     expect(useWorkspaceStore.getState().workspaces).toHaveLength(2);
+  });
+
+  test("a design file that cannot be read is an error, never an empty design", async () => {
+    const failing = async () => {
+      throw new Error("too big");
+    };
+    await expect(projectTarget(existing, failing)).rejects.toThrow("too big");
+    expect(useWorkspaceStore.getState().workspaces).toHaveLength(1);
+    await expect(loadProjectSnapshot(existing, async () => "not json")).rejects.toThrow();
+  });
+
+  test("a project the user opened while its file was being read keeps the live tab's document", async () => {
+    const read = async () => {
+      useWorkspaceStore.setState((state) => ({
+        workspaces: [
+          ...state.workspaces.filter((w) => w.id !== TEST_TAB_ID),
+          { id: "proj1234", kind: "project", name: "Shop", dir: project.dir, saved: null },
+        ],
+        liveId: "proj1234",
+      }));
+      return serializeDocument(sampleDoc);
+    };
+    const target = await projectTarget(existing, read);
+    expect(target).toEqual({
+      workspaceId: "proj1234",
+      docId: useDocumentStore.getState().doc.id,
+    });
+    expect(useWorkspaceStore.getState().workspaces[0]?.saved).toBeNull();
+  });
+
+  test("a live project tab is never reloaded from disk", async () => {
+    useWorkspaceStore.setState({
+      workspaces: [
+        { id: "proj1234", kind: "project", name: "Shop", dir: project.dir, saved: null },
+      ],
+      liveId: "proj1234",
+    });
+    const read = async () => {
+      throw new Error("must not read");
+    };
+    expect(await projectTarget(existing, read)).toEqual({
+      workspaceId: "proj1234",
+      docId: useDocumentStore.getState().doc.id,
+    });
   });
 });

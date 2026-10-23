@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { memo, useMemo, useRef, useState } from "react";
 import { ChevronRightIcon, ComponentIcon, LibraryIcon, PlusIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import { Input } from "@pego/ui/components/input";
@@ -14,7 +14,7 @@ import {
   COMPONENT_MIME,
   componentSections,
   instanceOp,
-  listComponents,
+  stableComponents,
   type ComponentEntry,
   type ComponentSection,
 } from "./components";
@@ -48,7 +48,7 @@ const insertInstance = (entry: ComponentEntry) => {
 };
 
 /** One component: its thumbnail (rendered once on screen) and name; drag it onto the canvas. */
-const ComponentCard = ({ entry }: { entry: ComponentEntry }) => {
+const ComponentCard = memo(({ entry }: { entry: ComponentEntry }) => {
   const cardRef = useRef<HTMLLIElement>(null);
   const thumbnail = useComponentThumbnail(entry.id, cardRef);
   return (
@@ -59,39 +59,48 @@ const ComponentCard = ({ entry }: { entry: ComponentEntry }) => {
         event.dataTransfer.effectAllowed = "copy";
         event.dataTransfer.setData(COMPONENT_MIME, entry.id);
       }}
-      onClick={() => revealComponent(entry)}
-      title="Click to show it, + or drag to place an instance"
-      className="group relative flex cursor-default flex-col gap-1 rounded-md p-1 text-xs text-foreground outline-none hover:bg-accent/60"
+      className="group relative rounded-md text-xs text-foreground hover:bg-accent/60"
     >
-      <div className="flex aspect-[4/3] items-center justify-center overflow-hidden rounded-sm border border-border bg-muted/50">
-        {thumbnail ? (
-          <img
-            src={thumbnail}
-            alt=""
-            draggable={false}
-            className="max-h-full max-w-full object-contain p-1.5"
-          />
-        ) : (
-          <ComponentIcon aria-hidden className="size-4 text-violet/60" />
-        )}
-      </div>
-      <span className="truncate px-0.5">{entry.name}</span>
+      <button
+        type="button"
+        onClick={() => revealComponent(entry)}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" || !event.shiftKey) return;
+          event.preventDefault();
+          insertInstance(entry);
+        }}
+        aria-label={`${entry.name}, component. Enter shows it, Shift+Enter places an instance.`}
+        title="Click to show it, + or drag to place an instance"
+        className="flex w-full cursor-default flex-col gap-1 rounded-md p-1 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-sm border border-border bg-muted/50">
+          {thumbnail ? (
+            <img
+              src={thumbnail}
+              alt=""
+              draggable={false}
+              className="max-h-full max-w-full object-contain p-1.5"
+            />
+          ) : (
+            <ComponentIcon aria-hidden className="size-4 text-violet/60" />
+          )}
+        </span>
+        <span className="w-full truncate px-0.5">{entry.name}</span>
+      </button>
       <Button
         variant="secondary"
         size="icon-xs"
         aria-label={`Insert ${entry.name}`}
         title="Place an instance in the middle of the view"
-        className="absolute top-2 right-2 hidden group-hover:inline-flex"
-        onClick={(event) => {
-          event.stopPropagation();
-          insertInstance(entry);
-        }}
+        className="absolute top-2 right-2 opacity-0 group-focus-within:opacity-100 group-hover:opacity-100 focus-visible:opacity-100 focus-visible:ring-2 focus-visible:ring-ring"
+        onClick={() => insertInstance(entry)}
       >
         <PlusIcon />
       </Button>
     </li>
   );
-};
+});
+ComponentCard.displayName = "ComponentCard";
 
 /** One page's (or library's) components, collapsible. */
 const Section = ({ section }: { section: ComponentSection }) => {
@@ -133,7 +142,8 @@ const Section = ({ section }: { section: ComponentSection }) => {
 export const AssetsPanel = () => {
   const doc = useDocumentStore((s) => s.doc);
   const [query, setQuery] = useState("");
-  const components = useMemo(() => listComponents(doc), [doc]);
+  // New entry objects only for components that changed, so cards skip unrelated edits.
+  const components = useMemo(() => stableComponents(doc), [doc]);
   const sections = useMemo(
     () => componentSections(doc, components, query),
     [doc, components, query],

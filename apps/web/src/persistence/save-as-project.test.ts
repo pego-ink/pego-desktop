@@ -1,6 +1,14 @@
 /// <reference types="bun" />
 import { beforeEach, describe, expect, test } from "bun:test";
 import type { ProjectInfo } from "@pego/agent";
+import { useAgentStore } from "@/agent/use-agent-store";
+import {
+  createMemorySessionBackend,
+  listSessions,
+  saveSession,
+  setSessionBackend,
+} from "@/agent/sessions/session-db";
+import type { StoredSession } from "@/agent/sessions/session-model";
 import { useDocumentStore } from "@/store/use-document-store";
 import { resetLiveDocument, TEST_TAB_ID } from "@/workspace/test-reset";
 import { openProjectWorkspace, useWorkspaceStore } from "@/workspace/use-workspace-store";
@@ -23,15 +31,30 @@ const shop: ProjectInfo = {
 /** A bridge that creates `shop`, keeps written files and opens the project's tab. */
 const fakeBridge = () => {
   const files = new Map<string, string>();
+  const trashed: string[] = [];
   const calls: SaveAsProjectBridge = {
     createProject: async (name) => ({ ...shop, name }),
     writeFile: async (path, text) => void files.set(path, text),
     openProject: async (project) => openProjectWorkspace(project),
+    trashProject: async (id) => void trashed.push(id),
   };
-  return { files, calls };
+  return { files, trashed, calls };
 };
 
-beforeEach(() => resetLiveDocument());
+const chat: StoredSession = {
+  id: "c1",
+  docId: "",
+  title: "Build",
+  titleCustom: false,
+  createdAt: 1,
+  updatedAt: 1,
+  turns: [],
+};
+
+beforeEach(() => {
+  resetLiveDocument();
+  setSessionBackend(createMemorySessionBackend());
+});
 
 describe("Save as project", () => {
   test("writes the shown document as the project's design, with its name and id", async () => {
@@ -61,7 +84,7 @@ describe("Save as project", () => {
   });
 
   test("a failed write keeps everything as it was", async () => {
-    const { calls } = fakeBridge();
+    const { calls, trashed } = fakeBridge();
     const failing = {
       ...calls,
       writeFile: async () => {
@@ -72,5 +95,43 @@ describe("Save as project", () => {
     const { workspaces, liveId } = useWorkspaceStore.getState();
     expect(liveId).toBe(TEST_TAB_ID);
     expect(workspaces).toHaveLength(1);
+    expect(trashed).toEqual(["shop1234"]);
+  });
+
+  test("a running agent refuses before any project is created", async () => {
+    const created: string[] = [];
+    const { calls } = fakeBridge();
+    useAgentStore.setState({
+      liveSessions: { s1: { id: "s1", status: "running" } as never },
+    });
+    const spy = { ...calls, createProject: async (n: string) => (created.push(n), shop) };
+    expect(await saveAsProject("Shop", spy)).toBe(false);
+    expect(created).toEqual([]);
+    useAgentStore.setState({ liveSessions: {} });
+  });
+
+  test("an untitled document's chats follow it to the project", async () => {
+    const docId = useDocumentStore.getState().doc.id;
+    await saveSession({ ...chat, docId });
+    const { calls } = fakeBridge();
+    await saveAsProject("Shop", calls);
+    expect((await listSessions("shop1234")).map((s) => s.id)).toEqual(["c1"]);
+    expect(await listSessions(docId)).toEqual([]);
+  });
+
+  test("an edit that landed in the original tab keeps it open", async () => {
+    const { calls } = fakeBridge();
+    const racing = {
+      ...calls,
+      writeFile: async (path: string, text: string) => {
+        await calls.writeFile(path, text);
+        useDocumentStore.getState().commit([{ op: "update", id: "frame-1", props: { x: 11 } }]);
+      },
+    };
+    await saveAsProject("Shop", racing);
+    expect(useWorkspaceStore.getState().workspaces.map((w) => w.id)).toEqual([
+      TEST_TAB_ID,
+      "shop1234",
+    ]);
   });
 });

@@ -8,6 +8,7 @@ import type { DecisionRequest, PlanStep, StepStatus, ToolImage } from "./types";
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
 /**
+ * v8 = v7 + `project` on an MCP tool call's source (edit a named project in a background tab).
  * v7 = v6 + `trash_project` (editor only, never an MCP tool). v6 = v4 (local agents, several editors,
  * parallel runs, run_steer) + v5 (projects, file tools).
  * Several editors connect at once; MCP calls go to the focused one (see apps/bridge editor-hub).
@@ -18,12 +19,21 @@ export const BRIDGE_PROTOCOL_VERSION = 8;
 export const MAX_CONCURRENT_RUNS = 3;
 
 /**
+ * The project an MCP tool call targets (resolved by the bridge from its id or name).
+ * `hasMainFile` is false while project.pego does not exist yet, so the editor may start a new design.
+ */
+export type ProjectTarget = {
+  id: string;
+  name: string;
+  dir: string;
+  mainFile: string;
+  hasMainFile: boolean;
+};
+
+/**
  * A project: a folder in the design folder with a project.json (id, name) and its design,
  * project.pego (one document; screens are its pages).
  */
-/** The project an MCP tool call targets (resolved by the bridge from its id or name). */
-export type ProjectTarget = { id: string; name: string; dir: string; mainFile: string };
-
 export type ProjectInfo = {
   id: string;
   name: string;

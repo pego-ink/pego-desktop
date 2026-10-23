@@ -14,7 +14,13 @@ describe("the project argument of agent tools", () => {
     const byName = await resolveProjectArg({ project: "shop", nodeId: "a" }, root);
     expect(byName).toEqual({
       input: { nodeId: "a" },
-      project: { id: shop.id, name: "Shop", dir: shop.dir, mainFile: shop.mainFile },
+      project: {
+        id: shop.id,
+        name: "Shop",
+        dir: shop.dir,
+        mainFile: shop.mainFile,
+        hasMainFile: shop.hasMainFile,
+      },
     });
     const byId = await resolveProjectArg({ project: shop.id }, root);
     expect("project" in byId && byId.project?.id).toBe(shop.id);

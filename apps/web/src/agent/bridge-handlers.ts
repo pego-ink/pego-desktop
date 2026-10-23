@@ -25,7 +25,7 @@ import { createToolHost } from "./tool-host";
 import { showEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 import { emptyBridge, useAgentStore } from "./use-agent-store";
 import { projectTarget } from "@/workspace/background-project";
-import type { DocumentTarget } from "@/workspace/document-target";
+import { readTarget, type DocumentTarget } from "@/workspace/document-target";
 
 /** Consecutive Claude Code (MCP) calls arriving within this window share one undo step. */
 export const MCP_GROUP_WINDOW_MS = 2_000;
@@ -91,10 +91,18 @@ export const createBridgeHandlers = ({
     countTransactions: false,
     focusFromOps: true,
   });
-  let lastMcpCallAt = Number.NEGATIVE_INFINITY;
+  /** When each MCP host last got a call: edits to one project never extend another's undo group. */
+  const lastCallAt = new Map<ReturnType<typeof createToolHost>, number>();
   /** One host per project an MCP client edits by name (its tab, shown or in the background). */
   const projectHosts = new Map<string, ReturnType<typeof createToolHost>>();
   const projectHost = (target: DocumentTarget, name: string) => {
+    // Forget hosts whose tab was closed or now holds another document.
+    for (const [key, host] of projectHosts) {
+      const [workspaceId, docId] = key.split("/") as [string, string];
+      if (readTarget({ workspaceId, docId })) continue;
+      projectHosts.delete(key);
+      lastCallAt.delete(host);
+    }
     const key = `${target.workspaceId}/${target.docId}`;
     const cached = projectHosts.get(key);
     if (cached) return cached;
@@ -181,8 +189,10 @@ export const createBridgeHandlers = ({
         }
       }
       const at = now();
-      if (at - lastMcpCallAt > MCP_GROUP_WINDOW_MS) host.newGroup();
-      lastMcpCallAt = at;
+      if (at - (lastCallAt.get(host) ?? Number.NEGATIVE_INFINITY) > MCP_GROUP_WINDOW_MS) {
+        host.newGroup();
+      }
+      lastCallAt.set(host, at);
     } else {
       return void reply("Unknown tool call source.", true);
     }

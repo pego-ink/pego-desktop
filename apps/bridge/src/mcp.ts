@@ -60,8 +60,8 @@ export const resolveProjectArg = async (
           : `No project "${query}". Projects: ${names || "none"}.`,
     };
   }
-  const { id, name, dir, mainFile } = found.project;
-  return { input: rest, project: { id, name, dir, mainFile } };
+  const { id, name, dir, mainFile, hasMainFile } = found.project;
+  return { input: rest, project: { id, name, dir, mainFile, hasMainFile } };
 };
 
 const MAX_TOOL_INPUT_BYTES = 1024 * 1024;

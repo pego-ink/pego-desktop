@@ -150,3 +150,18 @@ export const deleteSession = async (id: string): Promise<void> => {
     console.warn("session delete failed", error);
   }
 };
+
+/**
+ * Re-key every session of `fromDocId` to `toDocId` (a document that became a project keeps its
+ * chats). Resolves to the moved ids; never throws (a failed move only costs history).
+ */
+export const moveSessions = async (fromDocId: string, toDocId: string): Promise<string[]> => {
+  try {
+    const sessions = await backend.listByDoc(fromDocId);
+    for (const session of sessions) await backend.put({ ...session, docId: toDocId });
+    return sessions.map((session) => session.id);
+  } catch (error) {
+    console.warn("sessions move failed", error);
+    return [];
+  }
+};

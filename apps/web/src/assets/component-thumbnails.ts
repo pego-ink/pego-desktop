@@ -1,17 +1,58 @@
 import { useEffect, useState, type RefObject } from "react";
-import { findNode, type PegoNode } from "@pego/doc";
+import type { PegoDocument } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { useDocumentStore } from "@/store/use-document-store";
+import { nodeIndex, referencedComponents } from "./components";
 
 /** Longer side of a thumbnail in pixels (cards show it at about half for sharp HiDPI). */
 const THUMBNAIL_SIZE = 240;
 
 /**
- * Component thumbnails for the Assets panel, rendered on demand (only cards on screen) and cached
- * per node object: documents are immutable, so a component that changed is a new object and gets
- * a new thumbnail, while untouched ones keep theirs.
+ * What a component's thumbnail depends on: its node, the document's variables and the reusable
+ * nodes it instantiates (nested instances, followed down the chain). Documents are immutable, so
+ * an edit to any of these is a new object and untouched ones keep their identity.
  */
-const cache = new WeakMap<PegoNode, Promise<string | null>>();
+type Dependencies = readonly object[];
+
+const dependencyCache = new WeakMap<PegoDocument, Map<string, Dependencies | null>>();
+/** The last dependency list per component, so equal lists are returned as the same array. */
+const stableCache = new Map<string, Dependencies>();
+
+const dependenciesOf = (doc: PegoDocument, id: string): Dependencies | null => {
+  const perDoc = dependencyCache.get(doc) ?? new Map<string, Dependencies | null>();
+  dependencyCache.set(doc, perDoc);
+  const known = perDoc.get(id);
+  if (known !== undefined) return known;
+  const node = nodeIndex(doc).get(id);
+  const deps = node ? [node, doc.variables, ...referencedComponents(doc, id)] : null;
+  const previous = stableCache.get(id);
+  const result =
+    deps && previous && previous.length === deps.length && deps.every((d, i) => d === previous[i])
+      ? previous
+      : deps;
+  if (result) stableCache.set(id, result);
+  perDoc.set(id, result);
+  return result;
+};
+
+/** Thumbnails by component id, valid while their dependencies are the same objects. */
+const cache = new Map<string, { deps: Dependencies; pending: Promise<string | null> }>();
+
+/** Renders run one at a time with a pause between them, so a long list never blocks the UI. */
+let queue: Promise<unknown> = Promise.resolve();
+
+const yieldToBrowser = () =>
+  new Promise<void>((resolve) => {
+    if (typeof requestIdleCallback === "function")
+      requestIdleCallback(() => resolve(), { timeout: 200 });
+    else setTimeout(resolve, 0);
+  });
+
+const enqueue = <T>(task: () => Promise<T>): Promise<T> => {
+  const run = queue.then(yieldToBrowser).then(task);
+  queue = run.catch(() => undefined);
+  return run;
+};
 
 const render = async (id: string): Promise<string | null> => {
   const [{ loadCanvasKit }, { renderNodeImage }] = await Promise.all([
@@ -32,11 +73,11 @@ const render = async (id: string): Promise<string | null> => {
   }
 };
 
-const thumbnailOf = (node: PegoNode): Promise<string | null> => {
-  const cached = cache.get(node);
-  if (cached) return cached;
-  const pending = render(node.id);
-  cache.set(node, pending);
+const thumbnailOf = (id: string, deps: Dependencies): Promise<string | null> => {
+  const cached = cache.get(id);
+  if (cached && cached.deps === deps) return cached.pending;
+  const pending = enqueue(() => render(id));
+  cache.set(id, { deps, pending });
   return pending;
 };
 
@@ -45,9 +86,9 @@ export const useComponentThumbnail = (
   id: string,
   ref: RefObject<HTMLElement | null>,
 ): string | null => {
-  const node = useDocumentStore((s) => findNode(s.doc, id));
+  const deps = useDocumentStore((s) => dependenciesOf(s.doc, id));
   const [seen, setSeen] = useState(false);
-  const [shown, setShown] = useState<{ node: PegoNode; src: string | null } | null>(null);
+  const [shown, setShown] = useState<{ deps: Dependencies; src: string | null } | null>(null);
 
   useEffect(() => {
     const element = ref.current;
@@ -60,15 +101,15 @@ export const useComponentThumbnail = (
   }, [ref, seen]);
 
   useEffect(() => {
-    if (!seen || !node) return;
+    if (!seen || !deps) return;
     let live = true;
-    void thumbnailOf(node).then((src) => {
-      if (live) setShown({ node, src });
+    void thumbnailOf(id, deps).then((src) => {
+      if (live) setShown({ deps, src });
     });
     return () => {
       live = false;
     };
-  }, [seen, node]);
+  }, [seen, id, deps]);
 
   // A stale thumbnail stays up while the changed component renders.
   return shown?.src ?? null;

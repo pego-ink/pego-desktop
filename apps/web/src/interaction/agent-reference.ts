@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import { findNode, type PegoNode } from "@pego/doc";
+import { sanitizeLabel } from "@pego/agent";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useFileStore } from "@/persistence/use-file-store";
 import { liveProject } from "@/workspace/use-workspace-store";
@@ -22,17 +23,20 @@ const isAbsolutePath = (file: string) => file.startsWith("/") || /^[a-z]:[\\/]/i
  * file the nodes are in, and their ids, so an instruction can target exactly them.
  */
 export const formatAgentReference = ({ project, file, documentName, nodes }: AgentReference) => {
+  // Names (and ids) come from the file, which may be someone else's: keep each on one line.
   const lines = [
     project
-      ? `Pego project: ${project.name} (id ${project.id})`
-      : `Pego document: ${documentName} (not in a project)`,
+      ? `Pego project: ${sanitizeLabel(project.name) || "(unnamed)"} (id ${sanitizeLabel(project.id, 64)})`
+      : `Pego document: ${sanitizeLabel(documentName) || "(unnamed)"} (not in a project)`,
   ];
   if (file) lines.push(`File: ${file}`);
-  lines.push(`Node IDs: ${nodes.map((node) => node.id).join(", ")}`);
+  lines.push(`Node IDs: ${nodes.map((node) => sanitizeLabel(node.id, 64)).join(", ")}`);
   if (nodes.length > 1 || nodes[0]?.name) {
     lines.push("Nodes:");
     for (const node of nodes.slice(0, MAX_LISTED)) {
-      lines.push(`- ${node.id}: ${node.name ?? "(unnamed)"} (${node.type})`);
+      lines.push(
+        `- ${sanitizeLabel(node.id, 64)}: ${sanitizeLabel(node.name ?? "") || "(unnamed)"} (${node.type})`,
+      );
     }
     if (nodes.length > MAX_LISTED) lines.push(`- ... and ${nodes.length - MAX_LISTED} more`);
   }
@@ -61,6 +65,12 @@ export const selectionReference = (): string | null => {
   });
 };
 
+/** Toast text for a copied reference: says when the clipboard now holds a file path. */
+export const copiedDescription = (text: string): string => {
+  const head = text.split("\n")[0] ?? "";
+  return /^File: /m.test(text) ? `${head}. Includes the project's file path.` : head;
+};
+
 /** Copy for AI (⌘⇧C): the selection's project, file and node ids for an agent instruction. */
 export const copySelectionForAgent = async (): Promise<boolean> => {
   const text = selectionReference();
@@ -72,7 +82,7 @@ export const copySelectionForAgent = async (): Promise<boolean> => {
     await navigator.clipboard.writeText(text);
     const count = useDocumentStore.getState().selection.length;
     toast(`Copied ${count} node id${count === 1 ? "" : "s"} for AI`, {
-      description: text.split("\n")[0],
+      description: copiedDescription(text),
     });
     return true;
   } catch {
