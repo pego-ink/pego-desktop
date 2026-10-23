@@ -24,6 +24,9 @@ export type PolishIssue = {
 
 /** Largest even inset at which nested corners should be concentric. */
 const MAX_CONCENTRIC_INSET = 24;
+/** Lucide strokes are 2 on a 24 grid, so an icon under 16px draws under 1.33px. */
+const MIN_ICON_BESIDE_BOLD = 16;
+const BOLD = 600;
 const EDGE = 0.5;
 
 const px = (value: number): string => `${Math.round(value * 10) / 10}`;
@@ -119,6 +122,90 @@ const cornerIssues = (
   return issues;
 };
 
+const weightOf = (item: Item | undefined, doc: PegoDocument): number =>
+  item?.node.type === "text" ? resolveNumber(item.node.fontWeight, doc.variables, 400) : 0;
+
+const iconIssues = (doc: PegoDocument, layout: Layout, node: PegoNode): PolishIssue[] => {
+  if (node.type !== "frame" || (node.layout !== "horizontal" && node.layout !== "vertical")) {
+    return [];
+  }
+  const items = visibleChildren(doc, layout, node);
+  const issues: PolishIssue[] = [];
+  items.forEach((item, i) => {
+    if (item.node.type !== "icon" || item.box.width >= MIN_ICON_BESIDE_BOLD) return;
+    const weight = Math.max(weightOf(items[i - 1], doc), weightOf(items[i + 1], doc));
+    if (weight < BOLD) return;
+    const size = item.box.width;
+    issues.push({
+      key: `icon:${item.source}`,
+      severity: "warning",
+      node: item.node,
+      issue: `icon is ${px(size)}px beside weight ${weight} text; its stroke is size / 12 (${px(size / 12)}px), thinner than the text`,
+      hint: "Make the icon 16px or larger (18 to 20 beside 14 to 16px text), or use weight 500 for the text.",
+    });
+  });
+  return issues;
+};
+
+/** A painted frame that is not stretched: a card that can end at its own height. */
+const isLooseCard = (node: PegoNode): boolean =>
+  node.type === "frame" &&
+  (node.fill !== undefined || node.stroke !== undefined) &&
+  node.height !== "fill_container";
+
+const rowIssues = (
+  doc: PegoDocument,
+  layout: Layout,
+  node: PegoNode,
+  source: string,
+): PolishIssue[] => {
+  if (node.type !== "frame" || node.layout !== "horizontal") return [];
+  if (node.alignItems !== undefined && node.alignItems !== "start") return [];
+  const items = visibleChildren(doc, layout, node);
+  if (items.length < 2 || !items.every((item) => isLooseCard(item.node))) return [];
+  const heights = items.map((item) => item.box.height);
+  const low = Math.min(...heights);
+  const high = Math.max(...heights);
+  if (high - low <= 2) return [];
+  return [
+    {
+      key: `row:${source}`,
+      severity: "warning",
+      node,
+      issue: `cards in "${label(node)}" end at different heights (${px(low)} to ${px(high)}px)`,
+      hint: "Set height fill_container on each card: the row hugs the tallest card and stretches the others to it.",
+    },
+  ];
+};
+
+const lopsided = (a: number, b: number): boolean => {
+  const low = Math.min(a, b);
+  const high = Math.max(a, b);
+  return low > 0 && high >= 2 * low && high - low >= 8;
+};
+
+const paddingIssues = (doc: PegoDocument, node: PegoNode, source: string): PolishIssue[] => {
+  if (node.type !== "frame" || (node.fill === undefined && node.stroke === undefined)) return [];
+  if (node.stroke && Array.isArray(node.stroke.width)) return []; // a divider edge
+  const [top, right, bottom, left] = resolveSides(node.padding, doc.variables, 0);
+  const pair = (
+    [
+      ["top", top, "bottom", bottom],
+      ["left", left, "right", right],
+    ] as const
+  ).find(([, a, , b]) => lopsided(a, b));
+  if (!pair) return [];
+  return [
+    {
+      key: `padding:${source}`,
+      severity: "warning",
+      node,
+      issue: `padding is lopsided: ${pair[0]} ${px(pair[1])} vs ${pair[2]} ${px(pair[3])}`,
+      hint: "Use the same padding on both sides of an axis (for example [20, 20, 20, 20]); only a divider or header edge justifies a difference.",
+    },
+  ];
+};
+
 /**
  * Polish findings for one laid-out node (refs already expanded) and its direct children.
  * `source` is the node's stable id: the component id for an instance root, else `sourceId`.
@@ -131,5 +218,10 @@ export const checkPolish = (
 ): PolishIssue[] => {
   const box = layout.get(node.id);
   if (!box || box.width <= 0 || box.height <= 0) return [];
-  return cornerIssues(doc, layout, node, source, box);
+  return [
+    ...cornerIssues(doc, layout, node, source, box),
+    ...iconIssues(doc, layout, node),
+    ...rowIssues(doc, layout, node, source),
+    ...paddingIssues(doc, node, source),
+  ];
 };

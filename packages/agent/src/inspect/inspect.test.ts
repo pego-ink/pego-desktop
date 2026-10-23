@@ -457,6 +457,128 @@ describe("check_layout polish", () => {
     ]);
     expect(polish(issues).filter((i) => i.issue.includes("rounder than"))).toHaveLength(1);
   });
+
+  const link = (weight: number, size = 14) =>
+    frame("link", { layout: "horizontal", gap: 4 }, [
+      text("lbl", "Semua jadwal", { fontSize: 13, fontWeight: weight }),
+      icon("arrow", { iconName: "arrow-right", width: size, height: size }),
+    ]);
+
+  test("a thin icon beside bold text is a warning", () => {
+    const found = polish(issuesOf([link(600)]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "arrow" });
+    expect(found[0]?.issue).toContain("beside");
+    expect(found[0]?.hint).toContain("16");
+  });
+
+  test("regular text or a 16px icon is fine", () => {
+    expect(polish(issuesOf([link(400)]))).toEqual([]);
+    expect(polish(issuesOf([link(600, 16)]))).toEqual([]);
+  });
+
+  test("hidden neighbours do not count", () => {
+    const issues = issuesOf([
+      frame("row", { layout: "horizontal", gap: 4 }, [
+        text("hidden", "Hidden", { fontWeight: 600, visible: false }),
+        icon("i"),
+        text("regular", "Regular", { fontWeight: 400 }),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  const kpiCard = (id: string, size: number, props: Record<string, unknown> = {}) =>
+    frame(id, { layout: "vertical", fill: "#FFFFFF", padding: 20, ...props }, [
+      text(`${id}-value`, "21", { fontSize: size }),
+    ]);
+
+  test("a row of cards that ends unevenly is a warning", () => {
+    const found = polish(
+      issuesOf([
+        frame("kpi", { layout: "horizontal", gap: 16 }, [kpiCard("k1", 40), kpiCard("k2", 28)]),
+      ]),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "kpi" });
+    expect(found[0]?.issue).toContain("different heights");
+    expect(found[0]?.hint).toContain("fill_container");
+  });
+
+  test("a row of instances is judged on the resolved cards", () => {
+    const row = (props: Record<string, unknown>) => [
+      frame("lib", { layout: "vertical" }, [kpiCard("card", 28, { reusable: true })]),
+      frame("kpi", { layout: "horizontal", gap: 16 }, [
+        ref("c1", "card", { descendants: { "card-value": { fontSize: 40 } }, ...props }),
+        ref("c2", "card", props),
+      ]),
+    ];
+    const uneven = polish(issuesOf(row({})));
+    expect(uneven.map((i) => [i.nodeId, i.issue.includes("different heights")])).toEqual([
+      ["kpi", true],
+    ]);
+    expect(polish(issuesOf(row({ height: "fill_container" })))).toEqual([]);
+  });
+
+  test("a column, a centered row or a mixed row is not a card row", () => {
+    const cards = () => [kpiCard("k1", 40), kpiCard("k2", 28)];
+    expect(polish(issuesOf([frame("col", { layout: "vertical", gap: 16 }, cards())]))).toEqual([]);
+    expect(
+      polish(
+        issuesOf([frame("mid", { layout: "horizontal", gap: 16, alignItems: "center" }, cards())]),
+      ),
+    ).toEqual([]);
+    expect(
+      polish(
+        issuesOf([
+          frame("mixed", { layout: "horizontal", gap: 16 }, [
+            kpiCard("k1", 40),
+            frame("plain", { layout: "vertical" }, [text("p", "Plain")]),
+          ]),
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  const panel = (padding: number[], props: Record<string, unknown> = {}) =>
+    frame(
+      "panel",
+      {
+        layout: "vertical",
+        width: 300,
+        fill: "#FFFFFF",
+        stroke: { color: "#C3D2D7", width: 1 },
+        cornerRadius: 12,
+        padding,
+        ...props,
+      },
+      [text("row", "Poli Umum")],
+    );
+
+  test("lopsided padding on a painted container is a warning", () => {
+    const found = polish(issuesOf([panel([20, 20, 4, 20])]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "panel" });
+    expect(found[0]?.issue).toContain("lopsided");
+  });
+
+  test("close paddings, dividers and unpainted frames are fine", () => {
+    expect(polish(issuesOf([panel([20, 20, 16, 20])]))).toEqual([]);
+    expect(
+      polish(
+        issuesOf([
+          panel([24, 0, 0, 0], {
+            fill: undefined,
+            cornerRadius: undefined,
+            stroke: { color: "#C3D2D7", width: [1, 0, 0, 0] },
+          }),
+        ]),
+      ),
+    ).toEqual([]);
+    expect(
+      polish(issuesOf([panel([20, 20, 4, 20], { fill: undefined, stroke: undefined })])),
+    ).toEqual([]);
+  });
 });
 
 describe("check_layout tool", () => {
