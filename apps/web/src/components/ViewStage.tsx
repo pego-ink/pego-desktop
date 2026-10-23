@@ -11,7 +11,8 @@ export const ViewStage = ({ children }: { children: ReactNode }) => {
   const { top, right, bottom, left } = useViewportStore(useShallow((s) => s.insets));
   return (
     <div
-      className="pointer-events-none absolute [&>*]:pointer-events-auto"
+      // Above the floating layer: on a cramped canvas the tools win over the zoom control.
+      className="pointer-events-none absolute z-30 [&>*]:pointer-events-auto"
       style={{ top, right, bottom, left }}
     >
       {children}
