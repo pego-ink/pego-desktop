@@ -218,11 +218,18 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
     const { setInsets } = useViewportStore.getState();
     const measure = () =>
       setInsets(insetsWithin(container.getBoundingClientRect(), stage.getBoundingClientRect()));
+    // One update per frame while a panel is dragged wider or narrower.
+    let frame = 0;
+    const schedule = () => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    };
     measure();
-    const observer = new ResizeObserver(measure);
+    const observer = new ResizeObserver(schedule);
     observer.observe(container);
     observer.observe(stage);
     return () => {
+      cancelAnimationFrame(frame);
       observer.disconnect();
       setInsets(null);
     };
@@ -242,8 +249,10 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
           {rail}
           <LeftColumn floating />
         </div>
-        <div ref={stageRef} className="relative min-w-0 flex-1">
-          <div className="absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2">
+        {/* The pills get their own row, so the stage (what fits and centers aim at) starts
+            below them. */}
+        <div className="flex min-w-0 flex-1 flex-col gap-2">
+          <div className="flex shrink-0 items-start justify-between gap-2">
             <div className={cn("pointer-events-auto flex items-center p-1", FLOATING_CARD)}>
               <HistoryButtons />
             </div>
@@ -252,8 +261,10 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
               <HeaderActions />
             </div>
           </div>
-          <div className="pointer-events-auto">
-            <ZoomControl />
+          <div ref={stageRef} className="relative min-h-0 flex-1">
+            <div className="pointer-events-auto">
+              <ZoomControl />
+            </div>
           </div>
         </div>
         <div className="pointer-events-auto flex shrink-0 empty:hidden">
