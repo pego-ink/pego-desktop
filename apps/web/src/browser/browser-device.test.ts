@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { emulationPlan } from "@/browser/browser-device";
+import { emulationPlan, HIDE_SCROLLBARS } from "@/browser/browser-device";
 import { deviceLayout } from "@/browser/device-layout";
 import { findPreset } from "@/browser/device-presets";
 
@@ -12,6 +12,7 @@ describe("emulationPlan (CDP fallback)", () => {
       cdp: [
         { method: "Emulation.clearDeviceMetricsOverride" },
         { method: "Emulation.setTouchEmulationEnabled", params: { enabled: false } },
+        HIDE_SCROLLBARS,
       ],
     });
   });
@@ -30,7 +31,10 @@ describe("emulationPlan (native)", () => {
   test("responsive turns native emulation off and touch off", () => {
     expect(emulationPlan(null, true)).toEqual({
       native: null,
-      cdp: [{ method: "Emulation.setTouchEmulationEnabled", params: { enabled: false } }],
+      cdp: [
+        { method: "Emulation.setTouchEmulationEnabled", params: { enabled: false } },
+        HIDE_SCROLLBARS,
+      ],
     });
   });
 
@@ -46,6 +50,7 @@ describe("emulationPlan (native)", () => {
     expect(plan.native).not.toHaveProperty("deviceScaleFactor");
     expect(plan.cdp).toEqual([
       { method: "Emulation.setTouchEmulationEnabled", params: { enabled: true } },
+      HIDE_SCROLLBARS,
     ]);
   });
 });

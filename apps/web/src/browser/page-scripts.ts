@@ -295,9 +295,32 @@ function addText(node,parent,pcs,out){
       return;
     }
   }
-  var text=pre?raw:raw.replace(/\s+/g," ").trim();
+  var text=pre?raw:edgeSpaces(node,raw.replace(/\s+/g," "));
   count++;
   out.push({kind:"text",text:text,box:rectBox({left:l,top:t,width:r-l,height:b-t}),style:textStyle(pcs)});
+}
+// A run next to another inline run keeps its edge space ("dalam " + <mark>Satu</mark>): the space
+// is part of the page's spacing. At a block's start or end the browser drops it, so do we.
+function inlineNeighbor(n,dir){
+  for(var s=dir<0?n.previousSibling:n.nextSibling;s;s=dir<0?s.previousSibling:s.nextSibling){
+    if(s.nodeType===3){if(/\S/.test(s.nodeValue||""))return true;continue;}
+    if(s.nodeType===1){var d=getComputedStyle(s).display;return d.indexOf("inline")===0;}
+  }
+  var p=n.parentElement;
+  if(p&&getComputedStyle(p).display.indexOf("inline")===0)return inlineNeighbor(p,dir);
+  return false;
+}
+// The space may live in its own whitespace-only text node (React's {" "}): count it as ours.
+function spaceBeside(n,dir){
+  var s=dir<0?n.previousSibling:n.nextSibling;
+  return !!s&&s.nodeType===3&&!/\S/.test(s.nodeValue||"")&&(s.nodeValue||"").length>0;
+}
+function edgeSpaces(node,t){
+  if(!inlineNeighbor(node,-1))t=t.replace(/^ /,"");
+  else if(t.charAt(0)!==" "&&spaceBeside(node,-1))t=" "+t;
+  if(!inlineNeighbor(node,1))t=t.replace(/ $/,"");
+  else if(t.charAt(t.length-1)!==" "&&spaceBeside(node,1))t=t+" ";
+  return t;
 }
 function splitLines(node,raw){
   var range=document.createRange(),lines=[],cur=null;

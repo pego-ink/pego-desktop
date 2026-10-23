@@ -671,3 +671,33 @@ describe("text width", () => {
     expect(node.width).toBe(120);
   });
 });
+
+describe("text edge spaces", () => {
+  const run = (t: string, merged: boolean): DomSnapshotNode => ({
+    kind: "text",
+    text: t,
+    box: box(0, 0, 100, 20),
+    style: { fontSize: 16, lineHeight: 20 },
+    ...(merged ? { merged } : {}),
+  });
+  const contentOf = (t: DomSnapshotNode) => {
+    const { node } = convertDomSnapshot(snap(el("div", box(0, 0, 400, 40), {}, [t])));
+    const found: Json[] = [];
+    const walk = (n: Json) => {
+      if (n.type === "text") found.push(n);
+      (n.children ?? []).forEach(walk);
+    };
+    walk(node as Json);
+    return found[0]?.content;
+  };
+
+  test("an inline run keeps the space before its neighbour", () => {
+    expect(contentOf(run("Kelola Banyak Nomor dalam ", false))).toBe(
+      "Kelola Banyak Nomor dalam\u00a0",
+    );
+  });
+
+  test("a merged paragraph is trimmed", () => {
+    expect(contentOf(run("  Hubungkan hingga 10 nomor  ", true))).toBe("Hubungkan hingga 10 nomor");
+  });
+});

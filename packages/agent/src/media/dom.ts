@@ -836,11 +836,13 @@ const fontFamilyFor = (stack: string | undefined, ctx: Ctx): string | undefined 
 const convertText = (node: Extract<DomSnapshotNode, { kind: "text" }>, ctx: Ctx): Item | null => {
   if (typeof node.text !== "string" || !validBox(node.box)) return null;
   const style = node.style ?? {};
-  const content = applyTransform(
-    node.text.replace(/\s+$/g, "").replace(/^\s+/g, ""),
-    style.textTransform,
-  );
-  if (!content) return null;
+  // Paragraphs are trimmed; inline runs keep the edge space the page script left between runs,
+  // as a no-break space: the text renderer does not count a trailing plain space in the width.
+  const text = node.merged
+    ? node.text.trim()
+    : node.text.replace(/^\n+|\n+$/g, "").replace(/^ | $/g, "\u00a0");
+  const content = applyTransform(text, style.textTransform);
+  if (!content.trim()) return null;
   if (!claim(ctx)) return null;
   const size = isNum(style.fontSize) && style.fontSize > 0 ? round(style.fontSize) : undefined;
   const lineHeight =

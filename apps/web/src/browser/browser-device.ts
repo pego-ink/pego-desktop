@@ -27,6 +27,16 @@ const touchCommand = (enabled: boolean): CdpCommand => ({
  * page widget as wide as the device and cover the editor, so it stays a fallback for shells
  * without `setEmulation`.
  */
+/**
+ * Scrollbars stay hidden in the view: a full-page capture lays the page out without them, so
+ * with them the snapshot's boxes (taken with a scrollbar) and the captured pixels would disagree
+ * by half a scrollbar for anything centered.
+ */
+export const HIDE_SCROLLBARS: CdpCommand = {
+  method: "Emulation.setScrollbarsHidden",
+  params: { hidden: true },
+};
+
 export const emulationPlan = (layout: DeviceLayout | null, native: boolean): EmulationPlan => {
   if (!native) {
     return {
@@ -34,11 +44,16 @@ export const emulationPlan = (layout: DeviceLayout | null, native: boolean): Emu
         ? [
             { method: "Emulation.setDeviceMetricsOverride", params: { ...layout.metrics } },
             touchCommand(layout.touch),
+            HIDE_SCROLLBARS,
           ]
-        : [{ method: "Emulation.clearDeviceMetricsOverride" }, touchCommand(false)],
+        : [
+            { method: "Emulation.clearDeviceMetricsOverride" },
+            touchCommand(false),
+            HIDE_SCROLLBARS,
+          ],
     };
   }
-  if (!layout) return { native: null, cdp: [touchCommand(false)] };
+  if (!layout) return { native: null, cdp: [touchCommand(false), HIDE_SCROLLBARS] };
   const { metrics } = layout;
   return {
     native: {
@@ -49,7 +64,7 @@ export const emulationPlan = (layout: DeviceLayout | null, native: boolean): Emu
       scale: metrics.scale,
       mobile: metrics.mobile,
     },
-    cdp: [touchCommand(layout.touch)],
+    cdp: [touchCommand(layout.touch), HIDE_SCROLLBARS],
   };
 };
 
