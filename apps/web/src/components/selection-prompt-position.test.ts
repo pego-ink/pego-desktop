@@ -118,3 +118,37 @@ describe("summarizeTargets", () => {
   test("many", () =>
     expect(summarizeTargets(["Card", "Button", "a", "b"])).toBe("Card, Button +2"));
 });
+
+describe("the visible part of the canvas", () => {
+  const view = { x: 360, y: 8, width: 900, height: 800 };
+  test("the button stays out from under the left panel and inside the view", () => {
+    const pos = placeAtAnchor({ x: 100, y: 200 }, { width: 32, height: 32 }, view);
+    expect(pos.x).toBe(360 + VIEWPORT_MARGIN);
+    const right = placeAtAnchor({ x: 1600, y: 200 }, { width: 32, height: 32 }, view);
+    expect(right.x).toBe(360 + 900 - 32 - VIEWPORT_MARGIN);
+  });
+  test("a selection hidden behind a panel shows no button", () => {
+    expect(
+      intersectsViewport(
+        [
+          [
+            { x: 100, y: 100 },
+            { x: 300, y: 300 },
+          ],
+        ],
+        view,
+      ),
+    ).toBe(false);
+    expect(
+      intersectsViewport(
+        [
+          [
+            { x: 300, y: 100 },
+            { x: 400, y: 300 },
+          ],
+        ],
+        view,
+      ),
+    ).toBe(true);
+  });
+});

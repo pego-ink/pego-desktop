@@ -1,4 +1,4 @@
-import { useCallback, useMemo, type ReactNode } from "react";
+import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
 import { PanelRightIcon, Redo2Icon, Undo2Icon } from "lucide-react";
 import { Canvas } from "@/components/Canvas";
 import { ZoomControl } from "@/components/ZoomControl";
@@ -23,8 +23,9 @@ import { hasDesktopBrowser, railTabsFor, type RailTab } from "@/components/rail-
 import { ShowRightPanelButton, usePanelShortcut } from "@/layout/PanelToggles";
 import { ThemeToggle } from "@/theme/ThemeToggle";
 import { CANVAS_BACKGROUND, useThemeStore } from "@/theme/theme";
-import { FLOATING_CARD } from "@/layout/interface-style";
+import { FLOATING_CARD, insetsWithin } from "@/layout/interface-style";
 import { useSettingsStore } from "@/store/use-settings-store";
+import { useViewportStore } from "@/store/use-viewport-store";
 import { Dashboard } from "@/workspace/Dashboard";
 import { TabBar } from "@/workspace/TabBar";
 import { showDashboard, useWorkspaceStore } from "@/workspace/use-workspace-store";
@@ -198,33 +199,65 @@ const HeaderActions = () => (
 );
 
 /**
- * The floating layout (like pen.dev): the rail and side panel are one card, the properties panel
- * another, and the header controls are pills over the canvas. The gaps between them are canvas
- * colored, so the canvas reads as the backdrop while hit-testing and the camera keep working on
- * the area that is actually free.
+ * The floating layout (like pen.dev): the canvas fills the whole area behind the panels, the rail
+ * and side panel are one card, the properties panel another, and the header controls are pills.
+ * The free area between the cards (the stage) is measured into the viewport's insets, so fits,
+ * zoom and "the middle of the view" use what the user can actually see.
  */
 const FloatingBody = ({ rail }: { rail: ReactNode }) => {
   const theme = useThemeStore((s) => s.resolved);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const stageRef = useRef<HTMLDivElement>(null);
+
+  useLayoutEffect(() => {
+    const container = containerRef.current;
+    const stage = stageRef.current;
+    if (!container || !stage) return;
+    const { setInsets } = useViewportStore.getState();
+    const measure = () =>
+      setInsets(insetsWithin(container.getBoundingClientRect(), stage.getBoundingClientRect()));
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(container);
+    observer.observe(stage);
+    return () => {
+      observer.disconnect();
+      setInsets(null);
+    };
+  }, []);
+
   return (
-    <div className="flex min-h-0 flex-1 gap-2 p-2" style={{ background: CANVAS_BACKGROUND[theme] }}>
-      <div className={cn("flex shrink-0 overflow-hidden", FLOATING_CARD)}>
-        {rail}
-        <LeftColumn floating />
-      </div>
-      <main className="relative min-w-0 flex-1">
+    <div
+      ref={containerRef}
+      className="relative min-h-0 flex-1"
+      style={{ background: CANVAS_BACKGROUND[theme] }}
+    >
+      <main className="absolute inset-0">
         <Canvas />
-        <ZoomControl />
-        <div className="pointer-events-none absolute inset-x-2 top-2 z-20 flex items-start justify-between gap-2">
-          <div className={cn("pointer-events-auto flex items-center p-1", FLOATING_CARD)}>
-            <HistoryButtons />
+      </main>
+      <div className="pointer-events-none absolute inset-0 flex gap-2 p-2">
+        <div className={cn("pointer-events-auto flex shrink-0 overflow-hidden", FLOATING_CARD)}>
+          {rail}
+          <LeftColumn floating />
+        </div>
+        <div ref={stageRef} className="relative min-w-0 flex-1">
+          <div className="absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2">
+            <div className={cn("pointer-events-auto flex items-center p-1", FLOATING_CARD)}>
+              <HistoryButtons />
+            </div>
+            <div className={cn("pointer-events-auto flex items-center gap-1.5 p-1", FLOATING_CARD)}>
+              <ShowRightPanelButton className="static z-auto border-0 bg-transparent shadow-none backdrop-blur-none" />
+              <HeaderActions />
+            </div>
           </div>
-          <div className={cn("pointer-events-auto flex items-center gap-1.5 p-1", FLOATING_CARD)}>
-            <ShowRightPanelButton className="static z-auto border-0 bg-transparent shadow-none backdrop-blur-none" />
-            <HeaderActions />
+          <div className="pointer-events-auto">
+            <ZoomControl />
           </div>
         </div>
-      </main>
-      <RightColumn floating />
+        <div className="pointer-events-auto flex shrink-0 empty:hidden">
+          <RightColumn floating />
+        </div>
+      </div>
     </div>
   );
 };

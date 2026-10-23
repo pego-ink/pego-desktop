@@ -26,6 +26,7 @@ import { dropFiles } from "@/interaction/drop-files";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
 import { SelectionPrompt } from "@/components/SelectionPrompt";
 import { Toolbar } from "@/components/Toolbar";
+import { ViewStage } from "@/components/ViewStage";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useFontEvents } from "@/fonts/font-events";
 import { getToolHandler, useToolPreview } from "@/interaction/tool-handlers";
@@ -381,7 +382,9 @@ export const Canvas = () => {
       <TextEditorOverlay />
       <AgentCursors />
       <SelectionPrompt canvasRef={canvasRef} />
-      <Toolbar />
+      <ViewStage>
+        <Toolbar />
+      </ViewStage>
     </div>
   );
 };
