@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 import type { ViewInsets } from "@/store/use-viewport-store";
 
 /**
@@ -34,25 +33,3 @@ export const insetsWithin = (container: Edges, stage: Edges): ViewInsets => ({
   bottom: Math.max(0, Math.round(container.bottom - stage.bottom)),
   left: Math.max(0, Math.round(stage.left - container.left)),
 });
-
-/** Below this window width the floating cards leave too little canvas: the docked layout is used. */
-export const FLOATING_MIN_WIDTH = 1000;
-
-const wideQuery = () =>
-  typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(`(min-width: ${FLOATING_MIN_WIDTH}px)`)
-    : null;
-
-const subscribeWide = (onChange: () => void) => {
-  const query = wideQuery();
-  query?.addEventListener("change", onChange);
-  return () => query?.removeEventListener("change", onChange);
-};
-
-/** True while the window is wide enough for the floating interface (always, without a window). */
-export const useWideEnoughForFloating = (): boolean =>
-  useSyncExternalStore(
-    subscribeWide,
-    () => wideQuery()?.matches ?? true,
-    () => true,
-  );
