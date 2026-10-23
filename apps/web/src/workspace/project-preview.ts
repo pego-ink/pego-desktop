@@ -86,6 +86,11 @@ const renderPreview = async (doc: PegoDocument, theme: ResolvedTheme): Promise<s
 };
 
 const cache = new Map<string, Promise<ProjectPreview>>();
+
+/** Drop every cached preview of a project (it was deleted). */
+export const forgetProjectPreviews = (projectId: string): void => {
+  for (const key of cache.keys()) if (key.startsWith(`${projectId}:`)) cache.delete(key);
+};
 let queue: Promise<unknown> = Promise.resolve();
 
 /**

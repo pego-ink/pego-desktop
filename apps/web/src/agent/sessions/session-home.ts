@@ -18,5 +18,11 @@ export const forgetSessionHome = (sessionId: string): void => {
   homes.delete(sessionId);
 };
 
+/** Forget the homes of every session that lived in tab `workspaceId` (its tab was deleted). */
+export const forgetSessionHomesIn = (workspaceId: string): void => {
+  for (const [sessionId, home] of homes)
+    if (home.workspaceId === workspaceId) homes.delete(sessionId);
+};
+
 /** Drop every home (tests). */
 export const clearSessionHomes = (): void => homes.clear();

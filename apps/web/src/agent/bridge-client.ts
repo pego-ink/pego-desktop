@@ -291,9 +291,10 @@ const pendingProject = new Map<string, (response: ProjectResponse) => void>();
 
 /** Ask the bridge for the design folder listing, or one file's text. Rejects when offline. */
 export const requestProject = (
-  action: "list" | "read" | "projects" | "create_project",
+  action: "list" | "read" | "projects" | "create_project" | "trash_project",
   path?: string,
   name?: string,
+  projectId?: string,
 ): Promise<ProjectResponse> =>
   new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
@@ -313,6 +314,7 @@ export const requestProject = (
       action,
       ...(path === undefined ? {} : { path }),
       ...(name === undefined ? {} : { name }),
+      ...(projectId === undefined ? {} : { projectId }),
     });
     if (!sent) {
       clearTimeout(timer);

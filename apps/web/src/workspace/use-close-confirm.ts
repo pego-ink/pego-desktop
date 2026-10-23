@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { closeWorkspace } from "./use-workspace-store";
+import { closeWorkspace, useWorkspaceStore } from "./use-workspace-store";
 
 type CloseConfirmState = { open: boolean; id: string | null };
 
@@ -12,3 +12,19 @@ export const requestCloseTab = (id: string): void => {
 };
 
 export const dismissCloseConfirm = (): void => useCloseConfirm.setState({ open: false });
+
+/**
+ * Close a tab like `requestCloseTab`, and resolve once the answer is known: true when the tab is
+ * gone (closed right away or after the user confirmed), false when the user kept it.
+ */
+export const closeTabAndWait = (id: string): Promise<boolean> =>
+  new Promise((resolve) => {
+    if (closeWorkspace(id) === "closed") return resolve(true);
+    useCloseConfirm.setState({ open: true, id });
+    // Confirming force-closes the tab before it dismisses the dialog, cancelling only dismisses.
+    const unsubscribe = useCloseConfirm.subscribe((state) => {
+      if (state.open) return;
+      unsubscribe();
+      resolve(!useWorkspaceStore.getState().workspaces.some((workspace) => workspace.id === id));
+    });
+  });

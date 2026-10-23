@@ -3,7 +3,12 @@ import { create } from "zustand";
 import type { ProjectInfo } from "@pego/agent";
 import { requestProject } from "@/agent/bridge-client";
 import { useAgentStore } from "@/agent/use-agent-store";
+import { forgetSessionHomesIn } from "@/agent/sessions/session-home";
 import { openProject } from "@/project/use-project-store";
+import { forgetProjectPreviews } from "./project-preview";
+import { tabToClose, trashedMessage, trashFailedMessage } from "./trash-project-model";
+import { closeTabAndWait } from "./use-close-confirm";
+import { useWorkspaceStore } from "./use-workspace-store";
 
 /** Projects of the repository (design/<project>/project.json), as listed by the bridge. */
 type DashboardState = {
@@ -45,4 +50,38 @@ export const createProjectFromDashboard = async (name: string): Promise<void> =>
   } catch (error) {
     toast.error(`Could not create the project: ${errorMessage(error)}`);
   }
+};
+
+type TrashConfirmState = { open: boolean; project: ProjectInfo | null };
+
+/** The project waiting for the "Move to Trash?" answer. `project` stays while the dialog fades. */
+export const useTrashConfirm = create<TrashConfirmState>(() => ({ open: false, project: null }));
+
+export const askTrashProject = (project: ProjectInfo): void =>
+  useTrashConfirm.setState({ open: true, project });
+
+export const dismissTrashConfirm = (): void => useTrashConfirm.setState({ open: false });
+
+/**
+ * Move the project's folder to the OS Trash through the bridge. Its tab is closed first (asking
+ * about unsaved changes; keeping the tab aborts), then previews and session homes are dropped.
+ * Chat history stays.
+ */
+export const trashConfirmedProject = async (): Promise<void> => {
+  const { project } = useTrashConfirm.getState();
+  dismissTrashConfirm();
+  if (!project) return;
+  const tab = tabToClose(useWorkspaceStore.getState().workspaces, project.id);
+  if (tab && !(await closeTabAndWait(tab))) return;
+  try {
+    await requestProject("trash_project", undefined, undefined, project.id);
+  } catch (error) {
+    toast.error(trashFailedMessage(project.name, errorMessage(error)));
+    await refreshProjects();
+    return;
+  }
+  forgetProjectPreviews(project.id);
+  forgetSessionHomesIn(project.id);
+  await refreshProjects();
+  toast.success(trashedMessage(project.name));
 };

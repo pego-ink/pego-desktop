@@ -8,10 +8,11 @@ import type { DecisionRequest, PlanStep, StepStatus, ToolImage } from "./types";
  */
 export const BRIDGE_DEFAULT_PORT = 4519;
 /**
- * v6 = v4 (local agents, several editors, parallel runs, run_steer) + v5 (projects, file tools).
+ * v7 = v6 + `trash_project` (editor only, never an MCP tool). v6 = v4 (local agents, several editors,
+ * parallel runs, run_steer) + v5 (projects, file tools).
  * Several editors connect at once; MCP calls go to the focused one (see apps/bridge editor-hub).
  */
-export const BRIDGE_PROTOCOL_VERSION = 6;
+export const BRIDGE_PROTOCOL_VERSION = 7;
 
 /** Local agent runs the bridge executes at the same time (one per chat session). */
 export const MAX_CONCURRENT_RUNS = 3;
@@ -105,14 +106,16 @@ export type EditorToBridge =
   | { type: "save_file"; requestId: string; path: string; text: string }
   /**
    * The dashboard and project panel: list projects, create one (`name`), list the files of a
-   * folder (`path`, default the whole design folder) or read one file (`path`).
+   * folder (`path`, default the whole design folder) or read one file (`path`). `trash_project`
+   * moves the project `projectId` to the OS Trash; the bridge looks the folder up itself.
    */
   | {
       type: "project_request";
       requestId: string;
-      action: "list" | "read" | "projects" | "create_project";
+      action: "list" | "read" | "projects" | "create_project" | "trash_project";
       path?: string;
       name?: string;
+      projectId?: string;
     };
 
 /** Messages the bridge sends to the editor. */
