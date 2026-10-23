@@ -18,3 +18,4 @@ export * from "./mentions";
 export * from "./app-state";
 export { svgToNode } from "./tools-media";
 export { SvgError } from "./media/svg";
+export * from "./variants";

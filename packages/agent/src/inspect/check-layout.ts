@@ -146,6 +146,28 @@ const checkNode = (
   const suffix = node.id.includes("/") ? INSTANCE_HINT : "";
   const children = isContainer(node) ? node.children : [];
 
+  // Structure: the top level of a page holds screens, standalone pieces (each one frame) and
+  // instances, never loose layers; those frames carry a name.
+  if (parent?.type === "page") {
+    if (node.type !== "frame" && node.type !== "group" && node.type !== "ref") {
+      report(
+        ctx,
+        "warning",
+        node,
+        `${node.type} sits loose at the top level of the page`,
+        "Move it into the screen or section frame it belongs to (move_node), or wrap it together with the layers that make up the same thing (a drawing, a logo, a chart) in one frame or group named after the whole.",
+      );
+    } else if (node.type !== "ref" && !node.name?.trim()) {
+      report(
+        ctx,
+        "info",
+        node,
+        `top-level ${node.type} has no name`,
+        'Name it after what it is (for example "Home - Desktop", "Logo", "Cloud") so the layers and the agent can find it.',
+      );
+    }
+  }
+
   // Zero-size and empty containers.
   if (box && (box.width <= EPSILON || box.height <= EPSILON)) {
     const emptyUnpainted = node.type === "frame" && children.length === 0 && !hasPaint(node);
