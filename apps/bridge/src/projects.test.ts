@@ -23,7 +23,7 @@ describe("projects", () => {
       mainFile: join(shop.dir, "project.pego"),
     });
     const design = JSON.parse(await readFile(shop.mainFile, "utf8"));
-    expect(design).toMatchObject({ format: "pego", version: 6, document: { name: "Kirimi Shop" } });
+    expect(design).toMatchObject({ format: "pego", version: 7, document: { name: "Kirimi Shop" } });
     expect(again.relativeDir).toBe("kirimi-shop-2");
     expect(shop.id).toMatch(/^[a-z0-9]{8}$/);
     const meta = JSON.parse(await readFile(join(shop.dir, "project.json"), "utf8"));

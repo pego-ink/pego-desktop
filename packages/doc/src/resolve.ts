@@ -1,4 +1,5 @@
 import type { Fill, Variables } from "./schema";
+import { shaderFallbackColor } from "./shaders";
 
 const isVariableRef = (value: string) => value.startsWith("$");
 
@@ -60,7 +61,7 @@ export const resolveStrokeWidth = (
 
 /**
  * One solid color standing in for a fill (contrast checks, default text color): the color itself,
- * a gradient's first stop, or undefined for images and unset fills.
+ * a gradient's first stop, a shader's first color, or undefined for images and unset fills.
  */
 export const representativeColor = (
   fill: Fill | undefined,
@@ -69,5 +70,6 @@ export const representativeColor = (
   if (fill === undefined) return undefined;
   if (typeof fill === "string") return resolveColor(fill, variables);
   if (fill.type === "image") return undefined;
+  if (fill.type === "shader") return shaderFallbackColor(fill, variables);
   return resolveColor(fill.stops[0]?.color, variables);
 };

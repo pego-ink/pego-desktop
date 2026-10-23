@@ -7,10 +7,14 @@ import {
   planOutputSchema,
 } from "./prompts";
 import { agentTools } from "./tools";
-import { animationEasingSchema, animationPresetSchema } from "@pego/doc";
+import { animationEasingSchema, animationPresetSchema, shaderPresetSchema } from "@pego/doc";
 
-/** Animation presets and easings, the motion values the prompts name. */
-const MOTION_KEYWORDS = [...animationPresetSchema.options, ...animationEasingSchema.options];
+/** Animation presets and easings and shader presets: the values the prompts name. */
+const MOTION_KEYWORDS = [
+  ...animationPresetSchema.options,
+  ...animationEasingSchema.options,
+  ...shaderPresetSchema.options,
+];
 
 describe("prompts", () => {
   test("are non-empty and free of volatile content", () => {

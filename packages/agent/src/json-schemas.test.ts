@@ -25,7 +25,7 @@ describe("node json schema", () => {
 describe("doc schema", () => {
   test("accepts an image node", () => {
     const doc = documentSchema.parse({
-      version: 6,
+      version: 7,
       id: "d",
       name: "x",
       variables: {},
@@ -52,7 +52,7 @@ describe("doc schema", () => {
   test("rejects an unknown fit", () => {
     expect(() =>
       documentSchema.parse({
-        version: 6,
+        version: 7,
         id: "d",
         name: "x",
         variables: {},

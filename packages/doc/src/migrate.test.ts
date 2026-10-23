@@ -62,6 +62,18 @@ describe("migrateDocument", () => {
     expect(nodes?.[1]).toMatchObject({ animation: { preset: "none", countUp: true } });
   });
 
+  test("upgrades version 6 documents and accepts a shader fill", () => {
+    const fill = { type: "shader", preset: "aurora", uniforms: { speed: 1.2 } };
+    const v6 = {
+      version: 6,
+      id: "d",
+      name: "V6",
+      children: [{ type: "page", id: "p", children: [{ type: "rectangle", id: "r", fill }] }],
+    };
+    expect(migrateDocument(v6)).toMatchObject({ version: DOCUMENT_VERSION });
+    expect(loadDocument(v6)?.children[0]?.children[0]).toMatchObject({ fill });
+  });
+
   test("leaves current documents unchanged", () => {
     const current = { ...v0, version: DOCUMENT_VERSION };
     expect(migrateDocument(current)).toBe(current);

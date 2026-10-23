@@ -67,7 +67,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **6**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **7**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -75,7 +75,7 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 6, "document": { ... } }
+{ "format": "pego", "version": 7, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
@@ -84,13 +84,13 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 `viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
 added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
 change: the bump makes older builds refuse these files instead of dropping the props); version 4 added `visible` (hidden layers), frame `slot` (component slots), page
-`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change.
+`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change; version 7 added the `shader` fill type, again with no data change.
 
 ### Document
 
 ```json
 {
-  "version": 6,
+  "version": 7,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -144,7 +144,8 @@ Value rules:
 - **Fill**: a color on every painted node. Frame, rectangle, ellipse and path also take
   `{ "type": "linear", "angle", "stops" }` (CSS angles: 0 up, 90 right, 180 default),
   `{ "type": "radial", "center": [0.5, 0.5], "radius": [0.5, 0.5], "stops" }` (fractions of the node size) or
-  `{ "type": "image", "src": "data:image/png;base64,...", "fit": "cover" | "contain" | "stretch" }`. Stops are
+  `{ "type": "image", "src": "data:image/png;base64,...", "fit": "cover" | "contain" | "stretch" }` or
+  `{ "type": "shader", "preset", "code"?, "uniforms"? }` (see Shader fills). Stops are
   `{ "color", "position" }` with position 0..1, at least two. Images are embedded (scaled to at most 2048 px on
   import from the panel); geometry helpers shared by canvas and exports live in `packages/doc/src/paint.ts`.
 - **Stroke**: `{ color, width }`. `width` defaults to `1`; a uniform width is centered on the outline, per-side
@@ -175,6 +176,15 @@ grow_up | grow_right | scale | pop`, `delay`/`duration` in ms (default 0 / 600),
   (`packages/doc/src/motion.ts`) per node, purely visual (layout and hit-testing do not move). Code export emits
   the same timing as CSS `@keyframes` on `translate` / `scale` (`packages/agent/src/export/motion-css.ts`), plus a
   small script for `countUp` in HTML. No loops or timeline.
+- **Shader fills** (`packages/doc/src/shaders.ts`): `preset` is `aurora | gradient_flow | waves | grain | shimmer |
+dots | custom`; `custom` runs `code`, a GLSL-style fragment shader both Skia (SkSL) and WebGL 1 accept:
+  `vec4 main(vec2 fragCoord)`, `fragCoord` in px from the shape's top-left, `iResolution` (vec2 px) and `iTime`
+  (s) declared for it, float / vec2-4 uniforms only, no textures. `uniforms` override the preset defaults by name
+  (numbers, vectors, colors as hex or `$variable`). The canvas compiles it with `RuntimeEffect`
+  (`apps/web/src/canvas/render-shader.ts`); its clock runs only while a layer with (or inside, or around) a
+  moving shader is selected, or during Play (`canvas/shader-activity.ts`), and stops for reduced motion. HTML
+  and React exports keep a fallback background and draw the shader with a small WebGL runtime
+  (`export/shader-export.ts`, `data-pego-shader`); SVG uses the first color, PNG the first frame.
 - **Variables**: referenced as `$name`, stored in `document.variables` without the `$`. A reference to a missing
   variable or one of the wrong type falls back to the default (see `packages/doc/src/resolve.ts`).
 

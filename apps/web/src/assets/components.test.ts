@@ -13,7 +13,7 @@ import {
 } from "./components";
 
 const doc: PegoDocument = {
-  version: 6,
+  version: 7,
   id: "d",
   name: "d",
   variables: {},
@@ -129,7 +129,7 @@ describe("assets panel", () => {
 
 describe("instance cycles", () => {
   const cyc: PegoDocument = {
-    version: 6,
+    version: 7,
     id: "d",
     name: "d",
     variables: {},

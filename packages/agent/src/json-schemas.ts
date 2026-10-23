@@ -13,7 +13,7 @@ const sides = (description: string): JsonSchema => ({
 const fillValue: JsonSchema = {
   anyOf: [{ type: "string" }, { type: "object" }],
   description:
-    "Hex color or $variable; shapes also take a gradient or image object (see node format).",
+    "Hex color or $variable; shapes also take a gradient, image or shader object (see node format).",
 };
 const sizing: JsonSchema = {
   type: ["number", "string"],
