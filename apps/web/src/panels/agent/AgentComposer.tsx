@@ -22,8 +22,10 @@ import { useAttachmentDrop } from "@/panels/agent/attachments/use-attachment-dro
 import { isRunActive } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 import { composerToPrompt, textToComposer } from "@/panels/agent/mentions/composer-doc";
+import { LAYERS_MIME, readLayerClipboard } from "@/interaction/layer-clipboard";
 import { liveChipTransaction } from "@/panels/agent/mentions/live-chips";
 import {
+  chipContent,
   createMentionExtension,
   createSubmitExtension,
   type MentionMenuHooks,
@@ -136,9 +138,21 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         class:
           "tiptap max-h-40 min-h-12 overflow-y-auto px-1 text-xs leading-5 text-foreground outline-none",
       },
-      handlePaste: (_view, event) => {
+      handlePaste: (view, event) => {
         const data = event.clipboardData;
         if (!data) return false;
+        // Layers copied on the canvas become one chip.
+        const { doc } = useDocumentStore.getState();
+        const ids = readLayerClipboard(data.getData(LAYERS_MIME), doc);
+        if (ids) {
+          event.preventDefault();
+          const ref: MentionRef = { kind: "layer", ids };
+          const chip = view.state.schema.nodeFromJSON(
+            chipContent(ref, mentionTitle(doc, ref) ?? "Layers"),
+          );
+          view.dispatch(view.state.tr.replaceSelectionWith(chip, false).insertText(" "));
+          return true;
+        }
         const images = pastedImageFiles(Array.from(data.files), Array.from(data.types));
         if (images.length === 0) return false; // plain text paste stays the editor's
         event.preventDefault();
