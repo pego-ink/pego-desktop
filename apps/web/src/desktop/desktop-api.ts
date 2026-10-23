@@ -93,6 +93,12 @@ export type DesktopBrowserApi = {
    * older shells lack it.
    */
   setEmulation?: (emulation: DesktopBrowserEmulation | null) => void;
+  /**
+   * Download an http(s) image with the browser view's session (cookies, no CORS) for import.
+   * Resolves with a data: URL of the original bytes (any image/* type, at most 8 MB); rejects
+   * for other URLs, non-image responses and bigger files.
+   */
+  fetchImage?: (url: string) => Promise<string>;
   onState: (listener: (state: DesktopBrowserState) => void) => () => void;
   /**
    * Messages the page's injected scripts send with `console.debug("__pego__:" + JSON)`, parsed
