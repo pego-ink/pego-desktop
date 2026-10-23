@@ -2,12 +2,16 @@ import { afterAll, afterEach, beforeAll, describe, expect, test } from "bun:test
 import {
   agentTools,
   BRIDGE_PROTOCOL_VERSION,
+  EDITOR_OPS,
   skills,
   skillToMarkdown,
   type BridgeToEditor,
   type EditorToBridge,
   type RunEvent,
 } from "@pego/agent";
+import { mkdtemp } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { makeAttachment } from "./agents/fixtures/images";
 import { MAX_WS_MESSAGE_BYTES, type BridgeConfig } from "./config";
 import type { AgentAdapter } from "./agents/types";
@@ -180,6 +184,56 @@ describe("editor socket security", () => {
     expect(await local.text()).toMatch(/private network/);
     const http = await fetch(url("http://example.com/a.png"), { headers: { Origin: ORIGIN } });
     expect(http.status).toBe(400);
+  });
+
+  test("the browser extension imports with the pairing code, forwarded to the editor", async () => {
+    const dir = await mkdtemp(join(tmpdir(), "pego-ext-"));
+    const bridge = start({}, { extensionTokenPath: join(dir, "extension-token") });
+    const base = `http://127.0.0.1:${bridge.port}`;
+    const EXT = "chrome-extension://abcdefghijklmnopabcdefghijklmnop";
+
+    // The editor (and only it) reads the pairing code.
+    expect((await fetch(`${base}/extension/token`)).status).toBe(403);
+    const { token } = (await (
+      await fetch(`${base}/extension/token`, { headers: { Origin: ORIGIN } })
+    ).json()) as { token: string };
+    expect(token).toMatch(/^[0-9a-f]{48}$/);
+
+    const capture = {
+      kind: "screenshot",
+      page: { url: "https://ayam.test/", title: "Ayam" },
+      dataUrl: "data:image/png;base64,AAAA",
+      width: 10,
+      height: 5,
+    };
+    const send = (origin: string, code: string) =>
+      fetch(`${base}/extension/import`, {
+        method: "POST",
+        headers: { Origin: origin, "content-type": "application/json", "x-pego-token": code },
+        body: JSON.stringify(capture),
+      });
+    // A web page (even the editor's origin) and a wrong code are refused.
+    expect((await send(ORIGIN, token)).status).toBe(403);
+    expect((await send(EXT, "0".repeat(48))).status).toBe(401);
+    // No editor connected: the extension hears why.
+    expect((await send(EXT, token)).status).toBe(409);
+
+    const { editor } = await greet(bridge);
+    const sent = send(EXT, token);
+    const call = (await editor.next("tool_call")) as Extract<BridgeToEditor, { type: "tool_call" }>;
+    expect(call.tool).toBe(EDITOR_OPS.importCapture);
+    expect(call.input).toEqual(capture);
+    editor.send({
+      type: "tool_result",
+      callId: call.callId,
+      content: "Imported Ayam",
+      isError: false,
+    });
+    const response = await sent;
+    expect(response.status).toBe(200);
+    expect(await response.text()).toBe("Imported Ayam");
+    expect(response.headers.get("access-control-allow-origin")).toBe(EXT);
+    editor.ws.close();
   });
 
   test("rejects a wrong Host header on every route", async () => {

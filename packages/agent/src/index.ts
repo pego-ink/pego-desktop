@@ -18,5 +18,7 @@ export * from "./mentions";
 export * from "./app-state";
 export { svgToNode } from "./tools-media";
 export { SvgError } from "./media/svg";
+// The editor turns browser-extension captures into layers with the same converter.
+export { domSnapshotToNode } from "./tools-browser";
 export * from "./variants";
 export * from "./sanitize";

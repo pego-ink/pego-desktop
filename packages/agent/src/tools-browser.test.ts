@@ -3,7 +3,12 @@ import { findNode } from "@pego/doc";
 import type { BrowserHost, BrowserTarget, DomSnapshot } from "./browser-types";
 import { createFakeHost } from "./test-host";
 import { CDP_ALLOWED_METHODS } from "./browser-cdp";
-import { browserTools, sanitizeSourceUrl, wrapPageContent } from "./tools-browser";
+import {
+  browserTools,
+  domSnapshotToNode,
+  sanitizeSourceUrl,
+  wrapPageContent,
+} from "./tools-browser";
 import type { ToolHost } from "./types";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -459,5 +464,49 @@ describe("browser tool", () => {
     const { isError, data } = await call({ action: "import-to-canvas" }, withBrowser(browser));
     expect(isError).toBe(true);
     expect(data.error.code).toBe("empty_import");
+  });
+});
+
+describe("domSnapshotToNode", () => {
+  const box = (x: number, y: number, width: number, height: number) => ({ x, y, width, height });
+  const page: DomSnapshot = {
+    url: "https://ayam.test/",
+    title: "Ayam",
+    root: {
+      kind: "element" as const,
+      tag: "body",
+      box: box(0, 0, 400, 300),
+      style: { backgroundColor: "rgb(255, 255, 255)" },
+      children: [
+        {
+          kind: "text" as const,
+          text: "Ayam pop",
+          box: box(20, 20, 120, 24),
+          style: { fontSize: 20 },
+        },
+      ],
+    },
+  };
+
+  test("one schema-valid node with fresh ids that avoid the taken ones", () => {
+    const { node, count } = domSnapshotToNode(page, new Set(["n1"]), { fullPage: true });
+    expect(count).toBeGreaterThan(0);
+    expect(node?.type).toBe("frame");
+    const ids: string[] = [];
+    const walk = (n: { id: string; children?: unknown[] }) => {
+      ids.push(n.id);
+      for (const child of (n.children ?? []) as { id: string }[]) walk(child);
+    };
+    walk(node as { id: string });
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids).not.toContain("n1");
+  });
+
+  test("nothing visible: no node", () => {
+    const empty: DomSnapshot = {
+      ...page,
+      root: { kind: "element", tag: "body", box: box(0, 0, 0, 0), style: {}, children: [] },
+    };
+    expect(domSnapshotToNode(empty, new Set()).node).toBeNull();
   });
 });
