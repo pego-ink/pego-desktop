@@ -3,6 +3,7 @@ title: Bring any website onto the canvas
 date: 2026-10-23T14:00:00Z
 summary: A built-in browser in the desktop app. Import a page or one element as editable layers, with auto layout and the page's own fonts.
 tags: [new, improved]
+version: 0.1.0-beta
 ---
 
 The desktop app now has a browser. Open the Browser panel in the left rail, type an address, and bring what you see onto the canvas.

@@ -5,15 +5,37 @@ Electron shell for Pego. It serves the built web app (`apps/web/dist`) from a pr
 desktop app gives the canvas, the agent panel and Claude Code MCP without a terminal.
 
 - appId `id.yolk.pego`, product name `Pego`. macOS: dmg + zip, arm64 + x64, signed and notarized.
-  Linux: AppImage + deb (x64). Windows: NSIS installer (x64). Linux and Windows builds are unsigned.
+  Linux (x64 + arm64): AppImage, deb, rpm, pacman, tar.gz. Windows (x64 + arm64): NSIS installer + portable zip.
+  Linux and Windows builds are unsigned.
 - Single instance. Main/preload are bundled with `Bun.build` (`scripts/bundle.ts`) to CJS.
+
+## Install
+
+Download from the [releases page](https://github.com/pego-ink/pego-desktop/releases) and check `SHA256SUMS.txt`
+(`sha256sum -c --ignore-missing SHA256SUMS.txt`). Pick `arm64` for Apple Silicon and ARM machines, `x64` otherwise
+(Linux names: `amd64`/`x86_64` in deb/rpm/pacman/AppImage files). Only macOS auto-updates for now; on Linux and
+Windows download the new build yourself. Linux and Windows builds are unsigned.
+
+- **macOS**: open the `.dmg`, drag Pego to Applications. Signed and notarized, so Gatekeeper opens it normally.
+- **Windows**: run `Pego-<version>-win-<arch>.exe` (per-user install, no admin needed). SmartScreen shows "Windows
+  protected your PC" because the build is unsigned: More info, then Run anyway. Portable: unzip
+  `Pego-<version>-win-<arch>.zip` and run `Pego.exe`. On Windows on ARM both x64 and arm64 builds work.
+- **Debian / Ubuntu**: `sudo apt install ./Pego-<version>-linux-<arch>.deb`
+- **Fedora / RHEL / openSUSE**: `sudo dnf install ./Pego-<version>-linux-<arch>.rpm` (openSUSE: `sudo zypper install ./...rpm`)
+- **Arch**: `sudo pacman -U ./Pego-<version>-linux-<arch>.pacman`
+- **AppImage** (any distro): `chmod +x Pego-<version>-linux-<arch>.AppImage && ./Pego-<version>-linux-<arch>.AppImage`
+  (needs FUSE 2, or run with `--appimage-extract-and-run`).
+- **tar.gz** (generic): `tar xzf Pego-<version>-linux-<arch>.tar.gz`, then run `pego` in the extracted folder. If the
+  app exits right away on a distro with restricted user namespaces, start it with `--no-sandbox`.
+
+Pego also needs the `claude` CLI on PATH only for the Claude Code backend; the BYOK backend needs nothing.
 
 ## Develop
 
 ```bash
 bun run desktop:dev      # Vite on :5173 + Electron pointing at it; bridge started with `bun run`
 bun run desktop:build    # web build + bridge binary + app for this machine in apps/desktop/release
-bun run desktop:build -- --linux --x64   # AppImage + deb
+bun run desktop:build -- --linux --x64   # AppImage, deb, rpm, pacman, tar.gz (rpm/pacman need `rpm` and `bsdtar` installed)
 ```
 
 `desktop:build` signs with the Developer ID found in the keychain and notarizes only when
@@ -53,11 +75,18 @@ Users need the `claude` CLI installed and logged in; the BYOK API-key backend wo
 Tag must equal the version in `apps/desktop/package.json`:
 
 ```bash
-# bump apps/desktop/package.json "version" to X.Y.Z, commit, then
+# bump apps/desktop/package.json "version" to X.Y.Z, optionally write apps/desktop/release-notes/X.Y.Z.md
+# (used as the release body; otherwise GitHub generates notes), commit, then
 git tag vX.Y.Z && git push origin main vX.Y.Z
 gh run watch            # .github/workflows/release.yml
 gh release edit vX.Y.Z --draft=false   # publishing the draft is what ships the update
 ```
+
+To check the packaging before tagging, run the workflow by hand (Actions, Release, Run workflow, pick the branch):
+it builds every OS/arch and uploads the artifacts, but skips the tag check and the release job.
+
+Runners: `macos-latest` (arm64, builds both mac arches), `ubuntu-24.04` + `ubuntu-24.04-arm`, `windows-2025` +
+`windows-11-arm` (native builds per arch). The release job adds `SHA256SUMS.txt`, titles the draft "Pego vX.Y.Z".
 
 Required repo secrets: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`,
 `APPLE_ID`, `APPLE_PASSWORD` (app-specific password). The job fails if any is missing and verifies signature,

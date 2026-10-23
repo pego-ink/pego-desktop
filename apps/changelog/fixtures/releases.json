@@ -1,0 +1,384 @@
+[
+  {
+    "tag_name": "v0.2.0-beta",
+    "draft": true,
+    "prerelease": true,
+    "published_at": "2026-11-01T10:00:00Z",
+    "html_url": "https://github.com/pego-ink/pego-desktop/releases/tag/v0.2.0-beta",
+    "assets": [
+      {
+        "name": "Pego-0.2.0-beta-arm64.dmg",
+        "size": 148900000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-arm64.dmg"
+      },
+      {
+        "name": "Pego-0.2.0-beta-arm64.dmg.blockmap",
+        "size": 160000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-arm64.dmg.blockmap"
+      },
+      {
+        "name": "Pego-0.2.0-beta-arm64.zip",
+        "size": 143000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-arm64.zip"
+      },
+      {
+        "name": "Pego-0.2.0-beta-x64.dmg",
+        "size": 155200000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-x64.dmg"
+      },
+      {
+        "name": "Pego-0.2.0-beta-x64.dmg.blockmap",
+        "size": 170000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-x64.dmg.blockmap"
+      },
+      {
+        "name": "Pego-0.2.0-beta-x64.zip",
+        "size": 150000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-x64.zip"
+      },
+      {
+        "name": "Pego-0.2.0-beta-win-x64.exe",
+        "size": 121000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-win-x64.exe"
+      },
+      {
+        "name": "Pego-0.2.0-beta-win-x64.exe.blockmap",
+        "size": 130000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-win-x64.exe.blockmap"
+      },
+      {
+        "name": "Pego-0.2.0-beta-win-x64.zip",
+        "size": 125000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-win-x64.zip"
+      },
+      {
+        "name": "Pego-0.2.0-beta-win-arm64.exe",
+        "size": 118400000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-win-arm64.exe"
+      },
+      {
+        "name": "Pego-0.2.0-beta-win-arm64.zip",
+        "size": 120000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-win-arm64.zip"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-x64.AppImage",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-x64.AppImage"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-x64.deb",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-x64.deb"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-x64.rpm",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-x64.rpm"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-x64.pacman",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-x64.pacman"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-x64.tar.gz",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-x64.tar.gz"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-arm64.AppImage",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-arm64.AppImage"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-arm64.deb",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-arm64.deb"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-arm64.rpm",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-arm64.rpm"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-arm64.pacman",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-arm64.pacman"
+      },
+      {
+        "name": "Pego-0.2.0-beta-linux-arm64.tar.gz",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/Pego-0.2.0-beta-linux-arm64.tar.gz"
+      },
+      {
+        "name": "latest.yml",
+        "size": 400,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/latest.yml"
+      },
+      {
+        "name": "latest-mac.yml",
+        "size": 600,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/latest-mac.yml"
+      },
+      {
+        "name": "latest-linux.yml",
+        "size": 500,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/latest-linux.yml"
+      },
+      {
+        "name": "SHA256SUMS.txt",
+        "size": 2400,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.2.0-beta/SHA256SUMS.txt"
+      }
+    ]
+  },
+  {
+    "tag_name": "v0.1.0-beta",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-10-24T10:00:00Z",
+    "html_url": "https://github.com/pego-ink/pego-desktop/releases/tag/v0.1.0-beta",
+    "assets": [
+      {
+        "name": "Pego-0.1.0-beta-arm64.dmg",
+        "size": 148900000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-arm64.dmg"
+      },
+      {
+        "name": "Pego-0.1.0-beta-arm64.dmg.blockmap",
+        "size": 160000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-arm64.dmg.blockmap"
+      },
+      {
+        "name": "Pego-0.1.0-beta-arm64.zip",
+        "size": 143000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-arm64.zip"
+      },
+      {
+        "name": "Pego-0.1.0-beta-x64.dmg",
+        "size": 155200000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-x64.dmg"
+      },
+      {
+        "name": "Pego-0.1.0-beta-x64.dmg.blockmap",
+        "size": 170000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-x64.dmg.blockmap"
+      },
+      {
+        "name": "Pego-0.1.0-beta-x64.zip",
+        "size": 150000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-x64.zip"
+      },
+      {
+        "name": "Pego-0.1.0-beta-win-x64.exe",
+        "size": 121000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-win-x64.exe"
+      },
+      {
+        "name": "Pego-0.1.0-beta-win-x64.exe.blockmap",
+        "size": 130000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-win-x64.exe.blockmap"
+      },
+      {
+        "name": "Pego-0.1.0-beta-win-x64.zip",
+        "size": 125000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-win-x64.zip"
+      },
+      {
+        "name": "Pego-0.1.0-beta-win-arm64.exe",
+        "size": 118400000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-win-arm64.exe"
+      },
+      {
+        "name": "Pego-0.1.0-beta-win-arm64.zip",
+        "size": 120000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-win-arm64.zip"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-x64.AppImage",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-x64.AppImage"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-x64.deb",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-x64.deb"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-x64.rpm",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-x64.rpm"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-x64.pacman",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-x64.pacman"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-x64.tar.gz",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-x64.tar.gz"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-arm64.AppImage",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-arm64.AppImage"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-arm64.deb",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-arm64.deb"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-arm64.rpm",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-arm64.rpm"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-arm64.pacman",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-arm64.pacman"
+      },
+      {
+        "name": "Pego-0.1.0-beta-linux-arm64.tar.gz",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/Pego-0.1.0-beta-linux-arm64.tar.gz"
+      },
+      {
+        "name": "latest.yml",
+        "size": 400,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/latest.yml"
+      },
+      {
+        "name": "latest-mac.yml",
+        "size": 600,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/latest-mac.yml"
+      },
+      {
+        "name": "latest-linux.yml",
+        "size": 500,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/latest-linux.yml"
+      },
+      {
+        "name": "SHA256SUMS.txt",
+        "size": 2400,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.1.0-beta/SHA256SUMS.txt"
+      }
+    ]
+  },
+  {
+    "tag_name": "v0.0.1-beta",
+    "draft": false,
+    "prerelease": true,
+    "published_at": "2026-10-01T10:00:00Z",
+    "html_url": "https://github.com/pego-ink/pego-desktop/releases/tag/v0.0.1-beta",
+    "assets": [
+      {
+        "name": "Pego-0.0.1-beta-arm64.dmg",
+        "size": 148900000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-arm64.dmg"
+      },
+      {
+        "name": "Pego-0.0.1-beta-arm64.dmg.blockmap",
+        "size": 160000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-arm64.dmg.blockmap"
+      },
+      {
+        "name": "Pego-0.0.1-beta-arm64-mac.zip",
+        "size": 143000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-arm64-mac.zip"
+      },
+      {
+        "name": "Pego-0.0.1-beta-x64.dmg",
+        "size": 155200000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-x64.dmg"
+      },
+      {
+        "name": "Pego-0.0.1-beta-x64-mac.zip",
+        "size": 150000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-x64-mac.zip"
+      },
+      {
+        "name": "Pego-0.0.1-beta-x64.exe",
+        "size": 121000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-x64.exe"
+      },
+      {
+        "name": "Pego-0.0.1-beta-x64.exe.blockmap",
+        "size": 130000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-x64.exe.blockmap"
+      },
+      {
+        "name": "Pego-0.0.1-beta-arm64.exe",
+        "size": 118400000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-arm64.exe"
+      },
+      {
+        "name": "pego_0.0.1-beta_amd64.deb",
+        "size": 98000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/pego_0.0.1-beta_amd64.deb"
+      },
+      {
+        "name": "pego_0.0.1-beta_arm64.deb",
+        "size": 96500000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/pego_0.0.1-beta_arm64.deb"
+      },
+      {
+        "name": "pego-0.0.1-beta.x86_64.rpm",
+        "size": 99000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/pego-0.0.1-beta.x86_64.rpm"
+      },
+      {
+        "name": "pego-0.0.1-beta.aarch64.rpm",
+        "size": 97000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/pego-0.0.1-beta.aarch64.rpm"
+      },
+      {
+        "name": "Pego-0.0.1-beta-x64.AppImage",
+        "size": 101000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-x64.AppImage"
+      },
+      {
+        "name": "Pego-0.0.1-beta-arm64.AppImage",
+        "size": 99000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-arm64.AppImage"
+      },
+      {
+        "name": "Pego-0.0.1-beta-x64.pacman",
+        "size": 95000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-x64.pacman"
+      },
+      {
+        "name": "Pego-0.0.1-beta-x64.tar.gz",
+        "size": 97000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-x64.tar.gz"
+      },
+      {
+        "name": "Pego-0.0.1-beta-arm64.tar.gz",
+        "size": 95000000,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/Pego-0.0.1-beta-arm64.tar.gz"
+      },
+      {
+        "name": "latest.yml",
+        "size": 400,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/latest.yml"
+      },
+      {
+        "name": "latest-mac.yml",
+        "size": 600,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/latest-mac.yml"
+      },
+      {
+        "name": "latest-linux.yml",
+        "size": 500,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/latest-linux.yml"
+      },
+      {
+        "name": "SHA256SUMS.txt",
+        "size": 2400,
+        "browser_download_url": "https://github.com/pego-ink/pego-desktop/releases/download/v0.0.1-beta/SHA256SUMS.txt"
+      }
+    ]
+  }
+]

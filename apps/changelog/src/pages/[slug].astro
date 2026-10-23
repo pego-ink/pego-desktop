@@ -3,6 +3,7 @@ import type { GetStaticPaths } from "astro";
 import Base from "@/layouts/Base.astro";
 import Entry from "@/components/Entry.astro";
 import { getEntries } from "@/lib/entries";
+import { getDownloads, softwareJsonLd } from "@/lib/downloads";
 import { SITE_NAME, SITE_URL } from "@/lib/site";
 
 export const getStaticPaths = (async () => {
@@ -13,7 +14,8 @@ export const getStaticPaths = (async () => {
 const { entry } = Astro.props;
 const { title, summary, date } = entry.data;
 const url = `${SITE_URL}/${entry.id}`;
-const jsonLd = {
+const release = (await getDownloads()).byEntry.get(entry.id);
+const post = {
   "@context": "https://schema.org",
   "@type": "BlogPosting",
   headline: title,
@@ -26,6 +28,7 @@ const jsonLd = {
   author: { "@type": "Organization", name: SITE_NAME },
   publisher: { "@type": "Organization", name: SITE_NAME, url: "https://pego.ink" },
 };
+const jsonLd = release ? [post, softwareJsonLd(release)] : post;
 ---
 
 <Base title={`${title} | Pego changelog`} description={summary} type="article" publishedTime={date} jsonLd={jsonLd}>

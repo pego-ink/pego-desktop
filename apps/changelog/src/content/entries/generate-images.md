@@ -3,6 +3,7 @@ title: Generate images, with Nano Banana too
 date: 2026-10-23T17:30:00Z
 summary: Generate an image from a prompt in the Assets panel, with your own Google Gemini (Nano Banana), OpenAI or other image model.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 **Assets › Images › Generate** turns a prompt into an image and places it in the middle of your view. Pick a shape (square, 4:3, 16:9, 3:4 or 9:16) and, if you have several, which image model to use. Earlier results stay in the panel to place again or drag onto the canvas.

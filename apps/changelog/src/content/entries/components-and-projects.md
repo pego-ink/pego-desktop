@@ -3,6 +3,7 @@ title: Components, projects and Claude Code
 date: 2026-10-23T15:00:00Z
 summary: A searchable Assets panel you can drag from, Save as project, Copy for AI, and Claude Code that works on a project in the background.
 tags: [new, improved, fixed]
+version: 0.1.0-beta
 ---
 
 ## Assets panel

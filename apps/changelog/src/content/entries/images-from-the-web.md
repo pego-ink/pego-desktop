@@ -3,6 +3,7 @@ title: Images from the web
 date: 2026-10-23T18:00:00Z
 summary: Bring any image from the web into your design by its link, or copy it on a site and paste it on the canvas.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 - **Assets › Images › From URL**: paste the link of an image on the web and press **Place**.

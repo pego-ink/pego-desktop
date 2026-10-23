@@ -3,6 +3,7 @@ title: Settings and automatic updates
 date: 2026-10-22
 summary: A settings window for the editor, the agent and shortcuts. The macOS app now updates itself and follows your light or dark theme.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 - A settings window with General, Editor, Agent and models, Shortcuts and About.

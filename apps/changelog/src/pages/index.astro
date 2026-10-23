@@ -2,10 +2,13 @@
 import Base from "@/layouts/Base.astro";
 import Entry from "@/components/Entry.astro";
 import { getEntries } from "@/lib/entries";
+import { getDownloads, softwareJsonLd } from "@/lib/downloads";
 import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
 
 const entries = await getEntries();
-const jsonLd = {
+const { byEntry } = await getDownloads();
+const software = [...new Set(byEntry.values())].slice(0, 1).map(softwareJsonLd);
+const blog = {
   "@context": "https://schema.org",
   "@type": "Blog",
   name: `${SITE_NAME} changelog`,
@@ -21,6 +24,7 @@ const jsonLd = {
     url: `${SITE_URL}/${entry.id}`,
   })),
 };
+const jsonLd = [blog, ...software];
 ---
 
 <Base

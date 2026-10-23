@@ -3,6 +3,7 @@ title: A new instrument-panel style
 date: 2026-10-23T17:00:00Z
 summary: Ask the agent for a design that looks like a portable synthesizer, with grey panels, numbered keys, knobs, small screens and one orange, in light or dark.
 tags: [new]
+version: 0.1.0-beta
 ---
 
 - A new style inspired by portable synthesizers: grey panels, numbered keys, knobs, small black screens with dot-matrix numbers, labels printed in small capitals and a single orange for the one control that matters.

@@ -29,7 +29,7 @@ if (oses.length !== 1) throw new Error("pass exactly one of --mac, --linux or --
 if (archs.length === 0) throw new Error("pass --arm64 and/or --x64");
 const os = oses[0]!;
 const BUN_TARGET: Record<Os, string> = { mac: "darwin", linux: "linux", win: "windows" };
-/** electron-builder.yml expects resources/pego-bridge-<os>-<arch>[.exe]. */
+/** Bun targets used: bun-{darwin,linux,windows}-{x64,arm64}. electron-builder.yml expects resources/pego-bridge-<os>-<arch>[.exe]. */
 const bridgeExt = os === "win" ? ".exe" : "";
 
 console.log("== web build");
