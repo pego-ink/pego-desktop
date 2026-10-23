@@ -42,10 +42,27 @@ type Props = {
   onHome?: () => void;
   /** The dashboard is shown: the logo is the current page and no tab is selected. */
   homeActive?: boolean;
+  /** Extra classes for the rail (the floating layout drops its edge when it stands alone). */
+  className?: string;
+  /** "horizontal": a row of icons on top of the floating side card (no logo; Home is a tab). */
+  orientation?: "vertical" | "horizontal";
 };
 
-/** Narrow vertical tab rail: Agent, Layers, Assets and (desktop) Browser. The active tab toggles the side panel. */
-export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = false }: Props) => {
+/**
+ * Tab rail: Agent, Layers, Assets and (desktop) Browser, then Settings. The active tab toggles the
+ * side panel. A narrow column by default; a row on top of the floating side card.
+ */
+export const IconRail = ({
+  state,
+  agentWorking,
+  onPress,
+  onHome,
+  homeActive = false,
+  className,
+  orientation = "vertical",
+}: Props) => {
+  const horizontal = orientation === "horizontal";
+  const tipSide = horizontal ? "bottom" : "right";
   const listRef = useRef<HTMLDivElement>(null);
   const tabs = useMemo(() => railTabsFor(hasDesktopBrowser()), []);
 
@@ -64,9 +81,18 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
     const buttons = Array.from(
       listRef.current?.querySelectorAll<HTMLButtonElement>("button") ?? [],
     );
+    // A row moves with Left/Right (Up/Down do nothing there), a column with Up/Down; Home and
+    // End work in both.
+    const ROW_KEYS: Record<string, string> = {
+      ArrowRight: "ArrowDown",
+      ArrowLeft: "ArrowUp",
+      ArrowDown: "",
+      ArrowUp: "",
+    };
+    const key = horizontal ? (ROW_KEYS[e.key] ?? e.key) : e.key;
     const next = moveRailFocus(
       buttons.indexOf(document.activeElement as HTMLButtonElement),
-      e.key,
+      key ?? "",
       buttons.length,
     );
     if (next === null) return;
@@ -77,9 +103,14 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
   return (
     <nav
       aria-label="Editor sidebar"
-      className="flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5"
+      className={cn(
+        horizontal
+          ? "flex h-11 shrink-0 items-center gap-1 border-b border-border bg-card px-2"
+          : "flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5",
+        className,
+      )}
     >
-      {onHome ? (
+      {horizontal ? null : onHome ? (
         <Tooltip content="Projects">
           <button
             type="button"
@@ -103,9 +134,9 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
         ref={listRef}
         role="tablist"
         aria-label="Side panel"
-        aria-orientation="vertical"
+        aria-orientation={horizontal ? "horizontal" : "vertical"}
         onKeyDown={onListKeyDown}
-        className="flex flex-col items-center gap-1"
+        className={cn("flex items-center gap-1", !horizontal && "flex-col")}
       >
         {tabs.map((item, index) => {
           const Icon = TAB_ICONS[item.id];
@@ -113,7 +144,7 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
           const focusable = state.tab === item.id;
           const shortcut = `${ALT}${index + 1}`;
           return (
-            <Tooltip key={item.id} content={item.label} shortcut={shortcut}>
+            <Tooltip key={item.id} content={item.label} shortcut={shortcut} side={tipSide}>
               <button
                 type="button"
                 role="tab"
@@ -141,7 +172,7 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
           );
         })}
       </div>
-      <Tooltip content="Settings" shortcut={`${isMac ? "⌘" : "Ctrl+"},`}>
+      <Tooltip content="Settings" shortcut={`${isMac ? "⌘" : "Ctrl+"},`} side={tipSide}>
         <button
           type="button"
           aria-label="Settings"
@@ -151,7 +182,10 @@ export const IconRail = ({ state, agentWorking, onPress, onHome, homeActive = fa
             const { tab, openSettings } = useSettingsModal.getState();
             openSettings(tab);
           }}
-          className="mt-auto flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4"
+          className={cn(
+            "flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4",
+            horizontal ? "ml-auto" : "mt-auto",
+          )}
         >
           <SettingsIcon />
         </button>

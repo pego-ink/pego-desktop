@@ -14,7 +14,8 @@ import { frameCorners, getSelectionFrame, toScreenMatrix } from "@/interaction/s
 import { useDocumentStore } from "@/store/use-document-store";
 import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
 import { useTextEditStore } from "@/store/use-text-edit-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useShallow } from "zustand/react/shallow";
+import { useViewportStore, visibleRect } from "@/store/use-viewport-store";
 import { CodePreviewDialog } from "@/export/CodePreviewDialog";
 import { MAGIC_ACTIONS, magicDisplay, magicPrompt, type MagicAction } from "./pego-magic";
 import {
@@ -262,7 +263,8 @@ const SelectionPromptOverlay = ({
   const doc = useDocumentStore((s) => s.doc);
   const selection = useDocumentStore((s) => s.selection);
   const camera = useViewportStore((s) => s.camera);
-  const viewport = useViewportStore((s) => s.size);
+  // Kept inside the part of the canvas not covered by floating panels.
+  const viewport = useViewportStore(useShallow(visibleRect));
   const editing = useTextEditStore((s) => s.target !== null);
   const open = useSelectionPrompt((s) => s.open);
   const setOpen = useSelectionPrompt((s) => s.setOpen);

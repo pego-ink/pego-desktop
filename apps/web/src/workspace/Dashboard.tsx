@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   CopyIcon,
+  DownloadIcon,
   FolderIcon,
   ImageOffIcon,
   MoreHorizontalIcon,
@@ -26,6 +27,10 @@ import {
   ContextMenu,
   ContextMenuContent,
   ContextMenuItem,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
   ContextMenuTrigger,
 } from "@pego/ui/components/context-menu";
 import {
@@ -39,6 +44,7 @@ import { useAgentStore } from "@/agent/use-agent-store";
 import { useThemeStore } from "@/theme/theme";
 import { getProjectPreview, type ProjectPreview } from "./project-preview";
 import { trashConfirmText } from "./trash-project-model";
+import { exportProject, PROJECT_EXPORTS } from "./project-export";
 import {
   askTrashProject,
   createProjectFromDashboard,
@@ -147,9 +153,17 @@ const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean })
           <DropdownMenuContent
             align="end"
             sideOffset={4}
-            className="min-w-44"
+            className="min-w-52"
             onClick={(event) => event.stopPropagation()}
           >
+            <div className="px-2 pt-1 pb-0.5 text-[11px] text-muted-foreground">Export</div>
+            {PROJECT_EXPORTS.map(({ kind, label }) => (
+              <DropdownMenuItem key={kind} onSelect={() => void exportProject(project, kind)}>
+                <DownloadIcon className="size-3.5" />
+                {label}
+              </DropdownMenuItem>
+            ))}
+            <div role="separator" className="-mx-1 my-1 h-px bg-border" />
             <DropdownMenuItem
               className="text-destructive data-[highlighted]:text-destructive"
               onSelect={() => askTrashProject(project)}
@@ -199,6 +213,18 @@ const ProjectCard = ({ project, open }: { project: ProjectInfo; open: boolean })
       </div>
     </ContextMenuTrigger>
     <ContextMenuContent className="min-w-44" onClick={(event) => event.stopPropagation()}>
+      <ContextMenuItem onSelect={() => void openProject(project)}>Open</ContextMenuItem>
+      <ContextMenuSub>
+        <ContextMenuSubTrigger>Export</ContextMenuSubTrigger>
+        <ContextMenuSubContent>
+          {PROJECT_EXPORTS.map(({ kind, label }) => (
+            <ContextMenuItem key={kind} onSelect={() => void exportProject(project, kind)}>
+              {label}
+            </ContextMenuItem>
+          ))}
+        </ContextMenuSubContent>
+      </ContextMenuSub>
+      <ContextMenuSeparator />
       <ContextMenuItem destructive onSelect={() => askTrashProject(project)}>
         Move to Trash
       </ContextMenuItem>

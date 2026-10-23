@@ -1,4 +1,4 @@
-import type { Layout, PegoDocument } from "@pego/doc";
+import type { AnimationPreset, Layout, PegoDocument } from "@pego/doc";
 
 /** A CSS declaration: `[property, value]`. Variable references are written `var(--name)`. */
 export type Decl = readonly [prop: string, value: string];
@@ -65,6 +65,12 @@ export type BuildCtx = {
   h1Used: boolean;
   /** Counter for unique SVG paint ids (gradients, patterns). */
   paintCount: number;
+  /** Entrance presets used, for their `@keyframes`. */
+  motion: Set<AnimationPreset>;
+  /** A text counts up: html-css adds the script that plays it. */
+  countUp: boolean;
+  /** A shader fill is used: the output includes the runtime that draws it. */
+  shaders: boolean;
   /** When icon data is available, icons it does not know are skipped. */
   hasIcon: ((name: string) => boolean) | undefined;
 };
