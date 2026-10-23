@@ -234,6 +234,24 @@ describe("browser tool", () => {
     });
   });
 
+  test("a screenshot of a query or the page remembers where it came from; a picked one cannot", async () => {
+    const { browser } = fakeBrowser();
+    const host = withBrowser(browser);
+    const query = await call(
+      { action: "screenshot-to-canvas", target: "query", querySelector: "#hero" },
+      host,
+    );
+    expect(findNode(host.getDoc(), query.data.created.id)).toMatchObject({
+      source: { url: browser.currentPage()!.url, selector: "#hero" },
+    });
+    const full = await call({ action: "screenshot-to-canvas" }, host);
+    expect(findNode(host.getDoc(), full.data.created.id)).toMatchObject({
+      source: { url: browser.currentPage()!.url },
+    });
+    const picked = await call({ action: "screenshot-to-canvas", target: "selection" }, host);
+    expect(findNode(host.getDoc(), picked.data.created.id)).not.toHaveProperty("source");
+  });
+
   test("screenshot-to-canvas rejects an unusable screenshot", async () => {
     const { browser } = fakeBrowser({
       screenshot: async () => ({ dataUrl: "http://evil.test/a.png", width: 1, height: 1 }),

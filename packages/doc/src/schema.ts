@@ -187,6 +187,16 @@ const imageSchema = baseNode.extend({
   stroke: strokeSchema.optional(),
   /** Optional alt text, used by exports and agents. */
   alt: z.string().optional(),
+  /**
+   * Where a screenshot came from: the page (and the element, by a unique selector) in the in-app
+   * browser, so it can be refreshed from the live page.
+   */
+  source: z
+    .object({
+      url: z.string().min(1).max(2000),
+      selector: z.string().min(1).max(1000).optional(),
+    })
+    .optional(),
 });
 const textSchema = baseNode.extend({
   type: z.literal("text"),
