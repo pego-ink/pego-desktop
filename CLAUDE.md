@@ -303,6 +303,9 @@ details. `bun test` in that workspace validates every entry. It deploys from `ma
 **Every PR into `dev` adds or updates an entry** (same-day changes may extend that day's entry). The `Changelog` check
 (`.github/workflows/changelog-check.yml`) fails a PR into `dev` that touches no file in `src/content/entries/`;
 purely internal PRs (CI, docs, refactors, tests) take the `no-changelog` label instead.
+When a same-repo PR has neither, Claude (same workflow, `CLAUDE_CODE_OAUTH_TOKEN`) writes a new entry file and the
+workflow commits it to the PR branch after `bun test` validates it, or Claude adds the `no-changelog` label; edit
+the entry like any file before merging.
 
 ## Git workflow
 
