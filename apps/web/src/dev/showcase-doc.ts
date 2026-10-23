@@ -2,7 +2,7 @@ import type { PegoDocument } from "@pego/doc";
 
 /** Dev document that exercises every node type and render feature. */
 export const showcaseDoc: PegoDocument = {
-  version: 5,
+  version: 6,
   id: "doc-showcase",
   name: "Showcase",
   variables: {

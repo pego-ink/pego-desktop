@@ -22,6 +22,7 @@ import {
 import type { BuildCtx, Decl, IrComponent, IrEl, IrIcon, IrNode, Parent, Scope } from "./ir";
 import { camelCase, cssVarName, pascalCase, uniqueName } from "./naming";
 import { paintDef, type SvgDef } from "./svg-paint";
+import { countUpAttr, motionDecls } from "./motion-css";
 
 export const DEFAULT_FONT = "Inter";
 
@@ -202,6 +203,10 @@ const transformParts = (node: PegoNode, ctx: BuildCtx, box: Box | undefined): De
     decls.push(["transform-origin", "top left"]);
   }
   if (transform) decls.push(["transform", transform]);
+  if (node.type !== "page" && node.animation) {
+    decls.push(...motionDecls(node.animation, rotation !== 0));
+    ctx.motion.add(node.animation.preset);
+  }
   return decls;
 };
 
@@ -435,13 +440,15 @@ const buildText = (
     ...effectDecls(node.effects, ctx, "text"),
   ];
   const propName = scope?.propOf.get(node.id);
+  const counts = node.animation?.countUp === true && /\d/.test(content);
+  if (counts) ctx.countUp = true;
   return {
     kind: "el",
     tag: textTag(node, ctx, size, weight, content, wraps),
     label: node.name ?? "text",
     decls,
     placement: parts.placement,
-    attrs: [],
+    attrs: counts && node.animation ? [countUpAttr(node.animation)] : [],
     children: [propName ? { kind: "prop", name: propName } : { kind: "text", value: content }],
   };
 };
@@ -895,5 +902,7 @@ export const createBuildCtx = (
   propNames: inlineRefs ? new Map() : collectPropNames(doc, root),
   h1Used: false,
   paintCount: 0,
+  motion: new Set(),
+  countUp: false,
   hasIcon,
 });

@@ -5,7 +5,7 @@ import { defaultTextColor, DARK_TEXT, LIGHT_TEXT } from "./default-text-color";
 import { deriveEditorStyle } from "./editor-style";
 
 const doc: PegoDocument = {
-  version: 5,
+  version: 6,
   variables: { fg: { type: "color", value: "#FF0000" }, size: { type: "number", value: 20 } },
   children: [
     {

@@ -17,7 +17,7 @@ const frame = (id: string, props: Record<string, unknown>, children: PegoNode[] 
 
 /** A "kit" project: a Badge, and a Card holding a Badge instance and a slot recommending Badge. */
 const kit = (withBadge = true): PegoDocument => ({
-  version: 5,
+  version: 6,
   id: "kit-project",
   name: "Kit",
   variables: { brand: { type: "color", value: "#ff0000" } },

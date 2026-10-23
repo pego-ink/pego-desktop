@@ -32,6 +32,7 @@ import { getToolHandler, useToolPreview } from "@/interaction/tool-handlers";
 import { useTextEditStore } from "@/store/use-text-edit-store";
 import { useToolStore } from "@/store/use-tool-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { currentMotionTime, useMotionStore } from "@/motion/use-motion-store";
 
 /** Everything the cached document layer depends on; any change forces a re-render of the layer. */
 type LayerKey = {
@@ -47,6 +48,8 @@ type LayerKey = {
   background: string;
   fonts: number;
   layers: number;
+  /** Milliseconds into a motion preview (a new frame every time), or undefined. */
+  motionTime: number | undefined;
 };
 
 const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
@@ -62,7 +65,8 @@ const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
   a.pageId === b.pageId &&
   a.background === b.background &&
   a.fonts === b.fonts &&
-  a.layers === b.layers;
+  a.layers === b.layers &&
+  a.motionTime === b.motionTime;
 
 export const Canvas = () => {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -153,7 +157,12 @@ export const Canvas = () => {
             key.doc,
             key.layout,
             { panX: key.panX, panY: key.panY, zoom: key.zoom },
-            { hiddenIds, pageId: key.pageId, background: key.background },
+            {
+              hiddenIds,
+              pageId: key.pageId,
+              background: key.background,
+              motionTime: key.motionTime,
+            },
           );
           canvas.restore();
         };
@@ -182,6 +191,7 @@ export const Canvas = () => {
             background: CANVAS_BACKGROUND[useThemeStore.getState().resolved],
             fonts: useFontEvents.getState().version,
             layers: useLayerEvents.getState().version,
+            motionTime: currentMotionTime(),
           };
 
           if (!sameKey(layerKey, key)) {
@@ -224,8 +234,9 @@ export const Canvas = () => {
           toolHandler?.renderOverlay?.(res, canvas, camera);
           canvas.restore();
           surface.flush();
-          // The agent focus box animates: keep frames coming only while it is on screen.
-          if (focusAnimated) schedule();
+          // The agent focus box animates: keep frames coming only while it is on screen. A motion
+          // preview does too, until it ends (the store change then draws the final frame).
+          if (focusAnimated || key.motionTime !== undefined) schedule();
         };
 
         const draw = () => {
@@ -295,6 +306,7 @@ export const Canvas = () => {
           useLayerEvents.subscribe(schedule),
           useToolPreview.subscribe(schedule),
           useToolStore.subscribe(schedule),
+          useMotionStore.subscribe(schedule),
           useAgentStore.subscribe((state) => {
             // Only a change of some run's focus box (ids, tint) needs a frame.
             const groups = selectFocusGroups(state);

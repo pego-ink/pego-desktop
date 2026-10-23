@@ -39,6 +39,33 @@ const nodePropSchemas: Record<string, JsonSchema> = {
     description: "Mirror top-bottom around the node's center. Not on pages.",
   },
   opacity: numberValue,
+  animation: {
+    type: ["object", "null"],
+    properties: {
+      preset: {
+        type: "string",
+        enum: [
+          "none",
+          "fade",
+          "slide_up",
+          "slide_down",
+          "slide_left",
+          "slide_right",
+          "grow_up",
+          "grow_right",
+          "scale",
+          "pop",
+        ],
+      },
+      delay: { type: "number", description: "ms after playback starts. Default 0." },
+      duration: { type: "number", description: "ms. Default 600." },
+      easing: { type: "string", enum: ["ease_out", "ease_in_out", "linear", "spring"] },
+      countUp: { type: "boolean", description: "Text only: numbers count up from 0." },
+    },
+    required: ["preset"],
+    description:
+      "Entrance played in preview and exports (the canvas shows the end state). Stagger siblings with delay. Not on pages.",
+  },
   reusable: {
     type: "boolean",
     description: "Marks this node as a component that ref nodes instantiate.",

@@ -3,6 +3,7 @@ import {
   isContainer,
   OpError,
   pageOrFirst,
+  type Animation,
   type Effect,
   type Fill,
   type PegoDocument,
@@ -63,6 +64,16 @@ const fmtEffect = (effect: Effect): string => {
   return `${effect.inner ? "inner-shadow" : "shadow"}(${[...parts, effect.color].join(",")})`;
 };
 
+/** `grow_up(delay=150,duration=500,easing=spring,countUp)`: only the fields that are set. */
+const fmtAnimation = (animation: Animation): string => {
+  const parts: string[] = [];
+  if (animation.delay !== undefined) parts.push(`delay=${animation.delay}`);
+  if (animation.duration !== undefined) parts.push(`duration=${animation.duration}`);
+  if (animation.easing !== undefined) parts.push(`easing=${animation.easing}`);
+  if (animation.countUp) parts.push("countUp");
+  return parts.length > 0 ? `${animation.preset}(${parts.join(",")})` : animation.preset;
+};
+
 /** Props in a fixed order. Defaults (x/y = 0, layout none, iconSet lucide) are omitted. */
 const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
   const n = node as PegoNode & Fields;
@@ -85,6 +96,8 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
   if (n.stroke) tokens.push(`stroke=${fmtStroke(n.stroke as Stroke)}`);
   const effects = n.effects as Effect[] | undefined;
   if (effects && effects.length > 0) tokens.push(`effects=${effects.map(fmtEffect).join("+")}`);
+  const animation = n.animation as Animation | undefined;
+  if (animation) tokens.push(`animation=${fmtAnimation(animation)}`);
   push("cornerRadius", n.cornerRadius);
   if (n.clip) push("clip", true);
   if (n.type === "frame") {
