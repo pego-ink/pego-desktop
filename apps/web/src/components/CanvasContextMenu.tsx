@@ -16,8 +16,7 @@ import { screenToDoc } from "@/canvas/types";
 import { runCopyAs } from "@/interaction/copy-as";
 import { runPasteHere, runPasteReplace } from "@/interaction/clipboard-actions";
 import { flipSelection } from "@/interaction/flip";
-import { HIT_TOLERANCE_PX } from "@/interaction/hit-test";
-import { pickAt } from "@/interaction/selection";
+import { pickOnCanvas } from "@/interaction/pick-on-canvas";
 import { allClipped, allComponents, allVisible, componentOf } from "@/interaction/structure";
 import {
   goToComponent,
@@ -230,7 +229,7 @@ const EmptyMenuContent = ({ point }: { point: DocPoint | null }) => (
 
 /**
  * Right-click menu of the canvas. A right-click first selects what is under the pointer (like a
- * click; ⌘/Ctrl goes deep) unless it is already selected; on empty canvas it clears the selection
+ * click: a frame's caption picks the frame, ⌘/Ctrl goes deep) unless it is already selected; on empty canvas it clears the selection
  * and opens a short menu. Paste here lands at the pointer.
  */
 export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
@@ -241,15 +240,15 @@ export const CanvasContextMenu = ({ children }: { children: ReactElement }) => {
     const state = useDocumentStore.getState();
     const rect = event.currentTarget.getBoundingClientRect();
     const { camera } = useViewportStore.getState();
-    const at = screenToDoc(camera, event.clientX - rect.left, event.clientY - rect.top);
-    const hit = pickAt(
-      state.doc,
+    const screen = { x: event.clientX - rect.left, y: event.clientY - rect.top };
+    const at = screenToDoc(camera, screen.x, screen.y);
+    // Like a click: a frame's caption picks the frame, so its full menu opens.
+    const hit = pickOnCanvas(
+      state,
       getLayout(state.doc),
-      at.x,
-      at.y,
-      state.selection,
+      camera,
+      screen,
       event.metaKey || event.ctrlKey,
-      { tolerance: HIT_TOLERANCE_PX / camera.zoom, pageId: state.pageId },
     );
     setPoint(at);
     setEmpty(!hit);

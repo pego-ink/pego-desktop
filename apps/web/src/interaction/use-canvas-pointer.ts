@@ -28,7 +28,7 @@ import {
   type Segment,
 } from "@/interaction/drag-target";
 import { hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
-import { captionAt, frameCaptions } from "@/canvas/frame-captions";
+import { pickOnCanvas } from "./pick-on-canvas";
 import { useSettingsStore } from "@/store/use-settings-store";
 import { wheelAction } from "@/interaction/wheel-behavior";
 import { snapEnabled } from "@/interaction/snap";
@@ -38,7 +38,6 @@ import {
   drillTarget,
   marqueeSelect,
   normalizeRect,
-  pickAt,
   toggleSelection,
 } from "@/interaction/selection";
 import { constrainAxis, resizeOps, type Handle } from "@/interaction/transform";
@@ -232,19 +231,14 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       }
 
       const d = toDoc(p.x, p.y);
-      const layout = getLayout(state.doc);
       // A frame's caption picks the frame itself (its body picks what is inside).
-      const captioned = captionAt(
-        frameCaptions(state.doc, layout, useViewportStore.getState().camera, state.pageId),
-        p.x,
-        p.y,
+      const hit = pickOnCanvas(
+        state,
+        getLayout(state.doc),
+        useViewportStore.getState().camera,
+        p,
+        isDeep(e),
       );
-      const hit =
-        captioned ??
-        pickAt(state.doc, layout, d.x, d.y, state.selection, isDeep(e), {
-          tolerance: hitTolerance(),
-          pageId: state.pageId,
-        });
 
       if (!hit) {
         if (!e.shiftKey) state.select([]);
@@ -286,13 +280,15 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
       const handle = grabbed?.handle ?? null;
       const cursor = grabbed ? cursorFor(grabbed.frame, grabbed.handle) : null;
       if (useInteractionState.getState().handleCursor !== cursor) ui.set({ handleCursor: cursor });
-      const d = toDoc(p.x, p.y);
       const hit = handle
         ? null
-        : pickAt(state.doc, getLayout(state.doc), d.x, d.y, state.selection, isDeep(e), {
-            tolerance: hitTolerance(),
-            pageId: state.pageId,
-          });
+        : pickOnCanvas(
+            state,
+            getLayout(state.doc),
+            useViewportStore.getState().camera,
+            p,
+            isDeep(e),
+          );
       if (state.hoveredId !== hit) state.setHovered(hit);
     };
 
