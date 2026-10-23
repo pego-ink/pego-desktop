@@ -141,8 +141,9 @@ cross-axis fill children to the tallest; the exporter emits `align-self: stretch
 frame, report only when the resulting size is 0 (the existing error case). The main axis keeps today's behavior.
 
 A polish issue inside component instances is reported once per component source node (the part of the render id
-after the last `/`), not once per instance, so one defect in a row component does not fill the 50-issue cap.
-(My call: the fix is in the component either way.)
+after the last `/`) and measured values, not once per instance, so one defect in a row component does not fill the
+50-issue cap, while an instance whose overrides cause a different defect is still reported. (My call; the values
+were added to the key after the PR review.)
 
 Expected results, used as acceptance criteria and as the regression fixture:
 

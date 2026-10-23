@@ -260,7 +260,7 @@ const checkNode = (
     }
   }
 
-  // Polish (the ui-polish skill's rules), once per component source node. ancestors[0] is the
+  // Polish (the ui-polish skill's rules), once per source node and measured values. ancestors[0] is the
   // page, so ancestors[1] is the screen (top-level frame) holding this node.
   const screenNode = parent?.type === "page" ? undefined : ancestors[1];
   const screen = (screenNode && layout.get(screenNode.id)) ?? null;
@@ -270,7 +270,7 @@ const checkNode = (
     const where = found.node.id.includes("/")
       ? INSTANCE_HINT
       : found.component
-        ? ` "${label(found.node)}" is an instance of component "${found.component}": fix the component, not this instance.`
+        ? ` "${label(found.node)}" is an instance of component "${found.component}": fix the component, or this instance's overrides if they cause it.`
         : "";
     report(ctx, found.severity, found.node, found.issue, `${found.hint}${where}`);
   }

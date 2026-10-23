@@ -459,6 +459,27 @@ describe("check_layout polish", () => {
     expect(polish(issues).filter((i) => i.issue.includes("rounder than"))).toHaveLength(1);
   });
 
+  test("instances whose overrides cause different defects are each reported", () => {
+    const issues = issuesOf([
+      frame("lib", { layout: "vertical", gap: 8 }, [
+        frame("chip", { reusable: true, layout: "horizontal", gap: 6, alignItems: "center" }, [
+          icon("chipIcon", { width: 16, height: 16 }),
+          text("chipText", "Menunggu", { fontSize: 12, fontWeight: 600 }),
+        ]),
+      ]),
+      frame("screen", { layout: "vertical", gap: 8, y: 200 }, [
+        ref("c1", "chip"),
+        ref("c2", "chip", { descendants: { chipIcon: { width: 14, height: 14 } } }),
+        ref("c3", "chip", { descendants: { chipIcon: { width: 12, height: 12 } } }),
+      ]),
+    ]);
+    expect(
+      polish(issues)
+        .map((i) => i.nodeId)
+        .sort(),
+    ).toEqual(["c2/chipIcon", "c3/chipIcon"]);
+  });
+
   const link = (weight: number, size = 14) =>
     frame("link", { layout: "horizontal", gap: 4 }, [
       text("lbl", "Semua jadwal", { fontSize: 13, fontWeight: weight }),

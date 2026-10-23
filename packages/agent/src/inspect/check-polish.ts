@@ -11,8 +11,9 @@ import {
 import type { Severity } from "./check-layout";
 
 /**
- * A polish finding (the ui-polish skill's rules). `key` names the rule and the source nodes, so
- * the same defect in a component and its instances is reported once.
+ * A polish finding (the ui-polish skill's rules). `key` names the rule, the source nodes and the
+ * measured values, so the same defect in a component and its instances is reported once, while
+ * an instance whose overrides cause a different defect is reported too.
  */
 export type PolishIssue = {
   key: string;
@@ -108,7 +109,7 @@ const cornerIssues = (
     const inset = corner[1];
     const expected = inner + inset + stroke;
     const sum = `child radius + inset${stroke > 0 ? " + stroke" : ""}`;
-    const key = `corner:${source}:${child.source}`;
+    const key = `corner:${source}:${child.source}:${px(outer)}/${px(inner)}/${px(inset)}`;
     if (inner > outer + EDGE) {
       issues.push({
         key,
@@ -147,7 +148,7 @@ const iconIssues = (doc: PegoDocument, layout: Layout, node: PegoNode): PolishIs
     if (weight < BOLD) return;
     const size = item.box.width;
     issues.push({
-      key: `icon:${item.source}`,
+      key: `icon:${item.source}:${px(size)}/${weight}`,
       severity: "warning",
       node: item.node,
       issue: `icon is ${px(size)}px beside weight ${weight} text; its stroke is size / 12 (${px(size / 12)}px), thinner than the text`,
@@ -185,7 +186,7 @@ const rowIssues = (
   if (high - low <= 2) return [];
   return [
     {
-      key: `row:${source}`,
+      key: `row:${source}:${px(low)}/${px(high)}`,
       severity: "warning",
       node,
       issue: `cards in "${label(node)}" end at different heights (${px(low)} to ${px(high)}px)`,
@@ -259,7 +260,7 @@ const paddingIssues = (
   if (!pair) return [];
   return [
     {
-      key: `padding:${source}`,
+      key: `padding:${source}:${top}/${right}/${bottom}/${left}`,
       severity: "warning",
       node,
       issue: `padding is lopsided: ${pair[0]} ${px(pair[1])} vs ${pair[2]} ${px(pair[3])}`,
