@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
-import { ArrowUpIcon, SparklesIcon } from "lucide-react";
+import { ArrowUpIcon, SparklesIcon, WandSparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 import { findNode } from "@pego/doc";
 import { Button } from "@pego/ui/components/button";
@@ -15,6 +15,8 @@ import { useDocumentStore } from "@/store/use-document-store";
 import { useSelectionPrompt } from "@/store/use-selection-prompt-store";
 import { useTextEditStore } from "@/store/use-text-edit-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { CodePreviewDialog } from "@/export/CodePreviewDialog";
+import { MAGIC_ACTIONS, magicDisplay, magicPrompt, type MagicAction } from "./pego-magic";
 import {
   BUTTON_SIZE,
   PROMPT_HEIGHT,
@@ -88,17 +90,20 @@ const useCanvasBusy = (): boolean => {
   return pressed || moving;
 };
 
-/** Send the pinned prompt to the visible chat, or to a fresh background one, and say where it went. */
-const sendFrom = (targets: PromptTarget[], text: string, mode: ChatMode) => {
+/**
+ * Send the pinned prompt to the visible chat, or to a fresh background one, and say where it went.
+ * `display` is what the chat shows (the typed text, or a Pego Magic title).
+ */
+const sendFrom = (targets: PromptTarget[], text: string, mode: ChatMode, display = text) => {
   const prompt = buildTargetPrompt(targets, text);
-  // The agent gets the pinned targets; the transcript and chat title show only what was typed.
-  const options = { displayText: text };
+  // The agent gets the pinned targets; the transcript and chat title show only the display text.
+  const options = { displayText: display };
   if (mode === "new") {
     const id = createSessionInBackground();
     const result = submitPrompt(id, prompt, options);
     if (result === "refused") return toast.error("Couldn't send the prompt");
     return toast(result === "queued" ? "Queued in a new chat" : "Started in a new chat", {
-      description: text.slice(0, 80),
+      description: display.slice(0, 80),
     });
   }
   const id = useAgentStore.getState().visibleSessionId;
@@ -114,10 +119,38 @@ type PromptBoxProps = {
   top: number;
   targets: PromptTarget[];
   onClose: () => void;
+  /** Pego Magic › Export HTML for the selection. */
+  onExportHtml: () => void;
   boxRef: RefObject<HTMLDivElement | null>;
 };
 
-const PromptBox = ({ left, top, targets, onClose, boxRef }: PromptBoxProps) => {
+/**
+ * Pego Magic: one click on an idea runs it on the selection (a new copy beside it), or opens the
+ * HTML export. Uses the box's This chat / New chat choice.
+ */
+const MagicActions = ({ onPick }: { onPick: (action: MagicAction) => void }) => (
+  <div className="grid gap-1.5">
+    <div className="flex items-center gap-1.5 px-0.5 text-[11px] font-medium text-foreground">
+      <WandSparklesIcon aria-hidden className="size-3.5 text-violet" />
+      Pego Magic
+    </div>
+    <div role="group" aria-label="Pego Magic" className="flex flex-wrap gap-1">
+      {MAGIC_ACTIONS.map((action) => (
+        <Tooltip key={action.id} content={action.hint} side="bottom">
+          <button
+            type="button"
+            onClick={() => onPick(action)}
+            className="h-6 rounded-full bg-violet/15 px-2.5 text-[11px] font-medium text-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-violet/30 focus-visible:ring-2 focus-visible:ring-ring/50"
+          >
+            {action.label}
+          </button>
+        </Tooltip>
+      ))}
+    </div>
+  </div>
+);
+
+const PromptBox = ({ left, top, targets, onClose, onExportHtml, boxRef }: PromptBoxProps) => {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<ChatMode>("this");
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -130,6 +163,12 @@ const PromptBox = ({ left, top, targets, onClose, boxRef }: PromptBoxProps) => {
   const submit = () => {
     if (!canSend) return;
     void sendFrom(targets, text.trim(), mode);
+    onClose();
+  };
+
+  const runMagic = (action: MagicAction) => {
+    if (action.id === "export-html") return onExportHtml();
+    void sendFrom(targets, magicPrompt(action.id), mode, magicDisplay(action));
     onClose();
   };
 
@@ -152,6 +191,7 @@ const PromptBox = ({ left, top, targets, onClose, boxRef }: PromptBoxProps) => {
       <p className="truncate px-0.5 text-[11px] text-muted-foreground">
         {summarizeTargets(targets.map((t) => t.name))}
       </p>
+      <MagicActions onPick={runMagic} />
       <Textarea
         ref={inputRef}
         value={text}
@@ -194,6 +234,30 @@ export const SelectionPrompt = ({
   canvasRef,
 }: {
   canvasRef: RefObject<HTMLCanvasElement | null>;
+}) => {
+  // Pego Magic › Export HTML: the chosen layer's code preview, kept open after the box closes.
+  const [exportId, setExportId] = useState<string | null>(null);
+  return (
+    <>
+      <SelectionPromptOverlay canvasRef={canvasRef} onExportHtml={setExportId} />
+      {exportId && (
+        <CodePreviewDialog
+          open
+          onOpenChange={(next) => !next && setExportId(null)}
+          nodeId={exportId}
+          format="html-css"
+        />
+      )}
+    </>
+  );
+};
+
+const SelectionPromptOverlay = ({
+  canvasRef,
+  onExportHtml,
+}: {
+  canvasRef: RefObject<HTMLCanvasElement | null>;
+  onExportHtml: (nodeId: string) => void;
 }) => {
   const doc = useDocumentStore((s) => s.doc);
   const selection = useDocumentStore((s) => s.selection);
@@ -255,6 +319,10 @@ export const SelectionPrompt = ({
           top={pos.y}
           targets={targetsOf(selection)}
           onClose={close}
+          onExportHtml={() => {
+            if (selection[0]) onExportHtml(selection[0]);
+            setOpen(false);
+          }}
           boxRef={boxRef}
         />
       </div>
@@ -268,11 +336,11 @@ export const SelectionPrompt = ({
         className={`pointer-events-auto absolute p-0.5 ${FLOAT_SURFACE}`}
         style={{ left: buttonPos.x - 2, top: buttonPos.y - 2 }}
       >
-        <Tooltip content="Ask Pego about this" shortcut={SHORTCUT} side="top">
+        <Tooltip content="Pego Magic: ask, or pick an idea" shortcut={SHORTCUT} side="top">
           <Button
             variant="ghost"
             size="icon-sm"
-            aria-label="Ask Pego about this"
+            aria-label="Pego Magic"
             onClick={() => setOpen(true)}
           >
             <SparklesIcon />
