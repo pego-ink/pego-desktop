@@ -28,6 +28,8 @@ export type OpenAiRunContext = {
   skillId?: string | null;
   /** Explicit style for this run: undefined = auto-detect, null = none. */
   styleId?: string | null;
+  /** What skill auto-detection reads (the user's own words); defaults to the prompt. */
+  skillText?: string;
   /** Images the user attached; sent as `image_url` parts in the planner and first step turns. */
   attachments?: readonly RunAttachment[];
   /** Earlier turns of the session (see sessions/session-context), sent in front of the prompt. */
@@ -565,7 +567,7 @@ export const runOpenAiCompatibleAgent = async (
 ): Promise<void> => {
   const run = ctx.host.run;
   try {
-    const skills = resolveRunSkills(prompt, ctx.skillId, ctx.styleId);
+    const skills = resolveRunSkills(ctx.skillText ?? prompt, ctx.skillId, ctx.styleId);
     const state: RunState = { ctx, images: true, skillsText: skillsBlock(skills) };
     for (const text of skillLogLines(skills)) run.appendLog({ kind: "info", text });
     run.appendLog({

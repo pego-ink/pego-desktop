@@ -2,7 +2,12 @@
 import { describe, expect, test } from "bun:test";
 import { isContainer, sampleDoc, type PegoDocument, type PegoNode } from "@pego/doc";
 import { skills } from "@pego/agent";
-import { foldForSearch, mentionSuggestions, type MentionSources } from "./mention-sources";
+import {
+  foldForSearch,
+  mentionSuggestions,
+  slashSuggestions,
+  type MentionSources,
+} from "./mention-sources";
 
 /** Every node of the tree, with `edit` applied (containers keep their edited children). */
 const mapNodes = (nodes: readonly PegoNode[], edit: (node: PegoNode) => PegoNode): PegoNode[] =>
@@ -33,7 +38,6 @@ const sources = (patch: Partial<MentionSources> = {}): MentionSources => ({
   doc,
   pageId: "page-1",
   selection: [],
-  skills,
   attachments: [{ id: "att-1", name: "Café photo.png" }],
   ...patch,
 });
@@ -79,30 +83,32 @@ describe("mention suggestions", () => {
     });
   });
 
-  test("skills and styles come from the skill registry, split by kind", () => {
-    const items = mentionSuggestions("bauhaus", sources());
+  test("/ lists skills and styles from the skill registry, split by kind", () => {
+    const items = slashSuggestions("bauhaus", skills);
     expect(items.map((item) => [item.section, item.ref])).toEqual([
       ["Styles", { kind: "style", id: "bauhaus" }],
     ]);
-    const landing = mentionSuggestions("landing", sources());
+    const landing = slashSuggestions("landing", skills);
     expect(landing.find((item) => item.section === "Skills")?.ref).toEqual({
       kind: "skill",
       id: "landing-page",
     });
+    expect(slashSuggestions("", skills).every((item) => item.ref.kind !== "layer")).toBe(true);
   });
 
   test("an empty query lists every section with a cap per section", () => {
     const items = mentionSuggestions("", sources({ selection: ["text-1"] }));
     const sections = [...new Set(items.map((item) => item.section))];
-    expect(sections).toEqual([
-      "Selection",
-      "Layers",
-      "Components",
-      "Skills",
-      "Styles",
-      "Attachments",
-    ]);
-    expect(items.filter((item) => item.section === "Styles").length).toBeLessThanOrEqual(6);
+    expect(sections).toEqual(["Selection", "Layers", "Components", "Attachments"]);
+    expect(items.filter((item) => item.section === "Layers").length).toBeLessThanOrEqual(8);
     expect(new Set(items.map((item) => item.key)).size).toBe(items.length);
+  });
+
+  test("the element picked in the browser is offered after the selection", () => {
+    const browser = { selector: "#cta", label: "button.cta · Go" };
+    const items = mentionSuggestions("", sources({ selection: ["text-1"], browser }));
+    expect(items.slice(0, 2).map((item) => item.section)).toEqual(["Selection", "Browser"]);
+    expect(items[1]?.ref).toEqual({ kind: "browser", ...browser });
+    expect(mentionSuggestions("cta", sources({ browser }))[0]?.section).toBe("Browser");
   });
 });

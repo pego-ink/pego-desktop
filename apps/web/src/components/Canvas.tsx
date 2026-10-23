@@ -17,6 +17,7 @@ import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { useImagePaste } from "@/interaction/use-image-paste";
+import { useLayerCopy } from "@/interaction/layer-clipboard";
 import { AgentCursors } from "@/components/AgentCursor";
 import { dropFiles } from "@/interaction/drop-files";
 import { TextEditorOverlay } from "@/components/TextEditorOverlay";
@@ -67,6 +68,7 @@ export const Canvas = () => {
 
   useCanvasPointer(canvasRef);
   useImagePaste();
+  useLayerCopy();
   useEditorShortcuts();
 
   // Cursor follows interaction state without re-rendering React. The active tool's own cursor

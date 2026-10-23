@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { findNode, type PegoDocument, type PegoNode } from "@pego/doc";
+import { findNode, type PegoDocument, type PegoNode, type PegoNodeType } from "@pego/doc";
 import { findSkill } from "./skills/index";
 
 /**
@@ -20,6 +20,12 @@ export const mentionRefSchema = z.discriminatedUnion("kind", [
   z.object({ kind: z.literal("style"), id }),
   /** An image attached to the prompt ("att-1"). */
   z.object({ kind: z.literal("attachment"), id }),
+  /** An element picked in the in-app browser: a selector that matches only it, and its label. */
+  z.object({
+    kind: z.literal("browser"),
+    selector: z.string().min(1).max(1000),
+    label: z.string().min(1).max(200),
+  }),
 ]);
 
 export type MentionRef = z.infer<typeof mentionRefSchema>;
@@ -41,8 +47,10 @@ const TOKEN_PATTERN = new RegExp(`${TOKEN_OPEN}(\\d+)${TOKEN_CLOSE}`, "g");
 export const mentionToken = (index: number): string => `${TOKEN_OPEN}${index}${TOKEN_CLOSE}`;
 
 /** Same mention, written twice: a layer chip is the same when it names the same ids. */
-export const mentionKey = (ref: MentionRef): string =>
-  ref.kind === "layer" ? `layer:${[...ref.ids].sort().join(",")}` : `${ref.kind}:${ref.id}`;
+export const mentionKey = (ref: MentionRef): string => {
+  if (ref.kind === "layer") return `layer:${[...ref.ids].sort().join(",")}`;
+  return ref.kind === "browser" ? `browser:${ref.selector}` : `${ref.kind}:${ref.id}`;
+};
 
 /** What the agent needs to resolve mentions that live outside the document. */
 export type MentionScope = {
@@ -61,7 +69,8 @@ const skillOf = (skillId: string, category: "design" | "style") => {
 /**
  * The mentions that still point at something, deduplicated: layers keep the ids that exist,
  * components must be reusable nodes, skills and styles must be known (of the right kind), and
- * attachments must be attached to this prompt. Anything else is dropped.
+ * attachments must be attached to this prompt. Anything else is dropped. Browser elements are
+ * kept: the page lives in the browser, not in the document.
  */
 export const resolveMentions = (
   doc: PegoDocument,
@@ -78,6 +87,7 @@ export const resolveMentions = (
     if (ref.kind === "component") return isComponent(findNode(doc, ref.id)) ? ref : null;
     if (ref.kind === "skill") return skillOf(ref.id, "design") ? ref : null;
     if (ref.kind === "style") return skillOf(ref.id, "style") ? ref : null;
+    if (ref.kind === "browser") return ref;
     return scope.attachments?.some((item) => item.id === ref.id) ? ref : null;
   };
   for (const ref of mentions) {
@@ -102,8 +112,7 @@ export const mentionTitle = (
   if (ref.kind === "layer") {
     const nodes = ref.ids.flatMap((nodeId) => findNode(doc, nodeId) ?? []);
     if (nodes.length === 0) return null;
-    const first = nodeName(nodes[0]!);
-    return nodes.length === 1 ? first : `${first} +${nodes.length - 1}`;
+    return nodes.length === 1 ? nodeName(nodes[0]!) : `${nodes.length} layers`;
   }
   if (ref.kind === "component") {
     const node = findNode(doc, ref.id);
@@ -112,6 +121,7 @@ export const mentionTitle = (
   if (ref.kind === "skill" || ref.kind === "style") {
     return skillOf(ref.id, ref.kind === "skill" ? "design" : "style")?.title ?? null;
   }
+  if (ref.kind === "browser") return ref.label;
   return scope.attachments?.find((item) => item.id === ref.id)?.name ?? null;
 };
 
@@ -134,6 +144,7 @@ export const mentionInlineLabel = (
     if (nodes.length > 3) ids.push("...");
     return `${names.join(", ")} [${nodes.length === 1 ? "layer" : "layers"} ${ids.join(", ")}]`;
   }
+  if (ref.kind === "browser") return `"${ref.label}" [browser element \`${ref.selector}\`]`;
   const title = mentionTitle(doc, ref, scope);
   return title === null ? null : `"${title}" [${ref.kind} ${ref.id}]`;
 };
@@ -164,6 +175,8 @@ export const mentionContext = (
       : [],
   );
 
+  const elements = resolved.flatMap((ref) => (ref.kind === "browser" ? [ref] : []));
+
   const blocks: string[] = [];
   if (layers.length > 0) {
     const lines = layers
@@ -193,6 +206,14 @@ export const mentionContext = (
       ].join("\n"),
     );
   }
+  if (elements.length > 0) {
+    blocks.push(
+      [
+        'Elements of the page in the in-app browser the request refers to (browser tool: target "query" with the selector as querySelector):',
+        ...elements.map((ref) => `- \`${ref.selector}\`: "${ref.label}"`),
+      ].join("\n"),
+    );
+  }
   return blocks.join("\n\n");
 };
 
@@ -219,7 +240,21 @@ export const promptTextForAgent = (
 
 /** One piece of a prompt as shown in the activity log: text, or a chip. */
 export type PromptPart =
-  { kind: "text"; text: string } | { kind: "mention"; mention: MentionKind; label: string };
+  | { kind: "text"; text: string }
+  | {
+      kind: "mention";
+      mention: MentionKind;
+      label: string;
+      /** Type of the one layer or component the chip names (its icon); absent for several. */
+      nodeType?: PegoNodeType;
+    };
+
+/** The node type a chip shows as its icon: a single layer's, or a component's. */
+export const mentionNodeType = (doc: PegoDocument, ref: MentionRef): PegoNodeType | undefined => {
+  if (ref.kind === "component") return findNode(doc, ref.id)?.type;
+  if (ref.kind !== "layer" || ref.ids.length !== 1) return undefined;
+  return findNode(doc, ref.ids[0]!)?.type;
+};
 
 /** The prompt split into text and chips for display (labels read from the document now). */
 export const promptParts = (
@@ -234,7 +269,10 @@ export const promptParts = (
     if (start > last) parts.push({ kind: "text", text: prompt.text.slice(last, start) });
     const ref = prompt.mentions[Number(match[1])];
     const label = ref ? mentionTitle(doc, ref, scope) : null;
-    if (ref && label !== null) parts.push({ kind: "mention", mention: ref.kind, label });
+    if (ref && label !== null) {
+      const nodeType = mentionNodeType(doc, ref);
+      parts.push({ kind: "mention", mention: ref.kind, label, ...(nodeType ? { nodeType } : {}) });
+    }
     last = start + match[0].length;
   }
   if (last < prompt.text.length) parts.push({ kind: "text", text: prompt.text.slice(last) });

@@ -18,7 +18,6 @@ import {
   formatUsage,
   isRunActive,
   runStatusLabel,
-  selectionHint,
   stepIconKind,
 } from "./agent-format";
 
@@ -63,12 +62,6 @@ describe("agent-format", () => {
     expect(runStatusLabel("running", steps)).toBe("Working on step 2 of 3");
     expect(runStatusLabel("running", [])).toBe("Working…");
     expect(currentStepNumber([step("a", "done")])).toBe(1);
-  });
-
-  test("selectionHint", () => {
-    expect(selectionHint(0)).toBeNull();
-    expect(selectionHint(1)).toBe("1 layer selected");
-    expect(selectionHint(3)).toBe("3 layers selected");
   });
 
   const codex: LocalAgentInfo = {

@@ -14,7 +14,12 @@ describe("buildRunPrompt", () => {
     expect(run.context).toContain('- frame-1: "Frame" (frame)');
     expect(run.agentText).toBe(`${run.context}\n\nRequest: ${run.requestText}`);
     expect(run.displayText).toBe("make @Frame dark");
-    expect(run.parts[1]).toEqual({ kind: "mention", mention: "layer", label: "Frame" });
+    expect(run.parts[1]).toEqual({
+      kind: "mention",
+      mention: "layer",
+      label: "Frame",
+      nodeType: "frame",
+    });
   });
 
   test("a layer mentioned twice is listed once", () => {
@@ -52,5 +57,19 @@ describe("buildRunPrompt", () => {
       'in "Bauhaus" [style bauhaus] as "Landing page" [skill landing-page]',
     );
     expect(run).toMatchObject({ skillId: "landing-page", styleId: "bauhaus" });
+  });
+
+  test("the app state goes first in the context block", () => {
+    const run = buildRunPrompt(
+      sampleDoc,
+      { text: `fix ${mentionToken(0)}`, mentions: [{ kind: "layer", ids: ["rect-1"] }] },
+      {},
+      "Editor state …",
+    );
+    expect(run.context).toStartWith("Editor state …\n\nThe request is about this layer");
+    expect(run.agentText).toEndWith('Request: fix "Card" [layer rect-1]');
+    expect(buildRunPrompt(sampleDoc, { text: "hi", mentions: [] }, {}, "State").agentText).toBe(
+      "State\n\nRequest: hi",
+    );
   });
 });

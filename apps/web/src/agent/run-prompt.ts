@@ -16,7 +16,7 @@ import type { PegoDocument } from "@pego/doc";
 export type RunPrompt = {
   /** The request in the user's words, mentions as readable labels with ids. */
   requestText: string;
-  /** The context block: the layers, components and attachments the request is about. */
+  /** The context block: the app state, then the layers, components and images mentioned. */
   context: string;
   /** What the model receives: the context block, then `Request: <requestText>`. */
   agentText: string;
@@ -32,13 +32,17 @@ export type RunPrompt = {
 /**
  * Turn a prompt with mentions into the texts a run uses: `agentText` goes to `submitPrompt`, the
  * rest to the bubble and the run's skills. Mentions whose targets are gone are dropped first.
+ * `appState` (see app-state.ts) goes first in the context block.
  */
 export const buildRunPrompt = (
   doc: PegoDocument,
   prompt: PromptWithMentions,
   scope: MentionScope = {},
+  appState = "",
 ): RunPrompt => {
-  const context = mentionContext(doc, prompt.mentions, scope);
+  const context = [appState, mentionContext(doc, prompt.mentions, scope)]
+    .filter(Boolean)
+    .join("\n\n");
   const requestText = promptTextForAgent(doc, prompt, scope);
   const parts = promptParts(doc, prompt, scope);
   return {

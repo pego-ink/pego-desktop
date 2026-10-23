@@ -1,9 +1,15 @@
-import { isContainer, pageOrFirst, type PegoDocument, type PegoNode } from "@pego/doc";
+import {
+  isContainer,
+  pageOrFirst,
+  type PegoDocument,
+  type PegoNode,
+  type PegoNodeType,
+} from "@pego/doc";
 import type { MentionRef, Skill } from "@pego/agent";
 import { pickableSkills, pickableStyles } from "@/panels/agent/skill-chip";
 
 export type MentionSection =
-  "Selection" | "Layers" | "Components" | "Skills" | "Styles" | "Attachments";
+  "Selection" | "Browser" | "Layers" | "Components" | "Skills" | "Styles" | "Attachments";
 
 /** One row of the @ popover. */
 export type MentionItem = {
@@ -15,6 +21,8 @@ export type MentionItem = {
   title: string;
   /** Muted detail on the row (layer type, skill description). */
   detail?: string;
+  /** A layer row's type, for its icon. */
+  nodeType?: PegoNodeType;
 };
 
 export type MentionSources = {
@@ -22,17 +30,19 @@ export type MentionSources = {
   /** The page on the canvas: its layers are offered (components come from every page). */
   pageId: string | null;
   selection: readonly string[];
-  skills: readonly Skill[];
   attachments: readonly { id: string; name: string }[];
+  /** The element picked in the in-app browser, if any. */
+  browser?: { selector: string; label: string } | null;
 };
 
 /** Rows per section, so a big document does not drown the skills. */
 const LIMITS: Record<MentionSection, number> = {
   Selection: 1,
+  Browser: 1,
   Layers: 8,
   Components: 6,
-  Skills: 5,
-  Styles: 6,
+  Skills: 8,
+  Styles: 10,
   Attachments: 6,
 };
 
@@ -58,8 +68,8 @@ const walk = (nodes: readonly PegoNode[], out: PegoNode[] = []): PegoNode[] => {
 
 /**
  * What the @ popover offers for `query`, section by section: the current selection (as one
- * chip), layers of the shown page, components of the document, design skills, styles and
- * attached images.
+ * chip), the element picked in the browser, layers of the shown page, components of the document and attached images. Skills and
+ * styles are the "/" popover's (`slashSuggestions`).
  */
 export const mentionSuggestions = (query: string, sources: MentionSources): MentionItem[] => {
   const needle = foldForSearch(query);
@@ -80,6 +90,19 @@ export const mentionSuggestions = (query: string, sources: MentionSources): Ment
     ]);
   }
 
+  const picked = sources.browser;
+  if (picked && matches(needle, "browser element", picked.label)) {
+    push("Browser", [
+      {
+        key: `browser:${picked.selector}`,
+        section: "Browser",
+        ref: { kind: "browser", selector: picked.selector, label: picked.label },
+        title: picked.label,
+        detail: "Picked in the browser",
+      },
+    ]);
+  }
+
   push(
     "Layers",
     walk(pageOrFirst(sources.doc, sources.pageId).children)
@@ -90,6 +113,7 @@ export const mentionSuggestions = (query: string, sources: MentionSources): Ment
         ref: { kind: "layer" as const, ids: [node.id] },
         title: node.name ?? node.type,
         detail: node.type,
+        nodeType: node.type,
       })),
   );
   push(
@@ -104,18 +128,6 @@ export const mentionSuggestions = (query: string, sources: MentionSources): Ment
         detail: "component",
       })),
   );
-  const skillItems = (list: readonly Skill[], kind: "skill" | "style"): MentionItem[] =>
-    list
-      .filter((skill) => matches(needle, skill.title, skill.id.replace(/-/g, " ")))
-      .map((skill) => ({
-        key: `${kind}:${skill.id}`,
-        section: kind === "skill" ? "Skills" : "Styles",
-        ref: { kind, id: skill.id },
-        title: skill.title,
-        detail: skill.description,
-      }));
-  push("Skills", skillItems(pickableSkills(sources.skills), "skill"));
-  push("Styles", skillItems(pickableStyles(sources.skills), "style"));
   push(
     "Attachments",
     sources.attachments
@@ -128,5 +140,26 @@ export const mentionSuggestions = (query: string, sources: MentionSources): Ment
         detail: "image",
       })),
   );
+  return items;
+};
+
+/** What the "/" popover offers for `query`: design skills, then styles. */
+export const slashSuggestions = (query: string, skills: readonly Skill[]): MentionItem[] => {
+  const needle = foldForSearch(query);
+  const items: MentionItem[] = [];
+  const push = (section: MentionSection, list: MentionItem[]) =>
+    items.push(...list.slice(0, LIMITS[section]));
+  const skillItems = (list: readonly Skill[], kind: "skill" | "style"): MentionItem[] =>
+    list
+      .filter((skill) => matches(needle, skill.title, skill.id.replace(/-/g, " ")))
+      .map((skill) => ({
+        key: `${kind}:${skill.id}`,
+        section: kind === "skill" ? "Skills" : "Styles",
+        ref: { kind, id: skill.id },
+        title: skill.title,
+        detail: skill.description,
+      }));
+  push("Skills", skillItems(pickableSkills(skills), "skill"));
+  push("Styles", skillItems(pickableStyles(skills), "style"));
   return items;
 };

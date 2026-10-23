@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import type { DesktopBrowserState } from "@/desktop/desktop-api";
 import { parseDeviceChoice, RESPONSIVE_CHOICE, type DeviceChoice } from "@/browser/device-presets";
+import type { PickedElement } from "./picked-element";
 
 const DEVICE_KEY = "pego:browser-device";
 
@@ -41,10 +42,13 @@ type BrowserStore = {
   hasPicked: boolean;
   /** Device preview (responsive = no emulation); remembered across reloads. */
   device: DeviceChoice;
+  /** What the picker reported for the picked element (the composer's live chip shows it). */
+  picked: PickedElement | null;
   setState: (state: DesktopBrowserState) => void;
   setDevice: (device: DeviceChoice) => void;
   setPicking: (picking: boolean) => void;
   setHasPicked: (hasPicked: boolean) => void;
+  setPicked: (picked: PickedElement | null) => void;
 };
 
 export const useBrowserStore = create<BrowserStore>((set) => ({
@@ -52,11 +56,14 @@ export const useBrowserStore = create<BrowserStore>((set) => ({
   picking: false,
   hasPicked: false,
   device: readDevice(),
+  picked: null,
   setState: (state) => set({ state }),
   setDevice: (device) => {
     writeDevice(device);
     set({ device });
   },
   setPicking: (picking) => set({ picking }),
-  setHasPicked: (hasPicked) => set({ hasPicked }),
+  // Losing the picked element (navigation) forgets what it was.
+  setHasPicked: (hasPicked) => set(hasPicked ? { hasPicked } : { hasPicked, picked: null }),
+  setPicked: (picked) => set({ picked, hasPicked: picked !== null }),
 }));

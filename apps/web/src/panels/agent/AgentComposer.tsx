@@ -1,11 +1,14 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpIcon, PaperclipIcon, PlusIcon, SquareIcon } from "lucide-react";
-import { EditorContent, useEditor } from "@tiptap/react";
+import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
+import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
-import { mentionTitle, skills, type MentionRef } from "@pego/agent";
+import { appStateContext, mentionTitle, skills, type MentionRef } from "@pego/agent";
 import { cn } from "@pego/ui/lib/utils";
 import { submitPrompt, steerNow } from "@/agent/queue";
+import { collectAppState } from "@/agent/app-state";
+import type { PickedElement } from "@/browser/picked-element";
+import { useBrowserStore } from "@/browser/use-browser-store";
 import { buildRunPrompt } from "@/agent/run-prompt";
 import { cancelRun } from "@/agent/run";
 import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
@@ -16,18 +19,21 @@ import { AttachmentStrip } from "@/panels/agent/attachments/AttachmentStrip";
 import { addAttachmentFiles } from "@/panels/agent/attachments/add-files";
 import { ATTACH_ACCEPT, pastedImageFiles } from "@/panels/agent/attachments/attachment-utils";
 import { useAttachmentDrop } from "@/panels/agent/attachments/use-attachment-drop";
-import { isRunActive, selectionHint } from "@/panels/agent/agent-format";
+import { isRunActive } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 import { composerToPrompt, textToComposer } from "@/panels/agent/mentions/composer-doc";
+import { LAYERS_MIME, readLayerClipboard } from "@/interaction/layer-clipboard";
+import { liveChipTransaction } from "@/panels/agent/mentions/live-chips";
 import {
   chipContent,
   createMentionExtension,
   createSubmitExtension,
   type MentionMenuHooks,
   type MentionMenuState,
+  type MentionTrigger,
 } from "@/panels/agent/mentions/mention-extension";
 import { MentionMenu } from "@/panels/agent/mentions/MentionMenu";
-import { mentionSuggestions } from "@/panels/agent/mentions/mention-sources";
+import { mentionSuggestions, slashSuggestions } from "@/panels/agent/mentions/mention-sources";
 
 const ACTION_BUTTON =
   "flex size-7 items-center justify-center rounded-full bg-foreground text-background outline-none transition-[background-color,opacity,scale] duration-120 ease-out focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]";
@@ -39,8 +45,8 @@ type AgentComposerProps = {
 
 type EditorHooks = MentionMenuHooks & { menuOpen: boolean; submit: (steer: boolean) => void };
 
-const IDLE_PLACEHOLDER = "Describe what to design… (@ to mention)";
-const BUSY_PLACEHOLDER = "Queue a message… (@ to mention)";
+const IDLE_PLACEHOLDER = "Describe what to design… (@ to mention, / for skills)";
+const BUSY_PLACEHOLDER = "Queue a message… (@ to mention, / for skills)";
 
 /**
  * What the editor's extensions call into. They are created once with the editor, so the
@@ -61,16 +67,21 @@ class ComposerLink {
   }
 }
 
-/** Suggestions for the @ menu from the live stores (read when the user types). */
-const suggestionsFor = (query: string) => {
+/** The part of a picked element a browser mention keeps. */
+const pick = ({ selector, label }: PickedElement) => ({ selector, label });
+
+/** Suggestions for the @ and / menus from the live stores (read when the user types). */
+const suggestionsFor = (query: string, trigger: MentionTrigger) => {
+  if (trigger === "/") return slashSuggestions(query, skills);
   const { doc, pageId, selection } = useDocumentStore.getState();
   const { pendingAttachments } = useAgentStore.getState();
+  const { picked } = useBrowserStore.getState();
   return mentionSuggestions(query, {
     doc,
     pageId,
     selection,
-    skills,
     attachments: pendingAttachments,
+    browser: picked ? pick(picked) : null,
   });
 };
 
@@ -78,8 +89,6 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const active = useVisibleRun((s) => isRunActive(s.status));
   const runId = useVisibleRun((s) => s.runId);
   const sessionId = useAgentStore((s) => s.visibleSessionId);
-  const selection = useDocumentStore((s) => s.selection);
-  const hint = selectionHint(selection.length);
 
   const attachments = useAgentStore((s) => s.pendingAttachments);
   const removeAttachment = useAgentStore((s) => s.removeAttachment);
@@ -93,6 +102,10 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const [plain, setPlain] = useState("");
 
   const [link] = useState(() => new ComposerLink());
+  /** The user has been in the box: chips go at its caret instead of the end. */
+  const caretKnown = useRef(false);
+  const caretOf = (current: Editor) =>
+    caretKnown.current ? current.state.selection.to : undefined;
 
   const editor = useEditor({
     extensions: [
@@ -129,9 +142,21 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         class:
           "tiptap max-h-40 min-h-12 overflow-y-auto px-1 text-xs leading-5 text-foreground outline-none",
       },
-      handlePaste: (_view, event) => {
+      handlePaste: (view, event) => {
         const data = event.clipboardData;
         if (!data) return false;
+        // Layers copied on the canvas become one chip.
+        const { doc } = useDocumentStore.getState();
+        const ids = readLayerClipboard(data.getData(LAYERS_MIME), doc);
+        if (ids) {
+          event.preventDefault();
+          const ref: MentionRef = { kind: "layer", ids };
+          const chip = view.state.schema.nodeFromJSON(
+            chipContent(ref, mentionTitle(doc, ref) ?? "Layers"),
+          );
+          view.dispatch(view.state.tr.replaceSelectionWith(chip, false).insertText(" "));
+          return true;
+        }
         const images = pastedImageFiles(Array.from(data.files), Array.from(data.types));
         if (images.length === 0) return false; // plain text paste stays the editor's
         event.preventDefault();
@@ -155,9 +180,12 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     if (!prompt.text.trim()) return;
     // The images travel with the message; the composer starts empty again.
     const images = useAgentStore.getState().pendingAttachments;
-    const run = buildRunPrompt(useDocumentStore.getState().doc, prompt, {
-      attachments: images.map(({ id, name }) => ({ id, name })),
-    });
+    const run = buildRunPrompt(
+      useDocumentStore.getState().doc,
+      prompt,
+      { attachments: images.map(({ id, name }) => ({ id, name })) },
+      appStateContext(collectAppState()),
+    );
     if (!run.agentText) return;
     const display = {
       displayText: run.displayText,
@@ -227,16 +255,56 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     editor.commands.focus("end");
   }, [editor, seed]);
 
-  const addSelection = () => {
-    if (!editor || selection.length === 0) return;
-    const ref: MentionRef = { kind: "layer", ids: [...selection] };
-    const label = mentionTitle(useDocumentStore.getState().doc, ref) ?? "Selection";
-    editor
-      .chain()
-      .focus()
-      .insertContent([chipContent(ref, label), { type: "text", text: " " }])
-      .run();
-  };
+  // What is selected on the canvas (or picked in the browser) becomes a chip where the user is
+  // writing: another click swaps it, text typed after it keeps it and the next click adds one.
+  // Until the box was focused once, chips go at the end.
+  useEffect(() => {
+    if (!editor) return;
+    const markCaret = () => {
+      caretKnown.current = true;
+    };
+    editor.on("focus", markCaret);
+    return () => {
+      editor.off("focus", markCaret);
+    };
+  }, [editor]);
+
+  useEffect(() => {
+    if (!editor) return;
+    const sync = (selection: readonly string[]) => {
+      if (editor.isDestroyed) return;
+      const ref: MentionRef = { kind: "layer", ids: [...selection] };
+      const label = mentionTitle(useDocumentStore.getState().doc, ref);
+      const tr = liveChipTransaction(
+        editor.state,
+        "selection",
+        selection.length > 0 && label !== null ? [{ ref, label }] : [],
+        caretOf(editor),
+      );
+      if (tr) editor.view.dispatch(tr);
+    };
+    sync(useDocumentStore.getState().selection);
+    return useDocumentStore.subscribe((state, prev) => {
+      if (state.selection !== prev.selection) sync(state.selection);
+    });
+  }, [editor]);
+
+  // The same for the element picked in the in-app browser.
+  useEffect(() => {
+    if (!editor) return;
+    const sync = (picked: PickedElement | null) => {
+      if (editor.isDestroyed) return;
+      const chips = picked
+        ? [{ ref: { kind: "browser" as const, ...pick(picked) }, label: picked.label }]
+        : [];
+      const tr = liveChipTransaction(editor.state, "browser", chips, caretOf(editor));
+      if (tr) editor.view.dispatch(tr);
+    };
+    sync(useBrowserStore.getState().picked);
+    return useBrowserStore.subscribe((state, prev) => {
+      if (state.picked !== prev.picked) sync(state.picked);
+    });
+  }, [editor]);
 
   const canSend = plain.trim().length > 0;
 
@@ -293,22 +361,9 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         </button>
         <AgentSelector restoreFocusRef={focusRef} />
         <SkillChip prompt={plain} restoreFocusRef={focusRef} />
-        {hint ? (
-          <button
-            type="button"
-            title={`Add the ${hint.replace(" selected", "")} to the prompt as a mention`}
-            aria-label={`Add ${hint.replace(" selected", "")} to the prompt`}
-            onClick={addSelection}
-            className="flex min-w-0 flex-1 items-center gap-1 truncate rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <PlusIcon aria-hidden className="size-3 shrink-0" />
-            <span className="truncate">{hint.replace(" selected", "")}</span>
-          </button>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
-            {hint ?? "Enter to send · @ to mention"}
-          </span>
-        )}
+        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+          {active ? "Enter to queue · ⌘Enter to send now" : "Enter to send · @ mention · / skill"}
+        </span>
         <div className="flex shrink-0 items-center gap-1">
           {active ? (
             <button

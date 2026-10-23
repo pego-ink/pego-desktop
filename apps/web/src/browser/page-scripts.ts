@@ -1,4 +1,5 @@
 import type { BrowserTarget } from "@pego/agent";
+import { ELEMENT_PATH_SOURCE } from "./picked-element";
 
 /**
  * Code that runs INSIDE the browsed page, as plain JavaScript strings (never `fn.toString()`:
@@ -591,7 +592,9 @@ return JSON.stringify({ok:out.join("\n")});
 export const describeScript = (target: BrowserTarget): string =>
   wrap(COMMON + "var TARGET=" + targetJson(target) + ";" + DESCRIBE_BODY);
 
-const PICKER_BODY = String.raw`
+const PICKER_BODY =
+  `var pegoPath=${ELEMENT_PATH_SOURCE};\n` +
+  String.raw`
 var KEY="__pegoPickerStop";
 if(typeof window[KEY]==="function")window[KEY]();
 var root=document.documentElement,prevCursor=root.style.cursor;
@@ -625,8 +628,10 @@ function onClick(e){
   if(prev&&prev!==t)prev.removeAttribute("data-pego-picked");
   t.setAttribute("data-pego-picked","");
   var text=(t.textContent||"").replace(/\s+/g," ").trim().slice(0,40);
+  var selector=pegoPath(t,CSS.escape,function(s){try{return document.querySelectorAll(s).length===1}catch(e){return false}});
+  var cls=typeof t.className==="string"?t.className.trim().split(/\s+/)[0]||"":"";
   stop();
-  send({type:"picked",tag:t.tagName.toLowerCase(),text:text});
+  send({type:"picked",tag:t.tagName.toLowerCase(),id:t.id||"",cls:cls,text:text,selector:selector});
 }
 function swallow(e){if(hit(e)){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}}
 function onKey(e){
