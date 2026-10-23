@@ -8,6 +8,7 @@ import { showPage } from "@/pages/page-actions";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { instanceOp, listComponents, type ComponentEntry } from "./components";
+import { LibrariesSection } from "./LibrariesSection";
 
 /** Show a component: its page, selected, centered on the canvas. */
 const revealComponent = (entry: ComponentEntry) => {
@@ -84,6 +85,7 @@ export const AssetsPanel = () => {
           ))}
         </ul>
       )}
+      <LibrariesSection />
     </div>
   );
 };
