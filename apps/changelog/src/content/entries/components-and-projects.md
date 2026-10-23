@@ -26,3 +26,7 @@ Ask Claude Code to change a project by name and it edits that project in a backg
 A right-click now acts on what you selected. Right-click a frame's name above it to get that frame's full menu, and right-clicking inside a selected frame keeps it selected instead of switching to a layer inside it or clearing the selection.
 
 The menu also ends with **Settings**, even on empty canvas: turn snapping to whole pixels on or off, or open all settings.
+
+## Put the toolbar where you like
+
+The tools (Move, Hand, frame, shapes, pen, text) can now sit at the bottom, top, left or right of the canvas. Right-click the toolbar to move it, or pick a side in **Settings › General › Toolbar position**. On the left or right it becomes a column, and its menus open toward the canvas.

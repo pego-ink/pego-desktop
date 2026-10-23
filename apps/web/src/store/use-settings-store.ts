@@ -1,4 +1,5 @@
 import { create } from "zustand";
+import { isToolbarPosition, type ToolbarPosition } from "@/components/toolbar-position";
 
 /** Editor preferences, persisted per browser/app install. */
 export type EditorSettings = {
@@ -9,6 +10,8 @@ export type EditorSettings = {
   wheelBehavior: "pan" | "zoom";
   /** Round positions and sizes to whole pixels while moving/resizing/drawing. */
   snapToPixel: boolean;
+  /** Where the floating tool picker sits on the canvas. */
+  toolbarPosition: ToolbarPosition;
 };
 
 export const DEFAULT_SETTINGS: EditorSettings = {
@@ -16,6 +19,7 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   nudgeLarge: 10,
   wheelBehavior: "pan",
   snapToPixel: true,
+  toolbarPosition: "bottom",
 };
 
 const KEY = "pego:settings.v1";
@@ -35,6 +39,9 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
         ? v.wheelBehavior
         : DEFAULT_SETTINGS.wheelBehavior,
     snapToPixel: typeof v.snapToPixel === "boolean" ? v.snapToPixel : DEFAULT_SETTINGS.snapToPixel,
+    toolbarPosition: isToolbarPosition(v.toolbarPosition)
+      ? v.toolbarPosition
+      : DEFAULT_SETTINGS.toolbarPosition,
   };
 };
 
