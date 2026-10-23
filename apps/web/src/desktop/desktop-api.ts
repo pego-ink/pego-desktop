@@ -37,6 +37,16 @@ export type PegoDesktopApi = {
 /** A rectangle in the editor window, CSS px from the top-left of the page viewport. */
 export type DesktopBrowserBounds = { x: number; y: number; width: number; height: number };
 
+/** Device emulation for the browser view: CSS px layout size, emulated screen, drawn scale. */
+export type DesktopBrowserEmulation = {
+  width: number;
+  height: number;
+  screenWidth: number;
+  screenHeight: number;
+  scale: number;
+  mobile: boolean;
+};
+
 /** State of the in-app browser view; pushed on every change (replayed on subscribe). */
 export type DesktopBrowserState = {
   /** "" before the first load. */
@@ -77,6 +87,18 @@ export type DesktopBrowserApi = {
    * result. Only the DOM, Input, Page, Runtime, Emulation, CSS and Accessibility domains pass.
    */
   cdp: (method: string, params?: Record<string, unknown>) => Promise<unknown>;
+  /**
+   * Emulate a device (native `enableDeviceEmulation`, the view keeps its size): the page lays
+   * out at width x height CSS px and is drawn at `scale` inside the view. null = off. Optional:
+   * older shells lack it.
+   */
+  setEmulation?: (emulation: DesktopBrowserEmulation | null) => void;
+  /**
+   * Download an http(s) image with the browser view's session (cookies, no CORS) for import.
+   * Resolves with a data: URL of the original bytes (any image/* type, at most 8 MB); rejects
+   * for other URLs, non-image responses and bigger files.
+   */
+  fetchImage?: (url: string) => Promise<string>;
   onState: (listener: (state: DesktopBrowserState) => void) => () => void;
   /**
    * Messages the page's injected scripts send with `console.debug("__pego__:" + JSON)`, parsed

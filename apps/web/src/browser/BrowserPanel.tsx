@@ -3,15 +3,27 @@ import {
   ArrowLeftIcon,
   ArrowRightIcon,
   CameraIcon,
+  CheckIcon,
   CircleAlertIcon,
   ImportIcon,
+  LaptopIcon,
+  MaximizeIcon,
+  MonitorIcon,
   MousePointerClickIcon,
   RotateCwIcon,
+  SmartphoneIcon,
+  TabletIcon,
   XIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import type { BrowserTarget } from "@pego/agent";
 import { Button } from "@pego/ui/components/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@pego/ui/components/dropdown-menu";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { Input } from "@pego/ui/components/input";
 import { Spinner } from "@pego/ui/components/spinner";
@@ -26,6 +38,20 @@ import {
   stopPicker,
 } from "@/browser/browser-session";
 import { hasOpenOverlay, sameBounds, viewBounds } from "@/browser/browser-panel-view";
+import { useDeviceEmulation } from "@/browser/browser-device";
+import { deviceLayout } from "@/browser/device-layout";
+import {
+  canRotate,
+  DEVICE_PRESETS,
+  findPreset,
+  GROUP_LABELS,
+  GROUP_ORDER,
+  isResponsive,
+  RESPONSIVE,
+  RESPONSIVE_CHOICE,
+  sizeLabel,
+  type DeviceGroup,
+} from "@/browser/device-presets";
 import type { DesktopBrowserBounds } from "@/desktop/desktop-api";
 
 const EXAMPLE_URLS = ["localhost:5173", "localhost:3000", "pego.ink"] as const;
@@ -40,6 +66,88 @@ const navigateTo = async (url: string) => {
   } catch (error) {
     reportError(error);
   }
+};
+
+const GROUP_ICONS: Record<DeviceGroup, typeof SmartphoneIcon> = {
+  phone: SmartphoneIcon,
+  tablet: TabletIcon,
+  laptop: LaptopIcon,
+  desktop: MonitorIcon,
+};
+
+const formatZoom = (scale: number) => `${Math.round(scale * 100)}%`;
+
+/** Device preview menu: responsive, or a phone / tablet / laptop / desktop preset. */
+const DeviceMenu = () => {
+  const device = useBrowserStore((s) => s.device);
+  const setDevice = useBrowserStore((s) => s.setDevice);
+  const preset = findPreset(device.id);
+  const responsive = isResponsive(preset);
+  const Icon = responsive ? MaximizeIcon : GROUP_ICONS[preset.group];
+
+  return (
+    <DropdownMenu>
+      <Tooltip content={responsive ? "Device preview" : preset.label} side="top">
+        <DropdownMenuTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Device preview: ${preset.label}`}
+            className={cn(!responsive && "bg-muted text-foreground")}
+          >
+            <Icon />
+          </Button>
+        </DropdownMenuTrigger>
+      </Tooltip>
+      <DropdownMenuContent align="end" aria-label="Device preview" className="min-w-56">
+        <DropdownMenuItem onSelect={() => setDevice(RESPONSIVE_CHOICE)}>
+          <MaximizeIcon aria-hidden />
+          <span className="flex-1">Responsive</span>
+          {responsive ? <CheckIcon aria-hidden /> : null}
+        </DropdownMenuItem>
+        {GROUP_ORDER.map((group) => (
+          <div key={group}>
+            <div role="separator" className="my-1 h-px bg-border" />
+            <div className="px-2 py-1 text-[11px] text-muted-foreground">{GROUP_LABELS[group]}</div>
+            {DEVICE_PRESETS.filter((p) => p.group === group).map((p) => (
+              <DropdownMenuItem key={p.id} onSelect={() => setDevice({ id: p.id, rotated: false })}>
+                <span className="flex-1">{p.label}</span>
+                <span className="text-[11px] text-muted-foreground tabular-nums">
+                  {sizeLabel(p, false)}
+                </span>
+                <CheckIcon aria-hidden className={cn(p.id !== preset.id && "invisible")} />
+              </DropdownMenuItem>
+            ))}
+          </div>
+        ))}
+        {canRotate(preset) ? (
+          <>
+            <div role="separator" className="my-1 h-px bg-border" />
+            <DropdownMenuItem onSelect={() => setDevice({ ...device, rotated: !device.rotated })}>
+              <RotateCwIcon aria-hidden />
+              <span className="flex-1">
+                {device.rotated ? "Rotate to portrait" : "Rotate to landscape"}
+              </span>
+            </DropdownMenuItem>
+          </>
+        ) : null}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+};
+
+/** Active device, its size and how far it is scaled down to fit the panel. */
+const DeviceLabel = ({ zoom }: { zoom: number }) => {
+  const device = useBrowserStore((s) => s.device);
+  const preset = findPreset(device.id);
+  if (preset === RESPONSIVE) return null;
+  return (
+    <div className="flex h-6 shrink-0 items-center justify-center border-b border-border px-3 text-[11px] text-muted-foreground tabular-nums">
+      <span className="truncate">
+        {preset.label} · {sizeLabel(preset, device.rotated)} · {formatZoom(zoom)}
+      </span>
+    </div>
+  );
 };
 
 /** Back, forward, reload / stop and the address field. */
@@ -140,6 +248,7 @@ const AddressBar = () => {
           <MousePointerClickIcon />
         </Button>
       </Tooltip>
+      <DeviceMenu />
       <div
         aria-hidden={!loading}
         className={cn(
@@ -237,25 +346,34 @@ export const BrowserPanel = () => {
   const picking = useBrowserStore((s) => s.picking);
   const hasContent = url !== "" && !error;
   const regionRef = useRef<HTMLDivElement>(null);
+  const device = useBrowserStore((s) => s.device);
   const [overlayOpen, setOverlayOpen] = useState(false);
+  /** How far the device is scaled down to fit the region (1 = actual size or responsive). */
+  const [zoom, setZoom] = useState(1);
+  const updateEmulation = useDeviceEmulation();
   /** Latest inputs and what the native view was last told, so the observers stay stable. */
-  const inputs = useRef({ hasContent, overlayOpen });
+  const inputs = useRef({ hasContent, overlayOpen, device });
   const applied = useRef<DesktopBrowserBounds | null>(null);
 
   const sync = useCallback(() => {
     const api = browserApi();
     if (!api) return;
-    const bounds = viewBounds({
-      rect: regionRef.current?.getBoundingClientRect() ?? null,
-      ...inputs.current,
-    });
+    const { hasContent, overlayOpen, device } = inputs.current;
+    const rect = regionRef.current?.getBoundingClientRect() ?? null;
+    const layout = rect ? deviceLayout(findPreset(device.id), device.rotated, rect) : null;
+    // A region without area (panel collapsed) keeps the last emulation instead of clearing it.
+    if (rect && rect.width >= 1 && rect.height >= 1) {
+      updateEmulation(layout);
+      setZoom(layout?.scale ?? 1);
+    }
+    const bounds = viewBounds({ rect: layout?.bounds ?? rect, hasContent, overlayOpen });
     if (bounds) {
       if (!sameBounds(applied.current, bounds)) api.show(bounds);
     } else if (applied.current) {
       api.hide();
     }
     applied.current = bounds;
-  }, []);
+  }, [updateEmulation]);
 
   useEffect(() => {
     Promise.resolve(ensureBrowserConnected()).catch(reportError);
@@ -305,9 +423,9 @@ export const BrowserPanel = () => {
   }, []);
 
   useEffect(() => {
-    inputs.current = { hasContent, overlayOpen };
+    inputs.current = { hasContent, overlayOpen, device };
     sync();
-  }, [sync, hasContent, overlayOpen]);
+  }, [sync, hasContent, overlayOpen, device]);
 
   // Escape stops the picker (while focus is in the editor, not the page).
   useEffect(() => {
@@ -323,7 +441,8 @@ export const BrowserPanel = () => {
     <div className="flex min-h-0 flex-1 flex-col">
       <AddressBar />
       <ActionBar />
-      <div ref={regionRef} className="relative min-h-0 flex-1">
+      {hasContent ? <DeviceLabel zoom={zoom} /> : null}
+      <div ref={regionRef} className="relative min-h-0 flex-1 bg-muted/40">
         {url === "" ? <EmptyState /> : error ? <ErrorState message={error} /> : null}
       </div>
     </div>

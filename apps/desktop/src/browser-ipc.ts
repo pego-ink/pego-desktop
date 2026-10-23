@@ -1,12 +1,18 @@
 import { BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { BROWSER_CHANNELS } from "@/browser-channels";
 import { parseBounds, parseCdpRequest } from "@/browser-cdp";
+import { parseEmulation } from "@/browser-emulation";
+import { createQueue, parseImageUrl } from "@/browser-image";
+import { fetchImageAsDataUrl } from "@/browser-image-fetch";
 import { createBrowserView, type BrowserView } from "@/browser-view";
 import { isTrustedSender } from "@/update-status";
+
+const MAX_IMAGE_FETCHES = 6;
 
 /** One browser view per editor window; the view is created lazily by its first use. */
 export const registerBrowserIpc = (appOrigin: string): void => {
   const views = new WeakMap<BrowserWindow, BrowserView>();
+  const queues = new WeakMap<BrowserWindow, ReturnType<typeof createQueue>>();
 
   const viewFor = (event: IpcMainEvent | IpcMainInvokeEvent): BrowserView => {
     if (!isTrustedSender(event.senderFrame?.url, appOrigin)) throw new Error("untrusted sender");
@@ -34,6 +40,10 @@ export const registerBrowserIpc = (appOrigin: string): void => {
     const bounds = parseBounds(payload);
     if (bounds) view.show(bounds);
   });
+  on(BROWSER_CHANNELS.setEmulation, (view, payload) => {
+    const emulation = parseEmulation(payload);
+    if (emulation !== undefined) view.setEmulation(emulation);
+  });
   on(BROWSER_CHANNELS.hide, (view) => view.hide());
   on(BROWSER_CHANNELS.back, (view) => view.back());
   on(BROWSER_CHANNELS.forward, (view) => view.forward());
@@ -54,6 +64,16 @@ export const registerBrowserIpc = (appOrigin: string): void => {
     const request = parseCdpRequest(method, params);
     if (!request) throw new Error("Invalid or disallowed CDP request");
     return view.cdp(request.method, request.params);
+  });
+  ipcMain.handle(BROWSER_CHANNELS.fetchImage, (event, input: unknown) => {
+    const view = viewFor(event);
+    const url = parseImageUrl(input);
+    if (!url) throw new Error("Only http(s) image URLs are allowed");
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) throw new Error("no window");
+    const queue = queues.get(win) ?? createQueue(MAX_IMAGE_FETCHES);
+    queues.set(win, queue);
+    return queue(() => fetchImageAsDataUrl(url, view.getState().url));
   });
   ipcMain.handle(BROWSER_CHANNELS.getState, (event) => viewFor(event).getState());
 };

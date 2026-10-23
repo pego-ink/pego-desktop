@@ -101,8 +101,12 @@ const browser = {
   forward: (): void => ipcRenderer.send(BROWSER_CHANNELS.forward),
   reload: (): void => ipcRenderer.send(BROWSER_CHANNELS.reload),
   stop: (): void => ipcRenderer.send(BROWSER_CHANNELS.stop),
+  setEmulation: (emulation: unknown): void =>
+    ipcRenderer.send(BROWSER_CHANNELS.setEmulation, emulation),
   cdp: (method: unknown, params?: unknown): Promise<unknown> =>
     ipcRenderer.invoke(BROWSER_CHANNELS.cdp, method, params),
+  fetchImage: (url: unknown): Promise<string> =>
+    ipcRenderer.invoke(BROWSER_CHANNELS.fetchImage, url),
   // Replay the current state so a late subscriber sees the view as it is.
   onState: (listener: (state: never) => void): (() => void) =>
     subscribe(BROWSER_CHANNELS.state, isBrowserState, listener, BROWSER_CHANNELS.getState),

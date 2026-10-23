@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { BrowserTarget } from "@pego/agent";
 import {
   COLOR_HELPERS,
+  PURE_HELPERS,
   boxScript,
   describeScript,
   pickerStartScript,
@@ -116,5 +117,46 @@ describe("unwrapEvaluation", () => {
 
   test("rejects when nothing came back", () => {
     expect(() => unwrapEvaluation({ result: {} })).toThrow("no result");
+  });
+});
+
+describe("pure page helpers", () => {
+  const h = new Function(
+    PURE_HELPERS +
+      "return {splitTop:splitTop,transformKind:transformKind,collapseText:collapseText}",
+  )() as {
+    splitTop: (s: string) => string[];
+    transformKind: (t: string) => number;
+    collapseText: (s: string, ws: string) => string;
+  };
+
+  test("splitTop splits at top-level commas only", () => {
+    expect(h.splitTop("linear-gradient(red, blue), url(a.png)")).toEqual([
+      "linear-gradient(red, blue)",
+      " url(a.png)",
+    ]);
+    expect(h.splitTop("url(a.png)")).toHaveLength(1);
+  });
+
+  test("transformKind: none/identity 0, translate/scale 1, rotate/skew 2", () => {
+    expect(h.transformKind("none")).toBe(0);
+    expect(h.transformKind("matrix(1, 0, 0, 1, 0, 0)")).toBe(0);
+    expect(h.transformKind("matrix(1, 0, 0, 1, 10, 0)")).toBe(1);
+    expect(h.transformKind("matrix(2, 0, 0, 2, 0, 0)")).toBe(1);
+    expect(h.transformKind("matrix(0.866, 0.5, -0.5, 0.866, 0, 0)")).toBe(2);
+    expect(h.transformKind("matrix(1, 0, 0.5, 1, 0, 0)")).toBe(2);
+    const identity3d = "matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,0,0,0,1)";
+    expect(h.transformKind(identity3d)).toBe(0);
+    expect(h.transformKind("matrix3d(1,0,0,0,0,1,0,0,0,0,1,0,5,0,0,1)")).toBe(1);
+    expect(h.transformKind("matrix3d(1,0,0,0,0,1,0.3,0,0,0,1,0,0,0,0,1)")).toBe(2);
+  });
+
+  test("collapseText collapses like the browser and keeps <br> as newlines", () => {
+    expect(h.collapseText("  Hello \n   world  ", "normal")).toBe("Hello world");
+    expect(h.collapseText("one \u0001 two", "normal")).toBe("one\ntwo");
+    expect(h.collapseText("a\u0001", "normal")).toBe("a");
+    expect(h.collapseText("a\n  b", "pre")).toBe("a\n  b");
+    expect(h.collapseText("a  b\n c", "pre-line")).toBe("a b\nc");
+    expect(h.collapseText("a\u00a0\u00a0b", "normal")).toBe("a\u00a0\u00a0b");
   });
 });
