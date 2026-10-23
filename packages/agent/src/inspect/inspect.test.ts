@@ -45,6 +45,20 @@ const text = (id: string, content: string, props: Record<string, unknown> = {}) 
   content,
   ...props,
 });
+const icon = (id: string, props: Record<string, unknown> = {}) => ({
+  type: "icon",
+  id,
+  iconName: "clock",
+  width: 14,
+  height: 14,
+  ...props,
+});
+const ref = (id: string, refId: string, props: Record<string, unknown> = {}) => ({
+  type: "ref",
+  id,
+  ref: refId,
+  ...props,
+});
 
 describe("registry", () => {
   test("inspect tools are registered with unique snake_case names", () => {
@@ -341,6 +355,107 @@ describe("check_layout rules", () => {
     const issues = checkLayout(doc, layoutOf(doc)).issues;
     const hit = issues.find((i) => i.nodeId === "inst/label");
     expect(hit?.hint).toContain("set_instance_overrides");
+  });
+});
+
+describe("check_layout polish", () => {
+  const polish = (issues: LayoutIssue[]) =>
+    issues.filter((i) =>
+      /rounder than|not concentric|beside|different heights|lopsided/.test(i.issue),
+    );
+  const userCard = (props: Record<string, unknown> = {}) =>
+    frame(
+      "user",
+      {
+        layout: "horizontal",
+        padding: 8,
+        cornerRadius: 8,
+        fill: "#E6EEF0",
+        alignItems: "center",
+        gap: 12,
+        ...props,
+      },
+      [
+        frame("avatar", { width: 32, height: 32, cornerRadius: 16, fill: "#C3D2D7" }),
+        text("name", "Resepsionis", { fontSize: 14 }),
+      ],
+    );
+  const tierCard = (padding: number) =>
+    frame(
+      "card",
+      {
+        layout: "vertical",
+        width: 240,
+        padding,
+        cornerRadius: 10,
+        fill: "#FFFFFF",
+        stroke: { color: "#E2E2DE", width: 1 },
+      },
+      [frame("btn", { width: "fill_container", height: 36, cornerRadius: 6, fill: "#2B4ACB" })],
+    );
+
+  test("an inner corner rounder than the outer one is a warning", () => {
+    const found = polish(issuesOf([userCard()]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "user" });
+    expect(found[0]?.issue).toContain("rounder than");
+    expect(found[0]?.hint).toContain("24");
+  });
+
+  test("a non-concentric corner is info", () => {
+    const found = polish(issuesOf([tierCard(16)]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "info", nodeId: "card" });
+    expect(found[0]?.issue).toContain("not concentric");
+    expect(found[0]?.hint).toContain("23");
+  });
+
+  test("radii and paddings given as variables resolve", () => {
+    const doc = makeDoc([userCard({ cornerRadius: "$r-sm", padding: "$s-sm" })], {
+      "r-sm": { type: "number", value: 8 },
+      "s-sm": { type: "number", value: 8 },
+    });
+    const found = polish(checkLayout(doc, layoutOf(doc)).issues);
+    expect(found.map((i) => [i.nodeId, i.severity])).toEqual([["user", "warning"]]);
+  });
+
+  test("a pill inside a pill with a matching inset is concentric", () => {
+    const issues = issuesOf([
+      frame("pill", { layout: "horizontal", cornerRadius: 999, padding: 4, fill: "#F2F2F0" }, [
+        frame("inner", { width: 80, height: 24, cornerRadius: 999, fill: "#FFFFFF" }),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("an inset over 24 is ignored", () => {
+    expect(polish(issuesOf([tierCard(28)]))).toEqual([]);
+  });
+
+  test("a child away from the corners is ignored", () => {
+    const issues = issuesOf([
+      frame(
+        "col",
+        {
+          layout: "vertical",
+          width: 300,
+          padding: 16,
+          cornerRadius: 10,
+          fill: "#FFFFFF",
+          alignItems: "center",
+        },
+        [frame("mid", { width: 100, height: 40, cornerRadius: 20, fill: "#000000" })],
+      ),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("a defect in a component is reported once, not per instance", () => {
+    const issues = issuesOf([
+      frame("lib", { layout: "vertical", gap: 8 }, [userCard({ reusable: true })]),
+      frame("screen", { layout: "vertical", gap: 8 }, [ref("u1", "user"), ref("u2", "user")]),
+    ]);
+    expect(polish(issues).filter((i) => i.issue.includes("rounder than"))).toHaveLength(1);
   });
 });
 

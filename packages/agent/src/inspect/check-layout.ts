@@ -13,6 +13,7 @@ import {
   type PegoNode,
   type TextNode,
 } from "@pego/doc";
+import { checkPolish, sourceId } from "./check-polish";
 import { compositeOver, contrastRatio, parseHex, wcagAaThreshold, type Rgba } from "./color";
 
 export type Severity = "error" | "warning" | "info";
@@ -120,6 +121,8 @@ type Context = {
   doc: PegoDocument;
   layout: Layout;
   issues: LayoutIssue[];
+  /** Keys of polish findings already reported (one per component source node). */
+  polishSeen: Set<string>;
 };
 
 const report = (
@@ -140,6 +143,7 @@ const checkNode = (
   node: PegoNode,
   parent: PegoNode | null,
   ancestors: PegoNode[],
+  source: string,
 ): void => {
   const { doc, layout } = ctx;
   const box = layout.get(node.id);
@@ -256,6 +260,14 @@ const checkNode = (
     }
   }
 
+  // Polish (the ui-polish skill's rules), once per component source node.
+  for (const found of checkPolish(doc, layout, node, source)) {
+    if (ctx.polishSeen.has(found.key)) continue;
+    ctx.polishSeen.add(found.key);
+    const where = found.node.id.includes("/") ? INSTANCE_HINT : "";
+    report(ctx, found.severity, found.node, found.issue, `${found.hint}${where}`);
+  }
+
   if (!isContainer(node)) return;
 
   // Flex children with x/y (ignored by layout).
@@ -338,7 +350,9 @@ const walk = (
       : node;
   if (!expanded) return;
   const nowInScope = inScope || scopeId === undefined || node.id === scopeId;
-  if (nowInScope) checkNode(ctx, expanded, parent, ancestors);
+  // An instance root keeps the ref's own id; its source is the component.
+  const source = node.type === "ref" ? node.ref : sourceId(node.id);
+  if (nowInScope) checkNode(ctx, expanded, parent, ancestors, source);
   if (!isContainer(expanded)) return;
   const nextAncestors = [...ancestors, expanded];
   for (const child of expanded.children) {
@@ -351,7 +365,7 @@ export const checkLayout = (doc: PegoDocument, layout: Layout, nodeId?: string):
   if (nodeId !== undefined && !findLocation(doc, nodeId)) {
     throw new Error(`node "${nodeId}" not found`);
   }
-  const ctx: Context = { doc, layout, issues: [] };
+  const ctx: Context = { doc, layout, issues: [], polishSeen: new Set() };
   for (const node of doc.children) walk(ctx, node, null, [], 0, nodeId, false);
 
   const sorted = ctx.issues
