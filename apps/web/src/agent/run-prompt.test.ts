@@ -14,7 +14,12 @@ describe("buildRunPrompt", () => {
     expect(run.context).toContain('- frame-1: "Frame" (frame)');
     expect(run.agentText).toBe(`${run.context}\n\nRequest: ${run.requestText}`);
     expect(run.displayText).toBe("make @Frame dark");
-    expect(run.parts[1]).toEqual({ kind: "mention", mention: "layer", label: "Frame" });
+    expect(run.parts[1]).toEqual({
+      kind: "mention",
+      mention: "layer",
+      label: "Frame",
+      nodeType: "frame",
+    });
   });
 
   test("a layer mentioned twice is listed once", () => {

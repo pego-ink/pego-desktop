@@ -156,7 +156,12 @@ const Entry = ({
                   part.kind === "text" ? (
                     <Fragment key={index}>{part.text}</Fragment>
                   ) : (
-                    <MentionPill key={index} kind={part.mention} label={part.label} />
+                    <MentionPill
+                      key={index}
+                      kind={part.mention}
+                      label={part.label}
+                      nodeType={part.nodeType}
+                    />
                   ),
                 )
               : entry.text}

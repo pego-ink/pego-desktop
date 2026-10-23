@@ -27,6 +27,12 @@ const ICONS: Record<PegoNodeType, LucideIcon> = {
   image: ImageIcon,
 };
 
+/** The icon of a node type alone (no node at hand, e.g. a chip in the log). */
+export const LayerTypeIcon = ({ type, className }: { type: PegoNodeType; className?: string }) => {
+  const Icon = type === "ref" ? ComponentIcon : (ICONS[type] ?? ImageIcon);
+  return <Icon aria-hidden className={cn("size-3.5 shrink-0", className)} />;
+};
+
 /** Icon for a node: reusable nodes and instances get the violet component icon. */
 export const LayerIcon = ({ node, className }: { node: PegoNode; className?: string }) => {
   const isComponent = node.reusable === true || node.type === "ref";

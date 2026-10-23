@@ -96,7 +96,7 @@ describe("resolveMentions", () => {
 describe("labels", () => {
   test("titles for chips and inline labels for the agent", () => {
     expect(mentionTitle(doc, { kind: "layer", ids: ["text-1"] })).toBe("Title");
-    expect(mentionTitle(doc, { kind: "layer", ids: ["text-1", "rect-1"] })).toBe("Title +1");
+    expect(mentionTitle(doc, { kind: "layer", ids: ["text-1", "rect-1"] })).toBe("2 layers");
     expect(mentionTitle(doc, { kind: "layer", ids: ["gone"] })).toBeNull();
     expect(mentionTitle(doc, { kind: "style", id: "bauhaus" })).toBe("Bauhaus");
     expect(mentionInlineLabel(doc, { kind: "layer", ids: ["text-1"] })).toBe(
@@ -191,7 +191,7 @@ describe("prompts with mentions", () => {
     const parts = promptParts(doc, prompt);
     expect(parts).toEqual([
       { kind: "text", text: "make " },
-      { kind: "mention", mention: "layer", label: "Frame" },
+      { kind: "mention", mention: "layer", label: "Frame", nodeType: "frame" },
       { kind: "text", text: " dark, in " },
       { kind: "mention", mention: "style", label: "Bauhaus" },
       { kind: "text", text: " " },

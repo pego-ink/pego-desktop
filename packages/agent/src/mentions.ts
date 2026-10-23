@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { findNode, type PegoDocument, type PegoNode } from "@pego/doc";
+import { findNode, type PegoDocument, type PegoNode, type PegoNodeType } from "@pego/doc";
 import { findSkill } from "./skills/index";
 
 /**
@@ -102,8 +102,7 @@ export const mentionTitle = (
   if (ref.kind === "layer") {
     const nodes = ref.ids.flatMap((nodeId) => findNode(doc, nodeId) ?? []);
     if (nodes.length === 0) return null;
-    const first = nodeName(nodes[0]!);
-    return nodes.length === 1 ? first : `${first} +${nodes.length - 1}`;
+    return nodes.length === 1 ? nodeName(nodes[0]!) : `${nodes.length} layers`;
   }
   if (ref.kind === "component") {
     const node = findNode(doc, ref.id);
@@ -219,7 +218,21 @@ export const promptTextForAgent = (
 
 /** One piece of a prompt as shown in the activity log: text, or a chip. */
 export type PromptPart =
-  { kind: "text"; text: string } | { kind: "mention"; mention: MentionKind; label: string };
+  | { kind: "text"; text: string }
+  | {
+      kind: "mention";
+      mention: MentionKind;
+      label: string;
+      /** Type of the one layer or component the chip names (its icon); absent for several. */
+      nodeType?: PegoNodeType;
+    };
+
+/** The node type a chip shows as its icon: a single layer's, or a component's. */
+export const mentionNodeType = (doc: PegoDocument, ref: MentionRef): PegoNodeType | undefined => {
+  if (ref.kind === "component") return findNode(doc, ref.id)?.type;
+  if (ref.kind !== "layer" || ref.ids.length !== 1) return undefined;
+  return findNode(doc, ref.ids[0]!)?.type;
+};
 
 /** The prompt split into text and chips for display (labels read from the document now). */
 export const promptParts = (
@@ -234,7 +247,10 @@ export const promptParts = (
     if (start > last) parts.push({ kind: "text", text: prompt.text.slice(last, start) });
     const ref = prompt.mentions[Number(match[1])];
     const label = ref ? mentionTitle(doc, ref, scope) : null;
-    if (ref && label !== null) parts.push({ kind: "mention", mention: ref.kind, label });
+    if (ref && label !== null) {
+      const nodeType = mentionNodeType(doc, ref);
+      parts.push({ kind: "mention", mention: ref.kind, label, ...(nodeType ? { nodeType } : {}) });
+    }
     last = start + match[0].length;
   }
   if (last < prompt.text.length) parts.push({ kind: "text", text: prompt.text.slice(last) });

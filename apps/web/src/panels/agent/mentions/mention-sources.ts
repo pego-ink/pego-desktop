@@ -1,4 +1,10 @@
-import { isContainer, pageOrFirst, type PegoDocument, type PegoNode } from "@pego/doc";
+import {
+  isContainer,
+  pageOrFirst,
+  type PegoDocument,
+  type PegoNode,
+  type PegoNodeType,
+} from "@pego/doc";
 import type { MentionRef, Skill } from "@pego/agent";
 import { pickableSkills, pickableStyles } from "@/panels/agent/skill-chip";
 
@@ -15,6 +21,8 @@ export type MentionItem = {
   title: string;
   /** Muted detail on the row (layer type, skill description). */
   detail?: string;
+  /** A layer row's type, for its icon. */
+  nodeType?: PegoNodeType;
 };
 
 export type MentionSources = {
@@ -90,6 +98,7 @@ export const mentionSuggestions = (query: string, sources: MentionSources): Ment
         ref: { kind: "layer" as const, ids: [node.id] },
         title: node.name ?? node.type,
         detail: node.type,
+        nodeType: node.type,
       })),
   );
   push(

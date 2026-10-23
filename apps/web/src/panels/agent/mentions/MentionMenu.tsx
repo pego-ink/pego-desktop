@@ -52,7 +52,8 @@ export const MentionMenu = ({ items, active, onChoose, onHover }: MentionMenuPro
             <MentionPill
               kind={item.ref.kind}
               label={item.title}
-              className="max-w-[60%] bg-transparent px-0"
+              nodeType={item.nodeType}
+              className="max-w-[60%] border-transparent bg-transparent px-0"
             />
             {item.detail ? (
               <span className="ml-auto min-w-0 truncate text-[11px] text-muted-foreground">
