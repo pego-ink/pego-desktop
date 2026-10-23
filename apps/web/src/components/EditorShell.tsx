@@ -24,7 +24,7 @@ import { ShowRightPanelButton, usePanelShortcut } from "@/layout/PanelToggles";
 import { ThemeToggle } from "@/theme/ThemeToggle";
 import { CANVAS_BACKGROUND, useThemeStore } from "@/theme/theme";
 import { FLOATING_CARD } from "@/layout/interface-style";
-import { useSettingsStore } from "@/store/use-settings-store";
+import { useFloatingInterface } from "@/layout/use-floating-interface";
 import { Dashboard } from "@/workspace/Dashboard";
 import { TabBar } from "@/workspace/TabBar";
 import { showDashboard, useWorkspaceStore } from "@/workspace/use-workspace-store";
@@ -133,6 +133,8 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
         </div>
       ))}
       <ResizeHandle
+        // Inside a floating card (which clips its content) the handle sits on the inner edge.
+        className={floating ? "right-0" : undefined}
         label="Resize left panel"
         value={panel.width}
         min={panel.min}
@@ -236,7 +238,8 @@ export const EditorShell = () => {
   // Home shows with the Home view, and whenever no document tab is left (always, bridge or not).
   const dashboard = useWorkspaceStore((s) => s.view === "dashboard" || s.liveId === null);
   // The dashboard keeps the docked layout; the floating one is for the editor.
-  const floating = useSettingsStore((s) => s.interfaceStyle === "floating") && !dashboard;
+  // Narrow windows fall back to docked: the cards would leave almost no canvas.
+  const floating = useFloatingInterface() && !dashboard;
   usePanelShortcut();
 
   const press = (tab: RailTab) => {

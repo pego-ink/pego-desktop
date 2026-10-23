@@ -55,6 +55,7 @@ import {
   type DeviceGroup,
 } from "@/browser/device-presets";
 import type { DesktopBrowserBounds } from "@/desktop/desktop-api";
+import { useFloatingInterface } from "@/layout/use-floating-interface";
 
 const EXAMPLE_URLS = ["localhost:5173", "localhost:3000", "pego.ink"] as const;
 
@@ -399,6 +400,7 @@ export const BrowserPanel = () => {
   const picking = useBrowserStore((s) => s.picking);
   const hasContent = url !== "" && !error;
   const regionRef = useRef<HTMLDivElement>(null);
+  const floating = useFloatingInterface();
   const device = useBrowserStore((s) => s.device);
   const [overlayOpen, setOverlayOpen] = useState(false);
   /** How far the device is scaled down to fit the region (1 = actual size or responsive). */
@@ -454,6 +456,12 @@ export const BrowserPanel = () => {
     };
   }, [sync]);
 
+  // Switching between docked and floating moves the region without always resizing it.
+  useEffect(() => {
+    const frame = requestAnimationFrame(sync);
+    return () => cancelAnimationFrame(frame);
+  }, [floating, sync]);
+
   // Open dialogs, menus and popovers must not end up under the native view.
   useEffect(() => {
     let frame = 0;
@@ -496,7 +504,11 @@ export const BrowserPanel = () => {
       <ActionBar />
       {hasContent ? <DeviceLabel zoom={zoom} /> : null}
       <Breadcrumbs />
-      <div ref={regionRef} className="relative min-h-0 flex-1 bg-muted/40">
+      {/* The native view is a square: in a floating card it keeps clear of the rounded corners. */}
+      <div
+        ref={regionRef}
+        className={cn("relative min-h-0 flex-1 bg-muted/40", floating && "m-1.5 rounded-md")}
+      >
         {url === "" ? <EmptyState /> : error ? <ErrorState message={error} /> : null}
       </div>
     </div>
