@@ -175,9 +175,11 @@ grow_up | grow_right | scale | pop`, `delay`/`duration` in ms (default 0 / 600),
   0). The canvas shows the end state while editing; Play (`apps/web/src/motion/`) draws `motionFrame`
   (`packages/doc/src/motion.ts`) per node, purely visual (layout and hit-testing do not move). Code export emits
   the same timing as CSS `@keyframes` on `translate` / `scale` (`packages/agent/src/export/motion-css.ts`), plus a
-  small script for `countUp` in HTML. No loops or timeline.
+  small script for `countUp` in HTML (`none` + `countUp` is a text that only counts). On a rotated layer the
+  exported `grow_*` presets scale along the page axes from its top-left corner, unlike the canvas. No loops
+  or timeline.
 - **Shader fills** (`packages/doc/src/shaders.ts`): `preset` is `aurora | gradient_flow | waves | grain | shimmer |
-dots | custom`; `custom` runs `code`, a GLSL-style fragment shader both Skia (SkSL) and WebGL 1 accept:
+  dots | custom`; `custom` runs `code`, a GLSL-style fragment shader both Skia (SkSL) and WebGL 1 accept:
   `vec4 main(vec2 fragCoord)`, `fragCoord` in px from the shape's top-left, `iResolution` (vec2 px) and `iTime`
   (s) declared for it, float / vec2-4 uniforms only, no textures. `uniforms` override the preset defaults by name
   (numbers, vectors, colors as hex or `$variable`). The canvas compiles it with `RuntimeEffect`
