@@ -37,7 +37,12 @@ import type { PickedElement } from "@/browser/picked-element";
 import { useBrowserStore } from "@/browser/use-browser-store";
 import { buildRunPrompt } from "@/agent/run-prompt";
 import { cancelRun } from "@/agent/run";
-import { useAgentStore, useVisibleRun } from "@/agent/use-agent-store";
+import {
+  sessionTurns,
+  useAgentStore,
+  useVisibleRun,
+  visibleSession,
+} from "@/agent/use-agent-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { AgentSelector } from "@/panels/agent/AgentSelector";
 import { SkillChip } from "@/panels/agent/SkillChip";
@@ -52,6 +57,7 @@ import { LAYERS_MIME, readLayerClipboard } from "@/interaction/layer-clipboard";
 import { liveChipTransaction } from "@/panels/agent/mentions/live-chips";
 import {
   chipContent,
+  createHistoryExtension,
   createMentionExtension,
   createSubmitExtension,
   type MentionMenuHooks,
@@ -61,6 +67,13 @@ import {
 import { MentionMenu } from "@/panels/agent/mentions/MentionMenu";
 import { PromptLinks } from "@/panels/agent/mentions/prompt-links";
 import { saveDraft, takeDraft } from "@/panels/agent/composer-drafts";
+import {
+  NO_HISTORY_NAV,
+  historyFor,
+  recordSent,
+  stepHistory,
+  type HistoryNav,
+} from "@/panels/agent/composer-history";
 import { mentionSuggestions, slashSuggestions } from "@/panels/agent/mentions/mention-sources";
 
 const ACTION_BUTTON =
@@ -71,7 +84,12 @@ type AgentComposerProps = {
   seed: { text: string; key: number };
 };
 
-type EditorHooks = MentionMenuHooks & { menuOpen: boolean; submit: (steer: boolean) => void };
+type EditorHooks = MentionMenuHooks & {
+  menuOpen: boolean;
+  submit: (steer: boolean) => void;
+  /** ↑ (-1) / ↓ (1) through the chat's earlier messages; true when the key was used. */
+  recall: (direction: -1 | 1) => boolean;
+};
 
 const IDLE_PLACEHOLDER = "Describe what to design… (@ to mention, / for skills)";
 const BUSY_PLACEHOLDER = "Queue a message… (@ to mention, / for skills)";
@@ -87,6 +105,7 @@ class ComposerLink {
     onKeyDown: () => false,
     menuOpen: false,
     submit: () => {},
+    recall: () => false,
   };
   placeholder = IDLE_PLACEHOLDER;
   update(hooks: EditorHooks, placeholder: string) {
@@ -138,6 +157,9 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const [variants, setVariants] = useState<Variants>({ count: 1, mode: "any" });
   /** The user has been in the box: chips go at its caret instead of the end. */
   const caretKnown = useRef(false);
+  /** Where ↑ / ↓ is in the history, and the box content it put there (to see edits). */
+  const history = useRef<HistoryNav>(NO_HISTORY_NAV);
+  const shownEntry = useRef<string | null>(null);
   const caretOf = (current: Editor) =>
     caretKnown.current ? current.state.selection.to : undefined;
 
@@ -167,6 +189,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       }),
       createMentionExtension(() => link.hooks),
       createSubmitExtension(() => link.hooks),
+      createHistoryExtension(() => link.hooks),
       PromptLinks,
     ],
     editorProps: {
@@ -259,6 +282,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       styleId: run.styleId,
     };
     const restore = editor.getJSON();
+    history.current = NO_HISTORY_NAV;
     editor.commands.clearContent(true);
     const result =
       steer && active
@@ -266,8 +290,37 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         : variants.count > 1 && variantsFit(run.parts)
           ? sendVariants(run.agentText, display, images)
           : submitPrompt(sessionId, run.agentText, { ...display, attachments: images });
-    if (result === "refused") editor.commands.setContent(restore, { emitUpdate: true });
-    else if (images.length > 0) useAgentStore.getState().clearAttachments();
+    if (result === "refused") {
+      editor.commands.setContent(restore, { emitUpdate: true });
+      return;
+    }
+    recordSent(sessionId, run.displayText, restore);
+    if (images.length > 0) useAgentStore.getState().clearAttachments();
+  };
+
+  /**
+   * ↑ in an empty box, at its very start, or on a recalled message not edited yet brings the
+   * previous message back for editing; ↓ goes newer and, past the newest, back to the draft.
+   * Anywhere else the arrows move the caret.
+   */
+  const recall = (direction: -1 | 1): boolean => {
+    if (!editor || menu) return false;
+    const current = editor.getJSON();
+    const untouched = shownEntry.current !== null && JSON.stringify(current) === shownEntry.current;
+    if (!untouched) history.current = NO_HISTORY_NAV;
+    const { selection, doc } = editor.state;
+    const atStart = selection.empty && selection.from <= 1;
+    const atEnd = selection.empty && selection.to >= doc.content.size - 1;
+    if (direction === -1 && !(editor.isEmpty || untouched || atStart)) return false;
+    if (direction === 1 && !(untouched || atEnd)) return false;
+    const log = sessionTurns(visibleSession(useAgentStore.getState())).flatMap((turn) => turn.log);
+    const step = stepHistory(historyFor(sessionId, log), history.current, current, direction);
+    if (!step) return false;
+    history.current = step.nav;
+    editor.commands.setContent(step.show, { emitUpdate: true });
+    shownEntry.current = step.nav.index === null ? null : JSON.stringify(editor.getJSON());
+    editor.commands.focus("end");
+    return true;
   };
 
   useLayoutEffect(() => {
@@ -304,6 +357,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         },
         menuOpen: menu !== null,
         submit: send,
+        recall,
       },
       active ? BUSY_PLACEHOLDER : IDLE_PLACEHOLDER,
     );
@@ -323,6 +377,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     const text = editor.getText().trim();
     saveDraft(shownSession.current, text ? editor.getJSON() : null);
     shownSession.current = sessionId;
+    history.current = NO_HISTORY_NAV;
     const draft = takeDraft(sessionId);
     editor.commands.setContent(draft ?? "", { emitUpdate: true });
   }, [editor, sessionId]);
@@ -472,7 +527,9 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         <VariantPicker value={variants} onChange={setVariants} />
         <SkillChip prompt={plain} restoreFocusRef={focusRef} />
         <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
-          {active ? "Enter to queue · ⌘Enter to send now" : "Enter to send · @ mention · / skill"}
+          {active
+            ? "Enter to queue · ⌘Enter to send now · ↑ history"
+            : "Enter to send · ↑ history · @ mention · / skill"}
         </span>
         <div className="flex shrink-0 items-center gap-1">
           {active ? (
