@@ -3,6 +3,7 @@ title: A faster canvas
 date: 2026-10-23T13:00:00Z
 summary: A right-click menu with copy-as options and layout shortcuts, flip for any layer, simpler resize handles, and a clearer view of what the agent is working on.
 tags: [new, improved]
+version: 0.1.0-beta
 ---
 
 ## Right-click menu

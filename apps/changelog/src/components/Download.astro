@@ -1,0 +1,94 @@
+---
+import {
+  ARCH_LABEL,
+  MAC_ARCH_LABEL,
+  downloadLabel,
+  formatSize,
+  groupLinuxByFormat,
+  groupReleaseAssets,
+  type DownloadOption,
+  type Release,
+} from "@/lib/release-assets";
+import { downloadAnchor } from "@/lib/downloads";
+
+interface Props {
+  release: Release;
+  /** Heading level follows the page: h3 under an h2 entry title on the index, h2 under the h1 on an entry page. */
+  variant: "list" | "page";
+}
+
+const { release, variant } = Astro.props;
+const Heading = variant === "page" ? "h2" : "h3";
+const id = downloadAnchor(release.version);
+const { macos, windows, windowsPortable, linux, checksumsUrl } = groupReleaseAssets(release.assets);
+const buttons: { option: DownloadOption; name: string; sub: string }[] = [
+  ...macos.map((option) => ({ option, name: "macOS", sub: MAC_ARCH_LABEL[option.arch] })),
+  ...windows.map((option) => ({ option, name: "Windows", sub: ARCH_LABEL[option.arch] })),
+];
+const formats = groupLinuxByFormat(linux);
+---
+
+<section class="download" id={id} aria-labelledby={`${id}-title`}>
+  <Heading class="download-title" id={`${id}-title`}>Download Pego {release.version}</Heading>
+  {
+    buttons.length > 0 && (
+      <ul class="download-buttons" role="list">
+        {buttons.map(({ option, name, sub }) => (
+          <li>
+            <a class="download-button" href={option.url} aria-label={downloadLabel(option)}>
+              <span class="download-button-name">{name}</span>
+              <span class="download-button-sub">
+                {sub} · {formatSize(option.size)}
+              </span>
+            </a>
+          </li>
+        ))}
+      </ul>
+    )
+  }
+  {
+    formats.length > 0 && (
+      <div class="download-linux">
+        <span class="download-linux-label" id={`${id}-linux`}>
+          Linux
+        </span>
+        <ul role="list" aria-labelledby={`${id}-linux`}>
+          {formats.map(({ format, options }) => (
+            <li>
+              {options.length === 1 && options[0] ? (
+                <a href={options[0].url} aria-label={downloadLabel(options[0])}>
+                  {format}
+                </a>
+              ) : (
+                <>
+                  <span>{format}</span>
+                  {options.map((option) => (
+                    <a href={option.url} aria-label={downloadLabel(option)}>
+                      {ARCH_LABEL[option.arch]}
+                    </a>
+                  ))}
+                </>
+              )}
+            </li>
+          ))}
+        </ul>
+      </div>
+    )
+  }
+  {
+    windowsPortable.length > 0 && (
+      <p class="download-portable">
+        <span>Windows portable zip</span>
+        {windowsPortable.map((option) => (
+          <a href={option.url} aria-label={downloadLabel(option)}>
+            {ARCH_LABEL[option.arch]}
+          </a>
+        ))}
+      </p>
+    )
+  }
+  <p class="download-links">
+    <a href={release.url}>All downloads</a>
+    {checksumsUrl && <a href={checksumsUrl}>Checksums</a>}
+  </p>
+</section>

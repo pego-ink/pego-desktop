@@ -4,7 +4,10 @@ import { render } from "astro:content";
 import { Image } from "astro:assets";
 import Tags from "@/components/Tags.astro";
 import SectionHeading from "@/components/SectionHeading.astro";
+import Download from "@/components/Download.astro";
 import { formatDate, isoDay } from "@/lib/format-date";
+import { getDownloads } from "@/lib/downloads";
+import type { Release } from "@/lib/release-assets";
 
 interface Props {
   entry: CollectionEntry<"entries">;
@@ -17,6 +20,7 @@ const { Content } = await render(entry);
 const { title, date, summary, tags, version, image, imageAlt } = entry.data;
 const isPage = variant === "page";
 const Heading = isPage ? "h1" : "h2";
+const release: Release | undefined = (await getDownloads()).byEntry.get(entry.id);
 ---
 
 <article class="entry" id={isPage ? undefined : entry.id}>
@@ -54,5 +58,6 @@ const Heading = isPage ? "h1" : "h2";
     <div class="prose">
       <Content components={isPage ? {} : { h2: SectionHeading }} />
     </div>
+    {release && <Download release={release} variant={variant} />}
   </div>
 </article>

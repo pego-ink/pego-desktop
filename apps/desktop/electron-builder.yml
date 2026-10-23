@@ -49,28 +49,47 @@ mac:
 dmg:
   sign: false
 linux:
+  # os in the name keeps Linux/Windows/macOS assets unique in one release (zip, tar.gz share arches).
+  artifactName: Pego-${version}-linux-${arch}.${ext}
   extraResources:
     - from: resources/pego-bridge-linux-${arch}
       to: bridge/pego-bridge
   icon: build/icon.png
-  category: Graphics
+  category: Graphics;Design
   synopsis: AI-native design editor
+  description: Pego is an AI-native design editor with a local-first canvas and an agent that edits it live.
+  vendor: Pego
   executableName: pego
-  # .deb needs a maintainer; replace with "Name <email>" of whoever publishes the package.
-  maintainer: Pego maintainers
+  maintainer: Pego <hello@pego.ink>
+  # Installed as pego.desktop; matches desktopName in package.json (Electron app_id) and
+  # StartupWMClass so the running window groups under the launcher icon.
+  syncDesktopName: true
+  desktop:
+    entry:
+      Name: Pego
+      Comment: AI-native design editor
+      Categories: Graphics;Design;
+      StartupWMClass: pego
+      Keywords: design;editor;canvas;ai;
   target:
     - target: AppImage
     - target: deb
+    - target: rpm
+    - target: pacman
+    - target: tar.gz
 deb:
   # The compiled bridge is self-contained; nothing beyond Electron's own runtime libraries.
   packageCategory: graphics
 win:
+  artifactName: Pego-${version}-win-${arch}.${ext}
   extraResources:
     - from: resources/pego-bridge-win-${arch}.exe
       to: bridge/pego-bridge.exe
   icon: build/icon.png
+  legalTrademarks: Pego
   target:
     - target: nsis
+    - target: zip # portable: unzip and run Pego.exe
 nsis:
   oneClick: false
   perMachine: false

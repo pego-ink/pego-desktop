@@ -1,14 +1,19 @@
 name: Release
 
-# Push a tag like v0.1.0 (must equal apps/desktop/package.json version). macOS builds are signed
-# and notarized and carry the auto-update feed (DMGs, zips, blockmaps and latest-mac.yml); Linux
-# (AppImage, deb) and Windows (NSIS installer) builds are unsigned and have no auto-update for now.
-# All of them are attached to one DRAFT release in this (public) repo. The in-app updater reads
-# PUBLISHED releases only, so publishing the draft (`gh release edit vX.Y.Z --draft=false`) is what
-# ships the update. Uses the built-in GITHUB_TOKEN.
+# Push a tag like v0.1.0 (must equal apps/desktop/package.json version). macOS builds (arm64, x64)
+# are signed and notarized and carry the auto-update feed (DMGs, zips, blockmaps and
+# latest-mac.yml). Linux (AppImage, deb, rpm, pacman, tar.gz; x64 + arm64, each on a native runner)
+# and Windows (NSIS installer + portable zip; x64 + arm64) builds are unsigned and have no
+# auto-update for now. Everything plus SHA256SUMS.txt is attached to one DRAFT release in this
+# (public) repo. The in-app updater reads PUBLISHED releases only, so publishing the draft
+# (`gh release edit vX.Y.Z --draft=false`) is what ships the update. Uses the built-in GITHUB_TOKEN.
+#
+# Manual run (workflow_dispatch, "Run workflow" on any branch): builds and uploads every artifact
+# so the packaging can be checked before tagging. It skips the tag/version check and the release job.
 on:
   push:
     tags: ["v*"]
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -26,14 +31,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check tag matches app version
+      - name: Read app version, check tag matches
         run: |
           version="$(node -p 'require("./apps/desktop/package.json").version')"
+          echo "VERSION=${version}" >> "$GITHUB_ENV"
+          if [ "${GITHUB_EVENT_NAME}" != "push" ]; then
+            echo "manual run: skipping tag check"
+            exit 0
+          fi
           if [ "v${version}" != "${TAG}" ]; then
             echo "::error::tag ${TAG} does not match apps/desktop/package.json version ${version}"
             exit 1
           fi
-          echo "VERSION=${version}" >> "$GITHUB_ENV"
 
       - name: Require signing and notarization secrets
         env:
@@ -122,56 +131,117 @@ jobs:
           if-no-files-found: error
 
   linux:
-    runs-on: ubuntu-latest
+    name: linux-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
+
       - name: Check tag matches app version
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           version="$(node -p 'require("./apps/desktop/package.json").version')"
-          [ "v${version}" = "${{ github.ref_name }}" ] || { echo "::error::tag does not match ${version}"; exit 1; }
+          [ "v${version}" = "${TAG}" ] || { echo "::error::tag ${TAG} does not match ${version}"; exit 1; }
+
+      - name: Install packaging tools (rpm, bsdtar for pacman)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends rpm libarchive-tools
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.11
+
       - run: bun install --frozen-lockfile
-      - name: Build AppImage and deb (x64)
+
+      - name: Build AppImage, deb, rpm, pacman, tar.gz (${{ matrix.arch }})
         working-directory: apps/desktop
-        run: bun run scripts/build.ts --linux --x64 --publish never
+        run: bun run scripts/build.ts --linux --${{ matrix.arch }} --publish never
+
+      - name: Check every target was produced
+        working-directory: apps/desktop/release
+        run: |
+          ls -l
+          for ext in AppImage deb rpm pacman tar.gz; do
+            ls Pego-*-linux-*."${ext}" >/dev/null 2>&1 || { echo "::error::no .${ext} produced"; exit 1; }
+          done
+
       - uses: actions/upload-artifact@v4
         with:
-          name: linux
+          name: linux-${{ matrix.arch }}
           path: |
             apps/desktop/release/Pego-*.AppImage
-            apps/desktop/release/*.deb
+            apps/desktop/release/Pego-*.deb
+            apps/desktop/release/Pego-*.rpm
+            apps/desktop/release/Pego-*.pacman
+            apps/desktop/release/Pego-*.tar.gz
           if-no-files-found: error
 
   windows:
-    runs-on: windows-latest
+    name: windows-${{ matrix.arch }}
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            runner: windows-2025
+          - arch: arm64
+            runner: windows-11-arm
     defaults:
       run:
         shell: bash
     steps:
       - uses: actions/checkout@v4
+
       - name: Check tag matches app version
+        if: github.event_name == 'push'
+        env:
+          TAG: ${{ github.ref_name }}
         run: |
           version="$(node -p 'require("./apps/desktop/package.json").version')"
-          [ "v${version}" = "${{ github.ref_name }}" ] || { echo "::error::tag does not match ${version}"; exit 1; }
+          [ "v${version}" = "${TAG}" ] || { echo "::error::tag ${TAG} does not match ${version}"; exit 1; }
+
       - uses: oven-sh/setup-bun@v2
         with:
           bun-version: 1.3.11
+
       - run: bun install --frozen-lockfile
-      - name: Build NSIS installer (x64)
+
+      - name: Build NSIS installer and portable zip (${{ matrix.arch }})
         working-directory: apps/desktop
-        run: bun run scripts/build.ts --win --x64 --publish never
+        run: bun run scripts/build.ts --win --${{ matrix.arch }} --publish never
+
+      - name: Check every target was produced
+        working-directory: apps/desktop/release
+        run: |
+          ls -l
+          for ext in exe zip; do
+            ls Pego-*-win-*."${ext}" >/dev/null 2>&1 || { echo "::error::no .${ext} produced"; exit 1; }
+          done
+
       - uses: actions/upload-artifact@v4
         with:
-          name: windows
-          path: apps/desktop/release/Pego-*.exe
+          name: windows-${{ matrix.arch }}
+          path: |
+            apps/desktop/release/Pego-*-win-*.exe
+            apps/desktop/release/Pego-*-win-*.zip
           if-no-files-found: error
 
   release:
     needs: [macos, linux, windows]
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
     env:
       TAG: ${{ github.ref_name }}
@@ -183,20 +253,30 @@ jobs:
         with:
           path: dist
           merge-multiple: true
+      - name: Write SHA256SUMS.txt
+        working-directory: dist
+        run: |
+          ls -l
+          # Sorted, relative names so `sha256sum -c SHA256SUMS.txt` works next to the downloads.
+          find . -maxdepth 1 -type f ! -name SHA256SUMS.txt -printf '%P\n' | LC_ALL=C sort | xargs sha256sum > ../SHA256SUMS.txt
+          mv ../SHA256SUMS.txt SHA256SUMS.txt
+          cat SHA256SUMS.txt
       - name: Create draft release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          ls -l dist
-          # Versions with a pre-release suffix (e.g. 0.0.1-beta) are marked as pre-releases. The
+          # Versions with a pre-release suffix (e.g. 0.1.0-beta) are marked as pre-releases. The
           # updater accepts them when the installed app is itself a -beta build (see README).
           prerelease=()
           case "${VERSION}" in *-*) prerelease=(--prerelease) ;; esac
+          notes=(--generate-notes)
+          notes_file="apps/desktop/release-notes/${VERSION}.md"
+          if [ -f "${notes_file}" ]; then notes=(--notes-file "${notes_file}"); fi
           gh release create "${TAG}" \
             --draft \
             "${prerelease[@]}" \
             --verify-tag \
-            --title "${TAG}" \
-            --generate-notes \
+            --title "Pego ${TAG}" \
+            "${notes[@]}" \
             dist/*
           echo "Draft release ${TAG} created. Review it, then publish to ship the update: gh release edit ${TAG} --draft=false"
