@@ -112,11 +112,16 @@ const GroupButton = ({ group, vertical, menuSide }: GroupButtonProps) => {
 };
 
 /** Placement per position: centered on its edge of the canvas. */
+/**
+ * Placement per position: centered on its edge of the canvas. Each stays clear of the zoom control
+ * (bottom right) and the "show properties" button (top right): on a small canvas the toolbar
+ * scrolls instead of covering them.
+ */
 const POSITION_CLASS: Record<ToolbarPosition, string> = {
-  bottom: "bottom-6 left-1/2 -translate-x-1/2",
-  top: "top-4 left-1/2 -translate-x-1/2",
-  left: "left-3 top-1/2 -translate-y-1/2 flex-col",
-  right: "right-3 top-1/2 -translate-y-1/2 flex-col",
+  bottom: "bottom-6 left-1/2 -translate-x-1/2 max-w-[calc(100%-23rem)] overflow-x-auto",
+  top: "top-4 left-1/2 -translate-x-1/2 max-w-[calc(100%-7rem)] overflow-x-auto",
+  left: "left-3 top-1/2 -translate-y-1/2 flex-col max-h-[calc(100%-8rem)] overflow-y-auto",
+  right: "right-3 top-1/2 -translate-y-1/2 flex-col max-h-[calc(100%-8rem)] overflow-y-auto",
 };
 
 /**
@@ -135,7 +140,7 @@ export const Toolbar = () => {
           aria-label="Tools"
           aria-orientation={vertical ? "vertical" : "horizontal"}
           className={cn(
-            "absolute flex items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[0_8px_24px_#00000055]",
+            "absolute flex items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[0_8px_24px_#00000055] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             POSITION_CLASS[position],
           )}
         >
