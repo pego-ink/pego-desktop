@@ -7,6 +7,10 @@ import {
   planOutputSchema,
 } from "./prompts";
 import { agentTools } from "./tools";
+import { animationEasingSchema, animationPresetSchema } from "@pego/doc";
+
+/** Animation presets and easings, the motion values the prompts name. */
+const MOTION_KEYWORDS = [...animationPresetSchema.options, ...animationEasingSchema.options];
 
 describe("prompts", () => {
   test("are non-empty and free of volatile content", () => {
@@ -29,6 +33,7 @@ describe("prompts", () => {
       "fit_content",
       "space_between",
       "space_around",
+      ...MOTION_KEYWORDS,
     ]);
     for (const word of mentioned) expect(allowed.has(word as string)).toBe(true);
   });
@@ -70,6 +75,7 @@ describe("prompts teach the workflow", () => {
       "fit_content",
       "space_between",
       "space_around",
+      ...MOTION_KEYWORDS,
     ]);
     for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
       const mentioned = [...prompt.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map((m) => m[1]);

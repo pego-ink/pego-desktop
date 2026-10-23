@@ -3,7 +3,7 @@ import { applyOps, computeLayout, findNode, type PegoDocument, type PegoNode } f
 import { flipOps, flippableIds, mirrorShift, normalizeAngle } from "./flip-ops";
 
 const doc: PegoDocument = {
-  version: 5,
+  version: 6,
   id: "d",
   name: "d",
   variables: {},

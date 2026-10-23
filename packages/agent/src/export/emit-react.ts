@@ -2,6 +2,7 @@ import { camelProp } from "./decls";
 import { googleFontsUrl } from "./fonts";
 import { fontStack } from "./build";
 import { iconPascalName } from "./icons";
+import { motionStylesheet } from "./motion-css";
 import type { BuildCtx, IrComponent, IrEl, IrIcon, IrNode, IrUse } from "./ir";
 import { cssVarName, kebabCase } from "./naming";
 import { fontThemeName, styleObject, toTailwind } from "./tailwind";
@@ -255,10 +256,12 @@ const stylesheet = (ctx: BuildCtx): string => {
   for (const family of [...ctx.fonts.keys()].sort()) {
     theme.push(`  --font-${fontThemeName(family)}: ${fontStack(family)};`);
   }
+  const motion = motionStylesheet(ctx.motion);
   return [
     ...(url ? [`@import url("${url}");`] : []),
     '@import "tailwindcss";',
     ...(theme.length ? ["", "@theme {", ...theme, "}"] : []),
+    ...(motion ? ["", motion] : []),
     "",
   ].join("\n");
 };

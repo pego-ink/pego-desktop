@@ -67,7 +67,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **5**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **6**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -75,7 +75,7 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 5, "document": { ... } }
+{ "format": "pego", "version": 6, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
@@ -84,13 +84,13 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 `viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
 added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
 change: the bump makes older builds refuse these files instead of dropping the props); version 4 added `visible` (hidden layers), frame `slot` (component slots), page
-`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change.
+`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change.
 
 ### Document
 
 ```json
 {
-  "version": 5,
+  "version": 6,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -123,7 +123,7 @@ change: the bump makes older builds refuse these files instead of dropping the p
 ### Nodes
 
 Every node has `id` (unique in the whole document), `type`, and optionally `name`, `x`, `y` (default `0`),
-`width`, `height`, `rotation`, `flipX`, `flipY` (not on pages: mirror around the box center, applied before the rotation, so the box does not change; children and text mirror too), `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
+`width`, `height`, `rotation`, `flipX`, `flipY` (not on pages: mirror around the box center, applied before the rotation, so the box does not change; children and text mirror too), `animation` (not on pages, see Motion), `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
 drawn, not hit, no room in a flex layout, not exported).
 
 | Type        | Extra props                                                                                                                              | Children |
@@ -167,6 +167,14 @@ Value rules:
   (children are placed by the frame; their `x`/`y` are ignored). `padding` is one value or
   `[top, right, bottom, left]`. `justifyContent`: `start | center | end | space_between | space_around`.
   `alignItems`: `start | center | end`.
+- **Motion**: `animation` is `{ "preset", "delay"?, "duration"?, "easing"?, "countUp"? }`, an entrance from a
+  start state to the node as designed. Presets `none | fade | slide_up | slide_down | slide_left | slide_right |
+grow_up | grow_right | scale | pop`, `delay`/`duration` in ms (default 0 / 600), `easing`
+  `ease_out | ease_in_out | linear | spring` (`pop` defaults to spring), `countUp` (text: its numbers count from
+  0). The canvas shows the end state while editing; Play (`apps/web/src/motion/`) draws `motionFrame`
+  (`packages/doc/src/motion.ts`) per node, purely visual (layout and hit-testing do not move). Code export emits
+  the same timing as CSS `@keyframes` on `translate` / `scale` (`packages/agent/src/export/motion-css.ts`), plus a
+  small script for `countUp` in HTML. No loops or timeline.
 - **Variables**: referenced as `$name`, stored in `document.variables` without the `$`. A reference to a missing
   variable or one of the wrong type falls back to the default (see `packages/doc/src/resolve.ts`).
 
