@@ -20,10 +20,14 @@ export type PolishIssue = {
   node: PegoNode;
   issue: string;
   hint: string;
+  /** Set when `node` is a component instance root: the component to fix instead. */
+  component?: string;
 };
 
 /** Largest even inset at which nested corners should be concentric. */
 const MAX_CONCENTRIC_INSET = 24;
+/** A child rounder than its parent is a clear defect only this close to the corner. */
+const MAX_TIGHT_INSET = 12;
 /** Lucide strokes are 2 on a 24 grid, so an icon under 16px draws under 1.33px. */
 const MIN_ICON_BESIDE_BOLD = 16;
 const BOLD = 600;
@@ -35,6 +39,10 @@ const label = (node: PegoNode): string => node.name ?? `${node.type} ${node.id}`
 
 /** The source part of a render id: instance children are `<instanceId>/<sourceId>`. */
 export const sourceId = (id: string): string => id.slice(id.lastIndexOf("/") + 1);
+
+/** `{ component }` when `node` is an instance root (its source is a component, not itself). */
+const instanceOf = (node: PegoNode, source: string): { component?: string } =>
+  source !== sourceId(node.id) ? { component: source } : {};
 
 type Item = { node: PegoNode; box: Box; source: string };
 
@@ -104,10 +112,11 @@ const cornerIssues = (
     if (inner > outer + EDGE) {
       issues.push({
         key,
-        severity: "warning",
+        severity: inset <= MAX_TIGHT_INSET ? "warning" : "info",
         node,
         issue: `corner of "${label(child.node)}" (radius ${px(inner)}) is rounder than its parent's (radius ${px(outer)})`,
         hint: `Concentric corners: give "${label(node)}" cornerRadius ${px(expected)} (${sum}), or lower the child's radius.`,
+        ...instanceOf(node, source),
       });
     } else if (Math.abs(outer - expected) > 2) {
       issues.push({
@@ -116,6 +125,7 @@ const cornerIssues = (
         node,
         issue: `corner radius ${px(outer)} is not concentric with "${label(child.node)}" (radius ${px(inner)}, inset ${px(inset)})`,
         hint: `Concentric corners: parent radius = ${sum} = ${px(expected)}. Use it or the closest radius token.`,
+        ...instanceOf(node, source),
       });
     }
   }
@@ -142,6 +152,7 @@ const iconIssues = (doc: PegoDocument, layout: Layout, node: PegoNode): PolishIs
       node: item.node,
       issue: `icon is ${px(size)}px beside weight ${weight} text; its stroke is size / 12 (${px(size / 12)}px), thinner than the text`,
       hint: "Make the icon 16px or larger (18 to 20 beside 14 to 16px text), or use weight 500 for the text.",
+      ...instanceOf(item.node, item.source),
     });
   });
   return issues;
@@ -153,6 +164,10 @@ const isLooseCard = (node: PegoNode): boolean =>
   (node.fill !== undefined || node.stroke !== undefined) &&
   node.height !== "fill_container";
 
+/** Fill, stroke and radius together: cards of one row share them; an avatar and a bubble do not. */
+const surfaceOf = (node: PegoNode): string =>
+  node.type === "frame" ? JSON.stringify([node.fill, node.stroke, node.cornerRadius]) : "";
+
 const rowIssues = (
   doc: PegoDocument,
   layout: Layout,
@@ -163,6 +178,7 @@ const rowIssues = (
   if (node.alignItems !== undefined && node.alignItems !== "start") return [];
   const items = visibleChildren(doc, layout, node);
   if (items.length < 2 || !items.every((item) => isLooseCard(item.node))) return [];
+  if (new Set(items.map((item) => surfaceOf(item.node))).size > 1) return [];
   const heights = items.map((item) => item.box.height);
   const low = Math.min(...heights);
   const high = Math.max(...heights);
@@ -174,6 +190,7 @@ const rowIssues = (
       node,
       issue: `cards in "${label(node)}" end at different heights (${px(low)} to ${px(high)}px)`,
       hint: "Set height fill_container on each card: the row hugs the tallest card and stretches the others to it.",
+      ...instanceOf(node, source),
     },
   ];
 };
@@ -184,16 +201,61 @@ const lopsided = (a: number, b: number): boolean => {
   return low > 0 && high >= 2 * low && high - low >= 8;
 };
 
-const paddingIssues = (doc: PegoDocument, node: PegoNode, source: string): PolishIssue[] => {
+const isPainted = (node: PegoNode): boolean =>
+  node.type === "image" ||
+  ("fill" in node && node.fill !== undefined) ||
+  ("stroke" in node && node.stroke !== undefined);
+
+type Side = "top" | "right" | "bottom" | "left";
+
+/** True when a child box sits on the frame's inner edge at `side` (the padding line). */
+const onInnerEdge = (child: Box, box: Box, side: Side, inset: number): boolean => {
+  if (side === "top") return near(child.y, box.y + inset);
+  if (side === "bottom") return near(child.y + child.height, box.y + box.height - inset);
+  if (side === "left") return near(child.x, box.x + inset);
+  return near(child.x + child.width, box.x + box.width - inset);
+};
+
+/** True when a box edge at `side` lies on the same edge of the screen box. */
+const onScreenEdge = (box: Box, screen: Box, side: Side): boolean => {
+  if (side === "top") return near(box.y, screen.y);
+  if (side === "bottom") return near(box.y + box.height, screen.y + screen.height);
+  if (side === "left") return near(box.x, screen.x);
+  return near(box.x + box.width, screen.x + screen.width);
+};
+
+const paddingIssues = (
+  doc: PegoDocument,
+  layout: Layout,
+  node: PegoNode,
+  source: string,
+  box: Box,
+  screen: Box | null,
+): PolishIssue[] => {
   if (node.type !== "frame" || (node.fill === undefined && node.stroke === undefined)) return [];
   if (node.stroke && Array.isArray(node.stroke.width)) return []; // a divider edge
   const [top, right, bottom, left] = resolveSides(node.padding, doc.variables, 0);
+  const items = visibleChildren(doc, layout, node);
+  const justified = (small: Side, smallInset: number, large: Side, vertical: boolean): boolean =>
+    // A rounded control nested at the small inset (input with a button, pill with an avatar).
+    items.some(
+      (item) =>
+        isPainted(item.node) &&
+        radiusOf(item.node, item.box, doc) > 0 &&
+        onInnerEdge(item.box, box, small, smallInset),
+    ) ||
+    // Safe-area padding on a screen, or on a bar or sheet that sits on the screen's edge.
+    (vertical && (screen === null || onScreenEdge(box, screen, large)));
   const pair = (
     [
-      ["top", top, "bottom", bottom],
-      ["left", left, "right", right],
+      ["top", top, "bottom", bottom, true],
+      ["left", left, "right", right, false],
     ] as const
-  ).find(([, a, , b]) => lopsided(a, b));
+  ).find(([sideA, a, sideB, b, vertical]) => {
+    if (!lopsided(a, b)) return false;
+    const [small, smallInset, large] = a < b ? [sideA, a, sideB] : [sideB, b, sideA];
+    return !justified(small, smallInset, large, vertical);
+  });
   if (!pair) return [];
   return [
     {
@@ -202,6 +264,7 @@ const paddingIssues = (doc: PegoDocument, node: PegoNode, source: string): Polis
       node,
       issue: `padding is lopsided: ${pair[0]} ${px(pair[1])} vs ${pair[2]} ${px(pair[3])}`,
       hint: "Use the same padding on both sides of an axis (for example [20, 20, 20, 20]); only a divider or header edge justifies a difference.",
+      ...instanceOf(node, source),
     },
   ];
 };
@@ -209,12 +272,14 @@ const paddingIssues = (doc: PegoDocument, node: PegoNode, source: string): Polis
 /**
  * Polish findings for one laid-out node (refs already expanded) and its direct children.
  * `source` is the node's stable id: the component id for an instance root, else `sourceId`.
+ * `screen` is the box of the top-level frame holding the node, null when the node is one.
  */
 export const checkPolish = (
   doc: PegoDocument,
   layout: Layout,
   node: PegoNode,
   source: string,
+  screen: Box | null,
 ): PolishIssue[] => {
   const box = layout.get(node.id);
   if (!box || box.width <= 0 || box.height <= 0) return [];
@@ -222,6 +287,6 @@ export const checkPolish = (
     ...cornerIssues(doc, layout, node, source, box),
     ...iconIssues(doc, layout, node),
     ...rowIssues(doc, layout, node, source),
-    ...paddingIssues(doc, node, source),
+    ...paddingIssues(doc, layout, node, source, box, screen),
   ];
 };

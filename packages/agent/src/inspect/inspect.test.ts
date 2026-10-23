@@ -557,7 +557,12 @@ describe("check_layout polish", () => {
     );
 
   test("lopsided padding on a painted container is a warning", () => {
-    const found = polish(issuesOf([panel([20, 20, 4, 20])]));
+    // Inside a screen: a top-level frame is a screen, whose vertical padding may be a safe area.
+    const found = polish(
+      issuesOf([
+        frame("screen", { layout: "vertical", width: 400, padding: 24 }, [panel([20, 20, 4, 20])]),
+      ]),
+    );
     expect(found).toHaveLength(1);
     expect(found[0]).toMatchObject({ severity: "warning", nodeId: "panel" });
     expect(found[0]?.issue).toContain("lopsided");
@@ -579,6 +584,121 @@ describe("check_layout polish", () => {
     expect(
       polish(issuesOf([panel([20, 20, 4, 20], { fill: undefined, stroke: undefined })])),
     ).toEqual([]);
+  });
+
+  test("an inset control on the smaller padding side is not lopsided", () => {
+    const field = frame(
+      "field",
+      {
+        layout: "horizontal",
+        width: 360,
+        fill: "#FFFFFF",
+        cornerRadius: 12,
+        padding: [6, 6, 6, 16],
+        alignItems: "center",
+      },
+      [
+        text("email", "nama@klinik.id", { width: "fill_container" }),
+        frame("send", { layout: "horizontal", height: 32, cornerRadius: 6, fill: "#0F766E" }, [
+          text("sendLabel", "Kirim", { fontSize: 14 }),
+        ]),
+      ],
+    );
+    const pill = frame(
+      "pill",
+      {
+        layout: "horizontal",
+        fill: "#E6EEF0",
+        cornerRadius: 999,
+        padding: [4, 12, 4, 4],
+        gap: 8,
+        alignItems: "center",
+      },
+      [
+        frame("face", { width: 32, height: 32, cornerRadius: 16, fill: "#C3D2D7" }),
+        text("who", "Resepsionis", { fontSize: 14 }),
+      ],
+    );
+    expect(polish(issuesOf([field, pill]))).toEqual([]);
+  });
+
+  test("safe-area padding at a screen edge is not lopsided", () => {
+    const issues = issuesOf([
+      frame(
+        "phone",
+        {
+          layout: "vertical",
+          width: 390,
+          height: 844,
+          fill: "#FFFFFF",
+          padding: [59, 20, 24, 20],
+        },
+        [text("title", "Antrean")],
+      ),
+      frame("app", { layout: "vertical", width: 390, height: 844, fill: "#F4F8F9", x: 500 }, [
+        frame(
+          "content",
+          { layout: "vertical", width: "fill_container", height: "fill_container" },
+          [text("body", "Isi")],
+        ),
+        frame(
+          "tabs",
+          {
+            layout: "horizontal",
+            width: "fill_container",
+            fill: "#FFFFFF",
+            padding: [8, 16, 34, 16],
+          },
+          [text("tab", "Beranda")],
+        ),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("a chat row of an avatar and a bubble is not a card row", () => {
+    const issues = issuesOf([
+      frame("message", { layout: "horizontal", width: 360, gap: 8 }, [
+        frame("chatAvatar", { width: 32, height: 32, cornerRadius: 16, fill: "#C3D2D7" }),
+        frame(
+          "bubble",
+          {
+            layout: "vertical",
+            width: "fill_container",
+            fill: "#F2F2F0",
+            cornerRadius: 12,
+            padding: 12,
+          },
+          [text("msg", "Pasien A-021 sudah hadir di ruang tunggu dan siap dipanggil sekarang.")],
+        ),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("a circle at a wide inset is info, not a warning", () => {
+    const issues = issuesOf([
+      frame(
+        "kpi",
+        { layout: "vertical", width: 240, fill: "#FFFFFF", cornerRadius: 12, padding: 20, gap: 8 },
+        [
+          frame("badge", { width: 40, height: 40, cornerRadius: 20, fill: "#D5EEEB" }),
+          text("kpiText", "14 pasien"),
+        ],
+      ),
+    ]);
+    expect(polish(issues).map((i) => [i.nodeId, i.severity])).toEqual([["kpi", "info"]]);
+  });
+
+  test("a finding on an instance root points at its component", () => {
+    const issues = issuesOf([
+      frame("screen", { layout: "vertical", gap: 8 }, [ref("u1", "user"), ref("u2", "user")]),
+      frame("lib", { layout: "vertical", gap: 8, y: 400 }, [userCard({ reusable: true })]),
+    ]);
+    const found = polish(issues);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.nodeId).toBe("u1");
+    expect(found[0]?.hint).toContain('instance of component "user"');
   });
 
   test("we-ui dashboard fixture gives exactly the five expected polish warnings", () => {
