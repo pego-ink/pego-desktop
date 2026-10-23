@@ -42,7 +42,8 @@ export const cubicBezier = (x1: number, y1: number, x2: number, y2: number) => {
 
 const easeInOut = cubicBezier(...CAMERA_EASE);
 
-export type Viewport = { width: number; height: number };
+/** The visible part of the canvas; the animation keeps its center traveling smoothly. */
+export type Viewport = { x?: number; y?: number; width: number; height: number };
 
 /**
  * Camera at progress `t` between two cameras: zoom moves geometrically (constant perceived
@@ -50,8 +51,8 @@ export type Viewport = { width: number; height: number };
  */
 export const interpolateCamera = (from: Camera, to: Camera, size: Viewport, t: number): Camera => {
   if (t >= 1) return to;
-  const cx = size.width / 2;
-  const cy = size.height / 2;
+  const cx = (size.x ?? 0) + size.width / 2;
+  const cy = (size.y ?? 0) + size.height / 2;
   const fromX = (cx - from.panX) / from.zoom;
   const fromY = (cy - from.panY) / from.zoom;
   const toX = (cx - to.panX) / to.zoom;

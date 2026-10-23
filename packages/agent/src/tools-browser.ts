@@ -1,11 +1,28 @@
 import { z } from "zod";
 import { CDP_ALLOWED_METHODS, describeCdpAllowlist } from "./browser-cdp";
-import type { BrowserHost, BrowserTarget } from "./browser-types";
+import type { BrowserHost, BrowserTarget, DomSnapshot } from "./browser-types";
+import type { PegoNode } from "@pego/doc";
 import { ImageSrcError, validateImageSrc } from "./media/image-src";
-import { convertDomSnapshot } from "./media/dom";
+import { convertDomSnapshot, type DomConversionOptions } from "./media/dom";
 import { defaultPosition, insertRaw } from "./tools-media";
-import { defineTool, fail, ok, okText, ToolError } from "./tool-kit";
+import { assignIds, defineTool, fail, ok, okText, parseNode, ToolError } from "./tool-kit";
 import type { ToolHost, ToolImageType, ToolResult, ToolSpec } from "./types";
+
+/**
+ * A page snapshot as one Pego node with ids not in `taken`, checked against the document schema:
+ * what the browser extension's imports become (the in-app browser's import-to-canvas inserts
+ * through the agent tools instead). `node` is null when nothing visible could be converted.
+ */
+export const domSnapshotToNode = (
+  snapshot: DomSnapshot,
+  taken: Set<string>,
+  options: DomConversionOptions = {},
+): { node: PegoNode | null; count: number; warnings: string[] } => {
+  const converted = convertDomSnapshot(snapshot, options);
+  if (converted.count === 0) return { node: null, count: 0, warnings: converted.warnings };
+  const { node } = parseNode(assignIds(converted.node, taken), "node");
+  return { node, count: converted.count, warnings: converted.warnings };
+};
 
 const MAX_TEXT = 40_000;
 const MAX_WARNINGS = 20;

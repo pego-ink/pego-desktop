@@ -64,3 +64,12 @@ describe("wheel classification", () => {
     expect(wheelNotchFactor(0)).toBe(1);
   });
 });
+
+describe("fitCamera in part of the canvas", () => {
+  test("an offset view centers the bounds in that part (floating panels cover the rest)", () => {
+    const bounds = { x: 0, y: 0, width: 400, height: 300 };
+    const whole = fitCamera(bounds, { width: 800, height: 600 });
+    const part = fitCamera(bounds, { x: 360, y: 8, width: 800, height: 600 });
+    expect(part).toEqual({ zoom: whole.zoom, panX: whole.panX + 360, panY: whole.panY + 8 });
+  });
+});

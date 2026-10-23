@@ -395,13 +395,19 @@ const createAgentStore = () =>
           .map((live) => live.colorIndex);
         patch(sessionId, (live) => {
           const previous = currentTurn(live);
+          // A session keeps its slot (color and agent name) from turn to turn while no other
+          // running session holds it.
+          const colorIndex =
+            (previous !== null || live.turns.length > 0) && !used.includes(live.colorIndex)
+              ? live.colorIndex
+              : pickColorIndex(used);
           return {
             ...idleRun,
             turns: previous ? [...live.turns, previous] : live.turns,
             runId,
             prompt,
             status: "planning",
-            colorIndex: pickColorIndex(used),
+            colorIndex,
           };
         });
       },

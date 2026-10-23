@@ -124,6 +124,7 @@ const GROUP_IDS: Record<Exclude<StyleGroup, "More">, readonly string[]> = {
     "brutalist-web",
     "bento-grid",
     "editorial-magazine",
+    "teenage-engineering",
   ],
 };
 

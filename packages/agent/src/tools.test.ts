@@ -467,7 +467,8 @@ describe("tool annotations", () => {
     for (const tool of agentTools) {
       const annotations = toolAnnotations(tool.name);
       expect(annotations.title).not.toBe(tool.name);
-      expect(annotations.openWorldHint).toBe(tool.name === "browser");
+      // Only the tools that reach the web: the in-app browser and the image search.
+      expect(annotations.openWorldHint).toBe(["browser", "search_images"].includes(tool.name));
     }
     expect(toolAnnotations("get_document")).toMatchObject({ readOnlyHint: true });
     expect(toolAnnotations("insert_nodes")).toMatchObject({

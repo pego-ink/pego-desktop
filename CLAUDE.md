@@ -67,7 +67,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **5**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **7**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -75,7 +75,7 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 5, "document": { ... } }
+{ "format": "pego", "version": 7, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
@@ -84,13 +84,13 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 `viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
 added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
 change: the bump makes older builds refuse these files instead of dropping the props); version 4 added `visible` (hidden layers), frame `slot` (component slots), page
-`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change.
+`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change; version 7 added the `shader` fill type, again with no data change.
 
 ### Document
 
 ```json
 {
-  "version": 5,
+  "version": 7,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -123,7 +123,7 @@ change: the bump makes older builds refuse these files instead of dropping the p
 ### Nodes
 
 Every node has `id` (unique in the whole document), `type`, and optionally `name`, `x`, `y` (default `0`),
-`width`, `height`, `rotation`, `flipX`, `flipY` (not on pages: mirror around the box center, applied before the rotation, so the box does not change; children and text mirror too), `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
+`width`, `height`, `rotation`, `flipX`, `flipY` (not on pages: mirror around the box center, applied before the rotation, so the box does not change; children and text mirror too), `animation` (not on pages, see Motion), `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
 drawn, not hit, no room in a flex layout, not exported).
 
 | Type        | Extra props                                                                                                                              | Children |
@@ -144,7 +144,8 @@ Value rules:
 - **Fill**: a color on every painted node. Frame, rectangle, ellipse and path also take
   `{ "type": "linear", "angle", "stops" }` (CSS angles: 0 up, 90 right, 180 default),
   `{ "type": "radial", "center": [0.5, 0.5], "radius": [0.5, 0.5], "stops" }` (fractions of the node size) or
-  `{ "type": "image", "src": "data:image/png;base64,...", "fit": "cover" | "contain" | "stretch" }`. Stops are
+  `{ "type": "image", "src": "data:image/png;base64,...", "fit": "cover" | "contain" | "stretch" }` or
+  `{ "type": "shader", "preset", "code"?, "uniforms"? }` (see Shader fills). Stops are
   `{ "color", "position" }` with position 0..1, at least two. Images are embedded (scaled to at most 2048 px on
   import from the panel); geometry helpers shared by canvas and exports live in `packages/doc/src/paint.ts`.
 - **Stroke**: `{ color, width }`. `width` defaults to `1`; a uniform width is centered on the outline, per-side
@@ -167,6 +168,25 @@ Value rules:
   (children are placed by the frame; their `x`/`y` are ignored). `padding` is one value or
   `[top, right, bottom, left]`. `justifyContent`: `start | center | end | space_between | space_around`.
   `alignItems`: `start | center | end`.
+- **Motion**: `animation` is `{ "preset", "delay"?, "duration"?, "easing"?, "countUp"? }`, an entrance from a
+  start state to the node as designed. Presets `none | fade | slide_up | slide_down | slide_left | slide_right |
+grow_up | grow_right | scale | pop`, `delay`/`duration` in ms (default 0 / 600), `easing`
+  `ease_out | ease_in_out | linear | spring` (`pop` defaults to spring), `countUp` (text: its numbers count from
+  0). The canvas shows the end state while editing; Play (`apps/web/src/motion/`) draws `motionFrame`
+  (`packages/doc/src/motion.ts`) per node, purely visual (layout and hit-testing do not move). Code export emits
+  the same timing as CSS `@keyframes` on `translate` / `scale` (`packages/agent/src/export/motion-css.ts`), plus a
+  small script for `countUp` in HTML (`none` + `countUp` is a text that only counts). On a rotated layer the
+  exported `grow_*` presets scale along the page axes from its top-left corner, unlike the canvas. No loops
+  or timeline.
+- **Shader fills** (`packages/doc/src/shaders.ts`): `preset` is `aurora | gradient_flow | waves | grain | shimmer |
+dots | custom`; `custom` runs `code`, a GLSL-style fragment shader both Skia (SkSL) and WebGL 1 accept:
+  `vec4 main(vec2 fragCoord)`, `fragCoord` in px from the shape's top-left, `iResolution` (vec2 px) and `iTime`
+  (s) declared for it, float / vec2-4 uniforms only, no textures. `uniforms` override the preset defaults by name
+  (numbers, vectors, colors as hex or `$variable`). The canvas compiles it with `RuntimeEffect`
+  (`apps/web/src/canvas/render-shader.ts`); its clock runs only while a layer with (or inside, or around) a
+  moving shader is selected, or during Play (`canvas/shader-activity.ts`), and stops for reduced motion. HTML
+  and React exports keep a fallback background and draw the shader with a small WebGL runtime
+  (`export/shader-export.ts`, `data-pego-shader`); SVG uses the first color, PNG the first frame.
 - **Variables**: referenced as `$name`, stored in `document.variables` without the `$`. A reference to a missing
   variable or one of the wrong type falls back to the default (see `packages/doc/src/resolve.ts`).
 
@@ -260,8 +280,9 @@ When you add a node prop, update the canvas renderer and the exporter together, 
 ## Agent
 
 - Tools: `packages/agent/src/tools.ts` (registry), `tools-edit.ts`, `tools-inspect.ts`, `edit/`, `inspect/`.
-- Prompts: `prompts.ts`. Design guidance is the skills system (`skills/`: one design skill plus one style
-  skill per run, `list_skills` / `get_skill`; `get_guidelines` maps old topic names onto skills). Style presets
+- Prompts: `prompts.ts`. Design guidance is the skills system (`skills/`: the always-on `core` and
+  `ui-polish` skills plus one design skill and one style skill per run, `list_skills` / `get_skill`;
+  `get_guidelines` maps old topic names onto skills). Style presets
   (`list_styles`, `get_style`): `styles/presets.ts`.
 - BYOK models: planner `claude-opus-5-5`, executor `claude-sonnet-5-5` (`apps/web/src/agent/api-runtime.ts`).
 - Plan and progress always go through `report_plan` / `report_step` so every backend drives the same panel.
@@ -303,6 +324,9 @@ details. `bun test` in that workspace validates every entry. It deploys from `ma
 **Every PR into `dev` adds or updates an entry** (same-day changes may extend that day's entry). The `Changelog` check
 (`.github/workflows/changelog-check.yml`) fails a PR into `dev` that touches no file in `src/content/entries/`;
 purely internal PRs (CI, docs, refactors, tests) take the `no-changelog` label instead.
+When a same-repo PR has neither, Claude (same workflow, `CLAUDE_CODE_OAUTH_TOKEN`) writes a new entry file and the
+workflow commits it to the PR branch after `bun test` validates it, or Claude adds the `no-changelog` label; edit
+the entry like any file before merging.
 
 ## Git workflow
 
@@ -314,5 +338,8 @@ Two people contribute to `github.com/yolkmonday/pego`, so:
 - Coordinate before touching shared hot spots: `packages/doc/src/schema.ts`, `packages/doc/src/ops.ts`,
   `packages/agent/src/tools.ts`, root `package.json`.
 - On a `bun.lock` conflict, take `main`'s version and rerun `bun install`; never hand-edit it.
+- A Claude review bot (`.github/workflows/claude-review.yml`) comments on every same-repo PR into `dev`/`main`:
+  overlap with other open PRs, recent merges and active branches (so nobody builds the same feature twice),
+  plus a short code check. It never blocks merging; it needs the `CLAUDE_CODE_OAUTH_TOKEN` secret.
 - Every PR into `dev` carries a changelog entry (see Changelog) or the `no-changelog` label. Approvals for `dev`
   and `main` come from the code owner (`.github/CODEOWNERS`).

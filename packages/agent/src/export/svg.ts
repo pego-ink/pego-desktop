@@ -1,4 +1,5 @@
 import {
+  shaderFallbackColor,
   findNode,
   flipOf,
   isContainer,
@@ -72,6 +73,9 @@ const newId = (ctx: Ctx, prefix: string): string => `${prefix}${++ctx.idCount}`;
 const fillAttrs = (ctx: Ctx, fill: Fill | undefined, w: number, h: number, minX = 0, minY = 0) => {
   if (fill === undefined) return paintAttrs("fill", undefined);
   if (typeof fill === "string") return paintAttrs("fill", color(ctx, fill));
+  // SVG cannot run a shader: its first color stands in.
+  if (fill.type === "shader")
+    return paintAttrs("fill", shaderFallbackColor(fill, ctx.doc.variables));
   const id = newId(ctx, "paint");
   const angle = fill.type === "linear" ? num(ctx, fill.angle, 180) : 0;
   const area = { x: minX, y: minY, width: w, height: h };

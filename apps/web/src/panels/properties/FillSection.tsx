@@ -16,6 +16,7 @@ import {
 import { imageFileToDataUri, pickImageFile } from "@/panels/properties/image-file";
 import { DEFAULT_FILL, hasShapeFill, rawProp } from "@/panels/properties/node-props";
 import { useApplyProps } from "@/panels/properties/use-apply-props";
+import { ShaderFillEditor } from "@/panels/properties/ShaderFillEditor";
 
 type Phase = "commit" | "extend";
 
@@ -113,6 +114,13 @@ export const FillSection = ({ node }: { node: PegoNode }) => {
               raw={fill}
               label="Fill color"
               onChange={(value, phase) => setFill(value, "Change fill", phase)}
+            />
+          ) : fill.type === "shader" ? (
+            <ShaderFillEditor
+              fill={fill}
+              onChange={(change, label, phase) =>
+                editFill((f) => (f.type === "shader" ? change(f) : f), label, phase)
+              }
             />
           ) : fill.type === "image" ? (
             <PropertyRow className="grid-cols-[1fr_auto]">
