@@ -25,6 +25,9 @@ const MIGRATIONS: Record<number, (doc: RawDocument) => RawDocument> = {
   // v4 only adds optional props: `visible` (hidden layers), frame `slot`, page `library` and image
   // `source`. The bump makes older builds refuse these files instead of dropping the props.
   3: (doc) => ({ ...doc, version: 4 }),
+  // v5 only adds optional props: `flipX` / `flipY` on every rendered node. The bump makes older
+  // builds refuse these files instead of dropping the flips.
+  4: (doc) => ({ ...doc, version: 5 }),
 };
 
 /** "page-1", or "page-1-2"... if a node already uses that id. */

@@ -70,7 +70,7 @@ const card: FigmaNode = {
 };
 
 const asDoc = (nodes: PegoNode[]): PegoDocument => ({
-  version: 4,
+  version: 5,
   id: "d",
   name: "d",
   variables: {},

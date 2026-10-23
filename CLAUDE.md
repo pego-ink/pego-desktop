@@ -64,7 +64,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **4**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **5**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -72,7 +72,7 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 3, "document": { ... } }
+{ "format": "pego", "version": 5, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
@@ -81,13 +81,13 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 `viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
 added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
 change: the bump makes older builds refuse these files instead of dropping the props); version 4 added `visible` (hidden layers), frame `slot` (component slots), page
-`library` (library pages) and image `source` (screenshot origin), again with no data change.
+`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change.
 
 ### Document
 
 ```json
 {
-  "version": 3,
+  "version": 5,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -120,7 +120,7 @@ change: the bump makes older builds refuse these files instead of dropping the p
 ### Nodes
 
 Every node has `id` (unique in the whole document), `type`, and optionally `name`, `x`, `y` (default `0`),
-`width`, `height`, `rotation`, `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
+`width`, `height`, `rotation`, `flipX`, `flipY` (not on pages: mirror around the box center, applied before the rotation, so the box does not change; children and text mirror too), `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
 drawn, not hit, no room in a flex layout, not exported).
 
 | Type        | Extra props                                                                                                                              | Children |

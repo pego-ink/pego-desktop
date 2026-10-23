@@ -11,6 +11,7 @@ import {
   pageOrFirst,
   linearGradientPoints,
   MAX_INSTANCE_DEPTH,
+  flipOf,
   resolveColor,
   resolveInstance,
   resolveNumber,
@@ -480,6 +481,14 @@ const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth:
     const placement = nodePlacement(box, parent, rotation);
     canvas.translate(placement.x, placement.y);
     if (placement.angle !== 0) canvas.rotate(placement.angle, 0, 0);
+    // Mirror around the box center, after the rotation (rotate, then flip, like CSS
+    // `rotate() scale(-1, 1)`): the box stays put, content, children and shadows mirror.
+    const flip = flipOf(node);
+    if (flip.x || flip.y) {
+      canvas.translate(box.width / 2, box.height / 2);
+      canvas.scale(flip.x ? -1 : 1, flip.y ? -1 : 1);
+      canvas.translate(-box.width / 2, -box.height / 2);
+    }
     if (opacity < 1) {
       paints.layer.setAlphaf(opacity);
       canvas.saveLayer(paints.layer);

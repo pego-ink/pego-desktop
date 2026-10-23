@@ -5,7 +5,7 @@ import { documentSchema, type PegoDocument, type PegoNode, type RefNode } from "
 
 const makeDoc = (children: unknown[]): PegoDocument =>
   documentSchema.parse({
-    version: 4,
+    version: 5,
     id: "doc",
     name: "Test",
     variables: {},

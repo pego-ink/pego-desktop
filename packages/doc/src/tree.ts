@@ -13,6 +13,12 @@ export type NodeLocation = {
 export const isContainer = (node: PegoNode): node is ContainerNode =>
   node.type === "frame" || node.type === "group" || node.type === "page";
 
+/** The node's mirror flags (pages never flip). */
+export const flipOf = (node: PegoNode): { x: boolean; y: boolean } =>
+  node.type === "page"
+    ? { x: false, y: false }
+    : { x: node.flipX === true, y: node.flipY === true };
+
 export const findLocation = (doc: PegoDocument, id: string): NodeLocation | null => {
   const walk = (
     nodes: PegoNode[],

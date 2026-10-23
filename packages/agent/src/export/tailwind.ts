@@ -157,7 +157,14 @@ const opacityClass = (value: string): string => {
     : `opacity-[${value}]`;
 };
 
+const FLIP_CLASSES: Record<string, string> = {
+  "scaleX(-1)": "-scale-x-100",
+  "scaleY(-1)": "-scale-y-100",
+  "scale(-1, -1)": "-scale-100",
+};
+
 const rotateClass = (value: string): string | undefined => {
+  if (FLIP_CLASSES[value]) return FLIP_CLASSES[value];
   const match = /^rotate\((-?\d+(?:\.\d+)?)deg\)$/.exec(value);
   if (!match) return undefined;
   const deg = Number(match[1]);

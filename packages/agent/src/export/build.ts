@@ -1,5 +1,6 @@
 import {
   findNode,
+  flipOf,
   isContainer,
   MAX_INSTANCE_DEPTH,
   resolveInstance,
@@ -166,16 +167,41 @@ const positionParts = (node: PegoNode, parent: Parent, ctx: BuildCtx): Decl[] =>
       ]
     : [];
 
-const transformParts = (node: PegoNode, ctx: BuildCtx): Decl[] => {
+/**
+ * CSS for the mirror around the box center. Alone it is `scaleX(-1)` / `scaleY(-1)` (the default
+ * origin is the center). With a rotation the origin is the top-left corner, so the mirror also
+ * moves the box back: `rotate() translate(w, 0) scale(-1, 1)`, the canvas order (rotate, then flip).
+ */
+const transformValue = (
+  node: PegoNode,
+  ctx: BuildCtx,
+  box: Box | undefined,
+  rotation: number,
+): string | undefined => {
+  const { x: flipX, y: flipY } = flipOf(node);
+  if (!flipX && !flipY) return rotation !== 0 ? `rotate(${round2(-rotation)}deg)` : undefined;
+  if (rotation === 0) {
+    return flipX && flipY ? "scale(-1, -1)" : flipX ? "scaleX(-1)" : "scaleY(-1)";
+  }
+  const width =
+    box?.width ?? numOf(typeof node.width === "number" ? node.width : undefined, ctx, 0);
+  const height =
+    box?.height ?? numOf(typeof node.height === "number" ? node.height : undefined, ctx, 0);
+  const move = `translate(${px(flipX ? round2(width) : 0)}, ${px(flipY ? round2(height) : 0)})`;
+  return `rotate(${round2(-rotation)}deg) ${move} scale(${flipX ? -1 : 1}, ${flipY ? -1 : 1})`;
+};
+
+const transformParts = (node: PegoNode, ctx: BuildCtx, box: Box | undefined): Decl[] => {
   const decls: Decl[] = [];
   const opacity = Math.min(1, Math.max(0, numOf(node.opacity, ctx, 1)));
   if (opacity < 1) decls.push(["opacity", String(round2(opacity))]);
   const rotation = numOf(node.rotation, ctx, 0);
+  const transform = transformValue(node, ctx, box, rotation);
   if (rotation !== 0) {
     // The canvas rotates counter-clockwise around the top-left corner.
     decls.push(["transform-origin", "top left"]);
-    decls.push(["transform", `rotate(${round2(-rotation)}deg)`]);
   }
+  if (transform) decls.push(["transform", transform]);
   return decls;
 };
 
@@ -190,7 +216,7 @@ const boxParts = (node: PegoNode, parent: Parent, ctx: BuildCtx, box: Box | unde
     sizeParts(node, "height", parent, ctx, box),
   );
   return {
-    decls: [...size.decls, ...transformParts(node, ctx)],
+    decls: [...size.decls, ...transformParts(node, ctx, box)],
     placement: [...positionParts(node, parent, ctx), ...size.placement],
   };
 };

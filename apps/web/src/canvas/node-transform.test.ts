@@ -1,6 +1,12 @@
 import { describe, expect, test } from "bun:test";
 import type { Layout, PegoDocument } from "@pego/doc";
-import { findNodePath, IDENTITY, nodeToDocAffine, placeAffine } from "@/canvas/node-transform";
+import {
+  findNodePath,
+  flipAffine,
+  IDENTITY,
+  nodeToDocAffine,
+  placeAffine,
+} from "@/canvas/node-transform";
 
 const apply = (m: ReturnType<typeof placeAffine>, x: number, y: number) => ({
   x: m.a * x + m.c * y + m.e,
@@ -59,5 +65,55 @@ describe("nodeToDocAffine", () => {
 
   test("null when a node has no layout box", () => {
     expect(nodeToDocAffine(doc, new Map(), findNodePath(doc, "g")!)).toBeNull();
+  });
+});
+
+describe("flip", () => {
+  const doc = {
+    variables: {},
+    children: [
+      {
+        id: "page",
+        type: "page",
+        children: [
+          {
+            id: "f",
+            type: "frame",
+            flipX: true,
+            rotation: 90,
+            children: [{ id: "c", type: "rectangle" }],
+          },
+        ],
+      },
+    ],
+  } as unknown as PegoDocument;
+  const layout: Layout = new Map([
+    ["f", { x: 100, y: 100, width: 50, height: 20 }],
+    ["c", { x: 110, y: 105, width: 10, height: 10 }],
+  ]);
+
+  test("flipAffine mirrors around the box center", () => {
+    const m = flipAffine(IDENTITY, true, false, 50, 20);
+    expect(apply(m, 0, 0)).toEqual({ x: 50, y: 0 });
+    expect(apply(m, 50, 20)).toEqual({ x: 0, y: 20 });
+    expect(flipAffine(IDENTITY, false, false, 50, 20)).toBe(IDENTITY);
+  });
+
+  test("a child of a flipped, rotated frame lands at the mirrored spot", () => {
+    const path = findNodePath(doc, "c")!;
+    const m = nodeToDocAffine(doc, layout, path)!;
+    // Child local (0, 0) sits at (10, 5) in the frame; mirrored: x = 50 - 10 = 40, y = 5. Then
+    // rotation 90 (counter-clockwise on screen): (40, 5) -> (5, -40) from the frame's top-left.
+    const p = apply(m, 0, 0);
+    expect(p.x).toBeCloseTo(105);
+    expect(p.y).toBeCloseTo(60);
+  });
+
+  test("ownFlip: false leaves the last node's mirror out", () => {
+    const path = findNodePath(doc, "f")!;
+    const withFlip = nodeToDocAffine(doc, layout, path)!;
+    const without = nodeToDocAffine(doc, layout, path, false)!;
+    expect(apply(without, 0, 0)).toEqual({ x: 100, y: 100 });
+    expect(apply(withFlip, 0, 0).y).not.toBeCloseTo(100);
   });
 });

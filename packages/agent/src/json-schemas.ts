@@ -30,6 +30,14 @@ const nodePropSchemas: Record<string, JsonSchema> = {
   width: sizing,
   height: sizing,
   rotation: numberValue,
+  flipX: {
+    type: "boolean",
+    description: "Mirror left-right around the node's center. Not on pages.",
+  },
+  flipY: {
+    type: "boolean",
+    description: "Mirror top-bottom around the node's center. Not on pages.",
+  },
   opacity: numberValue,
   reusable: {
     type: "boolean",

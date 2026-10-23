@@ -1,5 +1,6 @@
 import {
   MAX_INSTANCE_DEPTH,
+  flipOf,
   isContainer,
   resolveInstance,
   resolveNumber,
@@ -42,6 +43,34 @@ export const placeAffine = (m: Affine, x: number, y: number, angle: number): Aff
   };
 };
 
+/**
+ * `m` followed by a mirror around the center of a width x height box (flipX negates x, flipY
+ * negates y), i.e. m * T(c) * S * T(-c). Returns `m` itself when neither flag is set.
+ */
+export const flipAffine = (
+  m: Affine,
+  flipX: boolean,
+  flipY: boolean,
+  width: number,
+  height: number,
+): Affine => {
+  if (!flipX && !flipY) return m;
+  const sx = flipX ? -1 : 1;
+  const sy = flipY ? -1 : 1;
+  const cx = width / 2;
+  const cy = height / 2;
+  const tx = cx - sx * cx;
+  const ty = cy - sy * cy;
+  return {
+    a: m.a * sx,
+    b: m.b * sx,
+    c: m.c * sy,
+    d: m.d * sy,
+    e: m.a * tx + m.c * ty + m.e,
+    f: m.b * tx + m.d * ty + m.f,
+  };
+};
+
 /** Expanded nodes from the top level down to `id` (inclusive), or null when it is not rendered. */
 export const findNodePath = (doc: PegoDocument, id: string): PegoNode[] | null => {
   const search = (nodes: readonly PegoNode[], depth: number): PegoNode[] | null => {
@@ -65,16 +94,19 @@ export const findNodePath = (doc: PegoDocument, id: string): PegoNode[] | null =
 
 /**
  * Matrix taking the node's local space (origin = its box top-left, as `drawContent` paints) to
- * document space, applying every ancestor's position and rotation the way `drawNodes` does.
+ * document space, applying every ancestor's position, rotation and flip the way `drawNodes` does.
+ * `ownFlip: false` leaves the last node's own mirror out: its box maps onto itself either way, but
+ * resize math and drag origins want the frame whose corners are not swapped.
  */
 export const nodeToDocAffine = (
   doc: PegoDocument,
   layout: Layout,
   path: readonly PegoNode[],
+  ownFlip = true,
 ): Affine | null => {
   let matrix = IDENTITY;
   let parent: Box = { x: 0, y: 0, width: 0, height: 0 };
-  for (const node of path) {
+  for (const [index, node] of path.entries()) {
     const box = layout.get(node.id);
     if (!box) return null;
     const { x, y, angle } = nodePlacement(
@@ -83,6 +115,10 @@ export const nodeToDocAffine = (
       resolveNumber(node.rotation, doc.variables, 0),
     );
     matrix = placeAffine(matrix, x, y, angle);
+    if (ownFlip || index < path.length - 1) {
+      const flip = flipOf(node);
+      matrix = flipAffine(matrix, flip.x, flip.y, box.width, box.height);
+    }
     parent = box;
   }
   return matrix;

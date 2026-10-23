@@ -14,6 +14,9 @@ import {
   MAX_PAYLOAD_NODES,
   PASTE_OFFSET,
   pasteNodes,
+  pasteNodesAt,
+  payloadFromText,
+  replaceWithNodes,
   pasteSvg,
   pasteText,
   readPayload,
@@ -162,5 +165,104 @@ describe("several originals", () => {
     const text = ids.indexOf("text-1");
     expect(findNode(doc, ids[rect + 1]!)?.type).toBe("rectangle");
     expect(findNode(doc, ids[text + 1]!)?.type).toBe("text");
+  });
+});
+
+describe("paste here and paste to replace", () => {
+  const rect = (id: string, x: number, y: number): PegoNode => ({
+    type: "rectangle",
+    id,
+    x,
+    y,
+    width: 40,
+    height: 30,
+  });
+  const base = (): PegoDocument => ({
+    ...sampleDoc,
+    children: [
+      {
+        type: "page",
+        id: "pg",
+        name: "Page 1",
+        x: 0,
+        y: 0,
+        children: [rect("a", 100, 100), rect("b", 300, 50)],
+      } as PegoNode,
+    ] as PegoDocument["children"],
+  });
+  const payload = (doc: PegoDocument, ids: string[]) => copyPayload(doc, ids)!;
+
+  test("paste here puts the bounds' top-left at the point", () => {
+    const doc = base();
+    const plan = pasteNodesAt(
+      doc,
+      new Map(),
+      payload(doc, ["a", "b"]),
+      { x: 10, y: 20 },
+      {
+        pageId: "pg",
+        selection: [],
+      },
+    )!;
+    const next = applyOps(doc, plan.ops).doc;
+    const [a, b] = plan.select.map((id) => findNode(next, id)!);
+    expect([a!.x, a!.y]).toEqual([10, 70]);
+    expect([b!.x, b!.y]).toEqual([210, 20]);
+  });
+
+  test("paste here inside a selected frame uses its origin", () => {
+    const doc = applyOps(base(), [
+      {
+        op: "insert",
+        parentId: "pg",
+        node: {
+          type: "frame",
+          id: "fr",
+          x: 500,
+          y: 500,
+          width: 200,
+          height: 200,
+          layout: "none",
+          children: [],
+        } as PegoNode,
+      },
+    ]).doc;
+    const layout = new Map([["fr", { x: 500, y: 500, width: 200, height: 200 }]]);
+    const plan = pasteNodesAt(
+      doc,
+      layout,
+      payload(doc, ["a"]),
+      { x: 520, y: 540 },
+      {
+        pageId: "pg",
+        selection: ["fr"],
+      },
+    )!;
+    const next = applyOps(doc, plan.ops).doc;
+    expect(findLocation(next, plan.select[0]!)?.parentId).toBe("fr");
+    expect(findNode(next, plan.select[0]!)).toMatchObject({ x: 20, y: 40 });
+  });
+
+  test("paste to replace swaps each selected layer in place, in one op list", () => {
+    const doc = base();
+    const plan = replaceWithNodes(doc, payload(doc, ["a"]), ["b"]);
+    if ("error" in plan) throw new Error(plan.error);
+    const next = applyOps(doc, plan.ops).doc;
+    expect(findNode(next, "b")).toBeNull();
+    const copy = findNode(next, plan.select[0]!)!;
+    expect(findLocation(next, copy.id)?.index).toBe(1);
+    expect([copy.x, copy.y]).toEqual([300, 50]);
+  });
+
+  test("paste to replace needs a selection", () => {
+    const doc = base();
+    expect(replaceWithNodes(doc, payload(doc, ["a"]), [])).toHaveProperty("error");
+  });
+
+  test("text on the clipboard becomes a one-layer payload", () => {
+    const doc = base();
+    const result = payloadFromText(doc, "Hello");
+    expect(result?.nodes[0]).toMatchObject({ type: "text", content: "Hello" });
+    expect(payloadFromText(doc, "  ")).toBeNull();
   });
 });

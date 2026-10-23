@@ -1,5 +1,6 @@
 import {
   type Box,
+  flipOf,
   type Layout,
   pageOrFirst,
   type PegoDocument,
@@ -38,6 +39,15 @@ const toLocal = (p: Point, box: Box, parent: Box, rotation: number): Point => {
   const cos = Math.cos(rad);
   const sin = Math.sin(rad);
   return { x: dx * cos - dy * sin, y: dx * sin + dy * cos };
+};
+
+/**
+ * Map a point through the node's own mirror (flipX/flipY around its box center) so children, which
+ * are drawn inside the mirrored space, are picked at the position they appear.
+ */
+const throughFlip = (p: Point, box: Box, node: PegoNode): Point => {
+  const flip = flipOf(node);
+  return { x: flip.x ? box.width - p.x : p.x, y: flip.y ? box.height - p.y : p.y };
 };
 
 /** Click tolerance around thin shapes, in screen pixels (callers divide by zoom). */
@@ -81,7 +91,7 @@ const hitNodes = (
         doc,
         node.children,
         layout,
-        local,
+        throughFlip(local, box, node),
         box,
         [...trail, node.id],
         tolerance,
@@ -96,7 +106,7 @@ const hitNodes = (
         doc,
         node.children,
         layout,
-        local,
+        throughFlip(local, box, node),
         box,
         [...trail, node.id],
         tolerance,

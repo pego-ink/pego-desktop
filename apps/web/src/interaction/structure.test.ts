@@ -11,11 +11,15 @@ import {
   type TextMeasurer,
 } from "@pego/doc";
 import {
+  allClipped,
   allComponents,
+  allVisible,
   componentOf,
   detachInstances,
   restack,
+  toggleClip,
   toggleComponent,
+  toggleVisible,
   ungroupSelection,
   wrapSelection,
   type StructureResult,
@@ -187,5 +191,38 @@ describe("hidden layers", () => {
     const doc = hidden(sampleDoc, "rect-1");
     const result = wrapSelection(doc, layoutOf(doc), ["rect-1"], "group");
     expect("error" in result).toBe(false);
+  });
+});
+
+describe("toggleVisible and toggleClip", () => {
+  const doc = sampleDoc;
+  const frameId = (() => {
+    const find = (nodes: PegoNode[]): string | null => {
+      for (const node of nodes) {
+        if (node.type === "frame") return node.id;
+        if ("children" in node && node.children) {
+          const inner = find(node.children as PegoNode[]);
+          if (inner) return inner;
+        }
+      }
+      return null;
+    };
+    return find(doc.children)!;
+  })();
+
+  test("hide, then show", () => {
+    const hidden = run(doc, toggleVisible(doc, [frameId]));
+    expect(findNode(hidden.doc, frameId)?.visible).toBe(false);
+    expect(allVisible(hidden.doc, [frameId])).toBe(false);
+    const shown = run(hidden.doc, toggleVisible(hidden.doc, [frameId]));
+    expect(findNode(shown.doc, frameId)?.visible).toBeUndefined();
+  });
+
+  test("clip toggles on frames and refuses other layers", () => {
+    const clipped = run(doc, toggleClip(doc, [frameId]));
+    expect(allClipped(clipped.doc, [frameId])).toBe(true);
+    const off = run(clipped.doc, toggleClip(clipped.doc, [frameId]));
+    expect(allClipped(off.doc, [frameId])).toBe(false);
+    expect(toggleClip(doc, [])).toHaveProperty("error");
   });
 });
