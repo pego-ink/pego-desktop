@@ -53,6 +53,13 @@ export const PROVIDER_PRESETS: readonly ProviderPreset[] = [
     baseUrl: "https://api.mistral.ai/v1",
   },
   {
+    id: "gemini",
+    label: "Google Gemini",
+    kind: "openai-compatible",
+    // Chat models, Imagen and Gemini image models ("Nano Banana") on one key from AI Studio.
+    baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai",
+  },
+  {
     id: "ollama",
     label: "Ollama (local)",
     kind: "openai-compatible",

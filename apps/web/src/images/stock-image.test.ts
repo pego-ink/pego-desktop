@@ -1,7 +1,13 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
 import type { StockImage } from "@pego/agent";
-import { creditLine, readDroppedStockImage, stockImageBox, stockImageNode } from "./stock-image";
+import {
+  creditLine,
+  readDroppedGeneratedImage,
+  readDroppedStockImage,
+  stockImageBox,
+  stockImageNode,
+} from "./stock-image";
 
 const photo: StockImage = {
   src: "https://api.openverse.org/v1/images/7829cee9-e262/thumb/?full_size=true",
@@ -48,5 +54,32 @@ describe("stock images", () => {
     expect(other({ thumb: "data:image/png;base64,AAAA" })).toBeNull();
     expect(other({ pageUrl: "javascript:alert(1)" })).toBeNull();
     expect(readDroppedStockImage("not json")).toBeNull();
+  });
+});
+
+describe("generated images", () => {
+  const PNG = "data:image/png;base64,iVBORw0KGgo=";
+
+  test("a dragged generated image is accepted only as a base64 png, jpeg or webp", () => {
+    expect(
+      readDroppedGeneratedImage(
+        JSON.stringify({ src: PNG, prompt: "rendang", width: 1600, height: 900 }),
+      ),
+    ).toEqual({ src: PNG, prompt: "rendang", width: 1600, height: 900 });
+    expect(
+      readDroppedGeneratedImage(JSON.stringify({ src: "https://evil.test/a.png" })),
+    ).toBeNull();
+    expect(
+      readDroppedGeneratedImage(JSON.stringify({ src: "data:image/svg+xml;base64,PHN2Zz4=" })),
+    ).toBeNull();
+    expect(readDroppedGeneratedImage("{")).toBeNull();
+  });
+
+  test("a missing or odd size falls back to a square", () => {
+    expect(readDroppedGeneratedImage(JSON.stringify({ src: PNG, width: -1 }))).toMatchObject({
+      width: 1024,
+      height: 1024,
+      prompt: "Generated image",
+    });
   });
 });
