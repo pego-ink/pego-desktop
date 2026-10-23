@@ -19,6 +19,7 @@ import {
   type ComponentSection,
 } from "./components";
 import { LibrariesSection } from "./LibrariesSection";
+import { ImageSearchSection } from "@/images/ImageSearchSection";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -139,7 +140,15 @@ const Section = ({ section }: { section: ComponentSection }) => {
  * The project's assets: its components grouped by page (libraries by name), searchable, as
  * thumbnails to click, insert or drag onto the canvas; then the libraries it uses.
  */
-export const AssetsPanel = () => {
+type AssetsTab = "components" | "images";
+
+const TABS: readonly { id: AssetsTab; label: string }[] = [
+  { id: "components", label: "Components" },
+  { id: "images", label: "Images" },
+];
+
+/** The document's components (with libraries), as before. */
+const ComponentsTab = () => {
   const doc = useDocumentStore((s) => s.doc);
   const [query, setQuery] = useState("");
   // New entry objects only for components that changed, so cards skip unrelated edits.
@@ -150,11 +159,7 @@ export const AssetsPanel = () => {
   );
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
-      <PanelHeader>
-        Components
-        <span className="text-[11px] font-normal text-muted-foreground">{components.length}</span>
-      </PanelHeader>
+    <>
       {components.length === 0 ? (
         <p className="px-3 py-2 text-[11px] leading-4 text-muted-foreground">
           No components yet. Select a layer and press {isMac ? "⌘⌥K" : "Ctrl+Alt+K"} (or ask the
@@ -181,6 +186,42 @@ export const AssetsPanel = () => {
         </>
       )}
       <LibrariesSection />
+    </>
+  );
+};
+
+/** Assets: the document's components, and a search for free photos. */
+export const AssetsPanel = () => {
+  const [tab, setTab] = useState<AssetsTab>("components");
+  const count = useDocumentStore((s) => stableComponents(s.doc).length);
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <PanelHeader>
+        <div role="tablist" aria-label="Assets" className="flex items-center gap-1">
+          {TABS.map(({ id, label }) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={tab === id}
+              onClick={() => setTab(id)}
+              className={cn(
+                "rounded-md px-1.5 py-0.5 text-xs outline-none transition-colors duration-(--duration-fast) focus-visible:ring-2 focus-visible:ring-ring/50",
+                tab === id
+                  ? "bg-secondary font-medium text-foreground"
+                  : "text-muted-foreground hover:text-foreground",
+              )}
+            >
+              {label}
+              {id === "components" ? (
+                <span className="ml-1 text-[11px] font-normal text-muted-foreground">{count}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
+      </PanelHeader>
+      {tab === "components" ? <ComponentsTab /> : <ImageSearchSection />}
     </div>
   );
 };
