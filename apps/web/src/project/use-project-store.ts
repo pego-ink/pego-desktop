@@ -16,7 +16,7 @@ import { openDocument, openProjectWorkspace } from "@/workspace/use-workspace-st
  * the project; an older file with another id adopts it (an unsaved change that autosave writes).
  */
 export const openProject = async (
-  project: Pick<ProjectInfo, "id" | "name" | "dir"> & { mainFile?: string },
+  project: Pick<ProjectInfo, "id" | "name" | "dir"> & { mainFile?: string; hasMainFile?: boolean },
   unsaved: UnsavedPolicy = "ask",
 ): Promise<boolean> => {
   if (!openProjectWorkspace(project)) return false;
@@ -33,8 +33,15 @@ export const openProject = async (
     });
     if (outcome.isError) toast.error(outcome.content);
     return true;
-  } catch {
-    // No project.pego yet (projects made before it existed): start one and save it.
+  } catch (error) {
+    // Only a project known to have no project.pego yet (made before it existed) starts a new
+    // design; any other read failure (timeout, too big, permissions) must never overwrite it.
+    if (project.hasMainFile !== false) {
+      toast.error(
+        `Could not open ${project.name}: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      return false;
+    }
     if (!useAgentStore.getState().bridge.connected) return true;
     const result = openDocument(
       starterDocument(project.name, project.id),

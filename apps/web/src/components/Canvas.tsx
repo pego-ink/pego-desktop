@@ -17,6 +17,8 @@ import { contentBounds } from "@/interaction/camera";
 import { deriveCursor, useInteractionState } from "@/interaction/interaction-state";
 import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { CanvasContextMenu } from "@/components/CanvasContextMenu";
+import { COMPONENT_MIME } from "@/assets/components";
+import { dropComponent } from "@/assets/drop-component";
 import { useImagePaste } from "@/interaction/use-image-paste";
 import { useLayerCopy } from "@/interaction/layer-clipboard";
 import { AgentCursors } from "@/components/AgentCursor";
@@ -329,6 +331,12 @@ export const Canvas = () => {
       ref={containerRef}
       className="relative h-full w-full overflow-hidden"
       onDragOver={(event) => {
+        // A component from the Assets panel: an instance goes where it is dropped.
+        if (event.dataTransfer.types.includes(COMPONENT_MIME)) {
+          event.preventDefault();
+          event.dataTransfer.dropEffect = "copy";
+          return;
+        }
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
         event.dataTransfer.dropEffect = "copy";
@@ -338,6 +346,13 @@ export const Canvas = () => {
         if (!event.currentTarget.contains(event.relatedTarget as Node | null)) setDropping(false);
       }}
       onDrop={(event) => {
+        const componentId = event.dataTransfer.getData(COMPONENT_MIME);
+        if (componentId) {
+          event.preventDefault();
+          const rect = event.currentTarget.getBoundingClientRect();
+          dropComponent(componentId, event.clientX - rect.left, event.clientY - rect.top);
+          return;
+        }
         if (!event.dataTransfer.types.includes("Files")) return;
         event.preventDefault();
         setDropping(false);

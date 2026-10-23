@@ -85,6 +85,11 @@ export const SHORTCUT_GROUPS: readonly ShortcutGroup[] = [
         label: "Ask Pego about the selection",
         chords: [["mod", "K"]],
       },
+      {
+        id: "edit.copy-for-ai",
+        label: "Copy for AI (project, file and node ids)",
+        chords: [["mod", "shift", "C"]],
+      },
       { id: "edit.paste-replace", label: "Paste to replace", chords: [["mod", "shift", "R"]] },
       { id: "edit.select-all", label: "Select all", chords: [["mod", "A"]] },
       { id: "edit.escape", label: "Back to Select, then step out of selection", chords: [["Esc"]] },

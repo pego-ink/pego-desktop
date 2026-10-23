@@ -2,7 +2,9 @@
 import { beforeEach, describe, expect, test } from "bun:test";
 import { sampleDoc } from "@pego/doc";
 import { useDocumentStore } from "@/store/use-document-store";
+import { emptySession } from "@/agent/sessions/session-model";
 import { setVisibleStatus } from "@/agent/test-utils";
+import { useAgentStore } from "@/agent/use-agent-store";
 import { captureLive, documentTitle } from "@/workspace/live-document";
 import { resetLiveDocument } from "@/workspace/test-reset";
 import {
@@ -20,7 +22,9 @@ const pegoText = serializeDocument({ ...sampleDoc, name: "From disk" });
 
 beforeEach(() => {
   resetLiveDocument();
-  // Other suites leave a run "active", which blocks opening tabs.
+  // Start from one fresh chat session: other suites may leave a run "active" (which blocks
+  // opening tabs) or a visible session id with no live entry (so a run here would not count).
+  useAgentStore.getState().resetSessions(emptySession());
   setVisibleStatus("idle");
 });
 
