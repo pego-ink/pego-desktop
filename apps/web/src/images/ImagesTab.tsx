@@ -2,15 +2,17 @@ import { useState } from "react";
 import { cn } from "@pego/ui/lib/utils";
 import { GenerateImageSection } from "./GenerateImageSection";
 import { ImageSearchSection } from "./ImageSearchSection";
+import { UrlImageSection } from "./UrlImageSection";
 
-type Mode = "search" | "generate";
+type Mode = "search" | "generate" | "url";
 
 const MODES: readonly { id: Mode; label: string }[] = [
-  { id: "search", label: "Search photos" },
+  { id: "search", label: "Search" },
   { id: "generate", label: "Generate" },
+  { id: "url", label: "From URL" },
 ];
 
-/** Assets › Images: find a free photo, or generate an image with the user's image model. */
+/** Assets › Images: find a free photo, generate an image, or bring one in from a link. */
 export const ImagesTab = () => {
   const [mode, setMode] = useState<Mode>("search");
   return (
@@ -36,7 +38,13 @@ export const ImagesTab = () => {
           </button>
         ))}
       </div>
-      {mode === "search" ? <ImageSearchSection /> : <GenerateImageSection />}
+      {mode === "search" ? (
+        <ImageSearchSection />
+      ) : mode === "generate" ? (
+        <GenerateImageSection />
+      ) : (
+        <UrlImageSection />
+      )}
     </div>
   );
 };

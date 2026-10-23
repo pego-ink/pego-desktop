@@ -13,6 +13,7 @@ import {
 } from "./node-clipboard";
 import { rememberCopy } from "./clipboard-actions";
 import { runDelete } from "./structure-actions";
+import { pastedImageLink } from "@/interaction/use-image-paste";
 import { isTextEditing } from "@/store/use-text-edit-store";
 
 /** Clipboard type of copied layers: which document, which ids (read by the agent composer). */
@@ -100,8 +101,8 @@ const pastePlanFor = (data: DataTransfer) => {
   };
   const payload = readPayload(data.getData(NODES_MIME));
   if (payload) return pasteNodes(state.doc, payload, target);
-  // Image files are use-image-paste's.
-  if (data.files.length > 0) return null;
+  // Image files and image links are use-image-paste's.
+  if (data.files.length > 0 || pastedImageLink(data)) return null;
   const text = data.getData("text/plain");
   return pasteSvg(state.doc, text, target) ?? pasteText(state.doc, text, target);
 };

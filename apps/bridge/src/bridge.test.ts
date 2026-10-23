@@ -160,6 +160,28 @@ describe("editor socket security", () => {
     editor.ws.close();
   });
 
+  test("/fetch-image answers only the editor's origin, with CORS for it", async () => {
+    const bridge = start();
+    const url = (target: string) =>
+      `http://127.0.0.1:${bridge.port}/fetch-image?url=${encodeURIComponent(target)}`;
+    // No Origin (a script or MCP client) and a foreign site are refused outright.
+    expect((await fetch(url("https://example.com/a.png"))).status).toBe(403);
+    expect(
+      (
+        await fetch(url("https://example.com/a.png"), {
+          headers: { Origin: "https://evil.example.com" },
+        })
+      ).status,
+    ).toBe(403);
+    // The editor gets readable errors: a private target is refused without being fetched.
+    const local = await fetch(url("https://127.0.0.1/a.png"), { headers: { Origin: ORIGIN } });
+    expect(local.status).toBe(403);
+    expect(local.headers.get("access-control-allow-origin")).toBe(ORIGIN);
+    expect(await local.text()).toMatch(/private network/);
+    const http = await fetch(url("http://example.com/a.png"), { headers: { Origin: ORIGIN } });
+    expect(http.status).toBe(400);
+  });
+
   test("rejects a wrong Host header on every route", async () => {
     const bridge = start();
     const wrongHost = { host: "evil.example.com" };
