@@ -19,7 +19,14 @@ import { useCanvasPointer } from "@/interaction/use-canvas-pointer";
 import { CanvasContextMenu } from "@/components/CanvasContextMenu";
 import { COMPONENT_MIME } from "@/assets/components";
 import { dropComponent } from "@/assets/drop-component";
-import { placeStockImage, readDroppedStockImage, STOCK_IMAGE_MIME } from "@/images/stock-image";
+import {
+  GENERATED_IMAGE_MIME,
+  placeImageLayer,
+  placeStockImage,
+  readDroppedGeneratedImage,
+  readDroppedStockImage,
+  STOCK_IMAGE_MIME,
+} from "@/images/stock-image";
 import { useImagePaste } from "@/interaction/use-image-paste";
 import { useLayerCopy } from "@/interaction/layer-clipboard";
 import { AgentCursors } from "@/components/AgentCursor";
@@ -335,7 +342,8 @@ export const Canvas = () => {
         // A component from the Assets panel: an instance goes where it is dropped.
         if (
           event.dataTransfer.types.includes(COMPONENT_MIME) ||
-          event.dataTransfer.types.includes(STOCK_IMAGE_MIME)
+          event.dataTransfer.types.includes(STOCK_IMAGE_MIME) ||
+          event.dataTransfer.types.includes(GENERATED_IMAGE_MIME)
         ) {
           event.preventDefault();
           event.dataTransfer.dropEffect = "copy";
@@ -357,6 +365,18 @@ export const Canvas = () => {
           const rect = event.currentTarget.getBoundingClientRect();
           if (image)
             placeStockImage(image, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+          return;
+        }
+        const generated = event.dataTransfer.getData(GENERATED_IMAGE_MIME);
+        if (generated) {
+          event.preventDefault();
+          const image = readDroppedGeneratedImage(generated);
+          const rect = event.currentTarget.getBoundingClientRect();
+          if (image)
+            placeImageLayer({ src: image.src, name: "Generated image", alt: image.prompt }, image, {
+              x: event.clientX - rect.left,
+              y: event.clientY - rect.top,
+            });
           return;
         }
         const componentId = event.dataTransfer.getData(COMPONENT_MIME);

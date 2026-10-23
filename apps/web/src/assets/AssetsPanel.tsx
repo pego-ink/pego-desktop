@@ -19,7 +19,7 @@ import {
   type ComponentSection,
 } from "./components";
 import { LibrariesSection } from "./LibrariesSection";
-import { ImageSearchSection } from "@/images/ImageSearchSection";
+import { ImagesTab } from "@/images/ImagesTab";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 
@@ -221,7 +221,7 @@ export const AssetsPanel = () => {
           ))}
         </div>
       </PanelHeader>
-      {tab === "components" ? <ComponentsTab /> : <ImageSearchSection />}
+      {tab === "components" ? <ComponentsTab /> : <ImagesTab />}
     </div>
   );
 };
