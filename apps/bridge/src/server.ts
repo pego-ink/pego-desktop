@@ -16,6 +16,7 @@ import { writeDocumentFile } from "./files";
 import { resolve, sep } from "node:path";
 import { listDesignFiles, readProjectFile } from "./project";
 import { createProject, listProjects } from "./projects";
+import { trashProject } from "./trash";
 
 type SocketData = { greeted: boolean };
 
@@ -57,6 +58,10 @@ export const answerProjectRequest = async (
     }
     if (request.action === "create_project") {
       return { ...base, ok: true, root, project: await createProject(root, request.name ?? "") };
+    }
+    if (request.action === "trash_project") {
+      await trashProject(root, await listProjects(root), request.projectId ?? "");
+      return { ...base, ok: true, root };
     }
     if (request.action === "list") {
       const dir = request.path ? resolve(request.path) : root;

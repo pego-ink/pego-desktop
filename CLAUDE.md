@@ -54,7 +54,7 @@ design/          mocks (.pen, png, html), not linted
 - **Skia only renders.** Hit-testing, selection, transforms and layout are ours (`apps/web/src/interaction`,
   `packages/doc/src/layout.ts`).
 - The bridge binds to `127.0.0.1:4519` only and checks origins (`apps/bridge/src/security.ts`). Keep it that way.
-- **Several editors share one bridge** (`apps/bridge/src/editor-hub.ts`, protocol v6): every editor window stays
+- **Several editors share one bridge** (`apps/bridge/src/editor-hub.ts`, protocol v7): every editor window stays
   connected; MCP calls (and the file tools) go to the most recently focused one, agent runs talk only to the
   editor that started them (up to `MAX_CONCURRENT_RUNS` = 3 at once, each with its own run-scoped MCP endpoint),
   `run_steer` feeds a running run. Two windows with the same project file: last focused wins, the other's
@@ -222,6 +222,8 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   document id is the project id (chat sessions are keyed by document id). The bridge finds `design/` (nearest
   `.git` above where it runs; `PEGO_DESIGN_DIR` overrides), lists projects (`apps/bridge/src/projects.ts`) and
   creates them. Projects, the dashboard and the project tabs appear only while a bridge serves a design folder.
+  Deleting (Dashboard card menu) moves the folder to the OS Trash, never a permanent delete: the editor sends only
+  the project id (`trash_project`), the bridge re-validates the folder (`trash.ts`); it is not an agent tool.
 - **Workspaces** (`apps/web/src/workspace/use-workspace-store.ts`): Scratch (local files, the default) and one
   per open project, each with **one document**. The shown document lives in the normal stores (document, file,
   viewport; `workspace/live-document.ts`), the others keep a snapshot. Open documents through `openDocument`
