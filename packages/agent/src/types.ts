@@ -41,6 +41,12 @@ export type ToolHost = {
   /** Icon names available to `icon` nodes (lucide, kebab-case). */
   listIcons?: () => string[];
   /**
+   * The first family of a CSS font stack (already split, unquoted, in order) that the editor can
+   * render, or the closest available substitute for well-known system/web fonts; undefined when
+   * nothing fits (the converter then keeps its own default).
+   */
+  resolveFont?: (families: string[]) => string | undefined;
+  /**
    * Images the user attached to the current run, for `place_image` with src "attachment:<id>".
    * Returns a data: URL, or undefined for an unknown id.
    */

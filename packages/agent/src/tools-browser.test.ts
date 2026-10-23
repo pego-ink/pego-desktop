@@ -149,10 +149,46 @@ describe("browser tool", () => {
     expect(calls[0]?.args[0]).toEqual({ kind: "query", selector: "main" });
     expect(host.calls.applyOps.length).toBe(before + 1);
     expect(host.calls.applyOps.at(-1)).toHaveLength(1);
-    expect(data).toMatchObject({ ok: true, nodeCount: 2, width: 800, height: 600 });
+    expect(data).toMatchObject({
+      ok: true,
+      nodeCount: 2,
+      width: 800,
+      height: 600,
+      layout: { autoLayout: 1, absolute: 0 },
+    });
     const node = findNode(host.getDoc(), data.created.id);
     expect(node).toMatchObject({ type: "frame", name: "main", clip: true });
     expect(host.calls.focus.at(-1)).toContain(data.created.id);
+  });
+
+  test("import-to-canvas resolves fonts through the host", async () => {
+    const families: string[][] = [];
+    const { browser } = fakeBrowser({
+      snapshot: async () => ({
+        ...snapshot,
+        root: {
+          ...(snapshot.root as Json),
+          children: [
+            {
+              kind: "text",
+              text: "Hello",
+              box: { x: 20, y: 20, width: 100, height: 30 },
+              style: { fontSize: 24, fontFamily: '"Geist", Arial, sans-serif' },
+            },
+          ],
+        } as DomSnapshot["root"],
+      }),
+    });
+    const host = Object.assign(withBrowser(browser), {
+      resolveFont: (list: string[]) => {
+        families.push(list);
+        return "Geist Sans";
+      },
+    });
+    const { data } = await call({ action: "import-to-canvas" }, host);
+    expect(families).toEqual([["Geist", "Arial", "sans-serif"]]);
+    const frame = findNode(host.getDoc(), data.created.id) as Json;
+    expect(frame.children[0]).toMatchObject({ type: "text", fontFamily: "Geist Sans" });
   });
 
   test("import-to-canvas names a full page after its title and caps warnings", async () => {

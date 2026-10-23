@@ -224,10 +224,13 @@ describe("convertDomSnapshot root", () => {
       width: 1280,
       height: 2000,
       clip: true,
-      layout: "none",
+      // One text 40 px in: a vertical stack whose padding holds the offset.
+      layout: "vertical",
+      padding: [40, 0, 0, 40],
       fill: "#ffffff",
     });
     expect(r.count).toBe(2);
+    expect(r.stats).toEqual({ autoLayout: 1, absolute: 0 });
     assertValid(r.node);
   });
   test("element root uses its background and component name, children are relative", () => {
@@ -250,7 +253,10 @@ describe("convertDomSnapshot root", () => {
       width: 300,
       height: 200,
     });
-    expect((r.node.children as Json[])[0]).toMatchObject({ type: "text", x: 20, y: 20 });
+    expect(r.node).toMatchObject({ layout: "vertical", padding: [20, 0, 0, 20] });
+    const child = (r.node.children as Json[])[0];
+    expect(child).toMatchObject({ type: "text" });
+    expect(child?.x).toBeUndefined();
   });
   test("no fill when element root has a transparent background", () => {
     const r = convertDomSnapshot(
@@ -307,7 +313,7 @@ describe("visuals", () => {
     const r = convertDomSnapshot(
       snap(
         el("div", box(0, 0, 50, 50), {
-          backgroundImage: "radial-gradient(red, blue)",
+          backgroundImage: "conic-gradient(red, blue)",
           backgroundColor: "#fff",
         }),
       ),
@@ -385,8 +391,6 @@ describe("text", () => {
     ).toMatchObject({
       type: "text",
       name: "Hello world",
-      x: 10,
-      y: 20,
       width: 121,
       content: "Hello world",
       fontFamily: "Inter",
@@ -434,7 +438,8 @@ describe("flattening", () => {
     );
     const kids = r.node.children as Json[];
     expect(kids).toHaveLength(1);
-    expect(kids[0]).toMatchObject({ x: 50, y: 60, fill: "#ff0000", children: [] });
+    expect(kids[0]).toMatchObject({ width: 100, height: 40, fill: "#ff0000", children: [] });
+    expect(r.node).toMatchObject({ layout: "vertical", padding: [60, 0, 0, 50] });
     expect(r.count).toBe(2);
   });
   test("wrappers with visuals, other boxes or several children stay", () => {
@@ -552,7 +557,8 @@ describe("svg", () => {
   test("fits the svg into the box", () => {
     const r = convertDomSnapshot(snap(el("div", box(0, 0, 100, 100), {}, [svg(MARK)])));
     const [node] = r.node.children as Json[];
-    expect(node).toMatchObject({ type: "frame", width: 48, height: 48, x: 10, y: 10 });
+    expect(node).toMatchObject({ type: "frame", width: 48, height: 48 });
+    expect(r.node).toMatchObject({ padding: [10, 0, 0, 10] });
     expect(r.count).toBeGreaterThan(2);
     assertValid(r.node);
   });
@@ -561,7 +567,8 @@ describe("svg", () => {
     const r = convertDomSnapshot(
       snap(el("div", box(0, 0, 100, 100), {}, [svg(wide, box(0, 0, 40, 40))])),
     );
-    expect((r.node.children as Json[])[0]).toMatchObject({ width: 40, height: 10, y: 15 });
+    expect((r.node.children as Json[])[0]).toMatchObject({ width: 40, height: 10 });
+    expect(r.node).toMatchObject({ layout: "vertical", padding: [15, 0, 0, 0] });
   });
   test("a failing svg warns and is skipped", () => {
     const r = convertDomSnapshot(
@@ -662,5 +669,35 @@ describe("text width", () => {
   test("several lines keep the box width so wrapping matches", () => {
     const node = convertOne(text("A long paragraph that wraps", box(10, 10, 120, 72), textStyle));
     expect(node.width).toBe(120);
+  });
+});
+
+describe("text edge spaces", () => {
+  const run = (t: string, merged: boolean): DomSnapshotNode => ({
+    kind: "text",
+    text: t,
+    box: box(0, 0, 100, 20),
+    style: { fontSize: 16, lineHeight: 20 },
+    ...(merged ? { merged } : {}),
+  });
+  const contentOf = (t: DomSnapshotNode) => {
+    const { node } = convertDomSnapshot(snap(el("div", box(0, 0, 400, 40), {}, [t])));
+    const found: Json[] = [];
+    const walk = (n: Json) => {
+      if (n.type === "text") found.push(n);
+      (n.children ?? []).forEach(walk);
+    };
+    walk(node as Json);
+    return found[0]?.content;
+  };
+
+  test("an inline run keeps the space before its neighbour", () => {
+    expect(contentOf(run("Kelola Banyak Nomor dalam ", false))).toBe(
+      "Kelola Banyak Nomor dalam\u00a0",
+    );
+  });
+
+  test("a merged paragraph is trimmed", () => {
+    expect(contentOf(run("  Hubungkan hingga 10 nomor  ", true))).toBe("Hubungkan hingga 10 nomor");
   });
 });

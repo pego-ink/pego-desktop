@@ -58,6 +58,26 @@ export type DomStyle = {
   textTransform?: string;
   /** `object-fit` of replaced elements (images), "fill" omitted. */
   objectFit?: string;
+
+  // Layout facts for auto-layout reconstruction (import v2). Absent = CSS initial value.
+  /** `row-gap` / `column-gap` in px (`gap` above stays the column gap for older snapshots). */
+  rowGap?: number;
+  columnGap?: number;
+  /** [top, right, bottom, left] margins in px (negative allowed). */
+  margin?: [number, number, number, number];
+  flexGrow?: number;
+  flexShrink?: number;
+  /** `align-self` when not "auto". */
+  alignSelf?: string;
+  /** `float` when not "none". */
+  float?: string;
+  /** The element has a non-identity `transform` (rotate/skew/scale/translate). */
+  transformed?: boolean;
+  /** `white-space` when not "normal" (e.g. "nowrap", "pre"). */
+  whiteSpace?: string;
+  /** `background-size` / `background-position` of a url() background, for image fills. */
+  backgroundSize?: string;
+  backgroundPosition?: string;
 };
 
 /** One node of a page snapshot. Invisible elements (display:none, zero size, hidden) are skipped. */
@@ -73,8 +93,13 @@ export type DomSnapshotNode =
       children: DomSnapshotNode[];
     }
   | {
-      /** A run of text; `box` covers all its line boxes. */
+      /**
+       * A run of text; `box` covers all its line boxes. A block whose content is only inline
+       * text (spans, links, strong, br...) arrives as ONE text node with the block's text style
+       * (`merged: true`), so it imports as one editable paragraph.
+       */
       kind: "text";
+      merged?: boolean;
       text: string;
       box: DomBox;
       style: DomStyle;
@@ -82,8 +107,14 @@ export type DomSnapshotNode =
   | {
       kind: "image";
       tag: string;
-      /** data: URL (inlined by the page script when small enough) or an https URL. */
+      /**
+       * data: URL (png/jpeg/webp/gif). The page script inlines what it can; the host fetches the
+       * rest and rasterizes elements Pego cannot represent (`raster: true`), so the converter
+       * normally sees data URLs only. An https URL may remain when fetching failed.
+       */
       src: string;
+      /** A screenshot standing in for an element Pego cannot represent (masked SVG, canvas...). */
+      raster?: boolean;
       alt?: string;
       box: DomBox;
       style: DomStyle;

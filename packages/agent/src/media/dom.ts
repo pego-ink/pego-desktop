@@ -1,11 +1,20 @@
 /**
  * DOM snapshot -> Pego nodes. Pure: the browser host walks the page into a `DomSnapshot`, this
- * turns it into one raw frame (no ids yet, ready for `assignIds` + `parseNode`). Children are
- * placed absolutely at their measured boxes: faithful positions beat flex reconstruction.
- * Odd input never throws; anything that cannot be represented becomes a warning.
+ * turns it into one raw frame (no ids yet, ready for `assignIds` + `parseNode`). Each container
+ * becomes auto layout when Pego's own layout reproduces its children's measured boxes
+ * (`dom-layout.ts`), else it keeps them at absolute positions. Odd input never throws; anything
+ * that cannot be represented becomes a warning.
  */
 import { nodeSchema } from "@pego/doc";
 import type { DomBox, DomSnapshot, DomSnapshotNode, DomStyle } from "../browser-types";
+import {
+  layoutContainer,
+  placeAbsolute,
+  placeRaw,
+  rootHeight,
+  type Item,
+  type ItemFacts,
+} from "./dom-layout";
 import { ImageSrcError, validateImageSrc } from "./image-src";
 import { convertSvg, SvgError, type RawNode } from "./svg";
 
@@ -19,9 +28,19 @@ export type DomConversionOptions = {
   fullPage?: boolean;
   /** Node cap (default MAX_DOM_NODES). */
   maxNodes?: number;
+  /** The editor's font resolver (`ToolHost.resolveFont`); `pickFontFamily` when absent. */
+  resolveFont?: (families: string[]) => string | undefined;
 };
 
-export type DomConversion = { node: RawNode; warnings: string[]; count: number };
+/** How many element containers became auto layout vs stayed absolute (`layout: "none"`). */
+export type DomLayoutStats = { autoLayout: number; absolute: number };
+
+export type DomConversion = {
+  node: RawNode;
+  warnings: string[];
+  count: number;
+  stats: DomLayoutStats;
+};
 
 type Ctx = {
   count: number;
@@ -29,6 +48,10 @@ type Ctx = {
   warnings: string[];
   seen: Set<string>;
   capped: boolean;
+  stats: DomLayoutStats;
+  resolveFont?: (families: string[]) => string | undefined;
+  /** Font stack -> family, so the resolver runs once per stack. */
+  fonts: Map<string, string | undefined>;
 };
 
 const warn = (ctx: Ctx, message: string): void => {
@@ -301,36 +324,8 @@ const parseAngle = (token: string): number | null => {
   }
 };
 
-/** Parse one `linear-gradient(...)` layer into an angle and 2+ stops, or null. */
-export const parseLinearGradient = (
-  layer: string,
-  length: number,
-): { angle: number; stops: Stop[] } | null => {
-  const m = /^(repeating-)?linear-gradient\((.*)\)$/is.exec(layer.trim());
-  if (!m || m[1]) return null;
-  const args = splitTop(m[2] ?? "", ",");
-  let angle = 180;
-  // Drop an interpolation clause ("in oklab", "to right in oklch shorter hue").
-  if (args[0] !== undefined) {
-    const direction = args[0].replace(/(^|\s)in\s+[a-z-]+(\s+\S+)*\s*$/i, "").trim();
-    if (direction !== args[0].trim()) {
-      if (direction) args[0] = direction;
-      else args.shift();
-    }
-  }
-  const first = args[0]?.toLowerCase() ?? "";
-  if (first.startsWith("to ")) {
-    const side = SIDE_ANGLES[first.slice(3).trim().replace(/\s+/g, " ")];
-    if (side === undefined) return null;
-    angle = side;
-    args.shift();
-  } else {
-    const parsed = parseAngle(first);
-    if (parsed !== null) {
-      angle = parsed;
-      args.shift();
-    }
-  }
+/** Color stops of a gradient (2+), positions as 0..1 fractions of `length` px; null if unreadable. */
+const parseStops = (args: string[], length: number): Stop[] | null => {
   const raw: { color: string; positions: number[] }[] = [];
   for (const arg of args) {
     const tokens = splitTop(arg, " ");
@@ -378,17 +373,166 @@ export const parseLinearGradient = (
     i = end;
   }
   let prev = 0;
-  const stops = flat.map(({ color, position }) => {
+  return flat.map(({ color, position }) => {
     const clamped = Math.min(1, Math.max(prev, position ?? prev));
     prev = clamped;
     return { color, position: round(clamped, 4) };
   });
+};
+
+/** Parse one `linear-gradient(...)` layer into an angle and 2+ stops, or null. */
+export const parseLinearGradient = (
+  layer: string,
+  length: number,
+): { angle: number; stops: Stop[] } | null => {
+  const m = /^(repeating-)?linear-gradient\((.*)\)$/is.exec(layer.trim());
+  if (!m || m[1]) return null;
+  const args = splitTop(m[2] ?? "", ",");
+  let angle = 180;
+  // Drop an interpolation clause ("in oklab", "to right in oklch shorter hue").
+  if (args[0] !== undefined) {
+    const direction = args[0].replace(/(^|\s)in\s+[a-z-]+(\s+\S+)*\s*$/i, "").trim();
+    if (direction !== args[0].trim()) {
+      if (direction) args[0] = direction;
+      else args.shift();
+    }
+  }
+  const first = args[0]?.toLowerCase() ?? "";
+  if (first.startsWith("to ")) {
+    const side = SIDE_ANGLES[first.slice(3).trim().replace(/\s+/g, " ")];
+    if (side === undefined) return null;
+    angle = side;
+    args.shift();
+  } else {
+    const parsed = parseAngle(first);
+    if (parsed !== null) {
+      angle = parsed;
+      args.shift();
+    }
+  }
+  const stops = parseStops(args, length);
+  if (!stops) return null;
   return { angle: round(((angle % 360) + 360) % 360, 2), stops };
 };
 
 /** Like paintColor, but fully transparent stays (gradient stops fade to transparent). */
 const paintColorOrTransparent = (input: string | undefined): string | null =>
   parseColor(input)?.hex ?? null;
+
+const SIZE_KEYWORDS = new Set([
+  "closest-side",
+  "closest-corner",
+  "farthest-side",
+  "farthest-corner",
+]);
+
+/** A position/size token in px: `%` of `full`, px or a bare number. Null if unreadable. */
+const lengthPx = (token: string, full: number): number | null => {
+  const m = /^(-?\d*\.?\d+)(%|px)?$/.exec(token);
+  if (!m) return null;
+  const n = parseFloat(m[1] ?? "");
+  return m[2] === "%" ? (n / 100) * full : n;
+};
+
+/** `at <position>` (1 or 2 values: keywords, % or px) -> center in px, or null. */
+const radialCenter = (tokens: string[], width: number, height: number): [number, number] | null => {
+  const X: Record<string, number> = { left: 0, center: 0.5, right: 1 };
+  const Y: Record<string, number> = { top: 0, center: 0.5, bottom: 1 };
+  if (tokens.length === 0) return [width / 2, height / 2];
+  if (tokens.length > 2) return null;
+  let [a = "center", b = "center"] = tokens;
+  // "top", "bottom left", "top 20%": a vertical keyword first means y comes first.
+  if ((a === "top" || a === "bottom") && tokens.length === 1)
+    return [width / 2, (Y[a] ?? 0.5) * height];
+  if (a === "top" || a === "bottom" || b === "left" || b === "right") [a, b] = [b, a];
+  const x = a in X ? (X[a] ?? 0.5) * width : lengthPx(a, width);
+  const y = b in Y ? (Y[b] ?? 0.5) * height : lengthPx(b, height);
+  return x === null || y === null ? null : [x, y];
+};
+
+/**
+ * Parse one `radial-gradient(...)` layer for a box of `width` x `height` into Pego's radial fill
+ * (center and radii as fractions of the box). Shapes circle/ellipse, size keywords, explicit
+ * sizes and `at <position>` are supported; null when unreadable.
+ */
+export const parseRadialGradient = (
+  layer: string,
+  width: number,
+  height: number,
+): { center: [number, number]; radius: [number, number]; stops: Stop[] } | null => {
+  const m = /^(repeating-)?radial-gradient\((.*)\)$/is.exec(layer.trim());
+  if (!m || m[1] || !(width > 0) || !(height > 0)) return null;
+  const args = splitTop(m[2] ?? "", ",");
+  let shape: "circle" | "ellipse" | undefined;
+  let size = "farthest-corner";
+  const lengths: string[] = [];
+  let at: string[] = [];
+  const firstToken = splitTop(args[0] ?? "", " ")[0];
+  if (args[0] !== undefined && !paintColorOrTransparent(firstToken)) {
+    let tokens = splitTop(args.shift() ?? "", " ").map((t) => t.toLowerCase());
+    // Drop an interpolation clause ("in oklab", "in oklch longer hue"), before or after "at".
+    const inIdx = tokens.indexOf("in");
+    if (inIdx >= 0) {
+      const atAfter = tokens.indexOf("at", inIdx);
+      tokens = [...tokens.slice(0, inIdx), ...(atAfter >= 0 ? tokens.slice(atAfter) : [])];
+    }
+    const atIdx = tokens.indexOf("at");
+    if (atIdx >= 0) {
+      at = tokens.slice(atIdx + 1);
+      tokens = tokens.slice(0, atIdx);
+    }
+    for (const token of tokens) {
+      if (token === "circle" || token === "ellipse") shape = token;
+      else if (SIZE_KEYWORDS.has(token)) size = token;
+      else if (lengthPx(token, 1) !== null) lengths.push(token);
+      else return null;
+    }
+  }
+  const center = radialCenter(at, width, height);
+  if (!center || lengths.length > 2) return null;
+  const [cx, cy] = center;
+  const dx = [Math.abs(cx), Math.abs(width - cx)];
+  const dy = [Math.abs(cy), Math.abs(height - cy)];
+  const circle = shape === "circle" || (shape === undefined && lengths.length === 1);
+  let rx: number;
+  let ry: number;
+  if (lengths.length > 0) {
+    const a = lengthPx(lengths[0] ?? "", width);
+    const b = lengths.length > 1 ? lengthPx(lengths[1] ?? "", height) : a;
+    if (a === null || b === null) return null;
+    [rx, ry] = circle ? [a, a] : [a, b];
+  } else {
+    const near = size.startsWith("closest");
+    const pick = (values: number[]) => (near ? Math.min(...values) : Math.max(...values));
+    if (size.endsWith("side")) {
+      if (circle) rx = ry = pick([...dx, ...dy]);
+      else [rx, ry] = [pick(dx), pick(dy)];
+    } else if (circle) {
+      rx = ry = Math.hypot(pick(dx), pick(dy));
+    } else {
+      // An ellipse through the corner with the aspect ratio of the matching *-side ellipse.
+      [rx, ry] = [Math.SQRT2 * pick(dx), Math.SQRT2 * pick(dy)];
+    }
+  }
+  const stops = parseStops(args, rx);
+  if (!stops) return null;
+  return {
+    center: [round(cx / width, 4), round(cy / height, 4)],
+    radius: [round(Math.max(0, rx) / width, 4), round(Math.max(0, ry) / height, 4)],
+    stops,
+  };
+};
+
+/** `background-size` -> image fill fit (a 100% 100% size stretches; auto and others cover). */
+const imageFillFit = (size: string | undefined): "cover" | "contain" | "stretch" => {
+  const first =
+    splitTop(size ?? "", ",")[0]
+      ?.trim()
+      .toLowerCase() ?? "";
+  if (first === "contain") return "contain";
+  if (first === "100% 100%") return "stretch";
+  return "cover";
+};
 
 // --- shadows ---------------------------------------------------------------------
 
@@ -542,11 +686,21 @@ const visualProps = (style: DomStyle, box: DomBox, ctx: Ctx): { props: Props; vi
         used = true;
         continue;
       }
+      const radial = parseRadialGradient(layer, box.width, box.height);
+      if (radial) {
+        fill = { type: "radial", ...radial };
+        used = true;
+        continue;
+      }
       const url = /^url\(\s*(["']?)(.*?)\1\s*\)$/is.exec(layer.trim())?.[2];
       if (url !== undefined) {
         if (/^data:image\/(png|jpeg|webp|gif);base64,/i.test(url)) {
           try {
-            fill = { type: "image", src: validateImageSrc(url), fit: "cover" };
+            fill = {
+              type: "image",
+              src: validateImageSrc(url),
+              fit: imageFillFit(style.backgroundSize),
+            };
             used = true;
             continue;
           } catch (error) {
@@ -630,76 +784,122 @@ const claim = (ctx: Ctx, amount = 1): boolean => {
   return true;
 };
 
-const place = (box: DomBox, origin: { x: number; y: number }) => ({
-  x: round(box.x - origin.x),
-  y: round(box.y - origin.y),
-  width: round(box.width),
-  height: round(box.height),
-});
-
 const textName = (text: string): string => {
   const flat = text.replace(/\s+/g, " ").trim();
   return flat.length > NAME_TEXT_LENGTH ? `${flat.slice(0, NAME_TEXT_LENGTH).trimEnd()}...` : flat;
 };
 
-const convertText = (
-  node: Extract<DomSnapshotNode, { kind: "text" }>,
-  origin: { x: number; y: number },
-  ctx: Ctx,
-): RawNode | null => {
+const factsOf = (style: DomStyle): ItemFacts => {
+  const margin = style.margin;
+  const validMargin = Array.isArray(margin) && margin.length === 4 && margin.every(isNum);
+  return {
+    outOfFlow:
+      /^(absolute|fixed|sticky)$/.test(String(style.position ?? "").toLowerCase()) ||
+      (typeof style.float === "string" && style.float !== "none") ||
+      style.transformed === true,
+    flexGrow: isNum(style.flexGrow) && style.flexGrow > 0 ? style.flexGrow : 0,
+    ...(typeof style.alignSelf === "string" && style.alignSelf !== "auto"
+      ? { alignSelf: style.alignSelf }
+      : {}),
+    ...(validMargin ? { margin } : {}),
+  };
+};
+
+/** A collapsed wrapper is the real flex/flow item: its facts win, out-of-flow is sticky. */
+const mergeFacts = (outer: ItemFacts, inner: ItemFacts): ItemFacts => ({
+  ...outer,
+  outOfFlow: outer.outOfFlow || inner.outOfFlow,
+  ...(outer.margin ? {} : inner.margin ? { margin: inner.margin } : {}),
+});
+
+/** Font family for a CSS stack: the host's resolver first, then `pickFontFamily`. */
+const fontFamilyFor = (stack: string | undefined, ctx: Ctx): string | undefined => {
+  if (!stack) return undefined;
+  if (ctx.fonts.has(stack)) return ctx.fonts.get(stack);
+  let family: string | undefined;
+  if (ctx.resolveFont) {
+    const families = splitTop(stack, ",")
+      .map((f) => f.replace(/^["']|["']$/g, "").trim())
+      .filter(Boolean);
+    try {
+      const resolved = ctx.resolveFont(families);
+      if (typeof resolved === "string" && resolved.trim()) family = resolved.trim();
+    } catch {
+      // A failing resolver only loses the better match.
+    }
+  }
+  family ??= pickFontFamily(stack);
+  ctx.fonts.set(stack, family);
+  return family;
+};
+
+const convertText = (node: Extract<DomSnapshotNode, { kind: "text" }>, ctx: Ctx): Item | null => {
   if (typeof node.text !== "string" || !validBox(node.box)) return null;
   const style = node.style ?? {};
-  const content = applyTransform(
-    node.text.replace(/\s+$/g, "").replace(/^\s+/g, ""),
-    style.textTransform,
-  );
-  if (!content) return null;
+  // Paragraphs are trimmed; inline runs keep the edge space the page script left between runs,
+  // as a no-break space: the text renderer does not count a trailing plain space in the width.
+  const text = node.merged
+    ? node.text.trim()
+    : node.text.replace(/^\n+|\n+$/g, "").replace(/^ | $/g, "\u00a0");
+  const content = applyTransform(text, style.textTransform);
+  if (!content.trim()) return null;
   if (!claim(ctx)) return null;
   const size = isNum(style.fontSize) && style.fontSize > 0 ? round(style.fontSize) : undefined;
   const lineHeight =
     size && isNum(style.lineHeight) && style.lineHeight > 0
       ? round(style.lineHeight / size)
       : undefined;
-  const pos = place(node.box, origin);
   // One line in the page: let the text measure itself, so a wider fallback font overflows
-  // a little instead of wrapping onto a second line. Several lines keep the box width.
+  // a little instead of wrapping onto a second line. Several lines get a width (the parent
+  // decides: fixed, or fill_container in a stack so edits reflow).
   const lineBox = (lineHeight ?? 1.25) * (size ?? 16);
-  const singleLine = node.box.height < lineBox * 1.5;
-  const family = pickFontFamily(style.fontFamily);
+  const multiLine = node.box.height >= lineBox * 1.5;
+  const whiteSpace = String(style.whiteSpace ?? "").toLowerCase();
+  const family = fontFamilyFor(style.fontFamily, ctx);
   const fill = paintColor(style.color);
   const align = style.textAlign ? TEXT_ALIGN[style.textAlign] : undefined;
-  const raw: RawNode = {
-    type: "text",
-    name: textName(content),
-    x: pos.x,
-    y: pos.y,
-    // Fixed width = the measured box so wrapping matches; the height follows the text.
-    ...(singleLine ? {} : { width: Math.ceil(pos.width) }),
-    content,
-    ...(family ? { fontFamily: family } : {}),
-    ...(size ? { fontSize: size } : {}),
-    ...(isNum(style.fontWeight) ? { fontWeight: style.fontWeight } : {}),
-    ...(style.fontStyle === "italic" ? { fontStyle: "italic" } : {}),
-    ...(lineHeight ? { lineHeight } : {}),
-    ...(isNum(style.letterSpacing) && style.letterSpacing !== 0
-      ? { letterSpacing: round(style.letterSpacing) }
-      : {}),
-    ...(align ? { textAlign: align } : {}),
-    ...(fill ? { fill } : {}),
-    ...(isNum(style.opacity) && style.opacity < 1
-      ? { opacity: round(Math.max(0, style.opacity)) }
-      : {}),
+  const raw = sanitize(
+    {
+      type: "text",
+      name: textName(content),
+      content,
+      ...(family ? { fontFamily: family } : {}),
+      ...(size ? { fontSize: size } : {}),
+      ...(isNum(style.fontWeight) ? { fontWeight: style.fontWeight } : {}),
+      ...(style.fontStyle === "italic" ? { fontStyle: "italic" } : {}),
+      ...(lineHeight ? { lineHeight } : {}),
+      ...(isNum(style.letterSpacing) && style.letterSpacing !== 0
+        ? { letterSpacing: round(style.letterSpacing) }
+        : {}),
+      ...(align ? { textAlign: align } : {}),
+      ...(fill ? { fill } : {}),
+      ...(isNum(style.opacity) && style.opacity < 1
+        ? { opacity: round(Math.max(0, style.opacity)) }
+        : {}),
+    },
+    ctx,
+  );
+  if (!raw) return null;
+  return {
+    raw,
+    box: node.box,
+    kind: "text",
+    auto: false,
+    // Merged paragraphs carry their block's flow facts (margin, flex-grow, float...).
+    facts: factsOf(style),
+    text: {
+      multiLine,
+      noWrap: whiteSpace === "nowrap" || whiteSpace === "pre",
+      align: align ?? "left",
+      fontSize: size ?? 16,
+      lineHeight: lineBox,
+    },
   };
-  return sanitize(raw, ctx);
 };
 
 const FIT: Record<string, string> = { cover: "crop", contain: "fit" };
 
-const convertImage = (
-  node: Extract<DomSnapshotNode, { kind: "image" }>,
-  origin: { x: number; y: number },
-  ctx: Ctx,
-): RawNode | null => {
+const convertImage = (node: Extract<DomSnapshotNode, { kind: "image" }>, ctx: Ctx): Item | null => {
   if (!validBox(node.box)) return null;
   let src: string;
   try {
@@ -718,11 +918,10 @@ const convertImage = (
   );
   const objectFit = style.objectFit;
   const alt = typeof node.alt === "string" && node.alt.trim() ? node.alt.slice(0, 500) : undefined;
-  return sanitize(
+  const raw = sanitize(
     {
       type: "image",
       name: node.tag ? `${node.tag}${alt ? ` - ${textName(alt)}` : ""}` : "image",
-      ...place(node.box, origin),
       src,
       fit: (objectFit && FIT[objectFit]) || "fill",
       ...(alt ? { alt } : {}),
@@ -732,13 +931,10 @@ const convertImage = (
     },
     ctx,
   );
+  return raw ? { raw, box: node.box, kind: "image", auto: false, facts: factsOf(style) } : null;
 };
 
-const convertSvgNode = (
-  node: Extract<DomSnapshotNode, { kind: "svg" }>,
-  origin: { x: number; y: number },
-  ctx: Ctx,
-): RawNode | null => {
+const convertSvgNode = (node: Extract<DomSnapshotNode, { kind: "svg" }>, ctx: Ctx): Item | null => {
   if (!validBox(node.box)) return null;
   const box = node.box;
   try {
@@ -757,10 +953,16 @@ const convertSvgNode = (
         : {};
     // preserveAspectRatio default: centered inside the box.
     return {
-      ...converted.node,
-      x: round(box.x - origin.x + (box.width - converted.width) / 2),
-      y: round(box.y - origin.y + (box.height - converted.height) / 2),
-      ...opacity,
+      raw: { ...converted.node, ...opacity },
+      box: {
+        x: box.x + (box.width - converted.width) / 2,
+        y: box.y + (box.height - converted.height) / 2,
+        width: converted.width,
+        height: converted.height,
+      },
+      kind: "vector",
+      auto: false,
+      facts: factsOf(node.style ?? {}),
     };
   } catch (error) {
     if (error instanceof SvgError) {
@@ -776,11 +978,10 @@ const elementName = (tag: string, component: string | undefined): string =>
 
 const convertElement = (
   node: Extract<DomSnapshotNode, { kind: "element" }>,
-  origin: { x: number; y: number },
   ctx: Ctx,
   depth: number,
   root?: { name: string; whiteFallback: boolean },
-): RawNode | null => {
+): Item | null => {
   if (!validBox(node.box)) {
     if (!root) return null;
   }
@@ -804,59 +1005,68 @@ const convertElement = (
       validBox(only.box) &&
       sameBox(only.box, box)
     ) {
-      return convertAny(only, origin, ctx, depth + 1);
+      const inner = convertAny(only, ctx, depth + 1);
+      return inner ? { ...inner, facts: mergeFacts(factsOf(style), inner.facts) } : null;
     }
   }
   if (!claim(ctx)) return null;
 
-  const own = root
-    ? { x: 0, y: 0, width: round(box.width), height: round(box.height) }
-    : place(box, origin);
-  const children: RawNode[] = [];
+  const items: Item[] = [];
   if (depth >= MAX_DEPTH) {
     if (kids.length > 0) warn(ctx, `nesting deeper than ${MAX_DEPTH} levels was skipped`);
   } else {
     for (const child of kids) {
-      const converted = convertAny(child, box, ctx, depth + 1);
-      if (converted) children.push(converted);
+      const converted = convertAny(child, ctx, depth + 1);
+      if (converted) items.push(converted);
     }
   }
-  const raw: RawNode = {
-    type: "frame",
-    name: root?.name ?? elementName(String(node.tag ?? "div"), node.component),
-    ...own,
-    layout: "none",
-    ...(root || style.overflowHidden ? { clip: true } : {}),
-    ...props,
-    children,
+  const laid = layoutContainer(box, style, items);
+  if (items.length > 0) {
+    if (laid.auto) ctx.stats.autoLayout++;
+    else ctx.stats.absolute++;
+  }
+  const raw = sanitize(
+    {
+      type: "frame",
+      name: root?.name ?? elementName(String(node.tag ?? "div"), node.component),
+      ...laid.props,
+      ...(root || style.overflowHidden ? { clip: true } : {}),
+      ...props,
+      children: laid.children,
+    },
+    ctx,
+  );
+  if (!raw) return null;
+  return {
+    raw,
+    box,
+    kind: "frame",
+    auto: laid.auto,
+    ...(laid.hug ? { hug: laid.hug } : {}),
+    facts: factsOf(style),
   };
-  return sanitize(raw, ctx);
 };
 
-const convertAny = (
-  node: DomSnapshotNode,
-  origin: { x: number; y: number },
-  ctx: Ctx,
-  depth: number,
-): RawNode | null => {
+const convertAny = (node: DomSnapshotNode, ctx: Ctx, depth: number): Item | null => {
   if (!node || typeof node !== "object") return null;
   switch (node.kind) {
     case "element":
-      return convertElement(node, origin, ctx, depth);
+      return convertElement(node, ctx, depth);
     case "text":
-      return convertText(node, origin, ctx);
+      return convertText(node, ctx);
     case "image":
-      return convertImage(node, origin, ctx);
+      return convertImage(node, ctx);
     case "svg":
-      return convertSvgNode(node, origin, ctx);
+      return convertSvgNode(node, ctx);
     default:
       return null;
   }
 };
 
 /**
- * Convert a page snapshot into one frame (clipped, absolute children). The frame sits at 0,0:
- * the caller positions it. Never throws on odd input; problems are returned as warnings.
+ * Convert a page snapshot into one clipped frame at 0,0 (the caller positions it). Containers
+ * become verified auto layout where possible, absolute elsewhere (`stats` counts both). Never
+ * throws on odd input; problems are returned as warnings.
  */
 export const convertDomSnapshot = (
   snapshot: DomSnapshot,
@@ -868,6 +1078,9 @@ export const convertDomSnapshot = (
     warnings: [],
     seen: new Set(),
     capped: false,
+    stats: { autoLayout: 0, absolute: 0 },
+    resolveFont: options.resolveFont,
+    fonts: new Map(),
   };
   const root = snapshot?.root;
   const fallback: RawNode = {
@@ -881,9 +1094,15 @@ export const convertDomSnapshot = (
     clip: true,
     children: [],
   };
+  const done = (node: RawNode | null): DomConversion => ({
+    node: node ?? fallback,
+    warnings: ctx.warnings,
+    count: ctx.count,
+    stats: ctx.stats,
+  });
   if (!root || typeof root !== "object" || !validBox(root.box)) {
     warn(ctx, "the page snapshot has no usable root box");
-    return { node: fallback, warnings: ctx.warnings, count: 0 };
+    return { ...done(fallback), count: 0 };
   }
   const fullPage =
     options.fullPage ?? (root.kind === "element" && (root.tag === "body" || root.tag === "html"));
@@ -898,18 +1117,27 @@ export const convertDomSnapshot = (
           ? "image"
           : "svg";
 
-  let node: RawNode | null;
   if (root.kind === "element") {
-    node = convertElement(root, { x: root.box.x, y: root.box.y }, ctx, 0, {
+    const item = convertElement(root, ctx, 0, {
       name: name.slice(0, 200),
       whiteFallback: fullPage,
     });
-  } else {
-    // A non-element root (text, image, svg): wrap it in a frame of its box.
-    const child = convertAny(root, root.box, ctx, 1);
-    const { props } = visualProps(root.style ?? {}, root.box, ctx);
-    claim(ctx);
-    node = sanitize(
+    if (!item) return done(null);
+    // The root keeps the page/element width; its height hugs when the stack reproduces it.
+    return done(
+      placeRaw(
+        item.raw,
+        { x: 0, y: 0 },
+        { width: round(root.box.width), height: rootHeight(item) },
+      ),
+    );
+  }
+  // A non-element root (text, image, svg): wrap it in a frame of its box.
+  const child = convertAny(root, ctx, 1);
+  const { props } = visualProps(root.style ?? {}, root.box, ctx);
+  claim(ctx);
+  return done(
+    sanitize(
       {
         type: "frame",
         name: name.slice(0, 200),
@@ -920,10 +1148,9 @@ export const convertDomSnapshot = (
         layout: "none",
         clip: true,
         ...props,
-        children: child ? [child] : [],
+        children: child ? placeAbsolute(root.box, [child]) : [],
       },
       ctx,
-    );
-  }
-  return { node: node ?? fallback, warnings: ctx.warnings, count: ctx.count };
+    ),
+  );
 };

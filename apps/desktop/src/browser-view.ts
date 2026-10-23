@@ -239,12 +239,22 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
     const wc = ensureView().webContents;
     ensureDebugger(wc);
     if (method !== "Page.captureScreenshot") return wc.debugger.sendCommand(method, params);
-    // A capture beyond the viewport resizes the page and drops the device emulation afterwards:
-    // put it back so the panel keeps showing the chosen device.
+    const active = emulation;
+    if (!active) return wc.debugger.sendCommand(method, params);
+    // A capture beyond the viewport drops the native device emulation, so the page would be
+    // shot at the panel's width. Hold the device width with a CDP override for the capture
+    // (the standard headless path), then restore the native emulation the panel shows.
     try {
+      await wc.debugger.sendCommand("Emulation.setDeviceMetricsOverride", {
+        width: active.width,
+        height: active.height,
+        deviceScaleFactor: 0,
+        mobile: false,
+      });
       return await wc.debugger.sendCommand(method, params);
     } finally {
-      if (emulation) applyEmulation(wc);
+      await wc.debugger.sendCommand("Emulation.clearDeviceMetricsOverride").catch(() => undefined);
+      applyEmulation(wc);
     }
   };
 
