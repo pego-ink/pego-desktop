@@ -138,6 +138,8 @@ const nodeLine = (node: PegoNode, indent: number, showPosition: boolean, summary
   const parts = [head];
   if (node.name) parts.push(JSON.stringify(node.name));
   if (node.reusable) parts.push("[component]");
+  // Hidden layers are not on the canvas; set visible: true (update_node) to show one again.
+  if (node.visible === false) parts.push("[hidden]");
   parts.push(...propTokens(node, showPosition));
   if (summary) parts.push(summary);
   return parts.join(" ");

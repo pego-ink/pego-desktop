@@ -4,6 +4,7 @@ import {
   ArrowRightIcon,
   CameraIcon,
   CheckIcon,
+  ChevronRightIcon,
   CircleAlertIcon,
   ImportIcon,
   LaptopIcon,
@@ -34,6 +35,7 @@ import { importToCanvas, screenshotToCanvas } from "@/browser/browser-actions";
 import {
   browserApi,
   ensureBrowserConnected,
+  pickCrumb,
   startPicker,
   stopPicker,
 } from "@/browser/browser-session";
@@ -235,7 +237,11 @@ const AddressBar = () => {
         onKeyDown={onFieldKeyDown}
         className="min-w-0 flex-1"
       />
-      <Tooltip content={picking ? "Stop picking" : "Pick an element"} shortcut="Esc" side="top">
+      <Tooltip
+        content={picking ? "Stop picking" : "Pick elements (arrows walk the page, Enter imports)"}
+        shortcut="Esc"
+        side="top"
+      >
         <Button
           variant="ghost"
           size="icon-xs"
@@ -302,6 +308,47 @@ const ActionBar = () => {
         </Tooltip>
       ))}
     </div>
+  );
+};
+
+/**
+ * Where the picked element sits: body down to it, with the component badge where a component
+ * starts. A crumb picks that ancestor; in the page, arrows walk the tree too.
+ */
+const Breadcrumbs = () => {
+  const picked = useBrowserStore((s) => s.picked);
+  if (!picked || picked.path.length === 0) return null;
+  const last = picked.path.length - 1;
+  return (
+    <nav
+      aria-label="Picked element path"
+      className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border px-2 text-[11px] whitespace-nowrap"
+    >
+      {picked.path.map((crumb, index) => (
+        <span key={crumb.selector} className="flex shrink-0 items-center gap-0.5">
+          {index > 0 ? (
+            <ChevronRightIcon aria-hidden className="size-3 text-muted-foreground" />
+          ) : null}
+          <button
+            type="button"
+            aria-current={index === last ? "true" : undefined}
+            title={crumb.selector}
+            onClick={() => Promise.resolve(pickCrumb(crumb.selector)).catch(reportError)}
+            className={cn(
+              "flex items-center gap-1 rounded-sm px-1 py-0.5 font-mono text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+              index === last && "bg-accent text-foreground",
+            )}
+          >
+            {crumb.component ? (
+              <span className="rounded-sm bg-sky-500/15 px-1 font-sans text-sky-600 dark:text-sky-400">
+                {crumb.component}
+              </span>
+            ) : null}
+            {crumb.label}
+          </button>
+        </span>
+      ))}
+    </nav>
   );
 };
 
@@ -442,6 +489,7 @@ export const BrowserPanel = () => {
       <AddressBar />
       <ActionBar />
       {hasContent ? <DeviceLabel zoom={zoom} /> : null}
+      <Breadcrumbs />
       <div ref={regionRef} className="relative min-h-0 flex-1 bg-muted/40">
         {url === "" ? <EmptyState /> : error ? <ErrorState message={error} /> : null}
       </div>

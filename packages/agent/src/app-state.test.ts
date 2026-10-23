@@ -35,7 +35,11 @@ describe("appStateContext", () => {
       components: [{ id: "c1", name: "Button", type: "frame" }],
       browser: {
         url: "https://example.com",
-        picked: { label: "button.cta", selector: "main > button.cta" },
+        picked: {
+          label: "button.cta",
+          selector: "main > button.cta",
+          path: "body > main > Hero · div > button.cta",
+        },
       },
     });
     expect(text).toContain('file /repo/landing.pego), page "Home"');
@@ -46,7 +50,7 @@ describe("appStateContext", () => {
     expect(text).toContain("+2 more");
     expect(text).toContain('- Components: `c1` (frame): "Button"');
     expect(text).toEndWith(
-      "- In-app browser: open at https://example.com; picked element: button.cta (selector `main > button.cta`)",
+      "- In-app browser: open at https://example.com; picked element: button.cta (selector `main > button.cta`), path body > main > Hero · div > button.cta",
     );
   });
 });

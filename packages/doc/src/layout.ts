@@ -77,8 +77,12 @@ export const computeLayout = (doc: PegoDocument, measureText: TextMeasurer): Lay
   // Sizing the same node with the same constraints happens repeatedly in nested flex; memoize.
   const memo = new WeakMap<PegoNode, Map<string, Sized>>();
 
-  const expand = (node: PegoNode, depth: number): PegoNode | null =>
-    node.type === "ref" ? (depth < MAX_INSTANCE_DEPTH ? resolveInstance(doc, node) : null) : node;
+  // Hidden nodes get no box: everything that draws, hits or exports from the layout skips them.
+  const expand = (node: PegoNode, depth: number): PegoNode | null => {
+    if (node.visible === false) return null;
+    if (node.type !== "ref") return node;
+    return depth < MAX_INSTANCE_DEPTH ? resolveInstance(doc, node) : null;
+  };
 
   const sizeOf = (node: PegoNode, depth: number, forced: Partial<Size> = {}): Sized => {
     const key = `${forced.width ?? ""}|${forced.height ?? ""}`;

@@ -809,6 +809,8 @@ export const buildNode = (
   scope: Scope | undefined,
   depth: number,
 ): IrNode | null => {
+  // Hidden layers are not part of the design that ships.
+  if (raw.visible === false) return null;
   if (raw.type === "ref") return buildRef(raw, parent, ctx, scope, depth);
   // Pages have no box or markup of their own; exportCode rejects them as roots.
   if (raw.type === "page") return null;

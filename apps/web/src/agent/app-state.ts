@@ -100,7 +100,15 @@ export const collectAppState = (): AppState => {
           url: browser.state.url,
           ...(browser.state.title ? { title: browser.state.title } : {}),
           picked: browser.picked
-            ? { label: browser.picked.label, selector: browser.picked.selector }
+            ? {
+                label: browser.picked.label,
+                selector: browser.picked.selector,
+                path: browser.picked.path
+                  .map((crumb) =>
+                    crumb.component ? `${crumb.component} · ${crumb.label}` : crumb.label,
+                  )
+                  .join(" > "),
+              }
             : browser.hasPicked
               ? { label: "an element" }
               : null,

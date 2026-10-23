@@ -1,8 +1,15 @@
 import { desktopApi, type DesktopBrowserApi } from "@/desktop/desktop-api";
 import { useLayoutStore } from "@/store/use-layout-store";
 import { useBrowserStore } from "./use-browser-store";
-import { pickerStartScript, pickerStopScript, unwrapEvaluation } from "./page-scripts";
-import { parsePicked } from "./picked-element";
+import {
+  componentNamesScript,
+  pickerStartScript,
+  pickerStopScript,
+  selectBySelectorScript,
+  unwrapEvaluation,
+} from "./page-scripts";
+import { importToCanvas, screenshotToCanvas } from "./browser-actions";
+import { parsePicked, withComponents, type PickedElement } from "./picked-element";
 
 const SHOW_TIMEOUT_MS = 5000;
 
@@ -73,17 +80,53 @@ export const evaluateInPage = async (api: DesktopBrowserApi, expression: string)
   }
 };
 
+/**
+ * Names of the React/Vue/Svelte components along the picked element's path, read in the page's
+ * own world. Best effort: production builds have none, and a failure leaves the pick as it is.
+ */
+const addComponentNames = async (picked: PickedElement) => {
+  const api = browserApi();
+  if (!api) return;
+  try {
+    const names = unwrapEvaluation(
+      await api.cdp("Runtime.evaluate", { expression: componentNamesScript, returnByValue: true }),
+    );
+    const store = useBrowserStore.getState();
+    // Only if nothing else was picked meanwhile.
+    if (Array.isArray(names) && store.picked?.selector === picked.selector) {
+      store.setPicked(withComponents(picked, names));
+    }
+  } catch {
+    // The names are a nicety; the pick stands without them.
+  }
+};
+
+/** Record a pick reported by the page (picker click or keys, or a crumb). */
+const acceptPick = (info: unknown) => {
+  const picked = parsePicked(info);
+  const store = useBrowserStore.getState();
+  store.setHasPicked(true);
+  store.setPicked(picked);
+  if (picked) void addComponentNames(picked);
+};
+
 const handlePageMessage = (message: unknown) => {
   if (typeof message !== "object" || message === null) return;
-  const { type } = message as { type?: unknown };
+  const { type, action } = message as { type?: unknown; action?: unknown };
   const store = useBrowserStore.getState();
-  if (type === "picked") {
-    store.setHasPicked(true);
-    store.setPicked(parsePicked(message));
-    store.setPicking(false);
-  } else if (type === "pick-cancelled") {
-    store.setPicking(false);
+  // The picker stays armed after a pick, like a DOM inspector.
+  if (type === "picked") acceptPick(message);
+  else if (type === "pick-cancelled") store.setPicking(false);
+  else if (type === "pick-action" && store.hasPicked) {
+    const target = { kind: "selection" } as const;
+    void (action === "screenshot" ? screenshotToCanvas(target) : importToCanvas(target));
   }
+};
+
+/** Pick the element of a breadcrumb (an ancestor or the element itself). */
+export const pickCrumb = async (selector: string): Promise<void> => {
+  const api = requireApi();
+  acceptPick(await evaluateInPage(api, selectBySelectorScript(selector)));
 };
 
 let connected = false;

@@ -39,3 +39,9 @@ textarea,
   pointer-events: none;
   color: var(--muted-foreground);
 }
+/* Web links in the prompt: underlined, opened with Cmd/Ctrl-click. */
+.pego-composer .pego-prompt-link {
+  text-decoration: underline;
+  text-decoration-color: var(--muted-foreground);
+  text-underline-offset: 2px;
+}

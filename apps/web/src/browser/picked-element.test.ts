@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
-import { ELEMENT_PATH_SOURCE, parsePicked } from "./picked-element";
+import {
+  COMPONENT_NAMES_SOURCE,
+  ELEMENT_PATH_SOURCE,
+  parsePicked,
+  withComponents,
+} from "./picked-element";
 
 /** The slice of a DOM element the page-side function walks. */
 type PathElement = {
@@ -47,11 +52,90 @@ describe("picked element", () => {
   test("labels read tag, id or class, and the text; bad messages are ignored", () => {
     expect(
       parsePicked({ tag: "button", cls: "cta", text: "Get started", selector: "main > button" }),
-    ).toEqual({ tag: "button", selector: "main > button", label: "button.cta · Get started" });
+    ).toEqual({
+      tag: "button",
+      selector: "main > button",
+      label: "button.cta · Get started",
+      path: [],
+      text: "Get started",
+    });
     expect(parsePicked({ tag: "div", id: "hero", text: "", selector: "#hero" })?.label).toBe(
       "div#hero",
     );
     expect(parsePicked({ tag: "div" })).toBeNull();
     expect(parsePicked("picked")).toBeNull();
+  });
+
+  test("the path becomes crumbs; component names start a crumb's badge and name the element", () => {
+    const picked = parsePicked({
+      tag: "button",
+      cls: "cta",
+      text: "Go",
+      selector: "#app > div > button",
+      path: [
+        { tag: "body", selector: "body" },
+        { tag: "div", id: "app", selector: "#app" },
+        { tag: "div", cls: "card", selector: "#app > div" },
+        { tag: "button", cls: "cta", selector: "#app > div > button" },
+      ],
+    })!;
+    expect(picked.path.map((crumb) => crumb.label)).toEqual([
+      "body",
+      "div#app",
+      "div.card",
+      "button.cta",
+    ]);
+    const named = withComponents(picked, [null, "App", "Card", "Card"]);
+    expect(named.path.map((crumb) => crumb.component)).toEqual([
+      undefined,
+      "App",
+      "Card",
+      undefined,
+    ]);
+    expect(named).toMatchObject({ component: "Card", label: "Card · button.cta" });
+    // Names that do not line up with the path are ignored.
+    expect(withComponents(picked, ["App"])).toBe(picked);
+  });
+});
+
+describe("component names in the page", () => {
+  type FakeNode = {
+    nodeType: number;
+    parentElement: FakeNode | null;
+    [key: string]: unknown;
+  };
+  /** html > body > div (React fiber: div -> Card -> ThemeProvider -> App) */
+  const html: FakeNode = { nodeType: 1, parentElement: null };
+  const body: FakeNode = { nodeType: 1, parentElement: html };
+  const fiber = {
+    type: "div",
+    return: {
+      type: { name: "Card" },
+      return: { type: { name: "ThemeProvider" }, return: { type: { name: "App" } } },
+    },
+  };
+  const div: FakeNode = { nodeType: 1, parentElement: body, __reactFiber$x1: fiber };
+  const vueSpan: FakeNode = {
+    nodeType: 1,
+    parentElement: body,
+    __vueParentComponent: { type: { __name: "PriceTag" }, parent: null },
+  };
+
+  const names = (el: FakeNode): unknown => {
+    const run = new Function("document", `return (${COMPONENT_NAMES_SOURCE})`)({
+      documentElement: html,
+    }) as (el: FakeNode) => unknown;
+    return run(el);
+  };
+
+  test("React and Vue names, wrappers skipped, aligned with the path from body", () => {
+    expect(names(div)).toEqual([null, "Card"]);
+    expect(names(vueSpan)).toEqual([null, "PriceTag"]);
+    const providerOnly: FakeNode = {
+      nodeType: 1,
+      parentElement: body,
+      __reactFiber$x2: { type: "p", return: { type: { name: "ThemeProvider" } } },
+    };
+    expect(names(providerOnly)).toEqual([null, null]);
   });
 });

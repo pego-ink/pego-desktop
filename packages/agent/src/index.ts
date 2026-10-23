@@ -16,3 +16,5 @@ export * from "./skills/format";
 export { toolAnnotations, type ToolAnnotations } from "./annotations";
 export * from "./mentions";
 export * from "./app-state";
+export { svgToNode } from "./tools-media";
+export { SvgError } from "./media/svg";
