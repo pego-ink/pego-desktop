@@ -143,7 +143,8 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
     });
     wc.on("console-message", (details) => {
       if (details.frame !== wc.mainFrame) return;
-      if (!allowPageMessage()) return;
+      // Count only picker messages: a chatty page must not crowd them out.
+      if (!details.message.startsWith(PAGE_MESSAGE_PREFIX) || !allowPageMessage()) return;
       const message = parsePageMessage(details.message, PAGE_MESSAGE_PREFIX);
       if (message !== undefined) editorSend(BROWSER_CHANNELS.pageMessage, message);
     });

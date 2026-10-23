@@ -669,7 +669,9 @@ function visibleKids(el){
     if(own(c))return false;var r=c.getBoundingClientRect();return r.width>0||r.height>0;
   });
 }
-function hit(e){var t=e.target;return t&&t.nodeType===1&&!own(t)?t:null}
+// Only real user input counts: the page can dispatch synthetic clicks and keys at the armed
+// picker (it sees the overlay), which would pick or import elements of its choosing.
+function hit(e){if(!e.isTrusted)return null;var t=e.target;return t&&t.nodeType===1&&!own(t)?t:null}
 function onMove(e){var t=hit(e);if(!t)return;current=t;place(hover,t)}
 function onClick(e){
   var t=hit(e);
@@ -679,6 +681,7 @@ function onClick(e){
 }
 function swallow(e){if(hit(e)){e.preventDefault();e.stopPropagation();e.stopImmediatePropagation()}}
 function onKey(e){
+  if(!e.isTrusted)return;
   if(e.key==="Escape"){
     e.preventDefault();e.stopPropagation();
     stop();send({type:"pick-cancelled"});return;
