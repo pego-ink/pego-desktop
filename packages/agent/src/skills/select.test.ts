@@ -157,6 +157,10 @@ describe("built-in registry", () => {
       ["landing page dieter rams style", "landing-page", "dieter-rams"],
       ["landing page neubrutalism", "landing-page", "neo-brutalism"],
       ["landing page kopi", "landing-page", undefined],
+      ["dashboard aplikasi ala teenage engineering", "dashboard", "teenage-engineering"],
+      ["landing page kayak op-1 field", "landing-page", "teenage-engineering"],
+      ["post instagram gaya pocket operator", "social-media", "teenage-engineering"],
+      ["dashboard untuk tim engineering", "dashboard", undefined],
     ];
     for (const [prompt, design, style] of cases) {
       expect(suggestSkills(prompt, { limit: 1 })[0]?.id).toBe(design);

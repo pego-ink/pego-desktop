@@ -2,6 +2,8 @@ import { camelProp } from "./decls";
 import { googleFontsUrl } from "./fonts";
 import { fontStack } from "./build";
 import { iconPascalName } from "./icons";
+import { motionStylesheet } from "./motion-css";
+import { SHADER_RUNTIME } from "./shader-export";
 import type { BuildCtx, IrComponent, IrEl, IrIcon, IrNode, IrUse } from "./ir";
 import { cssVarName, kebabCase } from "./naming";
 import { fontThemeName, styleObject, toTailwind } from "./tailwind";
@@ -215,6 +217,8 @@ const componentSource = (
   root: IrEl | IrIcon | IrUse,
   props: IrComponent["props"] | undefined,
   withClassName: boolean,
+  /** The design root starts the shader fills once it is mounted. */
+  startShaders = false,
 ): string => {
   const state = newState();
   const body = renderRoot(root, 2, state, withClassName);
@@ -228,10 +232,17 @@ const componentSource = (
     ...(withClassName ? ['className = ""'] : []),
   ];
   const signature = names.length ? `{ ${destructured.join(", ")} }: ${name}Props` : "";
+  const shaderImports = startShaders
+    ? ['import { useEffect } from "react";', 'import { startPegoShaders } from "../pego-shaders";']
+    : [];
+  const head = header(state);
   const lines = [
-    ...header(state),
+    ...shaderImports,
+    ...(shaderImports.length && !head.length ? [""] : []),
+    ...head,
     ...(names.length ? [`type ${name}Props = {`, ...typeLines, "};", ""] : []),
     `export function ${name}(${signature}) {`,
+    ...(startShaders ? [lineOf(1, "useEffect(() => startPegoShaders(document), []);")] : []),
     lineOf(1, "return ("),
     ...body,
     lineOf(1, ");"),
@@ -255,10 +266,12 @@ const stylesheet = (ctx: BuildCtx): string => {
   for (const family of [...ctx.fonts.keys()].sort()) {
     theme.push(`  --font-${fontThemeName(family)}: ${fontStack(family)};`);
   }
+  const motion = motionStylesheet(ctx.motion);
   return [
     ...(url ? [`@import url("${url}");`] : []),
     '@import "tailwindcss";',
     ...(theme.length ? ["", "@theme {", ...theme, "}"] : []),
+    ...(motion ? ["", motion] : []),
     "",
   ].join("\n");
 };
@@ -279,7 +292,7 @@ export const emitReact = (root: IrNode, rootName: string, ctx: BuildCtx): Export
         };
   files.push({
     path: `components/${rootName}.tsx`,
-    contents: componentSource(rootName, rootNode, undefined, false),
+    contents: componentSource(rootName, rootNode, undefined, false, ctx.shaders),
   });
   for (const component of ctx.components.values()) {
     files.push({
@@ -288,5 +301,11 @@ export const emitReact = (root: IrNode, rootName: string, ctx: BuildCtx): Export
     });
   }
   files.push({ path: "styles.css", contents: stylesheet(ctx) });
+  if (ctx.shaders) {
+    files.push({
+      path: "pego-shaders.js",
+      contents: `/** Draws the design's shader fills (elements with data-pego-shader); returns a stop function. */\nexport const startPegoShaders = ${SHADER_RUNTIME};\n`,
+    });
+  }
   return files;
 };

@@ -160,3 +160,16 @@ describe("wheel chase", () => {
     expect(camera().zoom).toBeCloseTo(1.2, 6);
   });
 });
+
+describe("interpolateCamera in part of the canvas", () => {
+  test("an offset view keeps its own center still while zooming in place", () => {
+    const view = { x: 320, y: 8, width: 800, height: 600 };
+    const from: Camera = { zoom: 1, panX: 0, panY: 0 };
+    const to: Camera = { zoom: 2, panX: -(320 + 400), panY: -(8 + 300) };
+    const mid = interpolateCamera(from, to, view, 0.5);
+    // The document point under the view's center is the same at every step.
+    const center = screenToDoc(mid, view.x + view.width / 2, view.y + view.height / 2);
+    expect(center.x).toBeCloseTo(720);
+    expect(center.y).toBeCloseTo(308);
+  });
+});

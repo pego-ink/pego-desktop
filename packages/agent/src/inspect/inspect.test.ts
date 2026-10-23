@@ -6,6 +6,7 @@ import { inspectTools } from "../tools-inspect";
 import { agentTools } from "../tools";
 import { contrastBetweenHex } from "./color";
 import { checkLayout, type LayoutIssue } from "./check-layout";
+import { sourceId } from "./check-polish";
 import { findEmptySpace } from "./empty-space";
 import { scoreIcon, searchIcons } from "./search";
 import { createInspectHost, ICONS, layoutOf, makeDoc, PNG } from "./test-helpers";
@@ -43,6 +44,20 @@ const text = (id: string, content: string, props: Record<string, unknown> = {}) 
   type: "text",
   id,
   content,
+  ...props,
+});
+const icon = (id: string, props: Record<string, unknown> = {}) => ({
+  type: "icon",
+  id,
+  iconName: "clock",
+  width: 14,
+  height: 14,
+  ...props,
+});
+const ref = (id: string, refId: string, props: Record<string, unknown> = {}) => ({
+  type: "ref",
+  id,
+  ref: refId,
   ...props,
 });
 
@@ -280,6 +295,20 @@ describe("check_layout rules", () => {
     expect(hit?.severity).toBe("error");
   });
 
+  test("cross-axis fill in a hugging row stretches; it is not circular", () => {
+    const issues = issuesOf([
+      frame("row", { layout: "horizontal", width: 600, gap: 16 }, [
+        frame("a", { layout: "vertical", height: "fill_container", fill: "#FFFFFF", padding: 20 }, [
+          text("t1", "Short"),
+        ]),
+        frame("b", { layout: "vertical", height: "fill_container", fill: "#FFFFFF", padding: 20 }, [
+          text("t2", "Taller", { fontSize: 40 }),
+        ]),
+      ]),
+    ]);
+    expect(issues.find((i) => i.issue.includes("circular"))).toBeUndefined();
+  });
+
   test("mixed fill and fixed children are fine", () => {
     const issues = issuesOf([
       frame("hug", { layout: "vertical" }, [
@@ -327,6 +356,457 @@ describe("check_layout rules", () => {
     const issues = checkLayout(doc, layoutOf(doc)).issues;
     const hit = issues.find((i) => i.nodeId === "inst/label");
     expect(hit?.hint).toContain("set_instance_overrides");
+  });
+});
+
+describe("check_layout polish", () => {
+  const polish = (issues: LayoutIssue[]) =>
+    issues.filter((i) =>
+      /rounder than|not concentric|beside|different heights|lopsided/.test(i.issue),
+    );
+  const userCard = (props: Record<string, unknown> = {}) =>
+    frame(
+      "user",
+      {
+        layout: "horizontal",
+        padding: 8,
+        cornerRadius: 8,
+        fill: "#E6EEF0",
+        alignItems: "center",
+        gap: 12,
+        ...props,
+      },
+      [
+        frame("avatar", { width: 32, height: 32, cornerRadius: 16, fill: "#C3D2D7" }),
+        text("name", "Resepsionis", { fontSize: 14 }),
+      ],
+    );
+  const tierCard = (padding: number) =>
+    frame(
+      "card",
+      {
+        layout: "vertical",
+        width: 240,
+        padding,
+        cornerRadius: 10,
+        fill: "#FFFFFF",
+        stroke: { color: "#E2E2DE", width: 1 },
+      },
+      [frame("btn", { width: "fill_container", height: 36, cornerRadius: 6, fill: "#2B4ACB" })],
+    );
+
+  test("an inner corner rounder than the outer one is a warning", () => {
+    const found = polish(issuesOf([userCard()]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "user" });
+    expect(found[0]?.issue).toContain("rounder than");
+    expect(found[0]?.hint).toContain("24");
+  });
+
+  test("a non-concentric corner is info", () => {
+    const found = polish(issuesOf([tierCard(16)]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "info", nodeId: "card" });
+    expect(found[0]?.issue).toContain("not concentric");
+    expect(found[0]?.hint).toContain("23");
+  });
+
+  test("radii and paddings given as variables resolve", () => {
+    const doc = makeDoc([userCard({ cornerRadius: "$r-sm", padding: "$s-sm" })], {
+      "r-sm": { type: "number", value: 8 },
+      "s-sm": { type: "number", value: 8 },
+    });
+    const found = polish(checkLayout(doc, layoutOf(doc)).issues);
+    expect(found.map((i) => [i.nodeId, i.severity])).toEqual([["user", "warning"]]);
+  });
+
+  test("a pill inside a pill with a matching inset is concentric", () => {
+    const issues = issuesOf([
+      frame("pill", { layout: "horizontal", cornerRadius: 999, padding: 4, fill: "#F2F2F0" }, [
+        frame("inner", { width: 80, height: 24, cornerRadius: 999, fill: "#FFFFFF" }),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("an inset over 24 is ignored", () => {
+    expect(polish(issuesOf([tierCard(28)]))).toEqual([]);
+  });
+
+  test("a child away from the corners is ignored", () => {
+    const issues = issuesOf([
+      frame(
+        "col",
+        {
+          layout: "vertical",
+          width: 300,
+          padding: 16,
+          cornerRadius: 10,
+          fill: "#FFFFFF",
+          alignItems: "center",
+        },
+        [frame("mid", { width: 100, height: 40, cornerRadius: 20, fill: "#000000" })],
+      ),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("a defect in a component is reported once, not per instance", () => {
+    const issues = issuesOf([
+      frame("lib", { layout: "vertical", gap: 8 }, [userCard({ reusable: true })]),
+      frame("screen", { layout: "vertical", gap: 8 }, [ref("u1", "user"), ref("u2", "user")]),
+    ]);
+    expect(polish(issues).filter((i) => i.issue.includes("rounder than"))).toHaveLength(1);
+  });
+
+  test("instances whose overrides cause different defects are each reported", () => {
+    const issues = issuesOf([
+      frame("lib", { layout: "vertical", gap: 8 }, [
+        frame("chip", { reusable: true, layout: "horizontal", gap: 6, alignItems: "center" }, [
+          icon("chipIcon", { width: 16, height: 16 }),
+          text("chipText", "Menunggu", { fontSize: 12, fontWeight: 600 }),
+        ]),
+      ]),
+      frame("screen", { layout: "vertical", gap: 8, y: 200 }, [
+        ref("c1", "chip"),
+        ref("c2", "chip", { descendants: { chipIcon: { width: 14, height: 14 } } }),
+        ref("c3", "chip", { descendants: { chipIcon: { width: 12, height: 12 } } }),
+      ]),
+    ]);
+    expect(
+      polish(issues)
+        .map((i) => i.nodeId)
+        .sort(),
+    ).toEqual(["c2/chipIcon", "c3/chipIcon"]);
+  });
+
+  const link = (weight: number, size = 14) =>
+    frame("link", { layout: "horizontal", gap: 4 }, [
+      text("lbl", "Semua jadwal", { fontSize: 13, fontWeight: weight }),
+      icon("arrow", { iconName: "arrow-right", width: size, height: size }),
+    ]);
+
+  test("a thin icon beside bold text is a warning", () => {
+    const found = polish(issuesOf([link(600)]));
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "arrow" });
+    expect(found[0]?.issue).toContain("beside");
+    expect(found[0]?.hint).toContain("16");
+  });
+
+  test("regular text or a 16px icon is fine", () => {
+    expect(polish(issuesOf([link(400)]))).toEqual([]);
+    expect(polish(issuesOf([link(600, 16)]))).toEqual([]);
+  });
+
+  test("hidden neighbours do not count", () => {
+    const issues = issuesOf([
+      frame("row", { layout: "horizontal", gap: 4 }, [
+        text("hidden", "Hidden", { fontWeight: 600, visible: false }),
+        icon("i"),
+        text("regular", "Regular", { fontWeight: 400 }),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  const kpiCard = (id: string, size: number, props: Record<string, unknown> = {}) =>
+    frame(id, { layout: "vertical", fill: "#FFFFFF", padding: 20, ...props }, [
+      text(`${id}-value`, "21", { fontSize: size }),
+    ]);
+
+  test("a row of cards that ends unevenly is a warning", () => {
+    const found = polish(
+      issuesOf([
+        frame("kpi", { layout: "horizontal", gap: 16 }, [kpiCard("k1", 40), kpiCard("k2", 28)]),
+      ]),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "kpi" });
+    expect(found[0]?.issue).toContain("different heights");
+    expect(found[0]?.hint).toContain("fill_container");
+  });
+
+  test("a row of instances is judged on the resolved cards", () => {
+    const row = (props: Record<string, unknown>) => [
+      frame("lib", { layout: "vertical" }, [kpiCard("card", 28, { reusable: true })]),
+      frame("kpi", { layout: "horizontal", gap: 16 }, [
+        ref("c1", "card", { descendants: { "card-value": { fontSize: 40 } }, ...props }),
+        ref("c2", "card", props),
+      ]),
+    ];
+    const uneven = polish(issuesOf(row({})));
+    expect(uneven.map((i) => [i.nodeId, i.issue.includes("different heights")])).toEqual([
+      ["kpi", true],
+    ]);
+    expect(polish(issuesOf(row({ height: "fill_container" })))).toEqual([]);
+  });
+
+  test("a column, a centered row or a mixed row is not a card row", () => {
+    const cards = () => [kpiCard("k1", 40), kpiCard("k2", 28)];
+    expect(polish(issuesOf([frame("col", { layout: "vertical", gap: 16 }, cards())]))).toEqual([]);
+    expect(
+      polish(
+        issuesOf([frame("mid", { layout: "horizontal", gap: 16, alignItems: "center" }, cards())]),
+      ),
+    ).toEqual([]);
+    expect(
+      polish(
+        issuesOf([
+          frame("mixed", { layout: "horizontal", gap: 16 }, [
+            kpiCard("k1", 40),
+            frame("plain", { layout: "vertical" }, [text("p", "Plain")]),
+          ]),
+        ]),
+      ),
+    ).toEqual([]);
+  });
+
+  const panel = (padding: number[], props: Record<string, unknown> = {}) =>
+    frame(
+      "panel",
+      {
+        layout: "vertical",
+        width: 300,
+        fill: "#FFFFFF",
+        stroke: { color: "#C3D2D7", width: 1 },
+        cornerRadius: 12,
+        padding,
+        ...props,
+      },
+      [text("row", "Poli Umum")],
+    );
+
+  test("lopsided padding on a painted container is a warning", () => {
+    // Inside a screen: a top-level frame is a screen, whose vertical padding may be a safe area.
+    const found = polish(
+      issuesOf([
+        frame("screen", { layout: "vertical", width: 400, padding: 24 }, [panel([20, 20, 4, 20])]),
+      ]),
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0]).toMatchObject({ severity: "warning", nodeId: "panel" });
+    expect(found[0]?.issue).toContain("lopsided");
+  });
+
+  test("close paddings, dividers and unpainted frames are fine", () => {
+    expect(polish(issuesOf([panel([20, 20, 16, 20])]))).toEqual([]);
+    expect(
+      polish(
+        issuesOf([
+          panel([24, 0, 0, 0], {
+            fill: undefined,
+            cornerRadius: undefined,
+            stroke: { color: "#C3D2D7", width: [1, 0, 0, 0] },
+          }),
+        ]),
+      ),
+    ).toEqual([]);
+    expect(
+      polish(issuesOf([panel([20, 20, 4, 20], { fill: undefined, stroke: undefined })])),
+    ).toEqual([]);
+  });
+
+  test("an inset control on the smaller padding side is not lopsided", () => {
+    const field = frame(
+      "field",
+      {
+        layout: "horizontal",
+        width: 360,
+        fill: "#FFFFFF",
+        cornerRadius: 12,
+        padding: [6, 6, 6, 16],
+        alignItems: "center",
+      },
+      [
+        text("email", "nama@klinik.id", { width: "fill_container" }),
+        frame("send", { layout: "horizontal", height: 32, cornerRadius: 6, fill: "#0F766E" }, [
+          text("sendLabel", "Kirim", { fontSize: 14 }),
+        ]),
+      ],
+    );
+    const pill = frame(
+      "pill",
+      {
+        layout: "horizontal",
+        fill: "#E6EEF0",
+        cornerRadius: 999,
+        padding: [4, 12, 4, 4],
+        gap: 8,
+        alignItems: "center",
+      },
+      [
+        frame("face", { width: 32, height: 32, cornerRadius: 16, fill: "#C3D2D7" }),
+        text("who", "Resepsionis", { fontSize: 14 }),
+      ],
+    );
+    expect(polish(issuesOf([field, pill]))).toEqual([]);
+  });
+
+  test("safe-area padding at a screen edge is not lopsided", () => {
+    const issues = issuesOf([
+      frame(
+        "phone",
+        {
+          layout: "vertical",
+          width: 390,
+          height: 844,
+          fill: "#FFFFFF",
+          padding: [59, 20, 24, 20],
+        },
+        [text("title", "Antrean")],
+      ),
+      frame("app", { layout: "vertical", width: 390, height: 844, fill: "#F4F8F9", x: 500 }, [
+        frame(
+          "content",
+          { layout: "vertical", width: "fill_container", height: "fill_container" },
+          [text("body", "Isi")],
+        ),
+        frame(
+          "tabs",
+          {
+            layout: "horizontal",
+            width: "fill_container",
+            fill: "#FFFFFF",
+            padding: [8, 16, 34, 16],
+          },
+          [text("tab", "Beranda")],
+        ),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("a chat row of an avatar and a bubble is not a card row", () => {
+    const issues = issuesOf([
+      frame("message", { layout: "horizontal", width: 360, gap: 8 }, [
+        frame("chatAvatar", { width: 32, height: 32, cornerRadius: 16, fill: "#C3D2D7" }),
+        frame(
+          "bubble",
+          {
+            layout: "vertical",
+            width: "fill_container",
+            fill: "#F2F2F0",
+            cornerRadius: 12,
+            padding: 12,
+          },
+          [text("msg", "Pasien A-021 sudah hadir di ruang tunggu dan siap dipanggil sekarang.")],
+        ),
+      ]),
+    ]);
+    expect(polish(issues)).toEqual([]);
+  });
+
+  test("a circle at a wide inset is info, not a warning", () => {
+    const issues = issuesOf([
+      frame(
+        "kpi",
+        { layout: "vertical", width: 240, fill: "#FFFFFF", cornerRadius: 12, padding: 20, gap: 8 },
+        [
+          frame("badge", { width: 40, height: 40, cornerRadius: 20, fill: "#D5EEEB" }),
+          text("kpiText", "14 pasien"),
+        ],
+      ),
+    ]);
+    expect(polish(issues).map((i) => [i.nodeId, i.severity])).toEqual([["kpi", "info"]]);
+  });
+
+  test("a finding on an instance root points at its component", () => {
+    const issues = issuesOf([
+      frame("screen", { layout: "vertical", gap: 8 }, [ref("u1", "user"), ref("u2", "user")]),
+      frame("lib", { layout: "vertical", gap: 8, y: 400 }, [userCard({ reusable: true })]),
+    ]);
+    const found = polish(issues);
+    expect(found).toHaveLength(1);
+    expect(found[0]?.nodeId).toBe("u1");
+    expect(found[0]?.hint).toContain('instance of component "user"');
+  });
+
+  test("we-ui dashboard fixture gives exactly the five expected polish warnings", () => {
+    const issues = issuesOf([
+      frame("komponen", { name: "Komponen", layout: "vertical", gap: 24 }, [
+        frame(
+          "kpiCard",
+          {
+            reusable: true,
+            layout: "vertical",
+            width: 240,
+            fill: "#FFFFFF",
+            stroke: { color: "#C3D2D7", width: 1 },
+            cornerRadius: 12,
+            padding: 20,
+            gap: 8,
+          },
+          [
+            text("kpiLabel", "Menunggu", { fontSize: 13 }),
+            text("kpiValue", "14", { fontSize: 28 }),
+          ],
+        ),
+        frame("queueRow", { reusable: true, layout: "horizontal", alignItems: "center", gap: 16 }, [
+          frame(
+            "rowChip",
+            {
+              layout: "horizontal",
+              fill: "#FCEFD6",
+              cornerRadius: 4,
+              padding: [0, 8, 0, 8],
+              gap: 6,
+              alignItems: "center",
+            },
+            [
+              icon("rowChipIcon", { iconName: "clock" }),
+              text("rowChipText", "Menunggu", { fontSize: 12, fontWeight: 600 }),
+            ],
+          ),
+        ]),
+      ]),
+      frame("dashboard", { name: "Dashboard Klinik", layout: "horizontal", width: 1000, y: 400 }, [
+        frame("sidebar", { name: "Sidebar", layout: "vertical", width: 240 }, [userCard()]),
+        frame("main", { name: "Main", layout: "vertical", width: "fill_container", gap: 24 }, [
+          frame("kpiRow", { name: "KPI Row", layout: "horizontal", gap: 16 }, [
+            ref("k1", "kpiCard", { descendants: { kpiValue: { fontSize: 40 } } }),
+            ref("k2", "kpiCard"),
+          ]),
+          frame("link", { name: "Link", layout: "horizontal", gap: 4 }, [
+            text("linkLabel", "Semua jadwal", { fontSize: 13, fontWeight: 600 }),
+            icon("linkIcon", { iconName: "arrow-right" }),
+          ]),
+          frame(
+            "doctorPanel",
+            {
+              name: "Doctor Panel",
+              layout: "vertical",
+              width: 340,
+              fill: "#FFFFFF",
+              stroke: { color: "#C3D2D7", width: 1 },
+              cornerRadius: 12,
+              padding: [20, 20, 4, 20],
+            },
+            [text("docName", "Poli Umum · Ruang 1", { fontSize: 14 })],
+          ),
+          frame("queue", { name: "Queue", layout: "vertical" }, [
+            ref("q1", "queueRow"),
+            ref("q2", "queueRow"),
+          ]),
+        ]),
+      ]),
+    ]);
+    const found = polish(issues);
+    expect(found.every((i) => i.severity === "warning")).toBe(true);
+    const summary = found
+      .map((i) => {
+        const rule = /rounder than|beside|different heights|lopsided/.exec(i.issue)?.[0];
+        return `${sourceId(i.nodeId)} ${rule}`;
+      })
+      .sort();
+    expect(summary).toEqual([
+      "doctorPanel lopsided",
+      "kpiRow different heights",
+      "linkIcon beside",
+      "rowChipIcon beside",
+      "user rounder than",
+    ]);
+    expect(issues.find((i) => i.issue.includes("circular"))).toBeUndefined();
   });
 });
 
@@ -649,7 +1129,7 @@ describe("skills and styles", () => {
   });
 
   test("styles: distinct presets whose variables parse and pass contrast", () => {
-    expect(stylePresets.length).toBe(20);
+    expect(stylePresets.length).toBe(21);
     expect(new Set(stylePresets.map((s) => s.name)).size).toBe(stylePresets.length);
     expect(new Set(stylePresets.map((s) => s.variables.accent?.value)).size).toBe(
       stylePresets.length,

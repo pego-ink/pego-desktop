@@ -13,7 +13,7 @@ import { getLayout } from "@/canvas/layout";
 import type { Camera } from "@/canvas/types";
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, visibleRect } from "@/store/use-viewport-store";
 import { documentTitle } from "@/workspace/live-document";
 
 /** What the app state is read from; `collectAppState` fills it from the stores. */
@@ -24,7 +24,8 @@ export type AppStateInput = {
   file: { fileName: string | null; bridgePath: string | null };
   layout: Layout;
   camera: Camera;
-  viewport: { width: number; height: number };
+  /** The part of the canvas the user sees (offset when floating panels cover the rest). */
+  viewport: { x?: number; y?: number; width: number; height: number };
   browser: AppStateBrowser | null;
 };
 
@@ -53,8 +54,8 @@ export const buildAppState = (input: AppStateInput): AppState => {
   const view =
     viewport.width > 0 && viewport.height > 0
       ? {
-          x: -camera.panX / camera.zoom,
-          y: -camera.panY / camera.zoom,
+          x: ((viewport.x ?? 0) - camera.panX) / camera.zoom,
+          y: ((viewport.y ?? 0) - camera.panY) / camera.zoom,
           width: viewport.width / camera.zoom,
           height: viewport.height / camera.zoom,
         }
@@ -85,7 +86,8 @@ export const buildAppState = (input: AppStateInput): AppState => {
 export const collectAppState = (): AppState => {
   const { doc, pageId, selection } = useDocumentStore.getState();
   const { fileName, bridgePath } = useFileStore.getState();
-  const { camera, size } = useViewportStore.getState();
+  const viewport = useViewportStore.getState();
+  const { camera } = viewport;
   const browser = useBrowserStore.getState();
   return buildAppState({
     doc,
@@ -94,7 +96,7 @@ export const collectAppState = (): AppState => {
     file: { fileName, bridgePath },
     layout: getLayout(doc),
     camera,
-    viewport: size,
+    viewport: visibleRect(viewport),
     browser: browser.state.visible
       ? {
           url: browser.state.url,

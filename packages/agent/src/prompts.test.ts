@@ -6,9 +6,26 @@ import {
   parsePlan,
   planOutputSchema,
 } from "./prompts";
+import { coreSkills } from "./skills/index";
 import { agentTools } from "./tools";
+import { animationEasingSchema, animationPresetSchema, shaderPresetSchema } from "@pego/doc";
+
+/** Animation presets and easings and shader presets: the values the prompts name. */
+const MOTION_KEYWORDS = [
+  ...animationPresetSchema.options,
+  ...animationEasingSchema.options,
+  ...shaderPresetSchema.options,
+];
 
 describe("prompts", () => {
+  test("prompts with the working rules name every core skill", () => {
+    for (const prompt of [EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
+      expect(prompt).toContain("The core and ui-polish skills apply to every design");
+      for (const skill of coreSkills()) expect(prompt).toContain(skill.id);
+    }
+    expect(CLAUDE_CODE_SYSTEM).toContain("get_skill for core, ui-polish and the matching skill");
+  });
+
   test("are non-empty and free of volatile content", () => {
     for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
       expect(prompt.length).toBeGreaterThan(500);
@@ -29,6 +46,7 @@ describe("prompts", () => {
       "fit_content",
       "space_between",
       "space_around",
+      ...MOTION_KEYWORDS,
     ]);
     for (const word of mentioned) expect(allowed.has(word as string)).toBe(true);
   });
@@ -70,6 +88,7 @@ describe("prompts teach the workflow", () => {
       "fit_content",
       "space_between",
       "space_around",
+      ...MOTION_KEYWORDS,
     ]);
     for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
       const mentioned = [...prompt.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map((m) => m[1]);

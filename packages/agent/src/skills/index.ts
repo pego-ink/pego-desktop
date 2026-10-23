@@ -19,3 +19,6 @@ export const findSkill = (id: string): Skill | undefined => {
 };
 
 export const coreSkill = (): Skill | undefined => skills.find((skill) => skill.core);
+
+/** Every core skill (applied to every run), in registry order. */
+export const coreSkills = (): Skill[] => skills.filter((skill) => skill.core === true);

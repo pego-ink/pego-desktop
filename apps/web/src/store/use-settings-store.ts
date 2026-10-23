@@ -1,4 +1,12 @@
 import { create } from "zustand";
+import {
+  DEFAULT_CUSTOM_AGENT_NAMES,
+  isAgentNameSet,
+  normalizeCustomNames,
+  type AgentNameSet,
+} from "@/agent/agent-names";
+import { isToolbarPosition, type ToolbarPosition } from "@/components/toolbar-position";
+import { isInterfaceStyle, type InterfaceStyle } from "@/layout/interface-style";
 
 /** Editor preferences, persisted per browser/app install. */
 export type EditorSettings = {
@@ -9,6 +17,14 @@ export type EditorSettings = {
   wheelBehavior: "pan" | "zoom";
   /** Round positions and sizes to whole pixels while moving/resizing/drawing. */
   snapToPixel: boolean;
+  /** Names on the agents' canvas cursors (agent/agent-names). */
+  agentNameSet: AgentNameSet;
+  /** The "custom" set, one name per slot (may hold blanks while being edited). */
+  customAgentNames: string[];
+  /** Where the floating tool picker sits on the canvas. */
+  toolbarPosition: ToolbarPosition;
+  /** Docked columns, or floating cards over the canvas (layout/interface-style). */
+  interfaceStyle: InterfaceStyle;
 };
 
 export const DEFAULT_SETTINGS: EditorSettings = {
@@ -16,6 +32,10 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   nudgeLarge: 10,
   wheelBehavior: "pan",
   snapToPixel: true,
+  agentNameSet: "pego",
+  customAgentNames: [...DEFAULT_CUSTOM_AGENT_NAMES],
+  toolbarPosition: "bottom",
+  interfaceStyle: "docked",
 };
 
 const KEY = "pego:settings.v1";
@@ -35,6 +55,14 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
         ? v.wheelBehavior
         : DEFAULT_SETTINGS.wheelBehavior,
     snapToPixel: typeof v.snapToPixel === "boolean" ? v.snapToPixel : DEFAULT_SETTINGS.snapToPixel,
+    agentNameSet: isAgentNameSet(v.agentNameSet) ? v.agentNameSet : DEFAULT_SETTINGS.agentNameSet,
+    customAgentNames: normalizeCustomNames(v.customAgentNames),
+    toolbarPosition: isToolbarPosition(v.toolbarPosition)
+      ? v.toolbarPosition
+      : DEFAULT_SETTINGS.toolbarPosition,
+    interfaceStyle: isInterfaceStyle(v.interfaceStyle)
+      ? v.interfaceStyle
+      : DEFAULT_SETTINGS.interfaceStyle,
   };
 };
 
@@ -76,7 +104,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => {
   };
 });
 
-export type SettingsTab = "general" | "agent" | "shortcuts" | "about";
+export type SettingsTab = "general" | "agent" | "agent-names" | "shortcuts" | "about";
 
 type SettingsModalState = {
   open: boolean;

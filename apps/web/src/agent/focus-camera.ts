@@ -1,6 +1,6 @@
 import type { Box } from "@pego/doc";
 import type { Camera } from "@/canvas/types";
-import { clampZoom, FIT_PADDING } from "@/interaction/camera";
+import { clampZoom, FIT_PADDING, type ViewRect } from "@/interaction/camera";
 
 /** Smallest box containing every box, or null for an empty list. */
 export const unionBoxes = (boxes: readonly Box[]): Box | null => {
@@ -25,7 +25,7 @@ export const unionBoxes = (boxes: readonly Box[]): Box | null => {
  */
 export const focusCamera = (
   boxes: readonly Box[],
-  viewport: { width: number; height: number },
+  viewport: ViewRect,
   { padding = FIT_PADDING, maxZoom = 1 }: { padding?: number; maxZoom?: number } = {},
 ): Camera | null => {
   const bounds = unionBoxes(boxes);
@@ -36,7 +36,7 @@ export const focusCamera = (
   const zoom = clampZoom(Math.min(fit, maxZoom));
   return {
     zoom,
-    panX: (viewport.width - bounds.width * zoom) / 2 - bounds.x * zoom,
-    panY: (viewport.height - bounds.height * zoom) / 2 - bounds.y * zoom,
+    panX: (viewport.x ?? 0) + (viewport.width - bounds.width * zoom) / 2 - bounds.x * zoom,
+    panY: (viewport.y ?? 0) + (viewport.height - bounds.height * zoom) / 2 - bounds.y * zoom,
   };
 };

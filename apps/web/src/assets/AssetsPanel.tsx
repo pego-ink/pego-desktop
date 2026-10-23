@@ -8,7 +8,7 @@ import { getLayout } from "@/canvas/layout";
 import { focusCamera } from "@/agent/focus-camera";
 import { showPage } from "@/pages/page-actions";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, viewportCenter, visibleRect } from "@/store/use-viewport-store";
 import { useComponentThumbnail } from "./component-thumbnails";
 import {
   COMPONENT_MIME,
@@ -30,17 +30,19 @@ const revealComponent = (entry: ComponentEntry) => {
   select([entry.id]);
   const box = getLayout(doc).get(entry.id);
   const viewport = useViewportStore.getState();
-  const camera = box ? focusCamera([box], viewport.size) : null;
+  const camera = box ? focusCamera([box], visibleRect(viewport)) : null;
   if (camera) viewport.setCamera(camera);
 };
 
 /** Place an instance of the component in the middle of the view on the shown page. */
 const insertInstance = (entry: ComponentEntry) => {
   const state = useDocumentStore.getState();
-  const { camera, size } = useViewportStore.getState();
+  const { camera } = useViewportStore.getState();
   const box = getLayout(state.doc).get(entry.id);
-  const centerX = (size.width / 2 - camera.panX) / camera.zoom;
-  const centerY = (size.height / 2 - camera.panY) / camera.zoom;
+  // The middle of what the user sees (floating panels cover the rest of the canvas).
+  const middle = viewportCenter();
+  const centerX = (middle.x - camera.panX) / camera.zoom;
+  const centerY = (middle.y - camera.panY) / camera.zoom;
   const op = instanceOp(entry, activePage(state).id, {
     x: centerX - (box?.width ?? 0) / 2,
     y: centerY - (box?.height ?? 0) / 2,

@@ -48,6 +48,23 @@ describe("run colors", () => {
     expect(pickColorIndex([0, 1, 2, 3], 4)).toBe(0);
     expect(runColor(RUN_COLORS.length)).toBe(RUN_COLORS[0]);
   });
+
+  test("ten slots, one per agent name: the lowest free one, wrapping once all are taken", () => {
+    expect(RUN_COLORS).toHaveLength(10);
+    expect(pickColorIndex([0, 1, 2])).toBe(3);
+    expect(pickColorIndex([0, 1, 2, 3, 4, 5, 6, 7, 8, 9])).toBe(0);
+  });
+
+  test("a session keeps its slot from turn to turn while it is free", () => {
+    const { background } = twoSessions();
+    const front = visible().id;
+    const frontSlot = visible().colorIndex;
+    // The background run finishes; the front one starts its next turn: same slot (and name).
+    agent().patchSession(background, { status: "done" });
+    agent().patchSession(front, { status: "done" });
+    agent().beginRun(front, "fg-2", "Next turn");
+    expect(visible().colorIndex).toBe(frontSlot);
+  });
 });
 
 describe("startBlock", () => {

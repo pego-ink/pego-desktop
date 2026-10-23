@@ -5,7 +5,7 @@ import { freeFrameSpot, type FramePreset } from "@/interaction/frame-presets";
 import { uniqueName } from "@/interaction/create-node";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useToolStore } from "@/store/use-tool-store";
-import { useViewportStore } from "@/store/use-viewport-store";
+import { useViewportStore, visibleRect } from "@/store/use-viewport-store";
 
 /** Insert op for a white, clipping top-level frame named after the preset. */
 export const presetFrameOp = (
@@ -51,7 +51,7 @@ export const insertPresetFrame = (preset: FramePreset): string | null => {
   useDocumentStore.getState().select([id]);
   useToolStore.getState().setTool("select");
   const viewport = useViewportStore.getState();
-  const camera = focusCamera([box], viewport.size);
+  const camera = focusCamera([box], visibleRect(viewport));
   if (camera) viewport.animateTo(camera);
   return id;
 };
