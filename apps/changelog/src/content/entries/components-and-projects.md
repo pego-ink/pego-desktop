@@ -27,6 +27,10 @@ A right-click now acts on what you selected. Right-click a frame's name above it
 
 The menu also ends with **Settings**, even on empty canvas: turn snapping to whole pixels on or off, or open all settings.
 
+## Name your agents
+
+**Settings › Agent names** picks the names on the agents' canvas cursors: Pego (the default, every agent is called Pego), Artists, Philosophers, Inventors, Mythic, Scientists, or your own ten names. Each name keeps its own color, so you can tell at a glance which agent is working where.
+
 ## Put the toolbar where you like
 
 The tools (Move, Hand, frame, shapes, pen, text) can now sit at the bottom, top, left or right of the canvas. Right-click the toolbar to move it, or pick a side in **Settings › General › Toolbar position**. On the left or right it becomes a column, and its menus open toward the canvas.
