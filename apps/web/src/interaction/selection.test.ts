@@ -52,7 +52,7 @@ describe("selection helpers", () => {
 describe("marqueeSelect with rotation", () => {
   // 100x10 bar rotated 90° counter-clockwise around its top-left: drawn over x 0..10, y -100..0.
   const rotatedDoc: PegoDocument = {
-    version: 6,
+    version: 7,
     id: "d",
     name: "d",
     variables: {},

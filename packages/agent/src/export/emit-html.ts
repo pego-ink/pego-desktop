@@ -4,6 +4,7 @@ import type { BuildCtx, Decl, IrEl, IrIcon, IrNode } from "./ir";
 import { cssVarName, kebabCase, uniqueName } from "./naming";
 import { px } from "./build";
 import { COUNT_UP_SCRIPT, motionStylesheet } from "./motion-css";
+import { SHADER_RUNTIME } from "./shader-export";
 import type { ExportFile, IconProvider } from "./types";
 
 const INDENT = "  ";
@@ -170,6 +171,11 @@ export const emitHtml = (
         ]
       : []),
     ...(ctx.countUp ? COUNT_UP_SCRIPT.split("\n").map((text) => line(2, text)) : []),
+    ...(ctx.shaders
+      ? `<script>\n(${SHADER_RUNTIME})(document);\n</script>`
+          .split("\n")
+          .map((text) => line(2, text))
+      : []),
   ];
   const html = [
     "<!doctype html>",

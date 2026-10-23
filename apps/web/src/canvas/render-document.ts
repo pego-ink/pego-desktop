@@ -24,6 +24,7 @@ import {
   type PegoDocument,
   type PegoNode,
   type ShadowEffect,
+  type ShaderFill,
   findRenderedNode,
   countUpText,
   motionFrame,
@@ -36,6 +37,7 @@ import { getParagraph } from "@/canvas/measure-text";
 import { createLruCache } from "@/canvas/render-cache";
 import { drawImageNode } from "@/canvas/render-image-node";
 import { strokePathWithExtras } from "@/canvas/render-path-extras";
+import { makeShaderFill } from "@/canvas/render-shader";
 import type { Camera } from "@/canvas/types";
 
 type Paints = { fill: Paint; stroke: Paint; layer: Paint; iconStroke: Paint; effect: Paint };
@@ -49,6 +51,8 @@ type Scene = {
   hiddenIds: ReadonlySet<string>;
   /** Milliseconds into a motion preview; undefined draws every node as designed. */
   motionTime: number | undefined;
+  /** Seconds on the shader clock (`iTime` of shader fills). */
+  shaderTime: number;
 };
 
 const BACKGROUND = "#141418";
@@ -89,7 +93,7 @@ const decodeImage = (ck: CanvasKit, src: string) => {
 /** Shader for a gradient or image fill sized to the node's box; null when it cannot be drawn. */
 const fillShader = (
   scene: Scene,
-  fill: Exclude<Fill, string>,
+  fill: Exclude<Fill, string | ShaderFill>,
   width: number,
   height: number,
 ): Shader | null => {
@@ -355,6 +359,17 @@ const fillWith = (
     draw(paint);
     return;
   }
+  if (fill.type === "shader") {
+    // Made per draw (its time and size change), so it is deleted right after.
+    const shader = makeShaderFill(ck, fill, scene.doc.variables, width, height, scene.shaderTime);
+    if (!shader) return;
+    paint.setColor(ck.BLACK);
+    paint.setShader(shader);
+    draw(paint);
+    paint.setShader(null);
+    shader.delete();
+    return;
+  }
   const shader = fillShader(scene, fill, width, height);
   if (!shader) return;
   paint.setColor(ck.BLACK);
@@ -578,6 +593,8 @@ export const renderDocument = (
     pageId?: string | null;
     /** Milliseconds into a motion preview: draws every `animation` at that moment. */
     motionTime?: number;
+    /** Seconds passed to shader fills as `iTime` (default 0, their first frame). */
+    shaderTime?: number;
   } = {},
 ) => {
   const background = options.background === undefined ? BACKGROUND : options.background;
@@ -593,6 +610,7 @@ export const renderDocument = (
     paints: getPaints(res.ck),
     hiddenIds: options.hiddenIds ?? NO_HIDDEN_IDS,
     motionTime: options.motionTime,
+    shaderTime: options.shaderTime ?? 0,
   };
   if (options.rootId === undefined) {
     drawNodes(scene, pageOrFirst(doc, options.pageId).children, ORIGIN, 0);

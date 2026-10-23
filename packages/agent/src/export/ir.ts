@@ -69,6 +69,8 @@ export type BuildCtx = {
   motion: Set<AnimationPreset>;
   /** A text counts up: html-css adds the script that plays it. */
   countUp: boolean;
+  /** A shader fill is used: the output includes the runtime that draws it. */
+  shaders: boolean;
   /** When icon data is available, icons it does not know are skipped. */
   hasIcon: ((name: string) => boolean) | undefined;
 };

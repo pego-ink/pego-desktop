@@ -2,7 +2,7 @@ import type { PegoDocument, PegoNode } from "@pego/doc";
 
 /** Small document that touches layout, variables, text, components, icons, images and paths. */
 export const exportDoc: PegoDocument = {
-  version: 6,
+  version: 7,
   id: "doc-export",
   name: "Export",
   variables: {

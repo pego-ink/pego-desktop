@@ -51,6 +51,11 @@ const fmtFill = (fill: Fill): string => {
   if (typeof fill === "string") return fmt(fill);
   if (fill.type === "image")
     return `image(${fill.fit},${Math.round((fill.src.length * 3) / 4 / 1024)}KB)`;
+  if (fill.type === "shader") {
+    const uniforms = Object.entries(fill.uniforms ?? {}).map(([k, v]) => `${k}=${fmt(v)}`);
+    const code = fill.preset === "custom" ? [`code=${(fill.code ?? "").length}chars`] : [];
+    return `shader(${[fill.preset, ...uniforms, ...code].join(",")})`;
+  }
   const stops = fill.stops.map((stop) => `${stop.color} ${stop.position}`).join(",");
   if (fill.type === "linear") return `linear(${fill.angle},${stops})`;
   return `radial(${fill.center.join(" ")},${fill.radius.join(" ")},${stops})`;
