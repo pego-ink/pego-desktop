@@ -1,0 +1,38 @@
+---
+import Base from "@/layouts/Base.astro";
+import Entry from "@/components/Entry.astro";
+import { getEntries } from "@/lib/entries";
+import { SITE_DESCRIPTION, SITE_NAME, SITE_URL } from "@/lib/site";
+
+const entries = await getEntries();
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@type": "Blog",
+  name: `${SITE_NAME} changelog`,
+  description: SITE_DESCRIPTION,
+  url: SITE_URL,
+  inLanguage: "en",
+  publisher: { "@type": "Organization", name: SITE_NAME, url: "https://pego.ink" },
+  blogPost: entries.map((entry) => ({
+    "@type": "BlogPosting",
+    headline: entry.data.title,
+    description: entry.data.summary,
+    datePublished: entry.data.date.toISOString(),
+    url: `${SITE_URL}/${entry.id}`,
+  })),
+};
+---
+
+<Base
+  title="Pego changelog: new features and updates"
+  description={SITE_DESCRIPTION}
+  jsonLd={jsonLd}
+>
+  <section class="intro">
+    <h1>Changelog</h1>
+    <p>What is new in Pego, the AI-native design editor. Newest first. <a href="/rss.xml">Subscribe with RSS</a>.</p>
+  </section>
+  <div class="entries">
+    {entries.map((entry) => <Entry entry={entry} variant="list" />)}
+  </div>
+</Base>

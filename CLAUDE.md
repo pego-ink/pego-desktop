@@ -32,6 +32,7 @@ apps/web/        React + Vite editor: canvas/, interaction/, panels/, agent/, pe
 apps/bridge/     Bun server: MCP (Streamable HTTP), Claude Agent SDK runs, WebSocket to the editor
 apps/desktop/    Electron shell (macOS signed + auto-update; Linux, Windows), starts the bridge itself
 apps/api/        Hono on Workers, frozen, not used by the editor
+apps/changelog/  Astro static site, the public changelog at changelog.pego.ink (markdown entries)
 packages/doc/    schema (Zod), ops + inverse, history, tree helpers, instances, flex layout
 packages/agent/  provider-neutral tools, prompts, skills, style presets, export (code/SVG), serialization,
                  bridge protocol
@@ -280,6 +281,16 @@ When you add a node prop, update the canvas renderer and the exporter together, 
 - Tests are `bun test`, colocated as `*.test.ts`. Pure logic (ops, layout, tools, parsing) must have tests.
 - Web state lives in Zustand stores under `apps/web/src/store` and `*/use-*-store.ts`.
 - Shared UI goes in `packages/ui`; editor-specific components stay in `apps/web`.
+
+## Changelog
+
+`apps/changelog` (`@pego/changelog`) is the public, English changelog for Pego users. Add an entry as a markdown file
+in `apps/changelog/src/content/entries/<slug>.md` (the slug becomes `/<slug>`). Frontmatter: `title`, `date`
+(add a time to order entries of the same day), `summary` (at most 160 characters, used for the meta description and
+RSS), `tags` (`new`, `improved`, `fixed`), optional `version`, optional `image` + `imageAlt`. Write in the body with
+`##` for sections (rendered as h3 on the index). Product language and benefits first; no PR numbers or internal
+details. `bun test` in that workspace validates every entry. It deploys from `main` to changelog.pego.ink
+(`.github/workflows/deploy-changelog.yml`; `dev` and same-repo PRs get preview URLs).
 
 ## Git workflow
 

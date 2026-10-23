@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://changelog.pego.ink/sitemap-index.xml

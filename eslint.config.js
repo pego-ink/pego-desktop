@@ -8,6 +8,7 @@ export default tseslint.config(
     ignores: [
       "**/node_modules/**",
       "**/dist/**",
+      "**/.astro/**",
       "**/.wrangler/**",
       "graft/**",
       "design/**",
