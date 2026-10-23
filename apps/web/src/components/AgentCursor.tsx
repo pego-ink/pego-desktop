@@ -24,10 +24,12 @@ import {
 import { clearCursorRect, setCursorRect } from "@/canvas/agent-cursor-rects";
 import { cursorRect } from "@/canvas/agent-focus-label";
 import { docToScreen, screenToDoc } from "@/canvas/types";
+import { agentNameAt } from "@/agent/agent-names";
 import { runColor, RUN_INK } from "@/agent/run-colors";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { idsOnPage } from "@/agent/focus-groups";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
+import { useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { sessionShownInEditor, useWorkspaceStore } from "@/workspace/use-workspace-store";
 
@@ -77,8 +79,12 @@ const createFocusMemo = () => {
   };
 };
 
-/** Cursor tag: just the product name (runs are told apart by tint, not text). */
-const pillText = (mode: Mode) => (mode === "park" ? "Waiting for you" : "Pego");
+/** Cursor tag: the agent's name from the chosen name set ("Pego" by default; tints tell runs apart). */
+const pillText = (mode: Mode, colorIndex: number) => {
+  if (mode === "park") return "Waiting for you";
+  const { agentNameSet, customAgentNames } = useSettingsStore.getState();
+  return agentNameAt(colorIndex, agentNameSet, customAgentNames);
+};
 
 /**
  * Multiplayer-style cursor that shows where one session's agent is working, tinted with that
@@ -227,7 +233,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       const y = screen.y + drift.y;
       root.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
 
-      const text = pillText(mode);
+      const text = pillText(mode, agent.colorIndex);
       if (text !== shownText) {
         shownText = text;
         pill.textContent = text;
@@ -336,7 +342,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       </div>
       <div
         ref={pillRef}
-        className="absolute top-[18px] left-[14px] rounded-full px-2 py-[3px] text-[11px] leading-4 font-medium whitespace-nowrap"
+        className="absolute top-[18px] left-[14px] max-w-40 truncate rounded-full px-2 py-[3px] text-[11px] leading-4 font-medium whitespace-nowrap"
         style={{
           background: runColor(0),
           color: RUN_INK,
