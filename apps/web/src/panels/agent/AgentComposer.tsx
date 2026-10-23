@@ -25,9 +25,10 @@ import {
   createSubmitExtension,
   type MentionMenuHooks,
   type MentionMenuState,
+  type MentionTrigger,
 } from "@/panels/agent/mentions/mention-extension";
 import { MentionMenu } from "@/panels/agent/mentions/MentionMenu";
-import { mentionSuggestions } from "@/panels/agent/mentions/mention-sources";
+import { mentionSuggestions, slashSuggestions } from "@/panels/agent/mentions/mention-sources";
 
 const ACTION_BUTTON =
   "flex size-7 items-center justify-center rounded-full bg-foreground text-background outline-none transition-[background-color,opacity,scale] duration-120 ease-out focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]";
@@ -39,8 +40,8 @@ type AgentComposerProps = {
 
 type EditorHooks = MentionMenuHooks & { menuOpen: boolean; submit: (steer: boolean) => void };
 
-const IDLE_PLACEHOLDER = "Describe what to design… (@ to mention)";
-const BUSY_PLACEHOLDER = "Queue a message… (@ to mention)";
+const IDLE_PLACEHOLDER = "Describe what to design… (@ to mention, / for skills)";
+const BUSY_PLACEHOLDER = "Queue a message… (@ to mention, / for skills)";
 
 /**
  * What the editor's extensions call into. They are created once with the editor, so the
@@ -61,17 +62,12 @@ class ComposerLink {
   }
 }
 
-/** Suggestions for the @ menu from the live stores (read when the user types). */
-const suggestionsFor = (query: string) => {
+/** Suggestions for the @ and / menus from the live stores (read when the user types). */
+const suggestionsFor = (query: string, trigger: MentionTrigger) => {
+  if (trigger === "/") return slashSuggestions(query, skills);
   const { doc, pageId, selection } = useDocumentStore.getState();
   const { pendingAttachments } = useAgentStore.getState();
-  return mentionSuggestions(query, {
-    doc,
-    pageId,
-    selection,
-    skills,
-    attachments: pendingAttachments,
-  });
+  return mentionSuggestions(query, { doc, pageId, selection, attachments: pendingAttachments });
 };
 
 export const AgentComposer = ({ seed }: AgentComposerProps) => {
@@ -302,7 +298,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         <AgentSelector restoreFocusRef={focusRef} />
         <SkillChip prompt={plain} restoreFocusRef={focusRef} />
         <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
-          {active ? "Enter to queue · ⌘Enter to send now" : "Enter to send · @ to mention"}
+          {active ? "Enter to queue · ⌘Enter to send now" : "Enter to send · @ mention · / skill"}
         </span>
         <div className="flex shrink-0 items-center gap-1">
           {active ? (

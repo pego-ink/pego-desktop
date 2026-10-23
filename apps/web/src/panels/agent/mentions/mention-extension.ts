@@ -1,4 +1,4 @@
-import { Extension } from "@tiptap/core";
+import { Extension, type Editor, type Range } from "@tiptap/core";
 import Mention from "@tiptap/extension-mention";
 import { ReactNodeViewRenderer } from "@tiptap/react";
 import type { SuggestionKeyDownProps, SuggestionProps } from "@tiptap/suggestion";
@@ -14,9 +14,12 @@ export type MentionMenuState = {
   choose: (item: MentionItem) => void;
 };
 
+/** "@" mentions layers, components and attachments; "/" picks a skill or a style. */
+export type MentionTrigger = "@" | "/";
+
 export type MentionMenuHooks = {
-  /** Items for the typed query (after the @). */
-  items: (query: string) => MentionItem[];
+  /** Items for the typed query (after the trigger). */
+  items: (query: string, trigger: MentionTrigger) => MentionItem[];
   /** The menu opened, changed (state) or closed (null). */
   onChange: (state: MentionMenuState | null) => void;
   /** Arrow keys, Enter, Tab and Escape while the menu is open; true when handled. */
@@ -31,7 +34,8 @@ export const chipContent = (ref: MentionRef, label: string) => ({
 
 /**
  * Mention chips: an inline atom holding its ref as JSON (parsed by composer-doc.ts), drawn by
- * MentionChipView, typed with "@". The menu itself is rendered by the composer through `hooks`.
+ * MentionChipView, typed with "@" (layers, components, images) or "/" (skills, styles). The
+ * menu itself is rendered by the composer through `hooks`.
  */
 export const createMentionExtension = (hooks: () => MentionMenuHooks) =>
   Mention.extend({
@@ -68,12 +72,12 @@ export const createMentionExtension = (hooks: () => MentionMenuHooks) =>
       `@${String(node.attrs.label ?? "")}`,
     ],
     deleteTriggerWithBackspace: true,
-    suggestion: {
-      char: "@",
+    suggestions: (["@", "/"] as const).map((char) => ({
+      char,
       allowSpaces: false,
-      items: ({ query }) => hooks().items(query),
-      command: ({ editor, range, props }) => {
-        const item = props as unknown as MentionItem;
+      items: ({ query }: { query: string }) => hooks().items(query, char),
+      command: ({ editor, range, props }: { editor: Editor; range: Range; props: unknown }) => {
+        const item = props as MentionItem;
         editor
           .chain()
           .focus()
@@ -93,7 +97,7 @@ export const createMentionExtension = (hooks: () => MentionMenuHooks) =>
           onExit: () => hooks().onChange(null),
         };
       },
-    },
+    })),
   });
 
 /**
