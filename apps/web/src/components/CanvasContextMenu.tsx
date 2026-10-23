@@ -51,8 +51,11 @@ export const SelectionMenuContent = () => {
         Ask Pego about this
       </ContextMenuItem>
       <ContextMenuSeparator />
+      <ContextMenuItem shortcut={keys("mod", "X")} onSelect={() => document.execCommand("cut")}>
+        Cut
+      </ContextMenuItem>
       <ContextMenuItem shortcut={keys("mod", "C")} onSelect={() => document.execCommand("copy")}>
-        Copy layer IDs
+        Copy
       </ContextMenuItem>
       <ContextMenuItem shortcut={keys("mod", "D")} onSelect={() => runDuplicate()}>
         Duplicate
