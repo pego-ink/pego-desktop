@@ -18,15 +18,18 @@ import { LayoutSection } from "@/panels/properties/LayoutSection";
 import { ImageSection } from "@/panels/properties/ImageSection";
 import { IconSection, RefSection, TextSection } from "@/panels/properties/ContentSections";
 import { PathSection } from "@/panels/properties/PathSection";
+import { InstanceSlotsSection, SlotSection } from "@/panels/properties/SlotSections";
 import { hasEffects, hasFill, hasStroke } from "@/panels/properties/node-props";
 
 const SingleNodeSections = ({ node }: { node: PegoNode }) => (
   <>
     {node.type === "ref" ? <RefSection node={node} /> : null}
+    {node.type === "ref" ? <InstanceSlotsSection node={node} /> : null}
     <PositionSection nodes={[node]} />
     {node.type === "frame" ? <FramePresetSection node={node} /> : null}
     <AppearanceSection node={node} />
     {node.type === "frame" ? <LayoutSection node={node} /> : null}
+    {node.type === "frame" ? <SlotSection node={node} /> : null}
     {node.type === "text" ? <TextSection nodes={[node]} /> : null}
     {node.type === "icon" ? <IconSection node={node} /> : null}
     {node.type === "image" ? <ImageSection node={node} /> : null}

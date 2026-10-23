@@ -127,13 +127,35 @@ const frameShape = paintedNode.extend({
   padding: sidesSchema.optional(),
   justifyContent: justifyContentSchema.optional(),
   alignItems: alignItemsSchema.optional(),
+  /**
+   * Marks a frame inside a component as a slot: each instance may fill it with its own content
+   * (see resolveInstance). Lists the components recommended for it (may be empty).
+   */
+  slot: z.array(z.string().min(1)).max(50).optional(),
 });
 const groupShape = baseNode.extend({ type: z.literal("group") });
 /**
  * A page: the top level of a document. Pages sit only at the document root and hold the
  * canvas content (screens, components). Their x/y are unused.
  */
-const pageShape = baseNode.extend({ type: z.literal("page"), name: z.string().default("Page") });
+const pageShape = baseNode.extend({
+  type: z.literal("page"),
+  name: z.string().default("Page"),
+  /**
+   * The page holds a library: the components of another project's design, copied in so this
+   * document can use them, and updated from that project on request.
+   */
+  library: z
+    .object({
+      projectId: z.string().min(1),
+      name: z.string(),
+      /** The library project's design file, read again on update. */
+      path: z.string().min(1),
+      /** When the components were last copied (ms since epoch). */
+      syncedAt: z.number(),
+    })
+    .optional(),
+});
 const rectangleSchema = paintedNode.extend({
   type: z.literal("rectangle"),
   cornerRadius: numberValueSchema.optional(),
