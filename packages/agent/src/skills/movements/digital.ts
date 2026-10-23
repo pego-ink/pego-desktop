@@ -8,6 +8,7 @@ import { materialDesignSkill } from "./digital/material-design";
 import { neoBrutalismSkill } from "./digital/neo-brutalism";
 import { neumorphismSkill } from "./digital/neumorphism";
 import { skeuomorphismSkill } from "./digital/skeuomorphism";
+import { teenageEngineeringSkill } from "./digital/teenage-engineering";
 
 /** Design-movement style skills (digital group). Every entry has category: "style". */
 export const digitalStyles: Skill[] = [
@@ -20,4 +21,5 @@ export const digitalStyles: Skill[] = [
   brutalistWebSkill,
   bentoGridSkill,
   editorialMagazineSkill,
+  teenageEngineeringSkill,
 ];

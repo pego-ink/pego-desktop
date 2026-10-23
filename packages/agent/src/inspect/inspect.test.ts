@@ -649,7 +649,7 @@ describe("skills and styles", () => {
   });
 
   test("styles: distinct presets whose variables parse and pass contrast", () => {
-    expect(stylePresets.length).toBe(20);
+    expect(stylePresets.length).toBe(21);
     expect(new Set(stylePresets.map((s) => s.name)).size).toBe(stylePresets.length);
     expect(new Set(stylePresets.map((s) => s.variables.accent?.value)).size).toBe(
       stylePresets.length,

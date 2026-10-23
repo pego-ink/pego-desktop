@@ -23,13 +23,14 @@ const PRESET_IDS = [
   "nordic-calm",
   "high-contrast-mono",
   "sunlit-pastel",
+  "field-instrument",
 ];
 const INDONESIAN = ["gaya", "desain", "tampilan", "tata letak", "kotak", "kartu", "efek", "tombol"];
 const FONT_FAMILIES = new Set(googleFonts.families.map((f) => String(f[0])));
 const bytes = (text: string) => new TextEncoder().encode(text).length;
 
 describe("digitalStyles", () => {
-  it("has the nine expected styles", () => {
+  it("has the ten expected styles", () => {
     expect(digitalStyles.map((s) => s.id).sort()).toEqual(
       [
         "bento-grid",
@@ -41,6 +42,7 @@ describe("digitalStyles", () => {
         "neo-brutalism",
         "neumorphism",
         "skeuomorphism",
+        "teenage-engineering",
       ].sort(),
     );
   });
