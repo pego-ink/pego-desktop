@@ -6,6 +6,9 @@ import { roundPx } from "./snap";
 export type Handle = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 export const HANDLES: readonly Handle[] = ["nw", "n", "ne", "e", "se", "s", "sw", "w"];
 
+/** The handles drawn on a selection: corners only (edges resize anywhere along their length). */
+export const CORNER_HANDLES: readonly Handle[] = ["nw", "ne", "se", "sw"];
+
 export const HANDLE_CURSORS: Record<Handle, string> = {
   nw: "nwse-resize",
   se: "nwse-resize",

@@ -21,6 +21,8 @@ import {
   type Point,
   type Rect,
 } from "@/canvas/agent-cursor-motion";
+import { clearCursorRect, setCursorRect } from "@/canvas/agent-cursor-rects";
+import { cursorRect } from "@/canvas/agent-focus-label";
 import { docToScreen, screenToDoc } from "@/canvas/types";
 import { runColor, RUN_INK } from "@/agent/run-colors";
 import { useAgentStore } from "@/agent/use-agent-store";
@@ -75,8 +77,8 @@ const createFocusMemo = () => {
   };
 };
 
-const pillText = (mode: Mode, runLabel: string | null) =>
-  mode === "park" ? "Waiting for you" : runLabel ? `Pego · ${runLabel}` : "Pego";
+/** Cursor tag: just the product name (runs are told apart by tint, not text). */
+const pillText = (mode: Mode) => (mode === "park" ? "Waiting for you" : "Pego");
 
 /**
  * Multiplayer-style cursor that shows where one session's agent is working, tinted with that
@@ -99,6 +101,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
     let frame = 0;
     let session: Session | null = null;
     let shownText = "";
+    let pillWidth = 0;
     let flipped = false;
     let visible = false;
     let shownColor = "";
@@ -140,6 +143,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
     const hide = () => {
       visible = false;
       root.style.opacity = "0";
+      clearCursorRect(sessionId);
       session = null;
       stop();
     };
@@ -223,10 +227,11 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       const y = screen.y + drift.y;
       root.style.transform = `translate3d(${x.toFixed(2)}px, ${y.toFixed(2)}px, 0)`;
 
-      const text = pillText(mode, agent.runLabel);
+      const text = pillText(mode);
       if (text !== shownText) {
         shownText = text;
         pill.textContent = text;
+        pillWidth = pill.offsetWidth;
       }
       const shouldFlip = x > size.width - PILL_FLIP_MARGIN;
       if (shouldFlip !== flipped) {
@@ -235,6 +240,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
         // Flip to the left of the arrow with a transform so it can transition (left/right cannot).
         pill.style.transform = shouldFlip ? "translateX(calc(-100% - 4px))" : "translateX(0)";
       }
+      setCursorRect(sessionId, cursorRect({ x, y }, pillWidth, flipped));
       if (!visible) {
         visible = true;
         root.style.opacity = "1";
@@ -288,6 +294,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
     return () => {
       unsubscribeAgent();
       unsubscribeDoc();
+      clearCursorRect(sessionId);
       stop();
     };
   }, [sessionId]);

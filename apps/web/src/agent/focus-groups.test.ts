@@ -10,7 +10,6 @@ const group = (key: string, ids: string[]): AgentFocusGroup => ({
   key,
   ids,
   color: "#fff",
-  label: key,
 });
 
 describe("idsOnPage", () => {

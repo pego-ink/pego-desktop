@@ -294,7 +294,7 @@ export const Canvas = () => {
           useToolPreview.subscribe(schedule),
           useToolStore.subscribe(schedule),
           useAgentStore.subscribe((state) => {
-            // Only a change of some run's focus box (ids, tint, title) needs a frame.
+            // Only a change of some run's focus box (ids, tint) needs a frame.
             const groups = selectFocusGroups(state);
             if (groups === shownFocus) return;
             shownFocus = groups;
