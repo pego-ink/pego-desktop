@@ -48,6 +48,13 @@ export const createMentionExtension = (hooks: () => MentionMenuHooks) =>
           parseHTML: (element: HTMLElement) => element.getAttribute("data-label") ?? "",
           renderHTML: (attrs: { label?: string }) => ({ "data-label": attrs.label ?? "" }),
         },
+        /** Set on a chip that follows a live source (see live-chips.ts); null for a fixed chip. */
+        live: {
+          default: null,
+          parseHTML: (element: HTMLElement) => element.getAttribute("data-live"),
+          renderHTML: (attrs: { live?: string | null }) =>
+            attrs.live ? { "data-live": attrs.live } : {},
+        },
       };
     },
     addNodeView() {

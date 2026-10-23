@@ -1,5 +1,5 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpIcon, PaperclipIcon, PlusIcon, SquareIcon } from "lucide-react";
+import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
@@ -16,11 +16,11 @@ import { AttachmentStrip } from "@/panels/agent/attachments/AttachmentStrip";
 import { addAttachmentFiles } from "@/panels/agent/attachments/add-files";
 import { ATTACH_ACCEPT, pastedImageFiles } from "@/panels/agent/attachments/attachment-utils";
 import { useAttachmentDrop } from "@/panels/agent/attachments/use-attachment-drop";
-import { isRunActive, selectionHint } from "@/panels/agent/agent-format";
+import { isRunActive } from "@/panels/agent/agent-format";
 import { safely } from "@/panels/agent/run-actions";
 import { composerToPrompt, textToComposer } from "@/panels/agent/mentions/composer-doc";
+import { liveChipTransaction } from "@/panels/agent/mentions/live-chips";
 import {
-  chipContent,
   createMentionExtension,
   createSubmitExtension,
   type MentionMenuHooks,
@@ -78,8 +78,6 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
   const active = useVisibleRun((s) => isRunActive(s.status));
   const runId = useVisibleRun((s) => s.runId);
   const sessionId = useAgentStore((s) => s.visibleSessionId);
-  const selection = useDocumentStore((s) => s.selection);
-  const hint = selectionHint(selection.length);
 
   const attachments = useAgentStore((s) => s.pendingAttachments);
   const removeAttachment = useAgentStore((s) => s.removeAttachment);
@@ -227,16 +225,26 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     editor.commands.focus("end");
   }, [editor, seed]);
 
-  const addSelection = () => {
-    if (!editor || selection.length === 0) return;
-    const ref: MentionRef = { kind: "layer", ids: [...selection] };
-    const label = mentionTitle(useDocumentStore.getState().doc, ref) ?? "Selection";
-    editor
-      .chain()
-      .focus()
-      .insertContent([chipContent(ref, label), { type: "text", text: " " }])
-      .run();
-  };
+  // Like the canvas prompt, the composer ends with a chip for what is selected on the canvas; it
+  // follows the selection until text is typed after it.
+  useEffect(() => {
+    if (!editor) return;
+    const sync = (selection: readonly string[]) => {
+      if (editor.isDestroyed) return;
+      const ref: MentionRef = { kind: "layer", ids: [...selection] };
+      const label = mentionTitle(useDocumentStore.getState().doc, ref);
+      const tr = liveChipTransaction(
+        editor.state,
+        "selection",
+        selection.length > 0 && label !== null ? [{ ref, label }] : [],
+      );
+      if (tr) editor.view.dispatch(tr);
+    };
+    sync(useDocumentStore.getState().selection);
+    return useDocumentStore.subscribe((state, prev) => {
+      if (state.selection !== prev.selection) sync(state.selection);
+    });
+  }, [editor]);
 
   const canSend = plain.trim().length > 0;
 
@@ -293,22 +301,9 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         </button>
         <AgentSelector restoreFocusRef={focusRef} />
         <SkillChip prompt={plain} restoreFocusRef={focusRef} />
-        {hint ? (
-          <button
-            type="button"
-            title={`Add the ${hint.replace(" selected", "")} to the prompt as a mention`}
-            aria-label={`Add ${hint.replace(" selected", "")} to the prompt`}
-            onClick={addSelection}
-            className="flex min-w-0 flex-1 items-center gap-1 truncate rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
-          >
-            <PlusIcon aria-hidden className="size-3 shrink-0" />
-            <span className="truncate">{hint.replace(" selected", "")}</span>
-          </button>
-        ) : (
-          <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
-            {hint ?? "Enter to send · @ to mention"}
-          </span>
-        )}
+        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+          {active ? "Enter to queue · ⌘Enter to send now" : "Enter to send · @ to mention"}
+        </span>
         <div className="flex shrink-0 items-center gap-1">
           {active ? (
             <button

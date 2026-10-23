@@ -74,9 +74,6 @@ export const runStatusLabel = (status: RunStatus, steps: readonly RunStep[]): st
 export const countDoneSteps = (steps: readonly RunStep[]): number =>
   steps.filter((s) => s.status === "done").length;
 
-export const selectionHint = (count: number): string | null =>
-  count === 0 ? null : `${count} ${count === 1 ? "layer" : "layers"} selected`;
-
 export const API_BACKEND_LABEL = "API key (Anthropic)";
 
 export type AgentStatusTone = "ready" | "warn" | "off";
