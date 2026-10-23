@@ -37,6 +37,10 @@ describe("mergeSettings", () => {
         snapToPixel: 1,
       }),
     ).toEqual(store.DEFAULT_SETTINGS));
+  test("interface style: docked or floating, anything else falls back to docked", () => {
+    expect(store.mergeSettings({ interfaceStyle: "floating" }).interfaceStyle).toBe("floating");
+    expect(store.mergeSettings({ interfaceStyle: "compact" }).interfaceStyle).toBe("docked");
+  });
   test("toolbar position: a known side is kept, anything else falls back to bottom", () => {
     expect(store.mergeSettings({ toolbarPosition: "left" }).toolbarPosition).toBe("left");
     expect(store.mergeSettings({ toolbarPosition: "middle" }).toolbarPosition).toBe("bottom");
