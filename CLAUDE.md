@@ -174,7 +174,9 @@ grow_up | grow_right | scale | pop`, `delay`/`duration` in ms (default 0 / 600),
   0). The canvas shows the end state while editing; Play (`apps/web/src/motion/`) draws `motionFrame`
   (`packages/doc/src/motion.ts`) per node, purely visual (layout and hit-testing do not move). Code export emits
   the same timing as CSS `@keyframes` on `translate` / `scale` (`packages/agent/src/export/motion-css.ts`), plus a
-  small script for `countUp` in HTML. No loops or timeline.
+  small script for `countUp` in HTML (`none` + `countUp` is a text that only counts). On a rotated layer the
+  exported `grow_*` presets scale along the page axes from its top-left corner, unlike the canvas. No loops
+  or timeline.
 - **Variables**: referenced as `$name`, stored in `document.variables` without the `$`. A reference to a missing
   variable or one of the wrong type falls back to the default (see `packages/doc/src/resolve.ts`).
 

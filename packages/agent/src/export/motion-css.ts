@@ -33,7 +33,9 @@ const bezier = (animation: Animation): string =>
 
 /**
  * The `animation` declaration of a node (plus its scale origin for the bar presets), or nothing for
- * `none`. `rotated` keeps the node's own top-left origin, which its rotation needs.
+ * `none`. `rotated` keeps the node's own top-left origin, which its rotation needs: on a rotated
+ * layer the CSS `scale` grows along the page axes from that corner, while the canvas grows it
+ * along its own axes from its bottom / left edge. Rotated bars are rare; upright ones match.
  */
 export const motionDecls = (animation: Animation, rotated: boolean): Decl[] => {
   if (animation.preset === "none") return [];
