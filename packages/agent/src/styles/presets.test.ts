@@ -26,6 +26,7 @@ const EXPECTED_IDS = [
   "nordic-calm",
   "high-contrast-mono",
   "sunlit-pastel",
+  "field-instrument",
 ];
 
 /** Google Fonts catalog: families are tuples of [name, _, _, weights, ...]. */
@@ -67,10 +68,57 @@ const deltaE = (a: string, b: string) => {
 };
 
 describe("style presets", () => {
-  test("exactly the 20 ids, unique, findable", () => {
+  test("exactly the expected ids, unique, findable", () => {
     expect(stylePresets.map((s) => s.name)).toEqual(EXPECTED_IDS);
-    expect(new Set(stylePresets.map((s) => s.name)).size).toBe(20);
+    expect(new Set(stylePresets.map((s) => s.name)).size).toBe(EXPECTED_IDS.length);
     for (const id of EXPECTED_IDS) expect(findStyle(id)?.name).toBe(id);
+  });
+
+  test("field-instrument carries the official TE palette and the agreed fonts", () => {
+    const style = findStyle("field-instrument")!;
+    const v = (name: string) => style.variables[name]?.value;
+    expect(style.title).toBe("Field Instrument");
+    expect(style.fonts).toEqual({ heading: "Noto Sans JP", body: "Noto Sans JP", mono: "Doto" });
+    expect(style.weights).toEqual({ heading: [200, 300], body: [300, 400, 500], mono: [700, 900] });
+    expect(style.typeScale).toEqual({
+      caption: 11,
+      body: 15,
+      lead: 18,
+      h3: 22,
+      h2: 32,
+      h1: 48,
+      display: 88,
+    });
+    expect(
+      [
+        "bg",
+        "surface",
+        "surface-2",
+        "border",
+        "text",
+        "text-muted",
+        "accent",
+        "on-accent",
+        "danger",
+      ].map(v),
+    ).toEqual([
+      "#F0F0EF",
+      "#F5F5F5",
+      "#E5E5E5",
+      "#CCCCCC",
+      "#0F0E12",
+      "#4D4D4D",
+      "#F05A24",
+      "#0F0E12",
+      "#B81D13",
+    ]);
+    expect(["radius-sm", "radius-md", "radius-lg"].map(v)).toEqual([4, 6, 12]);
+    expect(["space-xs", "space-sm", "space-md", "space-lg", "space-xl"].map(v)).toEqual([
+      4, 8, 12, 24, 48,
+    ]);
+    // Keys at a panel corner stay concentric for the ui-polish check.
+    expect((v("radius-sm") as number) + (v("space-sm") as number)).toBe(v("radius-lg") as number);
+    expect(findStyle("Field Instrument")?.name).toBe("field-instrument");
   });
 
   test("variables parse and share the same token names", () => {

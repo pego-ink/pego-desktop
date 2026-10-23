@@ -852,6 +852,55 @@ export const stylePresets: StylePreset[] = [
       "Do not add rainbow gradients or more than one accent hue.",
     ],
   },
+  {
+    name: "field-instrument",
+    title: "Field Instrument",
+    mood: "A portable instrument panel. Aluminium-grey body, black keys, one signal orange, thin lowercase type and dot-matrix numbers.",
+    bestFor:
+      "Hardware and creative tools, app dashboards, product launch pages, tech brands with a playful side",
+    fonts: { heading: "Noto Sans JP", body: "Noto Sans JP", mono: "Doto" },
+    weights: { heading: [200, 300], body: [300, 400, 500], mono: [700, 900] },
+    typeScale: { caption: 11, body: 15, lead: 18, h3: 22, h2: 32, h1: 48, display: 88 },
+    variables: tokens(
+      {
+        bg: "#F0F0EF",
+        surface: "#F5F5F5",
+        surface2: "#E5E5E5",
+        border: "#CCCCCC",
+        text: "#0F0E12",
+        textMuted: "#4D4D4D",
+        accent: "#F05A24",
+        onAccent: "#0F0E12",
+        danger: "#B81D13",
+      },
+      { radius: [4, 6, 12], space: [4, 8, 12, 24, 48] },
+    ),
+    layout: {
+      grid: "A device face: a side panel of numbered keys next to a main area; pages center their content at 1120px.",
+      density: "Compact and orderly. 8px between keys, 12-24px panel padding, 15px body.",
+      corners:
+        "4 on keys and small screens, 12 on panels with 8 padding so corners nest; web buttons are pills.",
+      imagery:
+        "The product's own UI drawn as a physical device on a grey field, or product photos on grey; no stock people.",
+      icons:
+        "Few icons: numbered keys and uppercase labels name things. Encoder caps in blue #0071BB, green #006837 or yellow #FAB413 mark parameters.",
+    },
+    stroke:
+      "Mostly none; panels read by tone ($surface-2 on $bg). 1px $border rules between table rows",
+    elevation:
+      "Key travel only: a hard 2px shadow under keys (y 2, blur 0; black under dark keys, #B2B2B2 under light ones). No soft shadows.",
+    dos: [
+      "Build controls as objects: numbered keys for choices and navigation, encoders for values, one big round $accent button for the main action.",
+      "Show the key number of a screen on a small black panel in Doto at 18px or larger, its unit in $accent.",
+      "Set labels in uppercase with 1.5px letter spacing at 11px or more, like print on a panel; headlines thin (200-300) and lowercase.",
+      "Use $accent on one control group per screen, as a fill with $on-accent text; blue, green and yellow only as encoder caps and status lights.",
+    ],
+    donts: [
+      "No orange text on light grey (it fails contrast) and no second orange control group.",
+      "No textures, gloss, gradients or soft shadows; depth is the 2px key shadow and flat tones.",
+      "Do not set body text or small numbers in Doto.",
+    ],
+  },
 ];
 
 const normalize = (value: string): string =>
