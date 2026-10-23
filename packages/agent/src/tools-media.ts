@@ -64,10 +64,22 @@ export const insertRaw = (
 
 /**
  * SVG markup as one Pego node (a clipped frame of vector nodes) with ids that are not in `taken`.
- * Pasting SVG on the canvas uses it too. Throws `SvgError` for markup it cannot convert.
+ * Pasting and dropping SVG on the canvas use it too; `width` scales it (height keeps the aspect).
+ * Throws `SvgError` for markup it cannot convert.
  */
-export const svgToNode = (source: string, taken: Set<string>, name?: string): PegoNode =>
-  parseNode(assignIds(convertSvg(source, name ? { name } : {}).node, taken), "node").node;
+export const svgToNode = (
+  source: string,
+  taken: Set<string>,
+  name?: string,
+  width?: number,
+): PegoNode =>
+  parseNode(
+    assignIds(
+      convertSvg(source, { ...(name ? { name } : {}), ...(width ? { width } : {}) }).node,
+      taken,
+    ),
+    "node",
+  ).node;
 
 const withWarnings = (data: Record<string, unknown>, warnings: string[]): ToolResult =>
   ok(warnings.length > 0 ? { ...data, warnings } : data);

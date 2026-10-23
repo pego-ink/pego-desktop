@@ -1,6 +1,6 @@
 import { useEffect } from "react";
 import { screenToDoc } from "@/canvas/types";
-import { insertImageCentered, isSupportedImage, readImageFile } from "@/interaction/image-file";
+import { isSupportedImage, isSvgFile, placeImageFile } from "@/interaction/image-file";
 import { useViewportStore, viewportCenter } from "@/store/use-viewport-store";
 import { imageLinkFromHtml, imageLinkFromText, placeImageFromUrl } from "@/images/image-from-url";
 
@@ -8,14 +8,13 @@ const isEditable = (target: EventTarget | null): boolean =>
   target instanceof HTMLElement &&
   (target.isContentEditable || target.tagName === "INPUT" || target.tagName === "TEXTAREA");
 
-/** Place each image file around a doc point (staggered slightly when several arrive at once). */
+/**
+ * Place each image file around a doc point (staggered slightly when several arrive at once); SVG
+ * files become vector layers.
+ */
 const placeFiles = async (files: readonly File[], point: { x: number; y: number }) => {
-  let offset = 0;
-  for (const file of files) {
-    const asset = await readImageFile(file);
-    if (!asset) continue;
-    insertImageCentered(asset, { x: point.x + offset, y: point.y + offset });
-    offset += 24;
+  for (const [i, file] of files.entries()) {
+    await placeImageFile(file, { x: point.x + i * 24, y: point.y + i * 24 });
   }
 };
 
@@ -32,7 +31,9 @@ export const useImagePaste = () => {
   useEffect(() => {
     const onPaste = (e: ClipboardEvent) => {
       if (isEditable(e.target)) return;
-      const files = Array.from(e.clipboardData?.files ?? []).filter(isSupportedImage);
+      const files = Array.from(e.clipboardData?.files ?? []).filter(
+        (file) => isSupportedImage(file) || isSvgFile(file),
+      );
       if (files.length === 0) {
         const link = e.clipboardData ? pastedImageLink(e.clipboardData) : null;
         if (!link) return;

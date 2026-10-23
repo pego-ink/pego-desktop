@@ -8,6 +8,7 @@ describe("dropped files", () => {
     expect(dropKindOf({ name: "old.pen", type: "application/json" })).toBe("document");
     expect(dropKindOf({ name: "shot.png", type: "image/png" })).toBe("image");
     expect(dropKindOf({ name: "icon.svg", type: "image/svg+xml" })).toBe("image");
+    expect(dropKindOf({ name: "logo.svg", type: "" })).toBe("image");
     expect(dropKindOf({ name: "notes.txt", type: "text/plain" })).toBeNull();
   });
 });
