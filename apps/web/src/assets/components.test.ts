@@ -1,7 +1,7 @@
 /// <reference types="bun" />
 import { describe, expect, test } from "bun:test";
 import { applyOp, findNode, type PegoDocument } from "@pego/doc";
-import { instanceOp, listComponents } from "./components";
+import { componentSections, dropInstanceOp, instanceOp, listComponents } from "./components";
 
 const doc: PegoDocument = {
   version: 5,
@@ -57,5 +57,63 @@ describe("instanceOp", () => {
       x: 10,
       y: 21,
     });
+  });
+});
+
+describe("assets panel", () => {
+  const withLibrary: PegoDocument = {
+    ...doc,
+    children: [
+      ...doc.children,
+      {
+        type: "page",
+        id: "lib",
+        name: "Library · Kit",
+        x: 0,
+        y: 0,
+        library: { projectId: "kit", name: "Kit", path: "/kit/project.pego", syncedAt: 1 },
+        children: [
+          { type: "rectangle", id: "chip", name: "Café Chip", x: 0, y: 0, reusable: true },
+        ],
+      },
+    ],
+  };
+
+  test("components are grouped by page; a library page shows the library's name", () => {
+    const sections = componentSections(withLibrary, listComponents(withLibrary), "");
+    const summary = sections.map((s) => [s.title, s.library, s.entries.map((e) => e.name)]);
+    expect(summary[0]).toEqual(["Home", false, ["Card"]]);
+    expect(summary.at(-1)).toEqual(["Kit", true, ["Café Chip"]]);
+    expect(sections.flatMap((s) => s.entries).length).toBe(listComponents(withLibrary).length);
+  });
+
+  test("search matches every word, ignoring case and accents; empty pages are dropped", () => {
+    const sections = componentSections(withLibrary, listComponents(withLibrary), "cafe CHIP");
+    expect(sections.map((s) => s.entries.map((e) => e.id))).toEqual([["chip"]]);
+    expect(componentSections(withLibrary, listComponents(withLibrary), "nothing")).toEqual([]);
+  });
+
+  test("a dropped instance is centered on the point, inside the frame under it", () => {
+    const op = dropInstanceOp(
+      { id: "card", name: "Card" },
+      { width: 100, height: 40 },
+      { x: 300, y: 200 },
+      "p1",
+      {
+        id: "f",
+        x: 200,
+        y: 100,
+      },
+    );
+    expect(op).toMatchObject({ parentId: "f", node: { ref: "card", x: 50, y: 80 } });
+    const top = dropInstanceOp(
+      { id: "card", name: "Card" },
+      { width: 100, height: 40 },
+      { x: 300, y: 200 },
+      "p1",
+      null,
+    );
+    expect(top).toMatchObject({ parentId: "p1", node: { x: 250, y: 180 } });
+    expect(findNode(applyOp(doc, top), top.node.id)?.type).toBe("ref");
   });
 });
