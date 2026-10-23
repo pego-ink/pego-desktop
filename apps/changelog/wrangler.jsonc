@@ -1,5 +1,5 @@
 // The public changelog: a static-assets Worker (no script) serving the Astro build.
-// Deployed by .github/workflows/deploy-changelog.yml; build first with `bun run --cwd apps/changelog build`.
+// Built by .github/workflows/build-changelog.yml, deployed by deploy-changelog.yml; build first with `bun run --cwd apps/changelog build`.
 {
   "name": "pego-changelog",
   "compatibility_date": "2026-10-01",

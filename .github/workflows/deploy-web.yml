@@ -1,60 +1,108 @@
 name: Deploy Web
 
-# Builds the web editor (apps/web) and deploys it as a static-assets Worker (apps/web/wrangler.jsonc):
+# Deploys what "Build Web" (build-web.yml) built, the artifact "web-dist", as a static-assets
+# Worker (apps/web/wrangler.jsonc):
 # - push to main: Worker "pego-web" on app.pego.ink, the "production" deployment
 # - push to dev: Worker "pego-web-dev" (wrangler env "dev") on dev.pego.ink, a "preview" deployment
 # - same-repo PR: a preview version of "pego-web" under the alias "pr-<number>" (workers.dev)
-# Each run is recorded as a GitHub deployment (the repo's Deployments sidebar). Needs the repo
-# secrets CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID.
+# Each run is recorded as a GitHub deployment (the repo's Deployments sidebar).
+#
+# Trust: workflow_run runs this file as it is on the default branch (dev), never a PR's version.
+# The build ran the push's or PR's code without secrets; here its output is only data: static
+# files, checked to be plain files, uploaded by a pinned wrangler with the config from dev (no PR
+# code runs next to the token). The target comes from the triggering run, main and dev deploy only
+# a commit that is on that branch, and fork builds are never deployed. Needs the repo secrets
+# CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID.
 on:
-  push:
-    branches: [main, dev]
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "bun.lock"
-      - "package.json"
-      - ".github/workflows/deploy-web.yml"
-  pull_request:
-    paths:
-      - "apps/web/**"
-      - "packages/**"
-      - "bun.lock"
-      - "package.json"
-      - ".github/workflows/deploy-web.yml"
+  workflow_run:
+    workflows: [Build Web]
+    types: [completed]
 
-permissions:
-  contents: read
-  deployments: write
+permissions: {}
 
 concurrency:
-  group: deploy-web-${{ github.ref }}
+  group: deploy-web-${{ github.event.workflow_run.event }}-${{ github.event.workflow_run.head_branch }}
   cancel-in-progress: true
 
 jobs:
   deploy:
+    if: >-
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.path == '.github/workflows/build-web.yml'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Fork PRs get no secrets, so they cannot deploy.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    permissions:
+      actions: read # the build's artifact
+      contents: read
+      deployments: write
     env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      ENVIRONMENT: ${{ github.ref == 'refs/heads/main' && 'production' || 'preview' }}
-      # main | dev | alias (PRs)
-      TARGET: ${{ github.event_name == 'push' && github.ref_name || 'alias' }}
-      PREVIEW_ALIAS: pr-${{ github.event.number }}
-      SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+      GH_TOKEN: ${{ github.token }}
+      RUN_EVENT: ${{ github.event.workflow_run.event }}
+      RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+      SHA: ${{ github.event.workflow_run.head_sha }}
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
+      - name: Choose the target
+        run: |
+          target=""
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::unexpected head SHA"
+            exit 1
+          elif [ "$RUN_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::notice::built from a fork: not deployed"
+          elif [ "$RUN_EVENT" = push ] && { [ "$RUN_BRANCH" = main ] || [ "$RUN_BRANCH" = dev ]; }; then
+            # Only a commit that is on that branch (another ref can share the name).
+            status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${SHA}...${RUN_BRANCH}" --jq .status)"
+            case "$status" in
+              identical | ahead) target="$RUN_BRANCH" ;;
+              *)
+                echo "::error::${SHA} is not on ${RUN_BRANCH} (${status})"
+                exit 1
+                ;;
+            esac
+          elif [ "$RUN_EVENT" = pull_request ] && [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            target="alias"
+          else
+            echo "::notice::nothing to deploy for a ${RUN_EVENT} run"
+          fi
+          echo "TARGET=${target}" >> "$GITHUB_ENV"
+          if [ "$target" = main ]; then environment="production"; else environment="preview"; fi
+          echo "ENVIRONMENT=${environment}" >> "$GITHUB_ENV"
+
+      # Only the wrangler config, from dev: no package.json, bunfig or scripts of the build's commit.
+      - if: env.TARGET != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: apps/web/wrangler.jsonc
+          sparse-checkout-cone-mode: false
+
+      - if: env.TARGET != ''
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: web-dist
+          path: apps/web/dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Check the build output
+        if: env.TARGET != ''
+        run: |
+          if find apps/web/dist ! -type f ! -type d | grep -q .; then
+            echo "::error::the build output holds something other than files and folders"
+            exit 1
+          fi
+          [ -s apps/web/dist/index.html ] || { echo "::error::no index.html in the build output"; exit 1; }
+
+      - if: env.TARGET != ''
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.11
-      - run: bun install --frozen-lockfile
-      - run: bun run --cwd apps/web build
+          no-cache: true
 
       - name: Start GitHub deployment
+        if: env.TARGET != ''
         run: |
           # required_contexts=[] skips the commit-status check (CI runs in parallel).
           id="$(jq -n --arg ref "$SHA" --arg env "$ENVIRONMENT" '{
@@ -65,8 +113,11 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/deployments/$id/statuses" -f state=in_progress >/dev/null
 
       - name: Deploy to Cloudflare
+        if: env.TARGET != ''
         working-directory: apps/web
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
         run: |
           if [ "$TARGET" = main ] || [ "$TARGET" = dev ]; then
@@ -77,7 +128,7 @@ jobs:
               | (map(select(endswith(" (custom domain)")) | "https://" + rtrimstr(" (custom domain)"))[0] // .[0])
               // empty' "$WRANGLER_OUTPUT_FILE_PATH")"
           else
-            bunx wrangler@4.152.0 versions upload --preview-alias "$PREVIEW_ALIAS" --message "$SHA"
+            bunx wrangler@4.152.0 versions upload --preview-alias "pr-${PR_NUMBER}" --message "$SHA"
             url="$(jq -r 'select(.type == "version-upload") | .preview_alias_url // .preview_url // empty' "$WRANGLER_OUTPUT_FILE_PATH")"
           fi
           echo "DEPLOY_URL=$url" >> "$GITHUB_ENV"

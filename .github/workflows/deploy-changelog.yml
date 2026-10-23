@@ -1,77 +1,169 @@
 name: Deploy Changelog
 
-# Builds the changelog site (apps/changelog) and deploys it as a static-assets Worker
-# (apps/changelog/wrangler.jsonc):
+# Deploys the changelog site (apps/changelog/wrangler.jsonc) as a static-assets Worker:
 # - push to main: Worker "pego-changelog" on changelog.pego.ink, the "changelog" deployment
 # - push to dev: a preview version of "pego-changelog" under the alias "dev" (workers.dev)
 # - same-repo PR: a preview version under the alias "pr-<number>" (workers.dev)
 # - release published/edited/deleted: a production deploy built from main, so the download buttons
-#   (release data is fetched at build time, with GITHUB_TOKEN) follow the published releases.
-# Each run is recorded as a GitHub deployment (the repo's Deployments sidebar). Needs the repo
-# secrets CLOUDFLARE_API_TOKEN ("Edit Cloudflare Workers" template) and CLOUDFLARE_ACCOUNT_ID.
+#   (release data is fetched at build time) follow the published releases.
+# Each run is recorded as a GitHub deployment (the repo's Deployments sidebar).
+#
+# Trust: pushes and PRs are built by "Build Changelog" (build-changelog.yml) without secrets;
+# workflow_run runs this file as it is on the default branch (dev), never a PR's version. A release
+# is built from main here, in a job without secrets. The deploy job only takes the built files as
+# data: checked to be plain files, uploaded by a pinned wrangler with the config from dev (no build
+# code runs next to the token). main and dev deploy only a commit that is on that branch, and fork
+# builds are never deployed. Needs the repo secrets CLOUDFLARE_API_TOKEN ("Edit Cloudflare
+# Workers" template) and CLOUDFLARE_ACCOUNT_ID.
 on:
-  push:
-    branches: [main, dev]
-    paths:
-      - "apps/changelog/**"
-      - "bun.lock"
-      - ".github/workflows/deploy-changelog.yml"
+  workflow_run:
+    workflows: [Build Changelog]
+    types: [completed]
   release:
     types: [published, edited, deleted]
-  pull_request:
-    paths:
-      - "apps/changelog/**"
-      - "bun.lock"
-      - ".github/workflows/deploy-changelog.yml"
 
-permissions:
-  contents: read
-  deployments: write
+permissions: {}
 
 concurrency:
-  # A release run deploys main, so it shares the main group (the tag ref would not serialize them).
-  group: deploy-changelog-${{ github.event_name == 'release' && 'refs/heads/main' || github.ref }}
+  # A release deploys main, so it shares the push-to-main group.
+  group: >-
+    deploy-changelog-${{ github.event_name == 'release' && 'push-main' || format('{0}-{1}',
+    github.event.workflow_run.event, github.event.workflow_run.head_branch) }}
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build-release:
+    if: github.event_name == 'release'
     runs-on: ubuntu-latest
     timeout-minutes: 15
-    # Fork PRs get no secrets, so they cannot deploy.
-    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
-    env:
-      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-      ENVIRONMENT: ${{ (github.event_name == 'release' || github.ref == 'refs/heads/main') && 'changelog' || 'changelog-preview' }}
-      # main | dev | pr
-      TARGET: ${{ github.event_name == 'release' && 'main' || github.event_name == 'push' && github.ref_name || 'pr' }}
-      PREVIEW_ALIAS: ${{ github.event_name == 'push' && 'dev' || format('pr-{0}', github.event.number) }}
+    permissions:
+      contents: read
+    outputs:
+      sha: ${{ steps.commit.outputs.sha }}
     steps:
-      # A release event runs on the tag; the site is always built from main.
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          ref: ${{ github.event_name == 'release' && 'main' || '' }}
-      # The commit the GitHub deployment records: the PR head, otherwise what was checked out.
-      - name: Resolve commit
-        env:
-          PR_SHA: ${{ github.event.pull_request.head.sha }}
-        run: echo "SHA=${PR_SHA:-$(git rev-parse HEAD)}" >> "$GITHUB_ENV"
-      - uses: oven-sh/setup-bun@v2
+          ref: main
+          persist-credentials: false
+      - id: commit
+        run: echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
         with:
           bun-version: 1.3.11
       # Astro 7 needs a newer Node than the runner's default.
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 24
       - run: bun install --frozen-lockfile
       - name: Build
         env:
-          # Public release data for the download buttons; also lifts the API rate limit.
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: bun run --cwd apps/changelog build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: changelog-dist
+          path: apps/changelog/dist
+          if-no-files-found: error
+          retention-days: 3
+
+  deploy:
+    needs: build-release
+    if: >-
+      !cancelled() &&
+      ((github.event_name == 'release' && needs.build-release.result == 'success') ||
+       (github.event_name == 'workflow_run' &&
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.path == '.github/workflows/build-changelog.yml'))
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      actions: read # the build's artifact
+      contents: read
+      deployments: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      EVENT: ${{ github.event_name }}
+      RUN_EVENT: ${{ github.event.workflow_run.event }}
+      RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
+      RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
+      SHA: ${{ github.event_name == 'release' && needs.build-release.outputs.sha || github.event.workflow_run.head_sha }}
+      PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
+    steps:
+      - name: Choose the target
+        run: |
+          target=""
+          if ! [[ "$SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            echo "::error::unexpected head SHA"
+            exit 1
+          elif [ "$EVENT" = release ]; then
+            target="main"
+          elif [ "$RUN_REPO" != "$GITHUB_REPOSITORY" ]; then
+            echo "::notice::built from a fork: not deployed"
+          elif [ "$RUN_EVENT" = push ] && { [ "$RUN_BRANCH" = main ] || [ "$RUN_BRANCH" = dev ]; }; then
+            # Only a commit that is on that branch (another ref can share the name).
+            status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${SHA}...${RUN_BRANCH}" --jq .status)"
+            case "$status" in
+              identical | ahead) target="$RUN_BRANCH" ;;
+              *)
+                echo "::error::${SHA} is not on ${RUN_BRANCH} (${status})"
+                exit 1
+                ;;
+            esac
+          elif [ "$RUN_EVENT" = pull_request ] && [[ "$PR_NUMBER" =~ ^[0-9]+$ ]]; then
+            target="pr"
+          else
+            echo "::notice::nothing to deploy for a ${RUN_EVENT} run"
+          fi
+          case "$target" in
+            main) environment="changelog" alias="" ;;
+            dev) environment="changelog-preview" alias="dev" ;;
+            *) environment="changelog-preview" alias="pr-${PR_NUMBER}" ;;
+          esac
+          {
+            echo "TARGET=${target}"
+            echo "ENVIRONMENT=${environment}"
+            echo "PREVIEW_ALIAS=${alias}"
+          } >> "$GITHUB_ENV"
+
+      # Only the wrangler config, from dev: no package.json, bunfig or scripts of the build's commit.
+      - if: env.TARGET != ''
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: apps/changelog/wrangler.jsonc
+          sparse-checkout-cone-mode: false
+
+      - if: env.TARGET != '' && github.event_name == 'release'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: changelog-dist
+          path: apps/changelog/dist
+
+      - if: env.TARGET != '' && github.event_name == 'workflow_run'
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: changelog-dist
+          path: apps/changelog/dist
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+
+      - name: Check the build output
+        if: env.TARGET != ''
+        run: |
+          if find apps/changelog/dist ! -type f ! -type d | grep -q .; then
+            echo "::error::the build output holds something other than files and folders"
+            exit 1
+          fi
+          [ -s apps/changelog/dist/index.html ] || { echo "::error::no index.html in the build output"; exit 1; }
+
+      - if: env.TARGET != ''
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.11
+          no-cache: true
 
       - name: Start GitHub deployment
+        if: env.TARGET != ''
         run: |
           # required_contexts=[] skips the commit-status check (CI runs in parallel).
           id="$(jq -n --arg ref "$SHA" --arg env "$ENVIRONMENT" '{
@@ -82,8 +174,11 @@ jobs:
           gh api "repos/${GITHUB_REPOSITORY}/deployments/$id/statuses" -f state=in_progress >/dev/null
 
       - name: Deploy to Cloudflare
+        if: env.TARGET != ''
         working-directory: apps/changelog
         env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           WRANGLER_OUTPUT_FILE_PATH: ${{ runner.temp }}/wrangler-output.ndjson
         run: |
           if [ "$TARGET" = main ]; then
