@@ -105,6 +105,8 @@ describe("flip of a rotated layer", () => {
           {
             type: "path",
             id: "arrow",
+            x: 0,
+            y: 0,
             geometry: "M0 0 L20 5 L0 10 Z",
             width: 20,
             height: 10,
