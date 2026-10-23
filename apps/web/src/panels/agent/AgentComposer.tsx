@@ -1,9 +1,22 @@
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
-import { ArrowUpIcon, PaperclipIcon, SquareIcon } from "lucide-react";
+import {
+  ArrowUpIcon,
+  AtSignIcon,
+  PaperclipIcon,
+  PlusIcon,
+  SparklesIcon,
+  SquareIcon,
+} from "lucide-react";
 import { EditorContent, useEditor, type Editor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import { Placeholder } from "@tiptap/extensions";
 import { appStateContext, mentionTitle, skills, type MentionRef } from "@pego/agent";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@pego/ui/components/dropdown-menu";
 import { cn } from "@pego/ui/lib/utils";
 import { submitPrompt, steerNow } from "@/agent/queue";
 import { collectAppState } from "@/agent/app-state";
@@ -33,6 +46,8 @@ import {
   type MentionTrigger,
 } from "@/panels/agent/mentions/mention-extension";
 import { MentionMenu } from "@/panels/agent/mentions/MentionMenu";
+import { PromptLinks } from "@/panels/agent/mentions/prompt-links";
+import { saveDraft, takeDraft } from "@/panels/agent/composer-drafts";
 import { mentionSuggestions, slashSuggestions } from "@/panels/agent/mentions/mention-sources";
 
 const ACTION_BUTTON =
@@ -133,6 +148,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       }),
       createMentionExtension(() => link.hooks),
       createSubmitExtension(() => link.hooks),
+      PromptLinks,
     ],
     editorProps: {
       attributes: {
@@ -247,6 +263,17 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     editor.view.dispatch(editor.state.tr);
   }, [editor, active]);
 
+  // Each chat keeps its own unsent text: switching chats stores this one's and shows the other's.
+  const shownSession = useRef(sessionId);
+  useEffect(() => {
+    if (!editor || shownSession.current === sessionId) return;
+    const text = editor.getText().trim();
+    saveDraft(shownSession.current, text ? editor.getJSON() : null);
+    shownSession.current = sessionId;
+    const draft = takeDraft(sessionId);
+    editor.commands.setContent(draft ?? "", { emitUpdate: true });
+  }, [editor, sessionId]);
+
   const seededKey = useRef(seed.key);
   useEffect(() => {
     if (!editor || seededKey.current === seed.key) return;
@@ -308,6 +335,18 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
 
   const canSend = plain.trim().length > 0;
 
+  /** Type "@" or "/" at the caret (with a space before it when needed), which opens its menu. */
+  const typeTrigger = (char: MentionTrigger) => {
+    if (!editor) return;
+    // After the menu closes, so the editor keeps the focus the menu hands back.
+    requestAnimationFrame(() => {
+      const { from } = editor.state.selection;
+      const before = from > 1 ? editor.state.doc.textBetween(from - 1, from, "\n", "\n") : "";
+      const text = before && !/\s/.test(before) ? ` ${char}` : char;
+      editor.chain().focus().insertContent(text).run();
+    });
+  };
+
   const onPickFiles = (files: FileList | null) => {
     if (files) void addAttachmentFiles(Array.from(files));
     // Reset so picking the same file again still fires a change event.
@@ -350,15 +389,32 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
           className="hidden"
           onChange={(event) => onPickFiles(event.target.files)}
         />
-        <button
-          type="button"
-          aria-label="Attach images"
-          title="Attach images"
-          onClick={() => fileInputRef.current?.click()}
-          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
-        >
-          <PaperclipIcon aria-hidden className="size-3.5" />
-        </button>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              aria-label="Add to the prompt"
+              title="Add to the prompt"
+              className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+            >
+              <PlusIcon aria-hidden className="size-3.5" />
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent side="top" onCloseAutoFocus={(event) => event.preventDefault()}>
+            <DropdownMenuItem onSelect={() => fileInputRef.current?.click()}>
+              <PaperclipIcon aria-hidden className="size-3.5" />
+              Add images
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => typeTrigger("@")}>
+              <AtSignIcon aria-hidden className="size-3.5" />
+              Mention a layer, image or element
+            </DropdownMenuItem>
+            <DropdownMenuItem onSelect={() => typeTrigger("/")}>
+              <SparklesIcon aria-hidden className="size-3.5" />
+              Pick a skill or style
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
         <AgentSelector restoreFocusRef={focusRef} />
         <SkillChip prompt={plain} restoreFocusRef={focusRef} />
         <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
