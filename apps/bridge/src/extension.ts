@@ -36,8 +36,30 @@ export const isExtensionOrigin = (origin: string | null): boolean =>
 
 /** Constant-time comparison of the sent pairing code with the real one. */
 export const tokenMatches = (sent: string | null, token: string): boolean => {
-  if (!sent || sent.length !== token.length) return false;
-  return timingSafeEqual(Buffer.from(sent), Buffer.from(token));
+  if (!sent) return false;
+  const a = Buffer.from(sent);
+  const b = Buffer.from(token);
+  // Compare byte lengths: a multi-byte character makes them differ from the string lengths.
+  return a.byteLength === b.byteLength && timingSafeEqual(a, b);
+};
+
+/** The request body as text, or null when it is over `max` bytes (chunked bodies included). */
+export const readTextLimited = async (request: Request, max: number): Promise<string | null> => {
+  const reader = request.body?.getReader();
+  if (!reader) return "";
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    total += value.byteLength;
+    if (total > max) {
+      await reader.cancel();
+      return null;
+    }
+    chunks.push(value);
+  }
+  return new TextDecoder().decode(Buffer.concat(chunks));
 };
 
 const isRecord = (value: unknown): value is Record<string, unknown> =>

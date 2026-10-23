@@ -5,16 +5,20 @@ import {
   FetchImageError,
   isPrivateAddress,
   MAX_IMAGE_BYTES,
+  pinnedRequest,
 } from "./fetch-image";
 
 const PNG = new Uint8Array([0x89, 0x50, 0x4e, 0x47]);
 const publicLookup = async () => ["93.184.216.34"];
 
-/** A fake web: maps URLs to responses, and records what was asked. */
+/** A fake web: maps URLs (the name from the Host header) to responses, and records what was asked. */
 const web = (routes: Record<string, () => Response>) => {
   const asked: string[] = [];
-  const impl = (async (input: string | URL | Request) => {
-    const url = String(input);
+  const impl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const sent = new URL(String(input));
+    const host = (init?.headers as Record<string, string> | undefined)?.Host;
+    if (host) sent.host = host;
+    const url = sent.toString();
     asked.push(url);
     const route = routes[url];
     return route ? route() : new Response("missing", { status: 404 });
@@ -114,6 +118,28 @@ describe("fetch-image", () => {
       fetch: impl,
     });
     expect(result).toEqual({ bytes: PNG, type: "image/png" });
+  });
+
+  test("the request goes to the checked address, TLS and Host keep the name (DNS rebinding)", async () => {
+    const calls: { url: string; init?: BunFetchRequestInit }[] = [];
+    const impl = (async (input: string | URL | Request, init?: BunFetchRequestInit) => {
+      calls.push({ url: String(input), init });
+      return image();
+    }) as unknown as typeof fetch;
+    await fetchImage("https://example.com/a.png?x=1", { lookup: publicLookup, fetch: impl });
+    expect(calls).toHaveLength(1);
+    const [call] = calls;
+    expect(call!.url).toBe("https://93.184.216.34/a.png?x=1");
+    expect((call!.init?.headers as Record<string, string>).Host).toBe("example.com");
+    expect(call!.init?.tls).toEqual({ serverName: "example.com" });
+    expect(call!.init?.proxy).toBe(false);
+
+    const v6 = pinnedRequest(new URL("https://example.com/a.png"), "2606:4700:4700::1111");
+    expect(v6.url.toString()).toBe("https://[2606:4700:4700::1111]/a.png");
+    // A literal IP has no name to check the certificate against.
+    expect(pinnedRequest(new URL("https://93.184.216.34/a.png"), "93.184.216.34").init.tls).toBe(
+      undefined,
+    );
   });
 
   test("a host that resolves to a private address is refused before any request", async () => {

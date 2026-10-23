@@ -25,6 +25,7 @@ import {
   loadExtensionToken,
   MAX_CAPTURE_BYTES,
   parseCapture,
+  readTextLimited,
   tokenMatches,
 } from "./extension";
 
@@ -214,8 +215,8 @@ export const startBridge = (options: BridgeOptions) => {
         }
         const length = Number(request.headers.get("content-length") ?? 0);
         if (length > MAX_CAPTURE_BYTES) return reply(413, "The capture is larger than 20 MB.");
-        const raw = await request.text();
-        if (raw.length > MAX_CAPTURE_BYTES) return reply(413, "The capture is larger than 20 MB.");
+        const raw = await readTextLimited(request, MAX_CAPTURE_BYTES);
+        if (raw === null) return reply(413, "The capture is larger than 20 MB.");
         let body: unknown;
         try {
           body = JSON.parse(raw);

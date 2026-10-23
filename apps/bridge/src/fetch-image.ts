@@ -132,14 +132,40 @@ export const checkImageUrl = (raw: string): URL => {
   return url;
 };
 
-/** Refuse hosts that are, or resolve to, private addresses. */
-const checkHost = async (url: URL, resolveHost: (host: string) => Promise<string[]>) => {
+/** Refuse hosts that are, or resolve to, private addresses; the address to connect to. */
+const checkHost = async (
+  url: URL,
+  resolveHost: (host: string) => Promise<string[]>,
+): Promise<string> => {
   const host = url.hostname.replace(/^\[|\]$/g, "");
   const addresses = isIP(host) ? [host] : await resolveHost(host).catch(() => []);
   if (addresses.length === 0) throw new FetchImageError(`Could not find ${host}.`, 502);
   if (addresses.some(isPrivateAddress)) {
     throw new FetchImageError("That address is on a private network.", 403);
   }
+  return addresses[0]!;
+};
+
+/**
+ * Connect to the address that was checked, not to whatever the name resolves to next (DNS
+ * rebinding): the URL gets the IP, while TLS (SNI and the certificate check) and the Host header
+ * keep the name. No proxy, which would resolve the name itself.
+ */
+export const pinnedRequest = (
+  url: URL,
+  address: string,
+): { url: URL; init: BunFetchRequestInit } => {
+  const named = isIP(url.hostname.replace(/^\[|\]$/g, "")) === 0;
+  const pinned = new URL(url);
+  pinned.hostname = isIP(address) === 6 ? `[${address}]` : address;
+  return {
+    url: pinned,
+    init: {
+      headers: { Host: url.host },
+      proxy: false,
+      ...(named ? { tls: { serverName: url.hostname } } : {}),
+    },
+  };
 };
 
 /** Read the body, refusing anything over MAX_IMAGE_BYTES. */
@@ -177,12 +203,16 @@ export const fetchImage = async (
   const resolveHost = deps.lookup ?? defaultLookup;
   let url = checkImageUrl(raw);
   for (let hop = 0; ; hop++) {
-    await checkHost(url, resolveHost);
+    const target = pinnedRequest(url, await checkHost(url, resolveHost));
     let response: Response;
     try {
-      response = await (deps.fetch ?? fetch)(url, {
+      response = await (deps.fetch ?? fetch)(target.url, {
+        ...target.init,
         redirect: "manual",
-        headers: { Accept: "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9" },
+        headers: {
+          ...(target.init.headers as Record<string, string>),
+          Accept: "image/avif,image/webp,image/png,image/jpeg,image/gif;q=0.9",
+        },
         signal: AbortSignal.timeout(TIMEOUT_MS),
       });
     } catch {

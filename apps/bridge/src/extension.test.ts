@@ -2,7 +2,13 @@ import { describe, expect, test } from "bun:test";
 import { mkdtemp, readFile, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { isExtensionOrigin, loadExtensionToken, parseCapture, tokenMatches } from "./extension";
+import {
+  isExtensionOrigin,
+  loadExtensionToken,
+  parseCapture,
+  readTextLimited,
+  tokenMatches,
+} from "./extension";
 
 const page = { url: "https://ayam.test/menu", title: "Menu" };
 
@@ -31,6 +37,23 @@ describe("browser extension pairing", () => {
     expect(tokenMatches("abd", "abc")).toBe(false);
     expect(tokenMatches("ab", "abc")).toBe(false);
     expect(tokenMatches(null, "abc")).toBe(false);
+    // Same string length, different byte length: refused, not thrown.
+    expect(tokenMatches("é".repeat(3), "abc")).toBe(false);
+    expect(tokenMatches("ab\u00e9", "abc")).toBe(false);
+  });
+
+  test("a body over the limit is refused by its bytes, chunked or not", async () => {
+    const post = (body: string | ReadableStream<Uint8Array>) =>
+      new Request("http://127.0.0.1/x", { method: "POST", body });
+    expect(await readTextLimited(post("héllo"), 6)).toBe("héllo");
+    expect(await readTextLimited(post("héllo"), 5)).toBeNull(); // 5 characters, 6 bytes
+    const chunked = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let i = 0; i < 4; i++) controller.enqueue(new Uint8Array(4));
+        controller.close();
+      },
+    });
+    expect(await readTextLimited(post(chunked), 10)).toBeNull();
   });
 
   test("captures are checked for shape", () => {
