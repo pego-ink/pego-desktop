@@ -1,12 +1,10 @@
 import { useSettingsStore } from "@/store/use-settings-store";
-import { useWideEnoughForFloating } from "./interface-style";
 
 /**
- * The editor uses the floating interface: chosen in settings and the window is wide enough
- * (narrow windows fall back to docked; the dashboard is always docked, see EditorShell).
+ * The editor uses the floating interface (Settings › General › Interface). Only that choice
+ * switches it, never the window size: the two layouts are different trees, so a switch remounts
+ * the canvas and the side panels. Narrow windows keep floating, with the cards capped instead
+ * (see EditorShell). The dashboard is always docked.
  */
-export const useFloatingInterface = (): boolean => {
-  const chosen = useSettingsStore((s) => s.interfaceStyle === "floating");
-  const wide = useWideEnoughForFloating();
-  return chosen && wide;
-};
+export const useFloatingInterface = (): boolean =>
+  useSettingsStore((s) => s.interfaceStyle === "floating");

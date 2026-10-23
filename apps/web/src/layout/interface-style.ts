@@ -1,4 +1,3 @@
-import { useSyncExternalStore } from "react";
 /**
  * How the editor chrome sits around the canvas. "docked": panels and the header are columns and a
  * bar flush with the window edges. "floating": like pen.dev, the panels are rounded cards and the
@@ -19,25 +18,3 @@ export const isInterfaceStyle = (value: unknown): value is InterfaceStyle =>
 /** The card look of a floating panel or pill. */
 export const FLOATING_CARD =
   "rounded-xl border border-border bg-card shadow-[0_8px_24px_rgb(0_0_0/0.18)]";
-
-/** Below this window width the floating cards leave too little canvas: the docked layout is used. */
-export const FLOATING_MIN_WIDTH = 1000;
-
-const wideQuery = () =>
-  typeof window !== "undefined" && typeof window.matchMedia === "function"
-    ? window.matchMedia(`(min-width: ${FLOATING_MIN_WIDTH}px)`)
-    : null;
-
-const subscribeWide = (onChange: () => void) => {
-  const query = wideQuery();
-  query?.addEventListener("change", onChange);
-  return () => query?.removeEventListener("change", onChange);
-};
-
-/** True while the window is wide enough for the floating interface (always, without a window). */
-export const useWideEnoughForFloating = (): boolean =>
-  useSyncExternalStore(
-    subscribeWide,
-    () => wideQuery()?.matches ?? true,
-    () => true,
-  );
