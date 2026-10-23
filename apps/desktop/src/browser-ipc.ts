@@ -1,6 +1,7 @@
 import { BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
 import { BROWSER_CHANNELS } from "@/browser-channels";
 import { parseBounds, parseCdpRequest } from "@/browser-cdp";
+import { parseEmulation } from "@/browser-emulation";
 import { createBrowserView, type BrowserView } from "@/browser-view";
 import { isTrustedSender } from "@/update-status";
 
@@ -33,6 +34,10 @@ export const registerBrowserIpc = (appOrigin: string): void => {
   on(BROWSER_CHANNELS.show, (view, payload) => {
     const bounds = parseBounds(payload);
     if (bounds) view.show(bounds);
+  });
+  on(BROWSER_CHANNELS.setEmulation, (view, payload) => {
+    const emulation = parseEmulation(payload);
+    if (emulation !== undefined) view.setEmulation(emulation);
   });
   on(BROWSER_CHANNELS.hide, (view) => view.hide());
   on(BROWSER_CHANNELS.back, (view) => view.back());

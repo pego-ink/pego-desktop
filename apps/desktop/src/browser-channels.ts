@@ -8,6 +8,7 @@ export const BROWSER_CHANNELS = {
   reload: "pego:browser:reload",
   stop: "pego:browser:stop",
   cdp: "pego:browser:cdp",
+  setEmulation: "pego:browser:set-emulation",
   getState: "pego:browser:get-state",
   state: "pego:browser:state",
   pageMessage: "pego:browser:page-message",
