@@ -434,7 +434,9 @@ export const BrowserPanel = () => {
     Promise.resolve(ensureBrowserConnected()).catch(reportError);
   }, []);
 
-  // Follow the region: element resize (panel drag, collapse) and window resize.
+  // Follow the region: element resize (panel drag, collapse), window resize, and moves. A column
+  // appearing beside the panel (Properties when something is selected) shifts it without resizing
+  // it, so its position is checked every frame too (one rect read; the view hears only changes).
   useEffect(() => {
     const region = regionRef.current;
     if (!region) return;
@@ -446,9 +448,22 @@ export const BrowserPanel = () => {
     const observer = new ResizeObserver(schedule);
     observer.observe(region);
     window.addEventListener("resize", schedule);
+    let watch = 0;
+    let lastPosition = "";
+    const watchPosition = () => {
+      const rect = region.getBoundingClientRect();
+      const position = `${Math.round(rect.left)},${Math.round(rect.top)}`;
+      if (position !== lastPosition) {
+        lastPosition = position;
+        schedule();
+      }
+      watch = requestAnimationFrame(watchPosition);
+    };
+    watch = requestAnimationFrame(watchPosition);
     sync();
     return () => {
       cancelAnimationFrame(frame);
+      cancelAnimationFrame(watch);
       observer.disconnect();
       window.removeEventListener("resize", schedule);
       browserApi()?.hide();
