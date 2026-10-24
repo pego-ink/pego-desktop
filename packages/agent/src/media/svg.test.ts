@@ -2,6 +2,9 @@ import { describe, expect, test } from "bun:test";
 import { convertSvg, SvgError, type RawNode } from "./svg";
 import { parseColor, parseStyleAttribute } from "./svg-style";
 import { parsePathData, parseTransform, serializeSegments } from "./svg-geometry";
+import type { Layout, PegoNode } from "@pego/doc";
+import { exportSvg } from "../export/svg";
+import { docWith } from "../export/test-docs";
 import { parseXml } from "./xml";
 
 const kids = (node: RawNode): RawNode[] => node.children as RawNode[];
@@ -245,14 +248,194 @@ describe("convertSvg", () => {
     expect(kids(child)[0]).toMatchObject({ x: 7, y: 3, width: 10, height: 10 });
   });
 
-  test("gradients degrade to the first stop with a warning", () => {
-    const { child, warnings } = first(
+  const linear = (attrs: string, stops = BW, shape = '<rect width="100" height="100"') =>
+    first(
       wrap(
-        '<defs><linearGradient id="g"><stop offset="0" stop-color="#123456"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/>',
+        `<defs><linearGradient id="g" ${attrs}>${stops}</linearGradient></defs>${shape} fill="url(#g)"/>`,
       ),
     );
-    expect(child).toMatchObject({ fill: "#123456" });
-    expect(warnings.join(" ")).toMatch(/gradient/);
+  const BW = '<stop offset="0" stop-color="#000"/><stop offset="1" stop-color="#fff"/>';
+
+  test("linear gradients become linear fills with a CSS angle", () => {
+    expect(linear("").child.fill).toEqual({
+      type: "linear",
+      angle: 90,
+      stops: [
+        { color: "#000000", position: 0 },
+        { color: "#ffffff", position: 1 },
+      ],
+    });
+    expect(linear('x2="0" y2="1"').child.fill).toMatchObject({ angle: 180 });
+    expect(linear('x2="1" y2="1"').child.fill).toMatchObject({
+      angle: 135,
+      stops: [{ position: 0 }, { position: 1 }],
+    });
+    expect(linear("").warnings.join(" ")).not.toMatch(/gradient/);
+  });
+
+  test("a short gradient vector keeps the color padded to the ends", () => {
+    expect(linear('x1="0.25" x2="0.75"').child.fill).toMatchObject({
+      stops: [
+        { color: "#000000", position: 0 },
+        { color: "#000000", position: 0.25 },
+        { color: "#ffffff", position: 0.75 },
+        { color: "#ffffff", position: 1 },
+      ],
+    });
+  });
+
+  test("a gradient vector past the box is cut at the box edges", () => {
+    expect(linear('x1="-1" x2="2"').child.fill).toMatchObject({
+      stops: [
+        { color: "#555555", position: 0 },
+        { color: "#aaaaaa", position: 1 },
+      ],
+    });
+  });
+
+  test("userSpaceOnUse gradients follow the shape's position and transform", () => {
+    const { child } = linear(
+      'gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="30" y2="0"',
+      BW,
+      '<rect x="10" width="20" height="10" transform="translate(5 5)"',
+    );
+    expect(child).toMatchObject({ x: 15, y: 5 });
+    expect(child.fill).toMatchObject({ angle: 90, stops: [{ position: 0 }, { position: 1 }] });
+  });
+
+  test("fill-opacity and stop-opacity fold into the stops; one stop is a solid color", () => {
+    const { child } = linear(
+      "",
+      '<stop offset="0" stop-color="#000" stop-opacity="0.5"/><stop offset="1" style="stop-color:#fff"/>',
+      '<rect width="10" height="10" fill-opacity="0.5"',
+    );
+    expect(child.fill).toMatchObject({
+      stops: [
+        { color: "#00000040", position: 0 },
+        { color: "#ffffff80", position: 1 },
+      ],
+    });
+    expect(linear("", '<stop offset="0.5" stop-color="#123456"/>').child.fill).toBe("#123456");
+  });
+
+  test("gradients inherit attributes and stops through href", () => {
+    const { child } = first(
+      wrap(
+        `<defs><linearGradient id="base">${BW}</linearGradient><linearGradient id="g" href="#base" x2="0" y2="1"/></defs><rect width="10" height="10" fill="url(#g)"/>`,
+      ),
+    );
+    expect(child.fill).toMatchObject({
+      type: "linear",
+      angle: 180,
+      stops: [{ color: "#000000" }, { color: "#ffffff" }],
+    });
+  });
+
+  test("radial gradients become radial fills, including the exporter's transform form", () => {
+    const radial = (attrs: string, shape = '<rect width="100" height="50"') =>
+      first(
+        wrap(
+          `<defs><radialGradient id="g" ${attrs}>${BW}</radialGradient></defs>${shape} fill="url(#g)"/>`,
+        ),
+      ).child.fill;
+    expect(radial("")).toEqual({
+      type: "radial",
+      center: [0.5, 0.5],
+      radius: [0.5, 0.5],
+      stops: [
+        { color: "#000000", position: 0 },
+        { color: "#ffffff", position: 1 },
+      ],
+    });
+    expect(
+      radial(
+        'gradientUnits="userSpaceOnUse" cx="0" cy="0" r="1" gradientTransform="matrix(40 0 0 10 40 50)"',
+        '<rect x="10" y="20" width="100" height="50"',
+      ),
+    ).toMatchObject({ center: [0.3, 0.6], radius: [0.4, 0.2] });
+  });
+
+  test("gradient fills survive an SVG export and import round trip", () => {
+    const stops = [
+      { color: "#4f46e5", position: 0 },
+      { color: "#ec4899", position: 1 },
+    ];
+    const rect = (id: string, x: number, fill: unknown) =>
+      ({ type: "rectangle", id, x, y: 30, width: 50, height: 40, fill }) as PegoNode;
+    const root = {
+      type: "frame",
+      id: "f",
+      width: 200,
+      height: 100,
+      children: [
+        rect("a", 20, { type: "linear", angle: 30, stops }),
+        rect("b", 120, { type: "radial", center: [0.3, 0.6], radius: [0.4, 0.2], stops }),
+      ],
+    } as PegoNode;
+    const layout: Layout = new Map([
+      ["f", { x: 0, y: 0, width: 200, height: 100 }],
+      ["a", { x: 20, y: 30, width: 50, height: 40 }],
+      ["b", { x: 120, y: 30, width: 50, height: 40 }],
+    ]);
+    const fills: Record<string, unknown>[] = [];
+    const walk = (node: RawNode) => {
+      const fill = node.fill as Record<string, unknown> | undefined;
+      if (typeof fill === "object") fills.push(fill);
+      ((node.children as RawNode[] | undefined) ?? []).forEach(walk);
+    };
+    walk(convertSvg(exportSvg(docWith(root), "f", { layout })).node);
+    const [lin, rad] = fills;
+    expect(lin).toMatchObject({ type: "linear", stops });
+    expect(lin?.angle as number).toBeCloseTo(30, 1);
+    expect(rad).toMatchObject({ type: "radial", center: [0.3, 0.6], radius: [0.4, 0.2], stops });
+  });
+
+  test("userSpaceOnUse percentages are of the viewport; defaults run across it", () => {
+    const span = (attrs: string) =>
+      first(
+        wrap(
+          `<defs><linearGradient id="g" gradientUnits="userSpaceOnUse" ${attrs}>${BW}</linearGradient></defs><rect width="200" height="10" fill="url(#g)"/>`,
+          'viewBox="0 0 200 100"',
+        ),
+      ).child.fill;
+    const full = { angle: 90, stops: [{ position: 0 }, { position: 1 }] };
+    expect(span('x1="0%" x2="100%"')).toMatchObject(full);
+    expect(span("")).toMatchObject(full);
+  });
+
+  test("a diagonal gradient on a non-square shape warns that it is approximate", () => {
+    const warns = (shape: string, attrs = 'x2="1" y2="1"') =>
+      linear(attrs, BW, shape).warnings.join(" ");
+    expect(warns('<rect width="100" height="50"')).toMatch(/approximate/);
+    expect(warns('<rect width="100" height="100"')).not.toMatch(/approximate/);
+    expect(warns('<rect width="100" height="50"', 'x2="0" y2="1"')).not.toMatch(/approximate/);
+  });
+
+  test("currentColor stops and gradients without stops", () => {
+    const { child } = linear(
+      "",
+      '<stop offset="0" stop-color="currentColor"/><stop offset="1" stop-color="#fff"/>',
+      '<rect width="10" height="10" color="#ff0000"',
+    );
+    expect(child.fill).toMatchObject({ stops: [{ color: "#ff0000" }, { color: "#ffffff" }] });
+    const empty = first(
+      wrap(
+        '<defs><linearGradient id="g"/></defs><rect width="10" height="10" fill="url(#g)"/><rect width="5" height="5" fill="red"/>',
+      ),
+    );
+    expect(kids(empty.root)).toHaveLength(1);
+    expect(empty.warnings.join(" ")).toMatch(/no stops/);
+  });
+
+  test("text and strokes still use the first stop, with a warning", () => {
+    const { child, warnings } = first(
+      wrap(
+        `<defs><linearGradient id="g"><stop offset="0" stop-color="#123456"/><stop offset="1" stop-color="#fff"/></linearGradient></defs><text x="0" y="20" fill="url(#g)">Hi</text><rect width="10" height="10" fill="none" stroke="url(#g)"/>`,
+      ),
+    );
+    expect(child).toMatchObject({ type: "text", fill: "#123456" });
+    expect(warnings.join(" ")).toMatch(/gradient fills on text/);
+    expect(warnings.join(" ")).toMatch(/used the first stop color/);
   });
 
   test("reports unsupported features and skips bad paths", () => {
