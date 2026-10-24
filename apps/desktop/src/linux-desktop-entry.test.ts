@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { desktopEntry, ENTRY_MARKER, planEntry } from "@/linux-desktop-entry";
+import { desktopEntry, ENTRY_MARKER, execArgument, planEntry } from "@/linux-desktop-entry";
 
 describe("AppImage launcher entry", () => {
   test("launches the AppImage, names the icon and the window class", () => {
@@ -12,9 +12,14 @@ describe("AppImage launcher entry", () => {
   });
 
   test("quotes characters the Exec key treats specially", () => {
-    expect(desktopEntry('/tmp/my "apps"/$x/Pego.AppImage')).toContain(
-      'Exec="/tmp/my \\"apps\\"/\\$x/Pego.AppImage" %U',
+    // Quote rule: " ` $ and \ get a backslash; string rule: every backslash doubled; % is %%.
+    expect(execArgument('/tmp/my "apps"/$x/Pego.AppImage')).toBe(
+      String.raw`"/tmp/my \\"apps\\"/\\$x/Pego.AppImage"`,
     );
+    expect(execArgument(String.raw`/tmp/a\b/100%/Pego.AppImage`)).toBe(
+      String.raw`"/tmp/a\\\\b/100%%/Pego.AppImage"`,
+    );
+    expect(desktopEntry("/home/a/Pego.AppImage")).toContain('Exec="/home/a/Pego.AppImage" %U');
   });
 });
 

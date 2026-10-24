@@ -29,11 +29,12 @@ export const installAppImageEntry = (iconPath: string, env = process.env): void 
       ),
     });
     if (plan !== "write" || !env.APPIMAGE) return;
+    // The entry names the icon: without one there is nothing to fix, so neither is written.
+    const icon = nativeImage.createFromPath(iconPath);
+    if (icon.isEmpty()) return;
     const iconDir = join(data, "icons", "hicolor", "512x512", "apps");
     mkdirSync(iconDir, { recursive: true });
-    const icon = nativeImage.createFromPath(iconPath);
-    if (!icon.isEmpty())
-      writeFileSync(join(iconDir, "pego.png"), icon.resize({ width: 512 }).toPNG());
+    writeFileSync(join(iconDir, "pego.png"), icon.resize({ width: 512 }).toPNG());
     mkdirSync(join(data, "applications"), { recursive: true });
     writeFileSync(entryFile, desktopEntry(env.APPIMAGE));
   } catch (error) {

@@ -9,6 +9,13 @@
 /** Marks the entry as Pego's own, so it may be updated; a user's own pego.desktop is left alone. */
 export const ENTRY_MARKER = "X-Pego-AppImage=true";
 
+/**
+ * `path` as one quoted argument of an Exec key (Desktop Entry spec): ", `, $ and \ are escaped
+ * inside the quotes, then the string rule doubles every backslash, and % becomes %% (field codes).
+ */
+export const execArgument = (path: string): string =>
+  `"${path.replace(/(["`$\\])/g, "\\$1")}"`.replace(/\\/g, "\\\\").replace(/%/g, "%%");
+
 /** The launcher entry for the AppImage at `appImage`. */
 export const desktopEntry = (appImage: string): string =>
   [
@@ -16,7 +23,7 @@ export const desktopEntry = (appImage: string): string =>
     "Type=Application",
     "Name=Pego",
     "Comment=AI-native design editor",
-    `Exec="${appImage.replace(/(["`$\\])/g, "\\$1")}" %U`,
+    `Exec=${execArgument(appImage)} %U`,
     "Icon=pego",
     "Terminal=false",
     "Categories=Graphics;2DGraphics;VectorGraphics;",
