@@ -525,6 +525,39 @@ const elementMatrix = (el: XmlElement, parent: Matrix, state: State): Matrix => 
   return multiply(parent, matrix);
 };
 
+const ALIGN = { min: 0, mid: 0.5, max: 1 } as const;
+
+/**
+ * A nested <svg>'s viewport: moved to its x/y and, with a viewBox, the viewBox mapped onto its
+ * width/height by preserveAspectRatio (default xMidYMid meet). Missing width/height keep the
+ * viewBox size. The viewport's clip is not applied.
+ */
+const viewportMatrix = (el: XmlElement): Matrix => {
+  const x = number(el.attrs.x, 0);
+  const y = number(el.attrs.y, 0);
+  const viewBox = parseNumbers(el.attrs.viewBox ?? "");
+  const [vbX = 0, vbY = 0, vbW = 0, vbH = 0] = viewBox.length === 4 ? viewBox : [];
+  if (!(vbW > 0 && vbH > 0)) return [1, 0, 0, 1, x, y];
+  const width = number(el.attrs.width, vbW);
+  const height = number(el.attrs.height, vbH);
+  let sx = width / vbW;
+  let sy = height / vbH;
+  let alignX = 0;
+  let alignY = 0;
+  const aspect = (el.attrs.preserveAspectRatio ?? "").trim();
+  if (aspect !== "none") {
+    const match = /x(min|mid|max)y(min|mid|max)/i.exec(aspect);
+    const fx = ALIGN[(match?.[1]?.toLowerCase() ?? "mid") as keyof typeof ALIGN];
+    const fy = ALIGN[(match?.[2]?.toLowerCase() ?? "mid") as keyof typeof ALIGN];
+    const s = /slice/.test(aspect) ? Math.max(sx, sy) : Math.min(sx, sy);
+    sx = s;
+    sy = s;
+    alignX = (width - vbW * s) * fx;
+    alignY = (height - vbH * s) * fy;
+  }
+  return [sx, 0, 0, sy, x + alignX - vbX * sx, y + alignY - vbY * sy];
+};
+
 const hidden = (el: XmlElement): boolean => {
   const p = props(el);
   return p.display === "none" || p.visibility === "hidden" || p.visibility === "collapse";
@@ -554,10 +587,9 @@ const convertElement = (el: XmlElement, parent: Context, state: State): RawNode[
     case "a":
     case "svg":
     case "switch": {
-      if (tag === "svg" && (el.attrs.viewBox || el.attrs.x || el.attrs.y)) {
-        state.warnings.add("nested <svg>: x/y/viewBox were ignored");
-      }
-      const children = convertChildren(el, ctx, state);
+      const inner =
+        tag === "svg" ? { ...ctx, matrix: multiply(ctx.matrix, viewportMatrix(el)) } : ctx;
+      const children = convertChildren(el, inner, state);
       if (children.length === 0) return [];
       emit(state);
       return [withOpacity({ type: "group", name: nameOf(el), children }, el)];

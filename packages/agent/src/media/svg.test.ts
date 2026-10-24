@@ -217,6 +217,34 @@ describe("convertSvg", () => {
     expect(dot).toMatchObject({ type: "ellipse", x: 15, y: 25, width: 10 });
   });
 
+  test("nested svg maps its viewBox onto its x/y/width/height viewport", () => {
+    const { child, warnings } = first(
+      wrap(
+        '<svg x="10" y="20" width="40" height="20" viewBox="5 5 10 10" preserveAspectRatio="none"><rect x="5" y="5" width="10" height="10"/></svg>',
+      ),
+    );
+    expect(kids(child)[0]).toMatchObject({
+      type: "rectangle",
+      x: 10,
+      y: 20,
+      width: 40,
+      height: 20,
+    });
+    expect(warnings.join(" ")).not.toMatch(/nested/);
+  });
+
+  test("nested svg viewBox defaults to xMidYMid meet", () => {
+    const { child } = first(
+      wrap('<svg width="40" height="20" viewBox="0 0 10 10"><rect width="10" height="10"/></svg>'),
+    );
+    expect(kids(child)[0]).toMatchObject({ x: 10, y: 0, width: 20, height: 20 });
+  });
+
+  test("nested svg without a viewBox only moves its content", () => {
+    const { child } = first(wrap('<svg x="7" y="3"><rect width="10" height="10"/></svg>'));
+    expect(kids(child)[0]).toMatchObject({ x: 7, y: 3, width: 10, height: 10 });
+  });
+
   test("gradients degrade to the first stop with a warning", () => {
     const { child, warnings } = first(
       wrap(
