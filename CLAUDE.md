@@ -264,7 +264,10 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   `apps/web/src/desktop/title-bar.ts`.
 - Editor chrome: icon rail with Agent, Layers (pages + layer tree), Assets (the document's components,
   `apps/web/src/assets/`) and, in the desktop app only, Browser; resizable side panel, properties column (pin,
-  hide); `Ctrl/⌘ + \` hides both sides.
+  hide); `Ctrl/⌘ + \` hides both sides. Settings > General > Browser panel puts the Browser in the side panel
+  (left, default) or in its own resizable column right of the canvas (`browserSide`; the rail icon then toggles
+  `browserOpen`, see `pressPanel` / `openPanel` / `moveBrowser` in `components/rail-state.ts`), so the agent
+  chat and the browser can be open together.
   Layout state is one store, `apps/web/src/store/use-layout-store.ts`.
 - MCP: `list_projects`, `open_project` (by id, name or unambiguous prefix), `create_project`,
   `list_documents` (the open documents, one per workspace) and `switch_document`; they act on the focused editor.

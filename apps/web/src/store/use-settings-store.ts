@@ -7,6 +7,7 @@ import {
 } from "@/agent/agent-names";
 import { isToolbarPosition, type ToolbarPosition } from "@/components/toolbar-position";
 import { isInterfaceStyle, type InterfaceStyle } from "@/layout/interface-style";
+import type { BrowserSide } from "@/components/rail-state";
 
 /** Editor preferences, persisted per browser/app install. */
 export type EditorSettings = {
@@ -31,6 +32,8 @@ export type EditorSettings = {
    * browser it is always Openverse.
    */
   imageSearch: ImageSearchSource;
+  /** Desktop app: the Browser panel in the left side panel, or as its own column on the right. */
+  browserSide: BrowserSide;
 };
 
 export type ImageSearchSource = "browser" | "openverse";
@@ -45,6 +48,7 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   toolbarPosition: "bottom",
   interfaceStyle: "docked",
   imageSearch: "browser",
+  browserSide: "left",
 };
 
 const KEY = "pego:settings.v1";
@@ -76,6 +80,10 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
       v.imageSearch === "browser" || v.imageSearch === "openverse"
         ? v.imageSearch
         : DEFAULT_SETTINGS.imageSearch,
+    browserSide:
+      v.browserSide === "left" || v.browserSide === "right"
+        ? v.browserSide
+        : DEFAULT_SETTINGS.browserSide,
   };
 };
 

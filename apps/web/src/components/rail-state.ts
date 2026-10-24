@@ -86,3 +86,38 @@ export const writeRailState = (state: RailState) => {
     // storage unavailable: the rail simply is not persisted
   }
 };
+
+/** Where the Browser panel opens: in the left side panel, or as its own column on the right. */
+export type BrowserSide = "left" | "right";
+
+/** The rail's state plus the right-hand Browser column (open only with the browser on the right). */
+export type PanelsState = { rail: RailState; browserOpen: boolean };
+
+/**
+ * A rail icon was pressed. With the browser on the right, its icon opens and closes that column
+ * and leaves the side panel alone; every other press works as usual.
+ */
+export const pressPanel = (state: PanelsState, side: BrowserSide, tab: RailTab): PanelsState =>
+  side === "right" && tab === "browser"
+    ? { ...state, browserOpen: !state.browserOpen }
+    : { ...state, rail: pressTab(state.rail, tab) };
+
+/** Show a tab's panel (never closes it): the right-hand column for the browser on the right. */
+export const openPanel = (state: PanelsState, side: BrowserSide, tab: RailTab): PanelsState =>
+  side === "right" && tab === "browser"
+    ? { ...state, browserOpen: true }
+    : { ...state, rail: { tab, open: true } };
+
+/**
+ * Move the browser to `side`, keeping it open or closed: to the right, a side panel showing it
+ * switches back to the agent and the column takes over; to the left, an open column becomes the
+ * side panel's tab.
+ */
+export const moveBrowser = (state: PanelsState, side: BrowserSide): PanelsState => {
+  if (side === "right") {
+    return state.rail.tab === "browser"
+      ? { rail: { tab: "agent", open: state.rail.open }, browserOpen: state.rail.open }
+      : state;
+  }
+  return state.browserOpen ? { rail: { tab: "browser", open: true }, browserOpen: false } : state;
+};

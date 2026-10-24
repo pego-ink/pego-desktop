@@ -30,6 +30,8 @@ import {
   type InterfaceStyle,
 } from "@/layout/interface-style";
 import { desktopApi, type DesktopTitleBarMode } from "@/desktop/desktop-api";
+import { useLayoutStore } from "@/store/use-layout-store";
+import type { BrowserSide } from "@/components/rail-state";
 import { SettingRow, SettingsSection } from "./SettingRow";
 
 const WHEEL_OPTIONS = [
@@ -99,6 +101,34 @@ const TITLE_BAR_OPTIONS = [
 ] satisfies { value: DesktopTitleBarMode; label: string; title: string }[];
 
 /** Linux / Windows desktop app: which title bar the next start uses. */
+const BROWSER_SIDE_OPTIONS = [
+  { value: "left", label: "Left", title: "In the side panel, like Agent and Layers" },
+  { value: "right", label: "Right", title: "Its own column on the right, beside the canvas" },
+] satisfies { value: BrowserSide; label: string; title: string }[];
+
+/** Desktop app: where the Browser panel opens. */
+const BrowserSideSetting = () => {
+  const side = useSettingsStore((s) => s.browserSide);
+  const setBrowserSide = useLayoutStore((s) => s.setBrowserSide);
+  if (!desktopApi()?.browser) return null;
+  return (
+    <SettingRow
+      title="Browser panel"
+      description="Left keeps the browser in the side panel. Right gives it its own column beside the canvas, so you can chat with the agent and watch the browser at the same time."
+    >
+      {() => (
+        <SegmentedControl
+          aria-label="Browser panel"
+          value={side}
+          options={BROWSER_SIDE_OPTIONS}
+          onChange={setBrowserSide}
+          className="w-56"
+        />
+      )}
+    </SettingRow>
+  );
+};
+
 const TitleBarSetting = () => {
   const titleBar = desktopApi()?.titleBar;
   const [mode, setMode] = useState<DesktopTitleBarMode>(titleBar?.mode ?? "pego");
@@ -220,6 +250,7 @@ export const GeneralSettingsTab = () => {
             />
           )}
         </SettingRow>
+        <BrowserSideSetting />
         <TitleBarSetting />
       </SettingsSection>
 
