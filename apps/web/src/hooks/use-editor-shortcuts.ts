@@ -24,6 +24,7 @@ import {
 import { useSettingsModal, useSettingsStore } from "@/store/use-settings-store";
 import { useViewportStore } from "@/store/use-viewport-store";
 import { desktopApi } from "@/desktop/desktop-api";
+import { drawsWindowControls } from "@/desktop/title-bar";
 import { tabShortcut } from "@/workspace/tab-bar-model";
 import { runTabAction } from "@/workspace/tab-actions";
 
@@ -96,8 +97,10 @@ export const useEditorShortcuts = () => {
       if (tab) {
         e.preventDefault();
         // The desktop menu owns Cmd+W (its accelerator would close the window otherwise) and
-        // sends "close-tab"; handling the keydown too would close two tabs.
-        const menuOwnsClose = typeof desktopApi()?.onMenuCommand === "function";
+        // sends "close-tab"; handling the keydown too would close two tabs. Without a menu bar
+        // (Linux / Windows "pego" title bar) the menu only shows the key and the page closes.
+        const api = desktopApi();
+        const menuOwnsClose = typeof api?.onMenuCommand === "function" && !drawsWindowControls(api);
         if (!(tab.kind === "close" && menuOwnsClose)) runTabAction(tab);
         return;
       }

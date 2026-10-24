@@ -255,6 +255,13 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   asks the user about unsaved changes ("ask"), refuses for Claude Code ("refuse": save first) or drops them
   ("discard"). Switching is blocked while a panel agent run is active. The Dashboard is a view (the Pego logo in
   the icon rail opens it), not a workspace.
+- Desktop title bar: macOS hides it (traffic lights over the tab row). Linux and Windows default to the "pego"
+  title bar: `titleBarStyle: "hidden"` + `titleBarOverlay`, the window controls drawn over the right end of the
+  tab row (kept free with `navigator.windowControlsOverlay`, colored like the row via `setTitleBarOverlay`), the
+  menu behind a ☰ button (`Menu.popup`) and Ctrl+W handled by the page (no menu bar, so Close Tab does not
+  register its accelerator). "system" (Settings > General > Title bar, saved in `window-prefs.json` in userData,
+  applies after a restart) keeps the native frame and menu bar. See `apps/desktop/src/window-chrome.ts` and
+  `apps/web/src/desktop/title-bar.ts`.
 - Editor chrome: icon rail with Agent, Layers (pages + layer tree), Assets (the document's components,
   `apps/web/src/assets/`) and, in the desktop app only, Browser; resizable side panel, properties column (pin,
   hide); `Ctrl/⌘ + \` hides both sides.

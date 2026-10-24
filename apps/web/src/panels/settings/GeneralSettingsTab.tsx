@@ -1,9 +1,11 @@
+import { useState } from "react";
 import {
   ArrowDownUpIcon,
   ArrowRightIcon,
   ChevronsRightIcon,
   MoveHorizontalIcon,
 } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@pego/ui/components/button";
 import { NumberField } from "@pego/ui/components/number-field";
 import { SegmentedControl } from "@pego/ui/components/segmented-control";
@@ -23,6 +25,7 @@ import {
   INTERFACE_STYLES,
   type InterfaceStyle,
 } from "@/layout/interface-style";
+import { desktopApi, type DesktopTitleBarMode } from "@/desktop/desktop-api";
 import { SettingRow, SettingsSection } from "./SettingRow";
 
 const WHEEL_OPTIONS = [
@@ -82,6 +85,52 @@ const NudgeField = ({
   </div>
 );
 
+const TITLE_BAR_OPTIONS = [
+  {
+    value: "pego",
+    label: "Pego",
+    title: "One row: window buttons beside your tabs, menu under ☰",
+  },
+  { value: "system", label: "System", title: "Your desktop's own title bar and menu bar" },
+] satisfies { value: DesktopTitleBarMode; label: string; title: string }[];
+
+/** Linux / Windows desktop app: which title bar the next start uses. */
+const TitleBarSetting = () => {
+  const titleBar = desktopApi()?.titleBar;
+  const [mode, setMode] = useState<DesktopTitleBarMode>(titleBar?.mode ?? "pego");
+  if (!titleBar) return null;
+  const choose = (next: DesktopTitleBarMode) => {
+    setMode(next);
+    void titleBar.setMode(next).then(
+      (saved) =>
+        saved
+          ? toast(
+              next === titleBar.mode
+                ? "Title bar is back as it is now"
+                : "Restart Pego to use the new title bar",
+            )
+          : toast.error("Could not save the title bar setting"),
+      () => toast.error("Could not save the title bar setting"),
+    );
+  };
+  return (
+    <SettingRow
+      title="Title bar"
+      description="Pego keeps one row: window buttons beside your tabs, menu under ☰. System uses your desktop's own title bar. Applies after a restart."
+    >
+      {() => (
+        <SegmentedControl
+          aria-label="Title bar"
+          value={mode}
+          options={TITLE_BAR_OPTIONS}
+          onChange={choose}
+          className="w-56"
+        />
+      )}
+    </SettingRow>
+  );
+};
+
 export const GeneralSettingsTab = () => {
   const autosaveEnabled = useAutosaveStore((s) => s.enabled);
   const supported = isFileAutosaveSupported();
@@ -137,6 +186,7 @@ export const GeneralSettingsTab = () => {
             />
           )}
         </SettingRow>
+        <TitleBarSetting />
       </SettingsSection>
 
       <SettingsSection title="Saving">

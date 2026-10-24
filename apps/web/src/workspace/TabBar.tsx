@@ -9,10 +9,16 @@ import {
   type PointerEvent,
   type ReactNode,
 } from "react";
-import { FileIcon, FolderIcon, HomeIcon, PlusIcon, XIcon } from "lucide-react";
+import { FileIcon, FolderIcon, HomeIcon, MenuIcon, PlusIcon, XIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import { cn } from "@pego/ui/lib/utils";
 import { desktopApi } from "@/desktop/desktop-api";
+import {
+  drawsWindowControls,
+  titleBarOverlayFor,
+  useControlsOverlayInset,
+} from "@/desktop/title-bar";
+import { useThemeStore } from "@/theme/theme";
 import { clampPercent } from "@/desktop/update-notice-model";
 import { useUpdateStatus } from "@/desktop/use-update-status";
 import {
@@ -244,6 +250,19 @@ export const TabBar = ({ floating = false, trailing }: TabBarProps = {}) => {
   const view = useWorkspaceStore((s) => s.view);
   const windowControls = useTrafficLightsInset();
   const desktop = desktopApi() !== undefined;
+  // Linux / Windows "pego" title bar: this row is the title bar, the window controls sit over
+  // its right end (keep that free and color them like the row) and the menu opens from ☰.
+  const ownControls = drawsWindowControls(desktopApi());
+  const controlsInset = useControlsOverlayInset();
+  const theme = useThemeStore((s) => s.resolved);
+  const rowRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const row = rowRef.current;
+    const titleBar = desktopApi()?.titleBar;
+    if (!ownControls || !row || !titleBar) return;
+    const overlay = titleBarOverlayFor(row, floating, theme);
+    if (overlay) titleBar.setOverlay(overlay);
+  }, [ownControls, floating, theme]);
 
   const dashboard = view === "dashboard" || liveId === null;
   const activeId = dashboard ? null : liveId;
@@ -404,13 +423,30 @@ export const TabBar = ({ floating = false, trailing }: TabBarProps = {}) => {
 
   return (
     <div
+      ref={rowRef}
       className={cn(
         "flex shrink-0 gap-1 pr-2",
         floating ? "h-12 items-center" : "h-10 items-end bg-background",
         windowControls ? WINDOW_CONTROLS_INSET_CLASS : "pl-2",
         desktop && "[-webkit-app-region:drag]",
       )}
+      style={ownControls ? { paddingRight: controlsInset + 8 } : undefined}
     >
+      {ownControls ? (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label="Menu"
+          title="Menu (File, Edit, View, Window)"
+          className={cn("shrink-0 self-center text-muted-foreground", WINDOW_NO_DRAG_CLASS)}
+          onClick={(event) => {
+            const rect = event.currentTarget.getBoundingClientRect();
+            desktopApi()?.titleBar?.popupMenu({ x: rect.left, y: rect.bottom + 4 });
+          }}
+        >
+          <MenuIcon />
+        </Button>
+      ) : null}
       <UpdatePill />
       <div
         role="tablist"

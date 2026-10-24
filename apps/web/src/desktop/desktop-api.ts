@@ -49,6 +49,25 @@ export type PegoDesktopApi = {
   setThemeSource?: (mode: "light" | "dark" | "system") => void;
   /** The in-app browser view (absent in older shells and in a plain browser). */
   browser?: DesktopBrowserApi;
+  /** Linux and Windows: the window's title bar (absent on macOS and in older shells). */
+  titleBar?: DesktopTitleBarApi;
+};
+
+/**
+ * "pego": the window controls are drawn over the right end of the editor's tab row and the menu
+ * opens from a button; "system": the window manager's title bar and menu bar.
+ */
+export type DesktopTitleBarMode = "pego" | "system";
+
+export type DesktopTitleBarApi = {
+  /** The mode this window was created with. */
+  mode: DesktopTitleBarMode;
+  /** Color the window controls (#rrggbb) and size their strip (px, the tab row height). */
+  setOverlay: (overlay: { color: string; symbolColor: string; height: number }) => void;
+  /** Open the app menu (File, Edit, View, Window) at a point in the window, CSS px. */
+  popupMenu: (point: { x: number; y: number }) => void;
+  /** Save the mode for the next start; resolves whether it was saved. */
+  setMode: (mode: DesktopTitleBarMode) => Promise<boolean>;
 };
 
 /** A rectangle in the editor window, CSS px from the top-left of the page viewport. */
