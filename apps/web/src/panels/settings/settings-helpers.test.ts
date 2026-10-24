@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { describeUpdate } from "./update-view";
+import { channelLockHint, describeUpdate } from "./update-view";
 import { moveTabFocus } from "./tab-nav";
 
 describe("describeUpdate", () => {
@@ -35,4 +35,15 @@ describe("moveTabFocus", () => {
     expect(moveTabFocus(1, "End", 4)).toBe(3);
   });
   test("ignores other keys", () => expect(moveTabFocus(1, "a", 4)).toBeNull());
+});
+
+describe("channelLockHint", () => {
+  test("locks the channel on macOS while an update is ready", () => {
+    expect(channelLockHint({ state: "ready", version: "1.0.0" }, "darwin")).toContain("Restart");
+    expect(channelLockHint({ state: "ready", version: "1.0.0" }, "win32")).toBeNull();
+    expect(
+      channelLockHint({ state: "downloading", version: "1.0.0", percent: 3 }, "darwin"),
+    ).toBeNull();
+    expect(channelLockHint({ state: "idle" }, "darwin")).toBeNull();
+  });
 });

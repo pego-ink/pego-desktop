@@ -97,14 +97,49 @@ CI runs the same on every push to `main`.
    **draft** release on [pego-ink/pego-desktop](https://github.com/pego-ink/pego-desktop/releases) with the dmg, zip, blockmaps and
    `latest-mac.yml`. Review it, then **publish it to ship the update**: `gh release edit vX.Y.Z --draft=false`.
 
-Installed apps check the published releases of this public repo (launch + 10s, then every 6h), download in the
-background and offer "Restart to update". Drafts are invisible to the updater, so nothing ships until you publish.
-`-beta` versions are marked pre-release; a `-beta` build of the app picks up beta and stable releases, a stable build
-only stable ones. No extra secrets: the workflow uses the built-in `GITHUB_TOKEN`.
+Installed apps (macOS, the Windows installer, the Linux AppImage) check the published releases of this public repo
+(launch + 10s, then every 6h), download in the background and offer "Restart to update". Drafts are invisible to the
+updater, so nothing ships until you publish. `-beta` versions are marked pre-release; a `-beta` build of the app picks
+up beta and stable releases, a stable build only stable ones. No extra secrets: the workflow uses the built-in
+`GITHUB_TOKEN`. The release also carries the update feeds `latest-mac.yml`, `latest.yml` (Windows) and
+`latest-linux.yml` / `latest-linux-arm64.yml` with their blockmaps.
 
-Needs these repository secrets: `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
+Needs these secrets, stored as **secrets of the `release` environment** (not repository secrets): `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
 `APPLE_TEAM_ID`, `APPLE_ID`, `APPLE_PASSWORD` (app-specific password). The workflow fails if any is missing.
 Details and local testing (`PEGO_FAKE_UPDATE=1`): [apps/desktop/README.md](apps/desktop/README.md#auto-update).
+
+### Nightly
+
+Every night the `nightly` workflow builds `dev` for all platforms (macOS signed and notarized, Windows x64, Linux
+x64 + arm64) and publishes it as a **prerelease** named like `v0.1.0-nightly.20261024.17.1` (the app version without
+its prerelease part, the date, the run number, the run attempt; computed in CI, nothing to commit). The notes list the commits since
+the previous nightly.
+
+- **Schedule**: 19:00 UTC (02:00 WIB) on `dev`. Nothing is built when `dev` has not moved since the last nightly.
+  Run it by hand from Actions, Nightly, Run workflow, branch `dev` (tick `force` to build an unchanged `dev`).
+- **Team**: Settings, About & Updates, Update channel, Nightly. The app saves the choice, checks right away, downloads
+  in the background and offers "Restart to update". Switch back to Stable the same way: it installs the newest beta or
+  stable release even though its version number is lower. On macOS the switch is locked while a downloaded update
+  waits for its restart (the control says so). No re-download by hand. A nightly build with no saved choice
+  stays on Nightly. Stable and beta builds never get a nightly unless the user picks Nightly. Only the macOS app,
+  the Windows installer and the Linux AppImage can switch; deb, rpm, pacman, tar.gz and the Windows zip are
+  updated by hand (they do not show the setting).
+- **Retention**: the newest 7 nightly releases stay, older ones are deleted with their tags. Stable and beta
+  releases are never touched.
+- **Version order**: a nightly of a base version that already shipped (`0.1.0-nightly...` after `0.1.0`) sorts below
+  that stable release, so bump `apps/desktop/package.json` to the next version after a release, as usual.
+- **Approval**: each nightly waits for **one** approval of the owner (GitHub notification, "Review deployments")
+  before the macOS job signs; the Linux and Windows builds do not wait, and nothing is published until the
+  signed macOS build exists. Approve it in the run's page, or the nightly does not ship that night.
+- **One-time setup (owner)**, in Settings, Environments:
+  1. Create the environment `nightly`: deployment branches and tags = selected branches, `dev` only; required
+     reviewers = the owner.
+  2. Add the six `APPLE_*` secrets (`APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD`, `APPLE_SIGNING_IDENTITY`,
+     `APPLE_TEAM_ID`, `APPLE_ID`, `APPLE_PASSWORD`) to **both** `release` and `nightly` as environment secrets (same values).
+  3. Delete the six repository-level copies. The workflows pass the six names to the reusable build, and only its
+     macOS job, which declares the environment, receives the environment's values; no other job sees them.
+     The workflows need the default workflow permissions to stay read-only (the publish job asks for
+     `contents: write` itself).
 
 ## Layout
 

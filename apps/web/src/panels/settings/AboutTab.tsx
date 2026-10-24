@@ -1,9 +1,13 @@
+import { useEffect } from "react";
 import { ExternalLinkIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
-import { desktopApi } from "@/desktop/desktop-api";
+import { SegmentedControl } from "@pego/ui/components/segmented-control";
+import { desktopApi, type UpdateChannel } from "@/desktop/desktop-api";
+import { useUpdateChannel } from "@/desktop/use-update-channel";
 import { useUpdateStatus } from "@/desktop/use-update-status";
+import { SettingRow } from "./SettingRow";
 import { WEB_VERSION } from "./app-version";
-import { describeUpdate } from "./update-view";
+import { channelLockHint, describeUpdate } from "./update-view";
 import { PegoMark } from "@/components/PegoMark";
 
 const RELEASES_URL = "https://github.com/pego-ink/pego-desktop/releases";
@@ -21,6 +25,55 @@ const ExternalLink = ({ href, children }: { href: string; children: string }) =>
   </a>
 );
 
+const CHANNEL_OPTIONS = [
+  { value: "stable", label: "Stable", title: "Released versions, tested before they ship" },
+  {
+    value: "nightly",
+    label: "Nightly",
+    title: "Built every night from the latest development work",
+  },
+] as const satisfies readonly { value: UpdateChannel; label: string; title: string }[];
+
+/** Stable / Nightly switch; hidden while loading and for installs that cannot update themselves. */
+const ChannelRow = () => {
+  const channel = useUpdateChannel((s) => s.channel);
+  const error = useUpdateChannel((s) => s.error);
+  const load = useUpdateChannel((s) => s.load);
+  const select = useUpdateChannel((s) => s.select);
+  const status = useUpdateStatus((s) => s.status);
+  const lock = channelLockHint(status, desktopApi()?.platform ?? "");
+  useEffect(() => {
+    void load();
+  }, [load]);
+  if (!channel) return null;
+  return (
+    <div>
+      <SettingRow
+        title="Update channel"
+        description={
+          lock ?? "Nightly: built every night from the latest development work; may be unstable."
+        }
+      >
+        {() => (
+          <SegmentedControl
+            aria-label="Update channel"
+            value={channel}
+            options={CHANNEL_OPTIONS}
+            disabled={lock !== null}
+            onChange={(next) => void select(next)}
+            className="w-56"
+          />
+        )}
+      </SettingRow>
+      {error ? (
+        <p role="alert" className="text-xs text-destructive">
+          Could not switch the update channel. {error}
+        </p>
+      ) : null}
+    </div>
+  );
+};
+
 const UpdatesSection = () => {
   const status = useUpdateStatus((s) => s.status);
   const api = desktopApi();
@@ -32,6 +85,7 @@ const UpdatesSection = () => {
   const view = describeUpdate(status);
   return (
     <div className="flex flex-col gap-3">
+      <ChannelRow />
       <div className="flex items-center gap-3">
         {view.action === "restart" ? (
           <Button size="sm" onClick={() => api.installUpdate()}>

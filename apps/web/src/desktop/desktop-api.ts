@@ -9,6 +9,13 @@ export type UpdateStatus =
   | { state: "error"; message: string };
 
 /**
+ * Which line of releases the desktop app updates from. Mirrors `UpdateChannel` in
+ * apps/desktop/src/update-channel.ts: "stable" = published stable releases, "nightly" = the build
+ * made from dev every night.
+ */
+export type UpdateChannel = "stable" | "nightly";
+
+/**
  * What the Electron preload exposes as `window.pegoDesktop`. Undefined in a plain browser,
  * where update UI is hidden.
  */
@@ -19,6 +26,16 @@ export type PegoDesktopApi = {
   checkForUpdates: () => Promise<void>;
   /** Quit and install a downloaded update. */
   installUpdate: () => void;
+  /**
+   * The update channel in effect; null when this install cannot update itself (a deb/rpm install,
+   * the portable zip). Absent in older shells.
+   */
+  getUpdateChannel?: () => Promise<UpdateChannel | null>;
+  /**
+   * Saves the channel, then checks it right away (the download and "Restart to update" follow
+   * through `onUpdateStatus`). Resolves with the channel now in effect. Absent in older shells.
+   */
+  setUpdateChannel?: (channel: UpdateChannel) => Promise<UpdateChannel | null>;
   /** Subscribe to update status changes; returns an unsubscribe function. */
   onUpdateStatus: (listener: (status: UpdateStatus) => void) => () => void;
   /** Native menu commands the page handles itself (absent in older shells). */

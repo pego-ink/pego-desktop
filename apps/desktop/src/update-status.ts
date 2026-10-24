@@ -157,6 +157,8 @@ export const UPDATE_CHANNELS = {
   install: "pego:update:install",
   getStatus: "pego:update:get-status",
   status: "pego:update:status",
+  getChannel: "pego:update:get-channel",
+  setChannel: "pego:update:set-channel",
 } as const;
 
 /** Only the app's own origin may drive updates (never a navigated-to foreign page). */
