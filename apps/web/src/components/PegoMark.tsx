@@ -1,17 +1,21 @@
 import { cn } from "@pego/ui/lib/utils";
 
 /**
- * Pego mark (design/logo/pego-mark.svg): the geometric pigeon on its dark tile. Brand colors are
+ * Pego mark (brand/logo/favicon.svg): bubblegum and white shapes on a grape tile. Brand colors are
  * fixed on purpose so the mark reads the same in light and dark themes.
  */
 export const PegoMark = ({ className }: { className?: string }) => (
-  <svg aria-hidden viewBox="0 0 64 64" className={cn("size-6 shrink-0", className)}>
-    <rect width="64" height="64" rx="16" fill="#0b1f17" />
-    <path d="M16 24 L6 24 L16 36 Z" fill="#ffffff" />
-    <path d="M16 24 L48 24 A32 32 0 0 1 16 56 Z" fill="#ffffff" />
-    <path d="M16 24 L35 24 A19 19 0 0 1 16 43 Z" fill="#7fe0b8" />
-    <circle cx="43" cy="17" r="9" fill="#ffffff" />
-    <path d="M51 14 L58 17.5 L51 21 Z" fill="#7fe0b8" />
-    <circle cx="44" cy="15" r="2" fill="#0b1f17" />
+  <svg aria-hidden viewBox="0 0 32 32" className={cn("size-6 shrink-0", className)}>
+    <rect width="32" height="32" rx="8" fill="#5B2EFF" />
+    <svg x="6.35" y="6.08" width="17.3" height="19.84" viewBox="0 0 229.9133 263.6982">
+      <path
+        d="M7.91862 159.95447c-15.23-11.60001-7.02-35.91 12.11999-35.91l130.74999 0c11.04477 0.0022 19.99781 8.9552 20 20l0 99.62c0 16.54998-18.95999 25.94-32.11999 15.89999l-79.88-60.85001-50.86999-38.75998z"
+        fill="#FF6FB5"
+      />
+      <path
+        d="M169.67961 102.52345c-2.05493 1.00144-4.31101 1.52161-6.59699 1.52101l-49.24299 0c-8.31799 0-15.06101-6.74299-15.06101-15.061l0-73.92099c-0.00084-5.18382 2.66441-10.00371 7.05536-12.75899 4.39093-2.75528 9.89029-3.05864 14.55763-0.80302l101.00101 48.7c11.33301 5.468 11.371 21.59801 0.05301 27.111l-51.76602 25.21199z"
+        fill="#FFFFFF"
+      />
+    </svg>
   </svg>
 );

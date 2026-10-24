@@ -1,7 +1,7 @@
 ---
 title: A new look for the editor
 date: 2026-10-24T14:00:00Z
-summary: Calmer chrome, grape for the agent and bubblegum for you, Geist and JetBrains Mono, and the tools on the left edge of the canvas.
+summary: Calmer chrome, grape for the agent and bubblegum for you, a new app icon, Geist and JetBrains Mono, and the tools on the left edge of the canvas.
 tags: [improved]
 ---
 
@@ -14,6 +14,10 @@ The agent's plans, steps, tool calls and its "Designing…" bar are grape, and s
 ## Easier to read
 
 Interface text is set in Geist, and values such as positions, sizes, colors, ids and tool names are in JetBrains Mono. Section labels like Plan, Pages and Layers are small mono capitals.
+
+## A new icon
+
+Pego has a new mark: bubblegum and white shapes on a grape tile. You'll see it in the editor, the browser tab and as the app icon in your Dock or launcher.
 
 ## Tools on the left
 
