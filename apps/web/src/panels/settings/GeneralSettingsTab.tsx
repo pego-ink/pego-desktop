@@ -100,7 +100,6 @@ const TITLE_BAR_OPTIONS = [
   { value: "system", label: "System", title: "Your desktop's own title bar and menu bar" },
 ] satisfies { value: DesktopTitleBarMode; label: string; title: string }[];
 
-/** Linux / Windows desktop app: which title bar the next start uses. */
 const BROWSER_SIDE_OPTIONS = [
   { value: "left", label: "Left", title: "In the side panel, like Agent and Layers" },
   { value: "right", label: "Right", title: "Its own column on the right, beside the canvas" },
@@ -129,6 +128,7 @@ const BrowserSideSetting = () => {
   );
 };
 
+/** Linux / Windows desktop app: which title bar the next start uses. */
 const TitleBarSetting = () => {
   const titleBar = desktopApi()?.titleBar;
   const [mode, setMode] = useState<DesktopTitleBarMode>(titleBar?.mode ?? "pego");

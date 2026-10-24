@@ -67,8 +67,9 @@ export const useLayoutStore = create<LayoutState>((set, get) => {
   };
   const panels = (): PanelsState => ({ rail: get().rail, browserOpen: get().browserOpen });
   return {
-    rail: readRailState(),
-    browserOpen: readFlag(BROWSER_KEY),
+    // Saved separately from the side: a side panel left on the Browser tab while the browser is
+    // on the right hands it to the column, like moving it does.
+    ...moveBrowser({ rail: readRailState(), browserOpen: readFlag(BROWSER_KEY) }, browserSide()),
     propertiesPinned: readFlag(PIN_KEY),
     rightHidden: readFlag(RIGHT_KEY),
     pressRailTab: (tab) => setPanels(pressPanel(panels(), browserSide(), tab)),

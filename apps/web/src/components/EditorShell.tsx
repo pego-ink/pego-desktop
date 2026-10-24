@@ -154,7 +154,9 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
     },
     [attachStandard, attachBrowser],
   );
-  const panel = rail.tab === "browser" && !browserOnRight ? browser : standard;
+  // With the browser on the right the side panel never shows its tab (the column has it).
+  const shown = browserOnRight && rail.tab === "browser" ? "agent" : rail.tab;
+  const panel = shown === "browser" ? browser : standard;
   return (
     <aside
       ref={attachElement}
@@ -173,12 +175,12 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
           id={railPanelId(id)}
           role="tabpanel"
           aria-labelledby={railTabId(id)}
-          hidden={rail.tab !== id}
+          hidden={shown !== id}
           className="min-h-0 flex-1 flex-col [&:not([hidden])]:flex"
         >
           {/* Assets are derived from the whole document, and the browser owns a native view:
               mount both only while shown (the view keeps its page while hidden). */}
-          {(id !== "assets" && id !== "browser") || rail.tab === id ? <RailPanel tab={id} /> : null}
+          {(id !== "assets" && id !== "browser") || shown === id ? <RailPanel tab={id} /> : null}
         </div>
       ))}
       <ResizeHandle
