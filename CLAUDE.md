@@ -253,7 +253,10 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   viewport; `workspace/live-document.ts`), the others keep a snapshot. Open documents through `openDocument`
   (File > Open, drops, .pen import, `open_document`, projects), never with `useDocumentStore.load` directly; it
   asks the user about unsaved changes ("ask"), refuses for Claude Code ("refuse": save first) or drops them
-  ("discard"). Switching is blocked while a panel agent run is active. The Dashboard is a view (the Pego logo in
+  ("discard"). Switching tabs is never blocked: a run keeps editing the document it started in (its session
+  home, `workspace/document-target.ts`), through the canvas while that tab is shown and its snapshot while it is
+  in the background, and the tab shows a running marker; only replacing a tab's document is refused ("busy")
+  while a run works in it. The Dashboard is a view (the Pego logo in
   the icon rail opens it), not a workspace.
 - Desktop title bar: macOS hides it (traffic lights over the tab row). Linux and Windows default to the "pego"
   title bar: `titleBarStyle: "hidden"` + `titleBarOverlay`, the window controls drawn over the right end of the
