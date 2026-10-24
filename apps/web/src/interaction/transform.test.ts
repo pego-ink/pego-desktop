@@ -70,7 +70,7 @@ describe("move/resize ops", () => {
 
   describe("group resize scales contents", () => {
     const doc = documentSchema.parse({
-      version: 7,
+      version: 8,
       id: "d",
       name: "d",
       children: [

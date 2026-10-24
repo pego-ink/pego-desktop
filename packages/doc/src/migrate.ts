@@ -34,6 +34,9 @@ const MIGRATIONS: Record<number, (doc: RawDocument) => RawDocument> = {
   // v7 only adds a fill type: `{ type: "shader" }` on frames, rectangles, ellipses and paths. The
   // bump makes older builds refuse these files instead of failing validation.
   6: (doc) => ({ ...doc, version: 7 }),
+  // v8 only adds an optional prop: `layoutPosition` (absolute children of flex frames) on every
+  // rendered node. The bump makes older builds refuse these files instead of laying them out wrong.
+  7: (doc) => ({ ...doc, version: 8 }),
 };
 
 /** "page-1", or "page-1-2"... if a node already uses that id. */

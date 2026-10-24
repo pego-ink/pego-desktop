@@ -1,5 +1,6 @@
 import {
   findNode,
+  placedByLayout,
   resolveNumber,
   scaleSubtreeOps,
   type Box,
@@ -104,12 +105,15 @@ export const resizeBox = (
   };
 };
 
-/** True when the parent frame positions its children itself (flex). */
+/**
+ * True when the parent frame positions the node itself (flex), so its x/y are not used. An
+ * absolute child (`layoutPosition: "absolute"`) keeps its own x/y and moves like a free node.
+ */
 export const isFlexChild = (doc: PegoDocument, id: string): boolean => {
   const parentId = getNodeIndex(doc).get(id)?.parentId;
-  if (!parentId) return false;
-  const parent = findNode(doc, parentId);
-  return parent?.type === "frame" && parent.layout !== "none";
+  const node = findNode(doc, id);
+  if (!parentId || !node) return false;
+  return placedByLayout(findNode(doc, parentId), node);
 };
 
 /** Selected ids minus any whose ancestor is also selected (they move with the ancestor). */

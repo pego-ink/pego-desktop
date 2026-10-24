@@ -3,7 +3,7 @@ import { documentSchema, sampleDoc, type PegoDocument } from "@pego/doc";
 import { serializeDocument } from "./serialize";
 
 const doc: PegoDocument = documentSchema.parse({
-  version: 7,
+  version: 8,
   id: "d",
   name: "App",
   variables: { gap: { type: "number", value: 8 }, accent: { type: "color", value: "#0E7C5A" } },
@@ -48,6 +48,15 @@ const doc: PegoDocument = documentSchema.parse({
             },
             { type: "ref", id: "b2", ref: "btn", descendants: { label: { content: "Go" } } },
             { type: "path", id: "p", geometry: "M0 0 L10 10 ".repeat(20) },
+            {
+              type: "rectangle",
+              id: "veil",
+              layoutPosition: "absolute",
+              x: 0,
+              y: 120,
+              width: 400,
+              height: 80,
+            },
           ],
         },
         { type: "group", id: "g", x: 5, children: [{ type: "ellipse", id: "e", x: 3, width: 4 }] },
@@ -73,6 +82,13 @@ describe("serializeDocument", () => {
     );
     expect(text).not.toContain("x=99");
     expect(text).not.toContain("iconSet");
+  });
+
+  test("an absolute child of a flex frame shows its flag and position", () => {
+    expect(text).toContain("rectangle#veil layoutPosition=absolute y=120 width=400 height=80");
+    expect(serializeDocument(doc, { rootId: "veil" })).toContain(
+      "rectangle#veil layoutPosition=absolute y=120",
+    );
   });
 
   test("shows x/y under group and none-layout parents", () => {
@@ -104,7 +120,7 @@ describe("serializeDocument", () => {
     expect(sub).not.toContain("x=99");
     const shallow = serializeDocument(doc, { maxDepth: 0 });
     expect(shallow).toContain("frame#page");
-    expect(shallow).toContain("(3 children not shown)");
+    expect(shallow).toContain("(4 children not shown)");
     expect(shallow).not.toContain("frame#btn");
   });
 
@@ -122,7 +138,7 @@ describe("serializeDocument", () => {
 
 describe("serializeDocument image nodes", () => {
   const withImage = documentSchema.parse({
-    version: 7,
+    version: 8,
     id: "d",
     name: "Img",
     variables: {},
@@ -173,7 +189,7 @@ describe("serializeDocument image nodes", () => {
 
 describe("serializeDocument v1 props", () => {
   const v1: PegoDocument = documentSchema.parse({
-    version: 7,
+    version: 8,
     id: "d",
     name: "Effects",
     children: [
@@ -221,7 +237,7 @@ describe("serializeDocument fills", () => {
   test("gradients inline, images by size", () => {
     const text = serializeDocument(
       documentSchema.parse({
-        version: 7,
+        version: 8,
         id: "d",
         name: "Fills",
         children: [

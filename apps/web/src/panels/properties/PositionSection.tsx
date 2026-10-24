@@ -1,7 +1,9 @@
 import { ChevronDownIcon, RotateCwIcon, SunIcon } from "lucide-react";
-import { resolveNumber, type PegoNode } from "@pego/doc";
+import { isAbsolute, resolveNumber, type PegoNode } from "@pego/doc";
 import { NumberField } from "@pego/ui/components/number-field";
 import { PropertyRow, PropertySection } from "@pego/ui/components/property-section";
+import { getLayout } from "@/canvas/layout";
+import { flexChildren, layoutPositionOps } from "@/interaction/layout-position";
 import { useDocumentStore } from "@/store/use-document-store";
 import { commonValue } from "@/panels/mixed-value";
 import { PropNumber } from "@/panels/properties/PropNumber";
@@ -75,6 +77,48 @@ const SizeField = ({
   );
 };
 
+/**
+ * "Absolute position" for children of an auto-layout frame: out of the flow, at their own x/y
+ * over the other children. Shown only when every selected layer sits in such a frame.
+ */
+const AbsoluteToggle = ({ nodes }: { nodes: readonly PegoNode[] }) => {
+  const inFlex = useDocumentStore(
+    (s) =>
+      flexChildren(
+        s.doc,
+        nodes.map((node) => node.id),
+      ).length === nodes.length,
+  );
+  if (!inFlex) return null;
+  const common = commonValue(nodes.map(isAbsolute));
+  return (
+    <label
+      className="flex h-7 items-center gap-2 text-[13px] text-muted-foreground"
+      title="Take the layer out of the auto layout: it stays at its own X and Y, over the other layers"
+    >
+      <input
+        type="checkbox"
+        className="size-3.5 accent-primary"
+        checked={common.kind === "same" && common.value}
+        ref={(input) => {
+          if (input) input.indeterminate = common.kind === "mixed";
+        }}
+        onChange={(event) => {
+          const { doc, commit } = useDocumentStore.getState();
+          const ops = layoutPositionOps(
+            doc,
+            getLayout(doc),
+            nodes.map((node) => node.id),
+            event.target.checked,
+          );
+          if (ops.length > 0) commit(ops, { label: "Toggle absolute position" });
+        }}
+      />
+      Absolute position
+    </label>
+  );
+};
+
 export const PositionSection = ({ nodes }: { nodes: readonly PegoNode[] }) => {
   const single = nodes.length === 1;
   return (
@@ -83,6 +127,7 @@ export const PositionSection = ({ nodes }: { nodes: readonly PegoNode[] }) => {
         <PropNumber nodes={nodes} propKey="x" label="X" labelTitle="Scrub X" history="Change X" />
         <PropNumber nodes={nodes} propKey="y" label="Y" labelTitle="Scrub Y" history="Change Y" />
       </PropertyRow>
+      <AbsoluteToggle nodes={nodes} />
       <PropertyRow>
         <SizeField nodes={nodes} propKey="width" label="W" />
         <SizeField nodes={nodes} propKey="height" label="H" />

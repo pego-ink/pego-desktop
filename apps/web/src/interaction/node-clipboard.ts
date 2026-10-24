@@ -6,6 +6,7 @@ import {
   findNode,
   isContainer,
   nodeSchema,
+  placedByLayout,
   resolveInstance,
   resolveNumber,
   type Layout,
@@ -334,7 +335,7 @@ export type PasteAtTarget = { pageId: string; selection: readonly string[] };
 /**
  * Paste here: copies whose bounds start at `at` (canvas coordinates). They go into the selected
  * frame or group when exactly one is selected (like ⌘V), otherwise onto the page. A flex frame
- * places its children itself, so nothing is positioned there.
+ * places its children itself, so nothing is positioned there (unless a copy is absolute).
  */
 export const pasteNodesAt = (
   doc: PegoDocument,
@@ -348,7 +349,7 @@ export const pasteNodesAt = (
   const { ops } = prepared;
   const into = containerTarget(doc, target.selection);
   const parent = into ? findNode(doc, into) : null;
-  const flexParent = parent?.type === "frame" && parent.layout !== "none";
+  const flexParent = prepared.copies.every((node) => placedByLayout(parent, node));
   const box = into ? layout.get(into) : undefined;
   const placed = flexParent
     ? prepared.copies

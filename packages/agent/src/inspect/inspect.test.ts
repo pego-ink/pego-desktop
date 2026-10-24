@@ -251,6 +251,22 @@ describe("check_layout rules", () => {
     expect(hit?.issue).toContain("ignored");
   });
 
+  test("x/y on an absolute flex child is its position, not an issue", () => {
+    const issues = issuesOf([
+      frame("col", { layout: "vertical", width: 100, height: 100 }, [
+        rect("badge", {
+          layoutPosition: "absolute",
+          x: 80,
+          y: 4,
+          width: 12,
+          height: 12,
+          fill: "#000000",
+        }),
+      ]),
+    ]);
+    expect(issues.find((i) => i.nodeId === "badge" && i.issue.includes("ignored"))).toBeUndefined();
+  });
+
   test("contrast uses the nearest ancestor fill and resolves variables", () => {
     const doc = makeDoc(
       [

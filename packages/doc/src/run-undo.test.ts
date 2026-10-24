@@ -6,7 +6,7 @@ import { findNode } from "./tree";
 
 const makeDoc = (): PegoDocument =>
   documentSchema.parse({
-    version: 7,
+    version: 8,
     id: "doc",
     name: "Test",
     variables: {},

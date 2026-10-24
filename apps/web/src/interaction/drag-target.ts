@@ -1,6 +1,7 @@
 import {
   findLocation,
   findNode,
+  isAbsolute,
   isContainer,
   pageOf,
   resolveNumber,
@@ -245,6 +246,8 @@ export type DragInput = {
  * reparents the block to the deepest frame under the pointer or the root. Free targets keep each
  * node's on-screen position and follow the pointer; auto-layout targets insert at the pointer's
  * slot. Selections spanning several parents just move free nodes (flex children stay put).
+ * Absolute children (`layoutPosition: "absolute"`) never reorder: they move like free nodes, in
+ * their auto-layout parent or into another frame.
  */
 export const planDrag = (input: DragInput): DragPlan => {
   const { startDoc, startLayout, doc, layout, point, dx, dy, snap } = input;
@@ -277,7 +280,11 @@ export const planDrag = (input: DragInput): DragPlan => {
   // Ops name the page for the top level (null in the node index), so they apply on any page.
   const opParent = target ?? pageOf(doc, first)?.id ?? null;
   const targetNode = target ? findNode(doc, target) : null;
-  if (isFlexFrame(targetNode) && target) {
+  const floating = tops.every((id) => {
+    const node = findNode(doc, id);
+    return node !== null && isAbsolute(node);
+  });
+  if (isFlexFrame(targetNode) && target && !floating) {
     const slot = slotIndex(doc, layout, target, point, new Set(tops));
     return { ops: reorderOps(doc, target, ordered, slot), flexParentId: target };
   }

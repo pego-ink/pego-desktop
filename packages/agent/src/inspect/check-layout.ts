@@ -1,6 +1,7 @@
 import {
   findLocation,
   isContainer,
+  placedByLayout,
   MAX_INSTANCE_DEPTH,
   representativeColor,
   resolveColor,
@@ -277,9 +278,10 @@ const checkNode = (
 
   if (!isContainer(node)) return;
 
-  // Flex children with x/y (ignored by layout).
+  // Flex children with x/y (ignored by layout; absolute ones use them).
   if (node.type === "frame" && node.layout !== "none") {
     for (const child of children) {
+      if (!placedByLayout(node, child)) continue;
       const x = resolveNumber(child.x, doc.variables, 0);
       const y = resolveNumber(child.y, doc.variables, 0);
       if (x !== 0 || y !== 0) {
@@ -288,7 +290,7 @@ const checkNode = (
           "info",
           child,
           `x/y are set (${px(x)}, ${px(y)}) but "${label(node)}" lays out its children, so they are ignored`,
-          "Remove x and y, and use gap, padding and alignItems on the parent. Set the parent layout to none to position freely.",
+          'Remove x and y, and use gap, padding and alignItems on the parent. For a layer that floats over the others (overlay, sheet, badge), set layoutPosition: "absolute" on it.',
         );
       }
     }

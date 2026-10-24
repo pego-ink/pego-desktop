@@ -24,7 +24,7 @@ const PAGE = "page";
 
 /** A one-page document holding `children` at its top level. */
 const onPage = (children: PegoNode[]): PegoDocument => ({
-  version: 7,
+  version: 8,
   id: "d",
   name: "d",
   variables: {},
@@ -189,6 +189,40 @@ describe("wouldNestComponent", () => {
 });
 
 describe("planDrag", () => {
+  /** makeDoc with an absolute badge in the flex stage, at (240, 40) from its corner. */
+  const withBadge = (): PegoDocument => {
+    const doc = makeDoc();
+    return withTop(
+      doc,
+      top(doc).map((n) =>
+        n.id === "stage" && n.type === "frame"
+          ? {
+              ...n,
+              children: [
+                ...n.children,
+                { ...rect("badge", 240, 40), width: 20, height: 20, layoutPosition: "absolute" },
+              ],
+            }
+          : n,
+      ),
+    );
+  };
+
+  test("an absolute child of a flex frame moves freely instead of reordering", () => {
+    const doc = withBadge();
+    // badge sits at doc (340,140); drag it 30 left and 20 up, still inside the stage.
+    const { plan, next } = run(doc, ["badge"], { x: 320, y: 125 }, -30, -20);
+    expect(plan.flexParentId).toBeNull();
+    expect(order(next, "stage")).toEqual(["a", "b", "c", "badge"]);
+    expect(findLocation(next, "badge")?.node).toMatchObject({ x: 210, y: 20 });
+  });
+
+  test("its flow siblings still reorder around it", () => {
+    const doc = withBadge();
+    const { next } = run(doc, ["a"], { x: 300, y: 120 }, 190, 0);
+    expect(order(next, "stage")).toEqual(["b", "c", "a", "badge"]);
+  });
+
   test("flex child reorders live along the main axis", () => {
     const doc = makeDoc();
     const { plan, next } = run(doc, ["a"], { x: 300, y: 120 }, 190, 0);

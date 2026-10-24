@@ -32,7 +32,7 @@ const rect = (id: string, x: number, y: number, w = 50, h = 50): PegoNode => ({
 
 const docWith = (children: PegoNode[]): PegoDocument =>
   ({
-    version: 7,
+    version: 8,
     id: "d",
     name: "d",
     variables: {},

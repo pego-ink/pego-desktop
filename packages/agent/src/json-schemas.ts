@@ -30,6 +30,12 @@ const nodePropSchemas: Record<string, JsonSchema> = {
   width: sizing,
   height: sizing,
   rotation: numberValue,
+  layoutPosition: {
+    type: "string",
+    enum: ["auto", "absolute"],
+    description:
+      "Child of a horizontal or vertical frame only: absolute keeps it out of the flow at its own x/y from the frame's top-left corner, over the other children (overlay, bottom sheet, badge, floating button). Default auto. Not on pages.",
+  },
   flipX: {
     type: "boolean",
     description: "Mirror left-right around the node's center. Not on pages.",
@@ -171,7 +177,7 @@ export const NODE_FORMAT_DESCRIPTION =
   "path (geometry, viewBox, strokeCap, strokeJoin, startMarker, endMarker, fill, stroke, effects), " +
   "image (src, fit, cornerRadius, stroke, alt), " +
   "text (content, fontFamily, fontSize, fontWeight, fontStyle, lineHeight, letterSpacing, textAlign, fill, effects), icon (iconName, iconSet, fill, effects), " +
-  "ref (ref, descendants). Every node also takes visible (false hides it). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
+  "ref (ref, descendants). Every node also takes visible (false hides it) and, in a horizontal or vertical frame, layoutPosition (absolute: placed at its own x/y over the flow). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
   'Shape fill may be {"type":"linear","angle":180,"stops":[{"color","position":0..1}, ...]} (angle like CSS: 0 up, 90 right), ' +
   '{"type":"radial","center":[0.5,0.5],"radius":[0.5,0.5],"stops":[...]} or {"type":"image","src":"data:image/...;base64,...","fit":"cover"|"contain"|"stretch"}. ' +
   'stroke: {"color","width"} with width one number or [top,right,bottom,left]. ' +

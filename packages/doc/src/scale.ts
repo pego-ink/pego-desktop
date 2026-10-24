@@ -1,4 +1,4 @@
-import type { Layout } from "./layout";
+import { placedByLayout, type Layout } from "./layout";
 import type { Op } from "./ops";
 import type { PegoDocument, PegoNode } from "./schema";
 import { findNode } from "./tree";
@@ -146,7 +146,7 @@ export const scaleSubtreeOps = (
   const ops: Op[] = [];
 
   const visit = (node: PegoNode, parent: PegoNode) => {
-    const flexChild = parent.type === "frame" && parent.layout !== "none";
+    const flexChild = placedByLayout(parent, node);
     const props = scaleProps(node, layout.get(node.id), !flexChild, sx, sy);
     if (Object.keys(props).length > 0) ops.push({ op: "update", id: node.id, props });
     if ("children" in node) for (const child of node.children) visit(child, node);
