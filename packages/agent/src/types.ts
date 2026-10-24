@@ -79,6 +79,12 @@ export type ToolHost = {
   }) => Promise<StockImage[]>;
   /** The in-app browser (desktop app only); `browser` returns `unsupported` without it. */
   browser?: BrowserHost;
+  /**
+   * Download the image at an https URL (past CORS when needed) as a `data:image/...;base64,` URL,
+   * scaled for embedding. place_image embeds web images with it; without it they stay URLs.
+   * Rejects with a user-readable message.
+   */
+  fetchImage?: (url: string) => Promise<string>;
 };
 
 /** A photo from an image search, with what crediting it needs. */

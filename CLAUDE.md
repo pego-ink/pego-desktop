@@ -297,7 +297,10 @@ When you add a node prop, update the canvas renderer and the exporter together, 
   drawn over the Browser panel (`apps/desktop/src/browser-*.ts`, `apps/web/src/browser/`). The editor drives it
   over IPC + CDP; page scripts run in an isolated world and return a `DomSnapshot` that `media/dom.ts` turns
   into nodes. Tool `browser` (`tools-browser.ts`, host `ToolHost.browser`): load-page (http(s) only),
-  import-to-canvas, screenshot-to-canvas, return-element, return-screenshot, cdp. CDP is an allowlist of
+  import-to-canvas, screenshot-to-canvas, return-element, return-screenshot, cdp, plus search-images
+  (opens Google Images for a query) and find-images (lists the loaded page's photos; `browser-images.ts`,
+  read through `Runtime.evaluate`). `place_image` embeds https images through `ToolHost.fetchImage` (the
+  editor fetches them, past CORS through the bridge's `/fetch-image`), so web photos show and work offline. CDP is an allowlist of
   methods, kept identical in `apps/desktop/src/browser-cdp.ts` (enforced in main) and
   `packages/agent/src/browser-cdp.ts`; page text reaches the model wrapped as untrusted `<page_content>`.
 - Add a test next to every new tool (`*.test.ts`, use `test-host.ts`).
