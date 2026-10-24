@@ -1,11 +1,17 @@
 import { useEffect, useState } from "react";
-import { CANVAS_BACKGROUND, type ResolvedTheme } from "@/theme/theme";
+import type { ResolvedTheme } from "@/theme/theme";
 import { desktopApi, type PegoDesktopApi } from "./desktop-api";
 
 /** The window controls are drawn over the editor's tab row (Linux / Windows "pego" title bar). */
 export const drawsWindowControls = (
   api: Pick<PegoDesktopApi, "platform" | "titleBar"> | undefined,
 ) => api !== undefined && api.platform !== "darwin" && api.titleBar?.mode === "pego";
+
+/** The `--chrome` token per theme (packages/ui globals.css); the top bar and rail color. */
+const CHROME_BACKGROUND: Record<ResolvedTheme, string> = {
+  dark: "#0e0e12",
+  light: "#ffffff",
+};
 
 /** Width the window controls take when the platform does not report it (three 46px buttons). */
 const FALLBACK_CONTROLS_WIDTH = 138;
@@ -61,8 +67,8 @@ export const cssColorToHex = (color: string): string | null => {
 };
 
 /**
- * The overlay for the tab row: its background (the canvas color behind the floating row, the
- * panel background otherwise), the text color for the symbols, and the row height.
+ * The overlay for the tab row: its background (the chrome color; read from the row itself in the
+ * docked layout), the text color for the symbols, and the row height.
  */
 export const titleBarOverlayFor = (
   row: HTMLElement,
@@ -70,9 +76,7 @@ export const titleBarOverlayFor = (
   theme: ResolvedTheme,
 ): { color: string; symbolColor: string; height: number } | null => {
   const style = getComputedStyle(row);
-  const color = floating
-    ? CANVAS_BACKGROUND[theme].toLowerCase()
-    : cssColorToHex(style.backgroundColor);
+  const color = floating ? CHROME_BACKGROUND[theme] : cssColorToHex(style.backgroundColor);
   const symbolColor = cssColorToHex(style.color);
   if (!color || !symbolColor) return null;
   return { color, symbolColor, height: Math.round(row.getBoundingClientRect().height) };

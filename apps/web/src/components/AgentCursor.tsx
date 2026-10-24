@@ -354,7 +354,7 @@ const AgentCursor = ({ sessionId }: { sessionId: string }) => {
       </div>
       <div
         ref={pillRef}
-        className="absolute top-[18px] left-[14px] max-w-40 truncate rounded-full px-2 py-[3px] text-[11px] leading-4 font-medium whitespace-nowrap"
+        className="absolute top-[18px] left-[14px] max-w-40 truncate rounded-md px-2 py-[3px] font-mono text-[11px] leading-4 font-medium whitespace-nowrap"
         style={{
           background: runColor(0),
           color: RUN_INK,

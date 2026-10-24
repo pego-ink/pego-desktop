@@ -5,7 +5,7 @@ import type { Canvas as SkCanvas, Path } from "canvaskit-wasm";
 import { createId, findNode, type Box, type PegoNode } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { getLayout } from "@/canvas/layout";
-import { ACCENT } from "@/canvas/render-overlay";
+import { SELECTION } from "@/canvas/chrome-colors";
 import { docToScreen, type Camera } from "@/canvas/types";
 import {
   drawBox,
@@ -87,7 +87,7 @@ const drawOutline = (
     paint.setAntiAlias(true);
     paint.setStyle(ck.PaintStyle.Stroke);
     paint.setStrokeWidth(1.5);
-    paint.setColor(ck.parseColorString(ACCENT));
+    paint.setColor(ck.parseColorString(SELECTION));
     canvas.drawPath(path, paint);
   } finally {
     paint.delete();

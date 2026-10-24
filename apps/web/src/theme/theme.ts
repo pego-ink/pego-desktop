@@ -8,8 +8,8 @@ const MODES: readonly ThemeMode[] = ["light", "dark", "system"];
 
 /** Canvas backdrop per theme (the area around frames); a step below the panels. */
 export const CANVAS_BACKGROUND: Record<ResolvedTheme, string> = {
-  dark: "#141418",
-  light: "#E9E9EE",
+  dark: "#08080B",
+  light: "#F3EFFA",
 };
 
 const systemPrefersLight = (): boolean =>

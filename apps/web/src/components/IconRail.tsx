@@ -108,8 +108,8 @@ export const IconRail = ({
       aria-label="Editor sidebar"
       className={cn(
         horizontal
-          ? "flex h-11 shrink-0 items-center gap-1 border-b border-border bg-card px-2"
-          : "flex w-11 shrink-0 flex-col items-center gap-3 border-r border-border bg-card py-2.5",
+          ? "flex h-11 shrink-0 items-center gap-1 border-b border-border bg-chrome px-2"
+          : "flex w-12 shrink-0 flex-col items-center gap-3 border-r border-border bg-chrome py-2.5",
         className,
       )}
     >
@@ -121,15 +121,18 @@ export const IconRail = ({
             aria-current={homeActive ? "page" : undefined}
             onClick={onHome}
             className={cn(
-              "flex size-8 items-center justify-center rounded-md outline-none transition-[background-color,scale] duration-(--duration-fast) ease-out hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]",
-              homeActive && "bg-secondary",
+              "flex size-8 items-center justify-center rounded-lg bg-violet-soft outline-none transition-[background-color,scale] duration-(--duration-fast) ease-out hover:bg-violet-soft/70 focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]",
+              homeActive && "ring-1 ring-violet",
             )}
           >
             <PegoMark />
           </button>
         </Tooltip>
       ) : (
-        <div className="flex h-7 items-center justify-center text-foreground" title="Pego">
+        <div
+          className="flex size-8 items-center justify-center rounded-lg bg-violet-soft text-foreground"
+          title="Pego"
+        >
           <PegoMark />
         </div>
       )}
@@ -161,8 +164,9 @@ export const IconRail = ({
                 tabIndex={focusable ? 0 : -1}
                 onClick={() => onPress(item.id)}
                 className={cn(
-                  "relative flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4",
-                  selected && "bg-secondary text-foreground",
+                  "relative flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4",
+                  selected &&
+                    "bg-violet-soft text-violet-text hover:bg-violet-soft hover:text-violet-text",
                 )}
               >
                 <Icon />
@@ -188,7 +192,7 @@ export const IconRail = ({
             openSettings(tab);
           }}
           className={cn(
-            "flex size-8 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4",
+            "flex size-8 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] [&_svg]:size-4",
             horizontal ? "ml-auto" : "mt-auto",
           )}
         >

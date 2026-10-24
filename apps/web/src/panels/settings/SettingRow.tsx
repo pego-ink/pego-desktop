@@ -14,11 +14,11 @@ export const SettingRow = ({ title, description, children }: Props) => {
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 py-3">
       <div className="min-w-0 flex-1 basis-56">
-        <div id={labelId} className="text-sm text-foreground">
+        <div id={labelId} className="text-[13px] font-semibold text-foreground">
           {title}
         </div>
         {description ? (
-          <p id={descriptionId} className="mt-0.5 text-xs text-muted-foreground">
+          <p id={descriptionId} className="mt-0.5 text-xs leading-4 text-muted-foreground">
             {description}
           </p>
         ) : null}
@@ -33,7 +33,9 @@ export const SettingRow = ({ title, description, children }: Props) => {
 /** Group heading + rows; spacing, not rules, separates groups. */
 export const SettingsSection = ({ title, children }: { title: string; children: ReactNode }) => (
   <section className="mb-6 last:mb-0">
-    <h3 className="mb-1 text-xs font-medium text-muted-foreground">{title}</h3>
+    <h3 className="mb-1 font-mono text-[10px] font-medium tracking-wider text-subtle-foreground uppercase">
+      {title}
+    </h3>
     <div>{children}</div>
   </section>
 );

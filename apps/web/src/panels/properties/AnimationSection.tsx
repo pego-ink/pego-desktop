@@ -32,7 +32,7 @@ const EASINGS: readonly (readonly [AnimationEasing, string])[] = [
 ];
 
 const Caption = ({ text, children }: { text: string; children: React.ReactNode }) => (
-  <label className="flex min-w-0 flex-col gap-1 text-[10px] text-muted-foreground">
+  <label className="flex min-w-0 flex-col gap-1 font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
     {text}
     {children}
   </label>
@@ -164,7 +164,7 @@ export const AnimationSection = ({ node }: { node: PegoNode }) => {
             />
           </PropertyRow>
           {node.type === "text" ? (
-            <label className="flex h-7 items-center gap-2 text-xs text-muted-foreground">
+            <label className="flex h-7 items-center gap-2 text-[13px] text-muted-foreground">
               <input
                 type="checkbox"
                 className="size-3.5 accent-primary"

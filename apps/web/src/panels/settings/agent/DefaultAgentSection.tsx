@@ -52,8 +52,8 @@ export const DefaultAgentSection = ({ flashing }: { flashing: boolean }) => {
       description="What the composer uses for new runs. You can still switch from the composer."
       flashing={flashing}
     >
-      <div className="grid gap-2 rounded-lg border border-border p-3">
-        <div className="flex items-center gap-3 text-xs">
+      <div className="grid gap-2 rounded-xl border border-border p-3">
+        <div className="flex items-center gap-3 text-[13px]">
           <label htmlFor="agent-default-select" className="flex-1 text-muted-foreground">
             Agent
           </label>
@@ -88,7 +88,7 @@ export const DefaultAgentSection = ({ flashing }: { flashing: boolean }) => {
             </NativeSelect>
           </div>
         </div>
-        <div className="flex items-center gap-3 text-xs">
+        <div className="flex items-center gap-3 text-[13px]">
           <span className="flex-1 text-muted-foreground">Model</span>
           {backend === "local" && installed && info?.supportsModels ? (
             <ModelPicker agentId={localAgentId} disabled={locked} />

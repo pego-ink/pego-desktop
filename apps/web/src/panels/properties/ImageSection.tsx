@@ -56,7 +56,7 @@ export const ImageSection = ({ node }: { node: ImageNode }) => {
         </Button>
       </PropertyRow>
       {node.source ? (
-        <div className="flex h-7 items-center gap-1 rounded-md bg-muted pr-1 pl-2 text-xs">
+        <div className="flex h-7 items-center gap-1 rounded-md bg-muted pr-1 pl-2 text-[13px]">
           <GlobeIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
           <span className="min-w-0 flex-1 truncate" title={node.source.url}>
             {node.source.selector
@@ -104,7 +104,7 @@ export const ImageSection = ({ node }: { node: ImageNode }) => {
         onCommit={(alt) => apply({ alt: alt.trim() || null }, "Change alt text")}
       />
       {natural ? (
-        <div className="flex h-7 items-center justify-between text-xs text-muted-foreground">
+        <div className="flex h-7 items-center justify-between text-[13px] text-muted-foreground">
           <span>
             Natural {Math.round(natural.width)} x {Math.round(natural.height)}
           </span>

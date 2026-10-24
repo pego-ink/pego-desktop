@@ -1,45 +1,11 @@
 import { useEffect, useState } from "react";
+import { SquareIcon } from "lucide-react";
+import { Spinner } from "@pego/ui/components/spinner";
+import { cancelRun } from "@/agent/run";
+import { safely } from "@/panels/agent/run-actions";
 import { useVisibleRun } from "@/agent/use-agent-store";
 import { isRunActive } from "@/panels/agent/agent-format";
 import { formatElapsed, runStartedAt, workingLabel } from "@/panels/agent/working-indicator";
-
-const KEYFRAMES = `
-@keyframes pego-working-cursor {
-  0%, 100% { transform: translate(1px, 2px); }
-  45%, 60% { transform: translate(9px, 8px); }
-}
-@keyframes pego-working-box {
-  0%, 35% { stroke-dashoffset: 0; opacity: .35; }
-  60%, 100% { opacity: 1; }
-}
-@media (prefers-reduced-motion: reduce) {
-  .pego-working-cursor, .pego-working-box { animation: none !important; }
-}`;
-
-/** A cursor arrow nudging a rectangle: a designer at work. Static under reduced motion. */
-const DesignerGlyph = () => (
-  <svg aria-hidden viewBox="0 0 20 20" className="size-5 shrink-0 text-foreground">
-    <style>{KEYFRAMES}</style>
-    <rect
-      x="8"
-      y="9"
-      width="9"
-      height="7"
-      rx="1.5"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth="1.5"
-      className="pego-working-box"
-      style={{ animation: "pego-working-box 2.4s ease-in-out infinite" }}
-    />
-    <g
-      className="pego-working-cursor"
-      style={{ animation: "pego-working-cursor 2.4s ease-in-out infinite" }}
-    >
-      <path d="M2 1.5 L2 11 L4.6 8.6 L6.4 12.5 L8 11.8 L6.2 8 L9.5 8 Z" fill="currentColor" />
-    </g>
-  </svg>
-);
 
 const Elapsed = ({ since }: { since: number }) => {
   const [now, setNow] = useState(() => Date.now());
@@ -48,7 +14,7 @@ const Elapsed = ({ since }: { since: number }) => {
     return () => window.clearInterval(id);
   }, []);
   return (
-    <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+    <span className="shrink-0 font-mono text-xs text-violet-text tabular-nums">
       {formatElapsed(now - since)}
     </span>
   );
@@ -57,25 +23,46 @@ const Elapsed = ({ since }: { since: number }) => {
 const ActiveIndicator = () => {
   const status = useVisibleRun((s) => s.status);
   const steps = useVisibleRun((s) => s.steps);
+  const runId = useVisibleRun((s) => s.runId);
   const runLabel = useVisibleRun((s) => s.runLabel);
   const firstLogAt = useVisibleRun((s) => s.log[0]?.at);
   const [mountedAt] = useState(() => Date.now());
   const label = workingLabel(status, steps);
 
   return (
-    <div className="flex items-center gap-2 px-1 py-1">
-      <DesignerGlyph />
+    <div className="flex items-center gap-2.5 rounded-xl bg-violet-soft px-3 py-2">
+      <Spinner
+        role="presentation"
+        aria-label={undefined}
+        aria-hidden
+        className="size-4 text-violet"
+      />
       <div className="flex min-w-0 flex-1 flex-col">
-        <span aria-live="polite" className="truncate text-xs font-medium" title={label}>
+        <span
+          aria-live="polite"
+          className="truncate text-[13px] font-semibold text-violet-text"
+          title={label}
+        >
           {label}
         </span>
         {runLabel ? (
-          <span className="truncate text-[11px] text-muted-foreground" title={runLabel}>
+          <span className="truncate text-xs text-muted-foreground" title={runLabel}>
             {runLabel}
           </span>
         ) : null}
       </div>
       <Elapsed since={runStartedAt(firstLogAt, mountedAt)} />
+      {runId ? (
+        <button
+          type="button"
+          aria-label="Stop run"
+          title="Stop run"
+          onClick={() => void safely(() => cancelRun(runId))}
+          className="flex size-6 shrink-0 items-center justify-center rounded-md bg-background/60 text-violet-text outline-none transition-colors hover:bg-background focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <SquareIcon aria-hidden className="size-3 fill-current" />
+        </button>
+      ) : null}
     </div>
   );
 };

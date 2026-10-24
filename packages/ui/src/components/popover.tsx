@@ -23,7 +23,7 @@ function PopoverContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 w-(--radix-popover-trigger-width) min-w-56 rounded-lg border border-border bg-card p-1 text-card-foreground shadow-lg outline-none origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] data-[state=closed]:animate-[pego-fade-out_var(--duration-instant)_var(--ease-out)_forwards]",
+          "z-50 w-(--radix-popover-trigger-width) min-w-56 rounded-xl border border-border bg-card p-1 text-card-foreground shadow-lg outline-none origin-(--radix-popover-content-transform-origin) data-[state=open]:animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] data-[state=closed]:animate-[pego-fade-out_var(--duration-instant)_var(--ease-out)_forwards]",
           className,
         )}
         {...props}

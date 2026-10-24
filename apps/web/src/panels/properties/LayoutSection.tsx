@@ -38,7 +38,7 @@ const SIDES = ["T", "R", "B", "L"] as const;
 const SIDE_TITLES = ["Top", "Right", "Bottom", "Left"] as const;
 
 const Caption = ({ text, children }: { text: string; children: React.ReactNode }) => (
-  <label className="flex min-w-0 flex-col gap-1 text-[10px] text-muted-foreground">
+  <label className="flex min-w-0 flex-col gap-1 font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
     {text}
     {children}
   </label>
@@ -82,7 +82,12 @@ export const LayoutSection = ({ node }: { node: FrameNode }) => {
               history="Change gap"
             />
             {split ? (
-              <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={togglePadding}>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-[13px] text-muted-foreground"
+                onClick={togglePadding}
+              >
                 Uniform padding
               </Button>
             ) : (
@@ -99,7 +104,7 @@ export const LayoutSection = ({ node }: { node: FrameNode }) => {
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-7 px-1.5 text-[11px]"
+                  className="h-7 px-1.5 font-mono text-[11px]"
                   title="Set each side separately"
                   onClick={togglePadding}
                 >

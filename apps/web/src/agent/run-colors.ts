@@ -1,15 +1,15 @@
 /**
  * Tints for parallel runs: each running session gets its own color for its canvas focus box and
- * cursor, so the user can tell which agent is working where. Slot 0 is the editor accent, so a
+ * cursor, so the user can tell which agent is working where. Slot 0 is the agent grape, so a
  * single run looks exactly as before. One slot per agent name (agent/agent-names), so each name
  * keeps its color.
  */
 export const RUN_COLORS = [
-  "#B79CFF",
+  "#8D6BFF",
   "#7CC4FF",
   "#6EDBA6",
   "#FFBE6B",
-  "#FF9ECB",
+  "#FFD36B",
   "#5ED3CF",
   "#FF9480",
   "#B5E36B",

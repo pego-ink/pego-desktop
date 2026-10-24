@@ -21,7 +21,7 @@ function AlertDialogContent({
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg outline-none data-[state=open]:animate-[pego-pop-in_var(--duration-base)_var(--ease-out)] data-[state=closed]:animate-[pego-pop-out_var(--duration-fast)_var(--ease-out)_forwards]",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-lg outline-none data-[state=open]:animate-[pego-pop-in_var(--duration-base)_var(--ease-out)] data-[state=closed]:animate-[pego-pop-out_var(--duration-fast)_var(--ease-out)_forwards]",
           className,
         )}
         {...props}
@@ -51,7 +51,7 @@ function AlertDialogTitle({
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
-      className={cn("text-sm font-semibold", className)}
+      className={cn("text-[15px] font-semibold", className)}
       {...props}
     />
   );
@@ -64,7 +64,7 @@ function AlertDialogDescription({
   return (
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
-      className={cn("text-xs text-muted-foreground", className)}
+      className={cn("text-[13px] text-muted-foreground", className)}
       {...props}
     />
   );

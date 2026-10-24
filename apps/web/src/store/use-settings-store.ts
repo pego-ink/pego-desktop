@@ -45,7 +45,7 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   snapToPixel: true,
   agentNameSet: "pego",
   customAgentNames: [...DEFAULT_CUSTOM_AGENT_NAMES],
-  toolbarPosition: "bottom",
+  toolbarPosition: "left",
   interfaceStyle: "docked",
   imageSearch: "browser",
   browserSide: "left",

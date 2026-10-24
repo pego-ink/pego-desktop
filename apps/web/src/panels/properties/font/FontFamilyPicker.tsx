@@ -46,7 +46,7 @@ const Chips = ({
         tabIndex={-1}
         onClick={() => onChange(chip.value)}
         className={cn(
-          "h-5 rounded-full px-2 text-[11px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+          "h-5 rounded-full px-2 text-xs text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
           chip.value === value ? "bg-secondary text-foreground" : "bg-muted",
         )}
       >
@@ -158,7 +158,7 @@ const PickerBody = ({
         onScroll={(event) => setScrollTop(event.currentTarget.scrollTop)}
       >
         {rows.length === 0 ? (
-          <p className="px-2 py-3 text-xs text-muted-foreground">No fonts match.</p>
+          <p className="px-2 py-3 text-[13px] text-muted-foreground">No fonts match.</p>
         ) : null}
         <div style={{ height: rows.length * ROW_HEIGHT }} className="relative">
           {visible.map((row, offset) => {
@@ -170,7 +170,7 @@ const PickerBody = ({
                   key={row.key}
                   role="presentation"
                   style={style}
-                  className="absolute inset-x-0 flex items-end px-2 pb-1 text-[11px] font-medium text-muted-foreground"
+                  className="absolute inset-x-0 flex items-end px-2 pb-1 text-xs font-medium text-muted-foreground"
                 >
                   {row.label}
                 </div>
@@ -215,7 +215,7 @@ export const FontFamilyPicker = ({ value, mixed, documentFamilies, onSelect }: P
         <button
           type="button"
           aria-label="Font family"
-          className="flex h-7 w-full min-w-0 items-center rounded-md border border-transparent bg-muted px-2 text-left text-xs text-foreground outline-none transition-colors hover:border-border focus-visible:border-ring data-[state=open]:border-ring"
+          className="flex h-7 w-full min-w-0 items-center rounded-md border border-transparent bg-muted px-2 text-left text-[13px] text-foreground outline-none transition-colors hover:border-border focus-visible:border-ring data-[state=open]:border-ring"
         >
           <span
             className={cn("truncate", mixed && "text-muted-foreground")}

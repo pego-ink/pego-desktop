@@ -1,5 +1,5 @@
 import { useState, type KeyboardEvent } from "react";
-import { Trash2Icon } from "lucide-react";
+import { CheckIcon, Trash2Icon } from "lucide-react";
 import { Input } from "@pego/ui/components/input";
 import { cn } from "@pego/ui/lib/utils";
 import type { SessionMeta } from "@/agent/sessions/session-model";
@@ -16,7 +16,7 @@ type SessionListProps = {
 };
 
 const rowButton =
-  "flex h-8 min-w-0 flex-1 items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:bg-accent focus-visible:transition-none disabled:pointer-events-none disabled:opacity-50";
+  "flex h-9 min-w-0 flex-1 items-center gap-2 rounded-lg px-2 text-left text-[13px] outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:bg-accent aria-selected:bg-violet-soft aria-selected:text-violet-text focus-visible:transition-none disabled:pointer-events-none disabled:opacity-50";
 
 /** Search + list of a file's chats: arrows move focus, Enter opens, Delete asks to remove. */
 export const SessionList = ({
@@ -53,8 +53,11 @@ export const SessionList = ({
           setConfirmId(null);
         }}
         onKeyDown={onSearchKeyDown}
-        className="h-7 px-2 text-[13px] md:text-[13px]"
+        className="h-8 rounded-lg px-2 text-[13px] focus-visible:border-violet focus-visible:ring-2 focus-visible:ring-violet/30 md:text-[13px]"
       />
+      <div className="px-2 pt-2 pb-1 font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
+        This file
+      </div>
       <div role="listbox" aria-label="Chats" className="max-h-64 overflow-y-auto">
         {matches.length === 0 ? (
           <p className="px-2 py-3 text-center text-xs text-muted-foreground">
@@ -68,7 +71,7 @@ export const SessionList = ({
             return (
               <div
                 key={item.id}
-                className="flex h-8 items-center gap-1 rounded-md bg-accent pr-1 pl-2 text-[13px]"
+                className="flex h-9 items-center gap-1 rounded-lg bg-accent pr-1 pl-2 text-[13px]"
               >
                 <span className="min-w-0 flex-1 truncate">
                   {running ? "Stop its run and delete?" : "Delete this chat?"}
@@ -89,7 +92,7 @@ export const SessionList = ({
                     setConfirmId(null);
                     onDelete(item.id);
                   }}
-                  className="h-6 rounded-md bg-destructive px-2 text-xs text-white outline-none hover:bg-destructive/90 focus-visible:ring-2 focus-visible:ring-destructive/40"
+                  className="h-6 rounded-md bg-destructive px-2 text-xs text-primary-foreground outline-none hover:bg-destructive/90 focus-visible:ring-2 focus-visible:ring-destructive/40"
                 >
                   Delete
                 </button>
@@ -111,16 +114,19 @@ export const SessionList = ({
                 }}
                 className={rowButton}
               >
-                <span
-                  aria-hidden
-                  className={cn(
-                    "size-1.5 shrink-0 rounded-full",
-                    running && "bg-foreground motion-safe:animate-pulse",
-                    !running && (active ? "bg-foreground" : "bg-transparent"),
-                  )}
-                />
+                {running ? (
+                  <span
+                    aria-hidden
+                    className="mx-1 size-2 shrink-0 rounded-full bg-violet motion-safe:animate-pulse"
+                  />
+                ) : (
+                  <CheckIcon
+                    aria-hidden
+                    className={cn("size-4 shrink-0", active ? "text-violet-text" : "text-success")}
+                  />
+                )}
                 <span className="min-w-0 flex-1 truncate">{item.title}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums transition-opacity duration-(--duration-fast) group-focus-within/row:opacity-0 group-hover/row:opacity-0">
+                <span className="shrink-0 font-mono text-[10px] text-subtle-foreground tabular-nums transition-opacity duration-(--duration-fast) group-focus-within/row:opacity-0 group-hover/row:opacity-0">
                   {running ? "Running" : formatRelativeTime(item.updatedAt, now)}
                 </span>
               </button>

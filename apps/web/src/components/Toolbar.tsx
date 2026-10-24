@@ -63,10 +63,10 @@ const GroupButton = ({ group, vertical, menuSide }: GroupButtonProps) => {
         aria-pressed={active === shown.tool}
         onClick={() => setTool(shown.tool)}
         className={cn(
-          "flex size-9 items-center justify-center rounded-lg transition-colors",
+          "flex size-8 items-center justify-center rounded-lg transition-colors",
           FOCUS_RING,
           inGroup
-            ? "bg-primary text-primary-foreground"
+            ? "bg-violet-soft text-violet-text"
             : "text-muted-foreground hover:bg-accent hover:text-accent-foreground",
         )}
       >
@@ -81,7 +81,7 @@ const GroupButton = ({ group, vertical, menuSide }: GroupButtonProps) => {
               aria-label={group.label}
               className={cn(
                 "flex items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground data-[state=open]:bg-accent data-[state=open]:text-accent-foreground",
-                vertical ? "h-4 w-9" : "h-9 w-4",
+                vertical ? "h-4 w-8" : "h-8 w-4",
                 FOCUS_RING,
               )}
             >
@@ -140,7 +140,7 @@ export const Toolbar = () => {
           aria-label="Tools"
           aria-orientation={vertical ? "vertical" : "horizontal"}
           className={cn(
-            "absolute flex items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-[0_8px_24px_#00000055] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
+            "absolute flex items-center gap-1 rounded-xl border border-border bg-card p-1.5 shadow-lg [scrollbar-width:none] [&::-webkit-scrollbar]:hidden",
             POSITION_CLASS[position],
           )}
         >

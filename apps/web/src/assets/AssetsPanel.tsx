@@ -1,9 +1,8 @@
 import { memo, useMemo, useRef, useState } from "react";
-import { ChevronRightIcon, ComponentIcon, LibraryIcon, PlusIcon } from "lucide-react";
+import { ChevronRightIcon, ComponentIcon, LibraryIcon, PlusIcon, SearchIcon } from "lucide-react";
 import { Button } from "@pego/ui/components/button";
 import { Input } from "@pego/ui/components/input";
 import { cn } from "@pego/ui/lib/utils";
-import { PanelHeader } from "@pego/ui/components/panel-header";
 import { getLayout } from "@/canvas/layout";
 import { focusCamera } from "@/agent/focus-camera";
 import { showPage } from "@/pages/page-actions";
@@ -62,7 +61,7 @@ const ComponentCard = memo(({ entry }: { entry: ComponentEntry }) => {
         event.dataTransfer.effectAllowed = "copy";
         event.dataTransfer.setData(COMPONENT_MIME, entry.id);
       }}
-      className="group relative rounded-md text-xs text-foreground hover:bg-accent/60"
+      className="group relative rounded-xl text-[13px] text-foreground"
     >
       <button
         type="button"
@@ -74,9 +73,9 @@ const ComponentCard = memo(({ entry }: { entry: ComponentEntry }) => {
         }}
         aria-label={`${entry.name}, component. Enter shows it, Shift+Enter places an instance.`}
         title="Click to show it, + or drag to place an instance"
-        className="flex w-full cursor-default flex-col gap-1 rounded-md p-1 text-left text-xs outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex w-full cursor-default flex-col gap-1.5 rounded-xl p-1 text-left text-[13px] outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
-        <span className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-sm border border-border bg-muted/50">
+        <span className="flex aspect-[4/3] w-full items-center justify-center overflow-hidden rounded-xl border border-border bg-muted transition-colors group-hover:border-ring/50">
           {thumbnail ? (
             <img
               src={thumbnail}
@@ -88,7 +87,10 @@ const ComponentCard = memo(({ entry }: { entry: ComponentEntry }) => {
             <ComponentIcon aria-hidden className="size-4 text-violet/60" />
           )}
         </span>
-        <span className="w-full truncate px-0.5">{entry.name}</span>
+        <span className="flex w-full items-center gap-1.5 px-0.5">
+          <ComponentIcon aria-hidden className="size-3.5 shrink-0 text-violet" />
+          <span className="min-w-0 truncate">{entry.name}</span>
+        </span>
       </button>
       <Button
         variant="secondary"
@@ -109,12 +111,12 @@ ComponentCard.displayName = "ComponentCard";
 const Section = ({ section }: { section: ComponentSection }) => {
   const [open, setOpen] = useState(true);
   return (
-    <section aria-label={section.title} className="px-1.5">
+    <section aria-label={section.title} className="px-3">
       <button
         type="button"
         aria-expanded={open}
         onClick={() => setOpen((value) => !value)}
-        className="flex h-7 w-full items-center gap-1 rounded-sm px-1 text-[11px] font-medium text-muted-foreground outline-none hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="flex h-8 w-full items-center gap-1.5 rounded-md px-1 text-[13px] font-semibold text-foreground outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
         <ChevronRightIcon
           aria-hidden
@@ -125,7 +127,9 @@ const Section = ({ section }: { section: ComponentSection }) => {
         />
         {section.library ? <LibraryIcon aria-hidden className="size-3" /> : null}
         <span className="min-w-0 flex-1 truncate text-left">{section.title}</span>
-        <span>{section.entries.length}</span>
+        <span className="font-mono text-xs font-normal text-subtle-foreground">
+          {section.entries.length}
+        </span>
       </button>
       {open ? (
         <ul aria-label={`Components in ${section.title}`} className="grid grid-cols-2 gap-1 pb-2">
@@ -163,24 +167,28 @@ const ComponentsTab = () => {
   return (
     <>
       {components.length === 0 ? (
-        <p className="px-3 py-2 text-[11px] leading-4 text-muted-foreground">
+        <p className="px-3 py-2 text-xs leading-4 text-muted-foreground">
           No components yet. Select a layer and press {isMac ? "⌘⌥K" : "Ctrl+Alt+K"} (or ask the
           agent) to turn it into a reusable component.
         </p>
       ) : (
         <>
-          <div className="px-3 pb-2">
+          <div className="relative px-3 pb-2">
+            <SearchIcon
+              aria-hidden
+              className="pointer-events-none absolute top-2 left-5.5 size-3.5 text-subtle-foreground"
+            />
             <Input
               value={query}
               placeholder="Search components…"
               aria-label="Search components"
               onChange={(event) => setQuery(event.target.value)}
-              className="h-7 text-xs"
+              className="h-8 pl-8 text-[13px]"
             />
           </div>
           <div className="min-h-0 flex-1 overflow-y-auto">
             {sections.length === 0 ? (
-              <p className="px-3 py-2 text-[11px] text-muted-foreground">No component matches.</p>
+              <p className="px-3 py-2 text-xs text-muted-foreground">No component matches.</p>
             ) : (
               sections.map((section) => <Section key={section.pageId} section={section} />)
             )}
@@ -199,8 +207,12 @@ export const AssetsPanel = () => {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
-      <PanelHeader>
-        <div role="tablist" aria-label="Assets" className="flex items-center gap-1">
+      <div className="shrink-0 px-3 py-3">
+        <div
+          role="tablist"
+          aria-label="Assets"
+          className="flex h-8 items-center gap-0.5 rounded-lg bg-muted p-0.5"
+        >
           {TABS.map(({ id, label }) => (
             <button
               key={id}
@@ -209,20 +221,22 @@ export const AssetsPanel = () => {
               aria-selected={tab === id}
               onClick={() => setTab(id)}
               className={cn(
-                "rounded-md px-1.5 py-0.5 text-xs outline-none transition-colors duration-(--duration-fast) focus-visible:ring-2 focus-visible:ring-ring/50",
+                "flex h-full flex-1 items-center justify-center gap-1.5 rounded-md text-[13px] outline-none transition-colors duration-(--duration-fast) focus-visible:ring-2 focus-visible:ring-ring/50",
                 tab === id
-                  ? "bg-secondary font-medium text-foreground"
+                  ? "bg-violet-soft font-medium text-violet-text"
                   : "text-muted-foreground hover:text-foreground",
               )}
             >
               {label}
               {id === "components" ? (
-                <span className="ml-1 text-[11px] font-normal text-muted-foreground">{count}</span>
+                <span className="rounded-full bg-primary px-1.5 font-mono text-[10px] leading-4 font-normal text-primary-foreground">
+                  {count}
+                </span>
               ) : null}
             </button>
           ))}
         </div>
-      </PanelHeader>
+      </div>
       {tab === "components" ? <ComponentsTab /> : <ImagesTab />}
     </div>
   );

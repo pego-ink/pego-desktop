@@ -20,7 +20,7 @@ export const ImagesTab = () => {
       <div
         role="radiogroup"
         aria-label="Images"
-        className="mx-3 mb-2 flex rounded-md bg-muted p-0.5"
+        className="mx-3 mb-2 flex rounded-lg bg-muted p-0.5"
       >
         {MODES.map(({ id, label }) => (
           <button
@@ -30,8 +30,8 @@ export const ImagesTab = () => {
             aria-checked={mode === id}
             onClick={() => setMode(id)}
             className={cn(
-              "h-6 flex-1 rounded-sm text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
-              mode === id && "bg-secondary text-foreground shadow-xs",
+              "h-7 flex-1 rounded-md text-[13px] text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+              mode === id && "bg-violet-soft font-medium text-violet-text hover:text-violet-text",
             )}
           >
             {label}

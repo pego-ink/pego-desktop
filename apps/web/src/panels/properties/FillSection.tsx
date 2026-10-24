@@ -204,7 +204,9 @@ const GradientStops = ({
   return (
     <div className="flex flex-col gap-1.5">
       <div className="flex h-5 items-center justify-between">
-        <span className="text-xs text-muted-foreground">Stops</span>
+        <span className="font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
+          Stops
+        </span>
         <IconButton label="Add stop" onClick={() => onChange(addStop, "Add gradient stop")}>
           <PlusIcon />
         </IconButton>

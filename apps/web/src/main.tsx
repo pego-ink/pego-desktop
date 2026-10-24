@@ -4,6 +4,8 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "sonner";
 import { TooltipProvider } from "@pego/ui/components/tooltip";
 import { App } from "@/App";
+import "@fontsource-variable/geist";
+import "@fontsource-variable/jetbrains-mono";
 import "@/index.css";
 
 const queryClient = new QueryClient();

@@ -23,7 +23,7 @@ function DropdownMenuContent({
         align={align}
         sideOffset={sideOffset}
         className={cn(
-          "z-50 min-w-52 rounded-lg border border-border bg-card p-1 text-card-foreground shadow-lg outline-none",
+          "z-50 min-w-52 rounded-xl border border-border bg-card p-1 text-card-foreground shadow-lg outline-none",
           className,
         )}
         {...props}
@@ -40,7 +40,7 @@ function DropdownMenuItem({
     <DropdownMenuPrimitive.Item
       data-slot="dropdown-menu-item"
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none select-none data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
         className,
       )}
       {...props}

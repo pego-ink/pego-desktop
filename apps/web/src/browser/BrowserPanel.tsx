@@ -111,11 +111,11 @@ const DeviceMenu = () => {
         {GROUP_ORDER.map((group) => (
           <div key={group}>
             <div role="separator" className="my-1 h-px bg-border" />
-            <div className="px-2 py-1 text-[11px] text-muted-foreground">{GROUP_LABELS[group]}</div>
+            <div className="px-2 py-1 text-xs text-muted-foreground">{GROUP_LABELS[group]}</div>
             {DEVICE_PRESETS.filter((p) => p.group === group).map((p) => (
               <DropdownMenuItem key={p.id} onSelect={() => setDevice({ id: p.id, rotated: false })}>
                 <span className="flex-1">{p.label}</span>
-                <span className="text-[11px] text-muted-foreground tabular-nums">
+                <span className="text-xs text-muted-foreground tabular-nums">
                   {sizeLabel(p, false)}
                 </span>
                 <CheckIcon aria-hidden className={cn(p.id !== preset.id && "invisible")} />
@@ -145,7 +145,7 @@ const DeviceLabel = ({ zoom }: { zoom: number }) => {
   const preset = findPreset(device.id);
   if (preset === RESPONSIVE) return null;
   return (
-    <div className="flex h-6 shrink-0 items-center justify-center border-b border-border px-3 text-[11px] text-muted-foreground tabular-nums">
+    <div className="flex h-6 shrink-0 items-center justify-center border-b border-border px-3 text-xs text-muted-foreground tabular-nums">
       <span className="truncate">
         {preset.label} · {sizeLabel(preset, device.rotated)} · {formatZoom(zoom)}
       </span>
@@ -329,7 +329,7 @@ const Breadcrumbs = () => {
   return (
     <nav
       aria-label="Picked element path"
-      className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border px-2 text-[11px] whitespace-nowrap"
+      className="flex h-8 shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border px-2 text-xs whitespace-nowrap"
     >
       {picked.path.map((crumb, index) => (
         <span key={crumb.selector} className="flex shrink-0 items-center gap-0.5">
@@ -347,7 +347,7 @@ const Breadcrumbs = () => {
             )}
           >
             {crumb.component ? (
-              <span className="rounded-sm bg-sky-500/15 px-1 font-sans text-sky-600 dark:text-sky-400">
+              <span className="rounded-sm bg-violet-soft px-1 font-sans text-violet-text">
                 {crumb.component}
               </span>
             ) : null}
@@ -361,7 +361,7 @@ const Breadcrumbs = () => {
 
 const EmptyState = () => (
   <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
-    <p className="text-xs leading-4 text-muted-foreground">
+    <p className="text-[13px] leading-4 text-muted-foreground">
       Open a page to inspect it, pick an element, and bring it onto the canvas.
     </p>
     <ul aria-label="Examples" className="flex flex-wrap justify-center gap-1.5">
@@ -379,7 +379,7 @@ const EmptyState = () => (
 const ErrorState = ({ message }: { message: string }) => (
   <div className="flex h-full flex-col items-center justify-center gap-3 px-6 text-center">
     <CircleAlertIcon className="size-5 text-destructive" aria-hidden />
-    <p role="alert" className="text-xs leading-4 text-muted-foreground">
+    <p role="alert" className="text-[13px] leading-4 text-muted-foreground">
       {message}
     </p>
     <Button variant="secondary" size="xs" onClick={() => browserApi()?.reload()}>

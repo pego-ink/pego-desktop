@@ -35,7 +35,7 @@ export const UrlImageSection = () => {
             placeholder="https://… image link"
             aria-label="Image URL"
             onChange={(event) => setValue(event.target.value)}
-            className="h-7 pl-7 text-xs"
+            className="h-7 pl-7 text-[13px]"
           />
         </div>
         <Button type="submit" size="sm" className="h-7" disabled={!url || busy}>
@@ -43,7 +43,7 @@ export const UrlImageSection = () => {
           Place
         </Button>
       </form>
-      <p className="text-[11px] leading-4 text-muted-foreground">
+      <p className="text-xs leading-4 text-muted-foreground">
         Paste the link of an image on the web. Or copy an image on any site (right-click › Copy
         image, or its link) and press {isMac ? "⌘V" : "Ctrl+V"} on the canvas. The image is
         downloaded into your file; sites that block it are fetched through the Pego bridge.

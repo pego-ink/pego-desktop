@@ -1,3 +1,4 @@
+import { SELECTION } from "@/canvas/chrome-colors";
 import {
   useCallback,
   useEffect,
@@ -20,7 +21,6 @@ import {
 } from "@/text-edit/editor-style";
 import { ensureInterFont } from "@/text-edit/ensure-font";
 
-const ACCENT = "#B79CFF";
 const CREATE_PROPS: EditorTextProps = { fontFamily: "Inter", fontSize: DEFAULT_FONT_SIZE };
 
 /** Snapshot taken when the editor opens: what is edited and where it sits in document space. */
@@ -179,7 +179,7 @@ const Editor = ({ target }: { target: TextEditTarget }) => {
         padding: 0,
         border: 0,
         background: "transparent",
-        outline: `${style.outlineWidth}px solid ${ACCENT}`,
+        outline: `${style.outlineWidth}px solid ${SELECTION}`,
         outlineOffset: 0,
         fontFamily: `${style.fontFamily}, Inter, sans-serif`,
         fontSize: style.fontSize,

@@ -1,6 +1,6 @@
 import type { Canvas as SkCanvas, CanvasKit, Paint, PathBuilder } from "canvaskit-wasm";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
-import { ACCENT } from "@/canvas/render-overlay";
+import { SELECTION } from "@/canvas/chrome-colors";
 import { docToScreen, type Camera } from "@/canvas/types";
 import type { Anchor, Contour, Pt } from "./anchors";
 import { segmentsOf } from "./bezier";
@@ -20,7 +20,7 @@ const withPaint = (ck: CanvasKit, setup: (p: Paint) => void, draw: (p: Paint) =>
 };
 
 const strokePaint =
-  (ck: CanvasKit, width: number, color = ACCENT) =>
+  (ck: CanvasKit, width: number, color = SELECTION) =>
   (p: Paint) => {
     p.setStyle(ck.PaintStyle.Stroke);
     p.setStrokeWidth(width);
@@ -109,7 +109,9 @@ export const drawAnchorMarker = (
   const s = toScreen(camera, at);
   const size = state.hot ? ANCHOR_SIZE + 3 : ANCHOR_SIZE;
   const rect = ck.XYWHRect(s.x - size / 2, s.y - size / 2, size, size);
-  withPaint(ck, fillPaint(ck, state.filled ? ACCENT : "#FFFFFF"), (p) => canvas.drawRect(rect, p));
+  withPaint(ck, fillPaint(ck, state.filled ? SELECTION : "#FFFFFF"), (p) =>
+    canvas.drawRect(rect, p),
+  );
   withPaint(ck, strokePaint(ck, 1.5), (p) => canvas.drawRect(rect, p));
 };
 

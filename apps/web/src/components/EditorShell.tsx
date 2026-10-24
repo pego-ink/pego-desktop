@@ -4,6 +4,7 @@ import {
   PanelLeftIcon,
   PanelRightIcon,
   Redo2Icon,
+  Share2Icon,
   Undo2Icon,
   XIcon,
 } from "lucide-react";
@@ -31,7 +32,6 @@ import { IconRail, railPanelId, railTabId } from "@/components/IconRail";
 import { hasDesktopBrowser, railTabsFor, type RailTab } from "@/components/rail-state";
 import { ShowRightPanelButton, usePanelShortcut } from "@/layout/PanelToggles";
 import { ThemeToggle } from "@/theme/ThemeToggle";
-import { CANVAS_BACKGROUND, useThemeStore } from "@/theme/theme";
 import { FLOATING_CARD, insetsWithin } from "@/layout/interface-style";
 import { useFloatingInterface } from "@/layout/use-floating-interface";
 import { useViewportStore } from "@/store/use-viewport-store";
@@ -201,7 +201,7 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
       style={{ width: panel.width }}
       className={cn(
         "relative shrink-0 flex-col [&:not([hidden])]:flex",
-        floating ? "min-h-0 flex-1" : "border-r border-border bg-card",
+        floating ? "min-h-0 flex-1" : "border-r border-border bg-background",
       )}
     >
       <FileMenu />
@@ -246,7 +246,7 @@ const PropertiesToggle = () => {
       aria-pressed={pinned}
       title={label}
       onClick={toggle}
-      className={cn(pinned && "bg-muted text-foreground")}
+      className={cn(pinned && "bg-violet-soft text-violet-text hover:bg-violet-soft")}
     >
       <PanelRightIcon />
     </Button>
@@ -269,8 +269,8 @@ const RightColumn = ({ floating = false }: { floating?: boolean }) => {
         "flex w-72 shrink-0 flex-col",
         // Capped so a narrow window still leaves canvas between the floating cards.
         floating
-          ? cn("max-w-[30vw] overflow-hidden", FLOATING_CARD)
-          : "border-l border-border bg-card",
+          ? cn("max-w-[30vw] overflow-hidden", FLOATING_CARD, "rounded-2xl")
+          : "border-l border-border bg-background",
       )}
     >
       {frameTool ? <FramePresetsPanel /> : <PropertiesPanel />}
@@ -278,20 +278,25 @@ const RightColumn = ({ floating = false }: { floating?: boolean }) => {
   );
 };
 
+const ShareButton = () => (
+  <Button size="sm" variant="default">
+    <Share2Icon />
+    Share
+  </Button>
+);
+
 /** The header's right-hand controls (a bar in the docked layout, a pill in the floating one). */
 const HeaderActions = () => (
   <>
     <PropertiesToggle />
     <ThemeToggle />
-    <Button size="sm" variant="secondary">
-      Share
-    </Button>
+    <ShareButton />
   </>
 );
 
 /** The floating interface's header pill, at the end of the tab row (like pen.dev's Share pill). */
 const FloatingHeaderPill = () => (
-  <div className={cn("flex items-center gap-1 p-1", FLOATING_CARD)}>
+  <div className={cn("flex items-center gap-1 p-1", FLOATING_CARD, "rounded-2xl")}>
     <HistoryButtons />
     <div role="separator" aria-orientation="vertical" className="mx-0.5 h-5 w-px bg-border" />
     <ShowRightPanelButton className="static z-auto border-0 bg-transparent shadow-none backdrop-blur-none" />
@@ -347,6 +352,7 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
           className={cn(
             "pointer-events-auto flex shrink-0 flex-col overflow-hidden",
             FLOATING_CARD,
+            "rounded-2xl",
             !railOpen && "absolute top-0 left-2 z-10",
           )}
         >
@@ -379,7 +385,6 @@ export const EditorShell = () => {
   const dashboard = useWorkspaceStore((s) => s.view === "dashboard" || s.liveId === null);
   // The dashboard keeps the docked layout; the floating one is for the editor.
   const floating = useFloatingInterface() && !dashboard;
-  const theme = useThemeStore((s) => s.resolved);
   usePanelShortcut();
 
   const press = (tab: RailTab) => {
@@ -394,10 +399,7 @@ export const EditorShell = () => {
 
   if (floating)
     return (
-      <div
-        className="flex h-full flex-col text-foreground"
-        style={{ background: CANVAS_BACKGROUND[theme] }}
-      >
+      <div className="flex h-full flex-col bg-canvas text-foreground">
         <TabBar floating trailing={<FloatingHeaderPill />} />
         <FloatingBody
           rail={
@@ -428,7 +430,7 @@ export const EditorShell = () => {
         />
         {dashboard ? null : <LeftColumn />}
         <div className="flex min-w-0 flex-1 flex-col">
-          <header className="flex h-11 shrink-0 items-center justify-between gap-3 border-b border-border bg-card px-3">
+          <header className="flex h-12 shrink-0 items-center justify-between gap-3 border-b border-border bg-chrome px-3">
             <div className="flex min-w-0 items-center gap-2">
               {dashboard ? null : <HistoryButtons />}
             </div>
@@ -436,9 +438,7 @@ export const EditorShell = () => {
               {dashboard ? (
                 <>
                   <ThemeToggle />
-                  <Button size="sm" variant="secondary">
-                    Share
-                  </Button>
+                  <ShareButton />
                 </>
               ) : (
                 <HeaderActions />

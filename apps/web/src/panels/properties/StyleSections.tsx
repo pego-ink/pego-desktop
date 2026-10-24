@@ -42,7 +42,7 @@ export const AppearanceSection = ({ node }: { node: PegoNode }) => {
           history="Change corner radius"
         />
         {node.type === "frame" ? (
-          <label className="flex h-7 items-center gap-2 text-xs text-muted-foreground">
+          <label className="flex h-7 items-center gap-2 text-[13px] text-muted-foreground">
             <input
               type="checkbox"
               className="size-3.5 accent-primary"

@@ -50,7 +50,7 @@ export const FramePresetSection = ({ node }: { node: FrameNode }) => {
             <button
               type="button"
               aria-label="Frame size preset"
-              className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md border border-transparent bg-muted px-2 text-left text-xs text-foreground outline-none transition-colors hover:border-border focus-visible:border-ring data-[state=open]:border-ring"
+              className="flex h-7 min-w-0 flex-1 items-center gap-2 rounded-md border border-transparent bg-muted px-2 text-left text-[13px] text-foreground outline-none transition-colors hover:border-border focus-visible:border-ring data-[state=open]:border-ring"
             >
               <LayoutTemplateIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1 truncate">{current?.name ?? "Custom"}</span>
@@ -74,13 +74,13 @@ export const FramePresetSection = ({ node }: { node: FrameNode }) => {
             </div>
             <div className="max-h-72 overflow-y-auto p-1">
               {categories.length === 0 ? (
-                <p className="px-3 py-4 text-center text-xs text-muted-foreground">
+                <p className="px-3 py-4 text-center text-[13px] text-muted-foreground">
                   No sizes match
                 </p>
               ) : (
                 categories.map((category) => (
                   <div key={category.id} role="group" aria-label={category.name}>
-                    <div className="px-2 pt-1.5 pb-0.5 text-[11px] font-medium text-muted-foreground">
+                    <div className="px-2 pt-1.5 pb-0.5 text-xs font-medium text-muted-foreground">
                       {category.name}
                     </div>
                     {category.presets.map((preset) => (
@@ -88,11 +88,11 @@ export const FramePresetSection = ({ node }: { node: FrameNode }) => {
                         key={preset.id}
                         type="button"
                         onClick={() => pick(preset)}
-                        className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
+                        className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
                       >
                         <PresetThumb width={preset.width} height={preset.height} />
                         <span className="min-w-0 flex-1 truncate">{preset.name}</span>
-                        <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                        <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
                           {formatPresetSize(preset)}
                         </span>
                       </button>

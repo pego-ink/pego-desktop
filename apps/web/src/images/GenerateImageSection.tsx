@@ -72,7 +72,7 @@ export const GenerateImageSection = () => {
 
   if (loaded && models.length === 0) {
     return (
-      <div className="flex flex-col gap-2 px-3 pb-3 text-[11px] leading-4 text-muted-foreground">
+      <div className="flex flex-col gap-2 px-3 pb-3 text-xs leading-4 text-muted-foreground">
         <p>
           Generating images needs an image model. Add a provider in Settings › Agent &amp; Models:
           for example Google Gemini (its &quot;Nano Banana&quot; model, gemini-2.5-flash-image) or
@@ -103,7 +103,7 @@ export const GenerateImageSection = () => {
             if (event.key === "Enter" && (event.metaKey || event.ctrlKey))
               void onSubmit(event as unknown as FormEvent);
           }}
-          className="min-h-20 text-xs"
+          className="min-h-20 text-[13px]"
         />
         <div className="grid grid-cols-2 gap-1.5">
           <NativeSelect
@@ -135,14 +135,14 @@ export const GenerateImageSection = () => {
           {busy ? "Generating…" : "Generate"}
         </Button>
         {error ? (
-          <p role="alert" className="text-[11px] leading-4 text-destructive">
+          <p role="alert" className="text-xs leading-4 text-destructive">
             {error}
           </p>
         ) : null}
       </form>
       {results.length > 0 ? (
         <div className="min-h-0 flex-1 overflow-y-auto border-t border-border px-3 pt-2 pb-3">
-          <div className="pb-1.5 text-[11px] text-muted-foreground">
+          <div className="pb-1.5 text-xs text-muted-foreground">
             Recent: click to place again, or drag onto the canvas
           </div>
           <div className="grid grid-cols-2 gap-1.5">

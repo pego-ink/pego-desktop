@@ -32,12 +32,16 @@ textarea,
 .pego-composer .tiptap:focus {
   outline: none;
 }
+.pego-composer .tiptap {
+  font-size: 13px;
+}
 .pego-composer .tiptap p.is-editor-empty:first-child::before {
   content: attr(data-placeholder);
   float: left;
   height: 0;
   pointer-events: none;
-  color: var(--muted-foreground);
+  color: var(--subtle-foreground);
+  font-size: 13px;
 }
 /* Web links in the prompt: underlined, opened with Cmd/Ctrl-click. */
 .pego-composer .pego-prompt-link {

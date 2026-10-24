@@ -13,7 +13,9 @@ export const UseButton = ({
   onUse: () => void;
 }) =>
   active ? (
-    <span className="rounded-md bg-accent px-1.5 py-0.5 text-[11px] text-foreground">Active</span>
+    <span className="rounded-full bg-violet-soft px-2 py-0.5 text-[11px] font-medium text-violet-text">
+      Active
+    </span>
   ) : (
     <Button size="xs" variant="secondary" disabled={disabled} onClick={onUse}>
       Use
@@ -38,10 +40,10 @@ export const AgentCard = ({
   action,
   children,
 }: AgentCardProps) => (
-  <section aria-labelledby={titleId} className="grid gap-2 rounded-lg border border-border p-3">
+  <section aria-labelledby={titleId} className="grid gap-2 rounded-xl border border-border p-3">
     <div className="flex items-center gap-2">
       <ProviderLogo provider={provider} />
-      <h4 id={titleId} className="min-w-0 truncate text-xs font-medium">
+      <h4 id={titleId} className="min-w-0 truncate text-[13px] font-semibold">
         {title}
       </h4>
       {badge}

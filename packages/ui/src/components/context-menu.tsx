@@ -19,7 +19,7 @@ function ContextMenuContent({
       <ContextMenuPrimitive.Content
         data-slot="context-menu-content"
         className={cn(
-          "z-50 min-w-52 rounded-lg border border-border bg-card p-1 text-card-foreground shadow-lg outline-none",
+          "z-50 min-w-52 rounded-xl border border-border bg-card p-1 text-card-foreground shadow-lg outline-none",
           className,
         )}
         {...props}
@@ -45,7 +45,7 @@ function ContextMenuItem({
     <ContextMenuPrimitive.Item
       data-slot="context-menu-item"
       className={cn(
-        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
+        "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground",
         destructive && "text-destructive data-[highlighted]:text-destructive",
         className,
       )}
@@ -53,14 +53,14 @@ function ContextMenuItem({
     >
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {shortcut ? (
-        <kbd className="font-sans text-[11px] text-muted-foreground">{shortcut}</kbd>
+        <kbd className="font-mono text-[11px] text-subtle-foreground">{shortcut}</kbd>
       ) : null}
     </ContextMenuPrimitive.Item>
   );
 }
 
 const itemClass =
-  "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-xs outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground";
+  "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 text-[13px] outline-none select-none data-[disabled]:pointer-events-none data-[disabled]:opacity-40 data-[highlighted]:bg-accent data-[highlighted]:text-accent-foreground";
 
 function ContextMenuSub(props: React.ComponentProps<typeof ContextMenuPrimitive.Sub>) {
   return <ContextMenuPrimitive.Sub {...props} />;
@@ -92,7 +92,7 @@ function ContextMenuSubContent({
       <ContextMenuPrimitive.SubContent
         data-slot="context-menu-sub-content"
         className={cn(
-          "z-50 min-w-44 rounded-lg border border-border bg-card p-1 text-card-foreground shadow-lg outline-none",
+          "z-50 min-w-44 rounded-xl border border-border bg-card p-1 text-card-foreground shadow-lg outline-none",
           className,
         )}
         {...props}
@@ -122,7 +122,7 @@ function ContextMenuCheckboxItem({
       </span>
       <span className="min-w-0 flex-1 truncate">{children}</span>
       {shortcut ? (
-        <kbd className="font-sans text-[11px] text-muted-foreground">{shortcut}</kbd>
+        <kbd className="font-mono text-[11px] text-subtle-foreground">{shortcut}</kbd>
       ) : null}
     </ContextMenuPrimitive.CheckboxItem>
   );

@@ -24,12 +24,14 @@ const ROW_ACTION =
 
 type RowProps = {
   sessionId: string;
+  /** 1-based position in the queue. */
+  index: number;
   message: QueuedMessage;
   /** A run is working: Steer reaches it. Otherwise Steer just sends the message now. */
   running: boolean;
 };
 
-const QueuedRow = ({ sessionId, message, running }: RowProps) => {
+const QueuedRow = ({ sessionId, index, message, running }: RowProps) => {
   const [shown, setShown] = useState(false);
   const [editing, setEditing] = useState(false);
   const label = message.displayText ?? message.text;
@@ -76,7 +78,13 @@ const QueuedRow = ({ sessionId, message, running }: RowProps) => {
   return (
     <li>
       <Reveal show={shown} className="pb-1">
-        <div className="group/queue relative flex items-start gap-1.5 rounded-md border border-border bg-muted/40 px-2 py-1 text-xs">
+        <div className="group/queue relative flex items-start gap-2.5 rounded-xl border border-border bg-muted px-3 py-2 text-[13px]">
+          <span
+            aria-hidden
+            className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md border bg-background font-mono text-[11px] text-subtle-foreground tabular-nums"
+          >
+            {index}
+          </span>
           {editing ? (
             <textarea
               ref={editRef}
@@ -87,17 +95,17 @@ const QueuedRow = ({ sessionId, message, running }: RowProps) => {
               onChange={(event) => setDraft(event.target.value)}
               onKeyDown={onEditKey}
               onBlur={save}
-              className="max-h-24 min-h-9 min-w-0 flex-1 resize-none bg-transparent text-xs leading-4 outline-none [field-sizing:content]"
+              className="max-h-24 min-h-9 min-w-0 flex-1 resize-none bg-transparent text-[13px] leading-5 outline-none [field-sizing:content]"
             />
           ) : (
             <>
-              <span className="line-clamp-2 min-w-0 flex-1 break-words leading-4" title={label}>
+              <span className="line-clamp-2 min-w-0 flex-1 break-words leading-5" title={label}>
                 {label}
               </span>
               {attachmentCount > 0 ? (
                 <span
                   title={`${attachmentCount} image${attachmentCount === 1 ? "" : "s"} attached`}
-                  className="flex shrink-0 items-center gap-0.5 text-[11px] text-muted-foreground"
+                  className="flex shrink-0 items-center gap-0.5 text-xs text-muted-foreground"
                 >
                   <ImageIcon aria-hidden className="size-3" />
                   {attachmentCount}
@@ -106,21 +114,22 @@ const QueuedRow = ({ sessionId, message, running }: RowProps) => {
               {lostCount > 0 ? (
                 <span
                   title="The images of this message were not kept after reload. Only the text will be sent."
-                  className="flex shrink-0 items-center gap-0.5 rounded-sm bg-destructive/10 px-1 text-[11px] text-destructive"
+                  className="flex shrink-0 items-center gap-0.5 rounded-md bg-destructive/10 px-1 text-xs text-destructive"
                 >
                   <TriangleAlertIcon aria-hidden className="size-3" />
                   {lostCount} image{lostCount === 1 ? "" : "s"} lost
                 </span>
               ) : null}
-              <div className="absolute inset-y-0.5 right-0.5 flex items-center gap-0.5 rounded-md bg-muted px-0.5 opacity-0 transition-opacity duration-(--duration-fast) ease-out group-focus-within/queue:opacity-100 group-hover/queue:opacity-100">
+              <div className="absolute inset-y-0.5 right-0.5 flex items-center gap-0.5 rounded-lg bg-muted px-0.5 opacity-0 transition-opacity duration-(--duration-fast) ease-out group-focus-within/queue:opacity-100 group-hover/queue:opacity-100">
                 <button
                   type="button"
                   aria-label="Steer: send now"
                   title={running ? "Send to the running agent now" : "Send now"}
                   onClick={() => steerQueued(sessionId, message.id)}
-                  className={ROW_ACTION}
+                  className="flex h-6 items-center gap-1 rounded-md bg-primary px-2 text-xs text-primary-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring/50"
                 >
-                  <ArrowRightIcon aria-hidden className="size-3.5" />
+                  <ArrowRightIcon aria-hidden className="size-3" />
+                  Send now
                 </button>
                 <button
                   type="button"
@@ -161,9 +170,19 @@ export const QueuedMessages = () => {
   const rows = expanded ? queue : queue.slice(0, MAX_VISIBLE_QUEUED);
   return (
     <div>
+      <div className="flex items-center justify-between px-1 pb-1.5 font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
+        <span>Queued · {queue.length}</span>
+        <span className="normal-case">after this run</span>
+      </div>
       <ul aria-label="Queued messages">
-        {rows.map((message) => (
-          <QueuedRow key={message.id} sessionId={sessionId} message={message} running={running} />
+        {rows.map((message, index) => (
+          <QueuedRow
+            key={message.id}
+            sessionId={sessionId}
+            index={index + 1}
+            message={message}
+            running={running}
+          />
         ))}
       </ul>
       {hidden > 0 || expanded ? (
@@ -171,7 +190,7 @@ export const QueuedMessages = () => {
           type="button"
           aria-expanded={expanded}
           onClick={() => setExpanded((value) => !value)}
-          className="mb-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mb-1 flex items-center gap-1 rounded-md px-1.5 py-0.5 text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           {expanded ? (
             <ChevronUpIcon aria-hidden className="size-3" />

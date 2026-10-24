@@ -131,7 +131,7 @@ export const AssistantText = ({
         )}
       >
         <div ref={innerRef} className={cn(revealing && REVEAL_MASK)}>
-          <Markdown text={text} />
+          <Markdown text={text} className="text-[13px] leading-5" />
         </div>
         {collapsible ? (
           <div
@@ -149,7 +149,7 @@ export const AssistantText = ({
           aria-expanded={expanded}
           aria-controls={bodyId}
           onClick={toggle}
-          className="mt-0.5 -ml-1 flex h-6 items-center gap-1 rounded-sm px-1 text-[11px] text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50"
+          className="mt-0.5 -ml-1 flex h-6 items-center gap-1 rounded-sm px-1 text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50"
         >
           {expanded ? "Show less" : "Show more"}
           <ChevronDownIcon

@@ -1,29 +1,44 @@
 import {
   CircleCheckIcon,
-  CircleDashedIcon,
+  CircleIcon,
   CircleSlashIcon,
   CircleXIcon,
-  LoaderCircleIcon,
+  PauseCircleIcon,
 } from "lucide-react";
+import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
 import type { RunStep } from "@/agent/use-agent-store";
-import { STEP_ICON_LABEL, stepIconKind, type StepIconKind } from "@/panels/agent/agent-format";
+import { useVisibleRun } from "@/agent/use-agent-store";
+import {
+  countDoneSteps,
+  STEP_ICON_LABEL,
+  stepIconKind,
+  type StepIconKind,
+} from "@/panels/agent/agent-format";
 
 const ICON_CLASS: Record<StepIconKind, string> = {
-  pending: "text-muted-foreground/60",
-  running: "motion-safe:animate-spin text-foreground",
-  done: "text-foreground",
+  pending: "text-subtle-foreground",
+  running: "text-violet",
+  done: "text-success",
   failed: "text-destructive",
-  skipped: "text-muted-foreground/60",
+  skipped: "text-subtle-foreground",
 };
 
-const StepIcon = ({ kind }: { kind: StepIconKind }) => {
+const StepIcon = ({ kind, waiting }: { kind: StepIconKind; waiting: boolean }) => {
   const className = cn("size-4 shrink-0", ICON_CLASS[kind]);
   switch (kind) {
     case "pending":
-      return <CircleDashedIcon className={className} />;
+      return <CircleIcon className={className} />;
     case "running":
-      return <LoaderCircleIcon className={className} />;
+      if (waiting) return <PauseCircleIcon className={cn(className, "text-warning")} />;
+      return (
+        <Spinner
+          role="presentation"
+          aria-label={undefined}
+          aria-hidden
+          className={cn("m-[1px] size-3.5", ICON_CLASS.running)}
+        />
+      );
     case "done":
       return <CircleCheckIcon className={className} />;
     case "failed":
@@ -33,21 +48,24 @@ const StepIcon = ({ kind }: { kind: StepIconKind }) => {
   }
 };
 
-const StepRow = ({ step }: { step: RunStep }) => {
+const StepRow = ({ step, waiting }: { step: RunStep; waiting: boolean }) => {
   const kind = stepIconKind(step.status);
   const note = step.summary ?? (kind === "running" ? step.detail : undefined);
   return (
     <li
       data-status={step.status}
       aria-label={`${step.title}, ${STEP_ICON_LABEL[step.status]}`}
-      className={cn("rounded-md px-2 py-1.5", kind === "running" && "bg-accent")}
+      className="px-1 py-1"
     >
       <div className="flex items-center gap-2">
-        <StepIcon kind={kind} />
+        <StepIcon kind={kind} waiting={waiting} />
         <span
           className={cn(
-            "min-w-0 flex-1 truncate text-xs",
-            kind === "running" || kind === "done" ? "text-foreground" : "text-muted-foreground",
+            "min-w-0 flex-1 truncate text-[13px]",
+            kind === "running" && "font-semibold text-foreground",
+            kind === "done" && "text-foreground",
+            (kind === "pending" || kind === "skipped") && "text-subtle-foreground",
+            kind === "failed" && "text-foreground",
             kind === "skipped" && "line-through",
           )}
           title={step.title}
@@ -58,7 +76,7 @@ const StepRow = ({ step }: { step: RunStep }) => {
       {note ? (
         <p
           className={cn(
-            "mt-0.5 pl-6 text-[11px] leading-4",
+            "mt-0.5 pl-6 text-xs leading-4",
             kind === "failed" ? "text-destructive" : "text-muted-foreground",
           )}
         >
@@ -69,10 +87,24 @@ const StepRow = ({ step }: { step: RunStep }) => {
   );
 };
 
-export const PlanList = ({ steps }: { steps: readonly RunStep[] }) => (
-  <ul className="flex flex-col gap-px" aria-label="Plan">
-    {steps.map((step) => (
-      <StepRow key={step.id} step={step} />
-    ))}
-  </ul>
-);
+/** The plan card: "PLAN" label, `done / total` counter and the steps. */
+export const PlanList = ({ steps }: { steps: readonly RunStep[] }) => {
+  const awaiting = useVisibleRun((s) => s.status === "awaiting_decision");
+  const done = countDoneSteps(steps);
+  const allDone = steps.length > 0 && done === steps.length;
+  return (
+    <div className={cn("rounded-xl border bg-muted p-3", allDone && "border-success/40")}>
+      <div className="mb-1.5 flex items-center justify-between font-mono text-[10px] tracking-wider uppercase">
+        <span className="text-subtle-foreground">Plan</span>
+        <span className="text-violet-text tabular-nums">
+          {done} / {steps.length}
+        </span>
+      </div>
+      <ul className="flex flex-col" aria-label="Plan">
+        {steps.map((step) => (
+          <StepRow key={step.id} step={step} waiting={awaiting} />
+        ))}
+      </ul>
+    </div>
+  );
+};

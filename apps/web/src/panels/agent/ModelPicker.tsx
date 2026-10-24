@@ -23,7 +23,7 @@ export const ModelPicker = ({ agentId, disabled }: ModelPickerProps) => {
       <PopoverTrigger
         disabled={disabled}
         aria-label="Default model"
-        className="flex h-7 w-44 min-w-0 items-center justify-between gap-1 rounded-md border border-transparent bg-muted px-2 text-xs text-foreground outline-none transition-colors hover:border-border focus-visible:border-ring disabled:pointer-events-none disabled:opacity-50"
+        className="flex h-7 w-44 min-w-0 items-center justify-between gap-1 rounded-lg border border-border bg-muted px-2 text-[13px] text-foreground outline-none transition-colors hover:border-border focus-visible:border-ring disabled:pointer-events-none disabled:opacity-50"
       >
         <span className={cn("truncate", !selected && "text-muted-foreground")}>
           {selected ?? MODEL_DEFAULT_LABEL}

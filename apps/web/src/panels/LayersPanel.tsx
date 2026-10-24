@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent } from "react";
 import { findNode, isContainer } from "@pego/doc";
-import { PanelHeader } from "@pego/ui/components/panel-header";
 import { useDocumentStore } from "@/store/use-document-store";
 import { ContextMenu, ContextMenuTrigger } from "@pego/ui/components/context-menu";
 import { SelectionMenuContent } from "@/components/CanvasContextMenu";
@@ -157,7 +156,11 @@ export const LayersPanel = () => {
 
   return (
     <>
-      <PanelHeader>Layers</PanelHeader>
+      <div className="flex h-9 shrink-0 items-center px-4 pt-1">
+        <span className="font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
+          Layers
+        </span>
+      </div>
       <ContextMenu>
         <ContextMenuTrigger
           asChild
@@ -175,7 +178,7 @@ export const LayersPanel = () => {
             role="tree"
             aria-label="Layers"
             aria-multiselectable
-            className="min-h-0 flex-1 overflow-y-auto py-1.5"
+            className="min-h-0 flex-1 overflow-y-auto px-2 pb-2"
             onClick={(event) => {
               if (event.target === event.currentTarget) useDocumentStore.getState().select([]);
             }}
@@ -185,7 +188,7 @@ export const LayersPanel = () => {
             }}
           >
             {rows.length === 0 ? (
-              <p className="px-3 py-2 text-xs text-muted-foreground">No layers yet.</p>
+              <p className="px-2 py-2 text-[13px] text-muted-foreground">No layers yet.</p>
             ) : null}
             {rows.map((row) => (
               <LayerRow

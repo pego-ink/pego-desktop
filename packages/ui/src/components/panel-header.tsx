@@ -7,7 +7,7 @@ function PanelHeader({ className, children, ...props }: React.ComponentProps<"di
     <div
       data-slot="panel-header"
       className={cn(
-        "flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3 text-[13px] font-medium text-foreground",
+        "flex h-11 shrink-0 items-center justify-between gap-2 border-b border-border px-3 text-[15px] font-semibold text-foreground",
         className,
       )}
       {...props}

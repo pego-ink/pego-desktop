@@ -50,7 +50,7 @@ export const ExtensionSection = ({ flashing }: { flashing: boolean }) => {
       description="Send any web page, an element of it, or a screenshot from Chrome to the canvas as layers."
       flashing={flashing}
     >
-      <div className="grid gap-2 rounded-lg border border-border p-3 text-xs">
+      <div className="grid gap-2 rounded-xl border border-border p-3 text-xs">
         {!connected ? (
           <p className="text-muted-foreground">Start the bridge to pair the extension.</p>
         ) : error ? (
@@ -59,7 +59,7 @@ export const ExtensionSection = ({ flashing }: { flashing: boolean }) => {
           <>
             <div className="flex items-center gap-2">
               <span className="text-muted-foreground">Pairing code</span>
-              <code className="min-w-0 flex-1 truncate rounded-sm bg-muted px-1.5 py-1 font-mono text-[11px]">
+              <code className="min-w-0 flex-1 truncate rounded-md bg-muted px-1.5 py-1 font-mono text-[11px]">
                 {code ? (shown ? code : "•".repeat(24)) : "…"}
               </code>
               <Button

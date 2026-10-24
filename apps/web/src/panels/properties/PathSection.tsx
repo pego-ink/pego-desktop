@@ -29,7 +29,7 @@ const MARKERS: readonly { value: Marker; label: string }[] = [
 ];
 
 const FieldLabel = ({ children }: { children: string }) => (
-  <span className="text-[11px] text-muted-foreground">{children}</span>
+  <span className="text-xs text-muted-foreground">{children}</span>
 );
 
 const MarkerSelect = ({

@@ -1,15 +1,17 @@
 import { Fragment, useId, useState } from "react";
 import {
   AlertCircleIcon,
+  CheckIcon,
   ChevronRightIcon,
   CornerDownRightIcon,
   ImageIcon,
   InfoIcon,
-  WrenchIcon,
+  XIcon,
 } from "lucide-react";
 import { Spinner } from "@pego/ui/components/spinner";
 import { cn } from "@pego/ui/lib/utils";
 import type { AgentLogEntry } from "@/agent/use-agent-store";
+import { PegoMark } from "@/components/PegoMark";
 import { AssistantText } from "@/panels/agent/AssistantText";
 import { AttachmentStrip } from "@/panels/agent/attachments/AttachmentStrip";
 import { formatBytes } from "@/panels/agent/agent-format";
@@ -33,31 +35,25 @@ const ToolGroupRow = ({
   const failed = countFailed(calls);
   const showLive = live && !open;
   return (
-    <li className={cn("font-mono text-[11px] leading-4", className)}>
+    <li className={cn("text-xs leading-4", className)}>
       <button
         type="button"
         aria-expanded={open}
         aria-controls={listId}
         onClick={() => setOpen((value) => !value)}
-        className="flex w-full items-start gap-1.5 rounded-sm px-1 text-left text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        className="flex w-full items-start gap-1.5 rounded-sm px-1 text-left text-subtle-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50"
       >
-        {showLive ? (
-          <Spinner className="mt-0.5 size-3 border-[1.5px]" />
-        ) : (
-          <WrenchIcon className="mt-0.5 size-3 shrink-0" />
-        )}
-        <span className="min-w-0 flex-1 break-words">
-          <span className="font-semibold">
-            {calls.length} {calls.length === 1 ? "tool" : "tools"}
-          </span>
-          {failed > 0 ? <span className="text-destructive"> · {failed} failed</span> : null}
-        </span>
         <ChevronRightIcon
           className={cn(
             "mt-0.5 size-3 shrink-0 transition-transform duration-(--duration-fast) ease-out",
             open && "rotate-90",
           )}
         />
+        <span className="min-w-0 flex-1 break-words">
+          {calls.length} {calls.length === 1 ? "tool call" : "tool calls"}
+          {failed > 0 ? <span className="text-destructive"> · {failed} failed</span> : null}
+        </span>
+        {showLive ? <Spinner className="mt-0.5 size-3 border-[1.5px] text-violet" /> : null}
       </button>
       <div
         inert={!open}
@@ -67,18 +63,24 @@ const ToolGroupRow = ({
         )}
       >
         <div className="min-h-0 overflow-hidden">
-          <ul id={listId} className="mt-0.5 ml-[18px] flex flex-col gap-0.5 border-l pl-2">
+          <ul id={listId} className="mt-1 flex flex-col gap-1 px-1 font-mono text-xs">
             {collapseRuns(calls).map((run) => (
               <li
                 key={run.key}
                 className={cn(
-                  "flex items-start gap-1 break-words",
-                  run.failed ? "text-destructive" : "text-muted-foreground",
+                  "flex items-start gap-2 break-words",
+                  run.failed ? "text-destructive" : "text-subtle-foreground",
                 )}
               >
-                {run.failed ? <AlertCircleIcon className="mt-0.5 size-3 shrink-0" /> : null}
+                {run.failed ? (
+                  <XIcon aria-hidden className="mt-0.5 size-3 shrink-0 text-destructive" />
+                ) : (
+                  <CheckIcon aria-hidden className="mt-0.5 size-3 shrink-0 text-success" />
+                )}
                 <span className="min-w-0">
-                  <span className="font-semibold">{run.name}</span>
+                  <span className={run.failed ? "text-destructive" : "text-violet-text"}>
+                    {run.name}
+                  </span>
                   {run.detail ? ` ${run.detail}` : ""}
                   {run.count > 1 ? <span className="tabular-nums"> ×{run.count}</span> : null}
                 </span>
@@ -101,7 +103,7 @@ const STEERED_LABELS = {
 const SteeredLabel = ({ state }: { state: keyof typeof STEERED_LABELS }) => (
   <span
     className={cn(
-      "flex items-center gap-1 self-end text-[11px] leading-none text-muted-foreground",
+      "flex items-center gap-1 self-end font-mono text-[10px] leading-none tracking-wider text-subtle-foreground uppercase",
       state === "failed" && "text-destructive",
     )}
   >
@@ -124,7 +126,7 @@ const Entry = ({
       return (
         <li
           className={cn(
-            "flex flex-col gap-1.5 self-end rounded-md bg-muted px-2 py-1.5 text-xs",
+            "flex flex-col gap-1.5 rounded-xl bg-human-soft px-3 py-2.5 text-[13px] leading-5 text-foreground",
             className,
           )}
         >
@@ -141,7 +143,7 @@ const Entry = ({
                 <span
                   key={`${file.name}-${index}`}
                   title={`${file.name} · ${formatBytes(file.size)}`}
-                  className="flex max-w-40 items-center gap-1 rounded-sm bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                  className="flex max-w-40 items-center gap-1 rounded-md bg-background/60 px-1.5 py-0.5 text-xs text-muted-foreground"
                 >
                   <ImageIcon aria-hidden className="size-3 shrink-0" />
                   <span className="truncate">{file.name}</span>
@@ -170,15 +172,16 @@ const Entry = ({
       );
     case "assistant":
       return (
-        <li className="px-1 text-foreground">
-          <AssistantText text={entry.text} animate={animate} />
+        <li className="flex items-start gap-2 text-foreground">
+          <PegoMark className="mt-0.5 size-4" />
+          <AssistantText text={entry.text} animate={animate} className="min-w-0 flex-1" />
         </li>
       );
     case "error":
       return (
         <li
           className={cn(
-            "flex items-start gap-1.5 rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive",
+            "flex items-start gap-1.5 rounded-xl bg-destructive/10 px-3 py-2 text-[13px] text-destructive",
             className,
           )}
         >
@@ -190,7 +193,7 @@ const Entry = ({
       return (
         <li
           className={cn(
-            "flex items-start gap-1.5 px-1 text-[11px] leading-4 text-muted-foreground",
+            "flex items-start gap-1.5 px-1 text-xs leading-4 text-muted-foreground",
             className,
           )}
         >
@@ -221,7 +224,7 @@ export const ActivityLog = ({
 
   if (count === 0) return null;
   return (
-    <ul className="flex flex-col gap-1.5" aria-label="Activity" aria-live="polite">
+    <ul className="flex flex-col gap-3" aria-label="Activity" aria-live="polite">
       {items.map((item, index) => {
         const id = item.type === "tools" ? item.id : item.entry.id;
         const className = initialIds.has(id) ? undefined : ENTER_CLASS;

@@ -28,7 +28,7 @@ function DialogContent({
       <DialogPrimitive.Content
         data-slot="dialog-content"
         className={cn(
-          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-lg border border-border bg-card p-4 text-card-foreground shadow-lg outline-none data-[state=open]:animate-[pego-pop-in_var(--duration-base)_var(--ease-out)] data-[state=closed]:animate-[pego-pop-out_var(--duration-fast)_var(--ease-out)_forwards]",
+          "fixed top-1/2 left-1/2 z-50 grid w-full max-w-sm -translate-x-1/2 -translate-y-1/2 gap-4 rounded-2xl border border-border bg-card p-5 text-card-foreground shadow-lg outline-none data-[state=open]:animate-[pego-pop-in_var(--duration-base)_var(--ease-out)] data-[state=closed]:animate-[pego-pop-out_var(--duration-fast)_var(--ease-out)_forwards]",
           className,
         )}
         {...props}
@@ -36,7 +36,7 @@ function DialogContent({
         {children}
         <DialogPrimitive.Close
           aria-label="Close"
-          className="absolute top-3 right-3 rounded-sm text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4"
+          className="absolute top-3 right-3 rounded-md text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4"
         >
           <svg
             viewBox="0 0 24 24"
@@ -71,7 +71,7 @@ function DialogTitle({ className, ...props }: React.ComponentProps<typeof Dialog
   return (
     <DialogPrimitive.Title
       data-slot="dialog-title"
-      className={cn("text-sm font-semibold", className)}
+      className={cn("text-[15px] font-semibold", className)}
       {...props}
     />
   );
@@ -84,7 +84,7 @@ function DialogDescription({
   return (
     <DialogPrimitive.Description
       data-slot="dialog-description"
-      className={cn("text-xs text-muted-foreground", className)}
+      className={cn("text-[13px] text-muted-foreground", className)}
       {...props}
     />
   );

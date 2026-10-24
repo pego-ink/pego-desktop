@@ -58,8 +58,8 @@ const tabClass = (active: boolean, dragging: boolean, floating = false) =>
     "hover:text-foreground",
     active &&
       (floating
-        ? "z-10 bg-card text-foreground shadow-[0_0_0_1px_var(--border),0_4px_12px_rgb(0_0_0/0.14)]"
-        : "z-10 bg-card text-foreground before:pointer-events-none before:absolute before:bottom-0 before:-left-2 before:size-2 before:[background:radial-gradient(circle_at_0_0,transparent_8px,var(--card)_8.5px)] after:pointer-events-none after:absolute after:right-[-8px] after:bottom-0 after:size-2 after:[background:radial-gradient(circle_at_100%_0,transparent_8px,var(--card)_8.5px)]"),
+        ? "z-10 bg-background text-foreground ring-1 ring-border"
+        : "z-10 bg-background text-foreground before:pointer-events-none before:absolute before:bottom-0 before:-left-2 before:size-2 before:[background:radial-gradient(circle_at_0_0,transparent_8px,var(--background)_8.5px)] after:pointer-events-none after:absolute after:right-[-8px] after:bottom-0 after:size-2 after:[background:radial-gradient(circle_at_100%_0,transparent_8px,var(--background)_8.5px)]"),
     dragging && "z-20 text-foreground",
   );
 
@@ -169,7 +169,7 @@ const DocumentTab = ({
             />
           ) : null}
         </span>
-        <span className="min-w-0 flex-1 overflow-hidden text-xs font-medium whitespace-nowrap [mask-image:linear-gradient(to_right,#000_calc(100%-14px),transparent)]">
+        <span className="min-w-0 flex-1 overflow-hidden text-[13px] font-medium whitespace-nowrap [mask-image:linear-gradient(to_right,black_calc(100%-14px),transparent)]">
           {title}
           {dirty ? <span className="sr-only">, unsaved changes</span> : null}
           {running ? <span className="sr-only">, agent working</span> : null}
@@ -179,7 +179,7 @@ const DocumentTab = ({
           tabIndex={-1}
           aria-label={`Close ${title}`}
           title={`Close tab (${MOD}W)`}
-          className="relative flex size-5 shrink-0 items-center justify-center rounded-sm outline-none transition-colors duration-(--duration-fast) hover:bg-accent"
+          className="relative flex size-5 shrink-0 items-center justify-center rounded-md outline-none transition-colors duration-(--duration-fast) hover:bg-accent"
           onClick={() => requestCloseTab(workspace.id)}
         >
           {dirty ? (
@@ -414,7 +414,7 @@ export const TabBar = ({ floating = false, trailing }: TabBarProps = {}) => {
   const fade = edges.start || edges.end;
   const maskStyle: CSSProperties | undefined = fade
     ? {
-        maskImage: `linear-gradient(to right, transparent 0, #000 ${edges.start ? FADE : 0}px, #000 calc(100% - ${edges.end ? FADE : 0}px), transparent 100%)`,
+        maskImage: `linear-gradient(to right, transparent 0, black ${edges.start ? FADE : 0}px, black calc(100% - ${edges.end ? FADE : 0}px), transparent 100%)`,
       }
     : undefined;
 
@@ -426,7 +426,7 @@ export const TabBar = ({ floating = false, trailing }: TabBarProps = {}) => {
       ref={rowRef}
       className={cn(
         "flex shrink-0 gap-1 pr-2",
-        floating ? "h-12 items-center" : "h-10 items-end bg-background",
+        floating ? "h-12 items-center bg-chrome" : "h-10 items-end bg-chrome",
         windowControls ? WINDOW_CONTROLS_INSET_CLASS : "pl-2",
         desktop && "[-webkit-app-region:drag]",
       )}

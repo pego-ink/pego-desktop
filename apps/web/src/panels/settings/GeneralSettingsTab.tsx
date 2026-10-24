@@ -78,7 +78,9 @@ const NudgeField = ({
   onChange: (value: number) => void;
 }) => (
   <div className="flex flex-col gap-1">
-    <span className="text-[11px] text-muted-foreground">{caption}</span>
+    <span className="font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
+      {caption}
+    </span>
     <NumberField
       label={caption === "Arrow" ? <ArrowRightIcon /> : <ChevronsRightIcon />}
       labelTitle={title}

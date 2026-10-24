@@ -1,6 +1,6 @@
 import { useState, type KeyboardEvent } from "react";
 import { useShallow } from "zustand/react/shallow";
-import { ChevronDownIcon, PlusIcon } from "lucide-react";
+import { ChevronDownIcon, MessageSquareIcon, PlusIcon } from "lucide-react";
 import { PanelHeader } from "@pego/ui/components/panel-header";
 import { Popover, PopoverContent, PopoverTrigger } from "@pego/ui/components/popover";
 import { Tooltip } from "@pego/ui/components/tooltip";
@@ -23,7 +23,7 @@ const RunningDot = () => {
   return (
     <span
       aria-hidden
-      className="size-1.5 shrink-0 rounded-full bg-foreground motion-safe:animate-pulse"
+      className="size-1.5 shrink-0 rounded-full bg-violet motion-safe:animate-pulse"
     />
   );
 };
@@ -54,7 +54,7 @@ const TitleEditor = ({
       onFocus={(event) => event.currentTarget.select()}
       onKeyDown={onKeyDown}
       onBlur={(event) => onDone(event.currentTarget.value)}
-      className="h-7 min-w-0 flex-1 rounded-md border border-ring bg-background px-1.5 text-[13px] font-medium outline-none"
+      className="h-7 min-w-0 flex-1 rounded-lg border border-violet bg-background px-2 text-[13px] font-normal outline-none"
     />
   );
 };
@@ -98,8 +98,9 @@ export const SessionHeader = () => {
               setOpen(false);
               setEditing(true);
             }}
-            className="-ml-1.5 flex min-w-0 items-center gap-1 rounded-md px-1.5 py-1 text-left outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-accent"
+            className="flex h-7 min-w-0 items-center gap-1.5 rounded-lg bg-muted px-2 text-left text-[13px] font-normal outline-none transition-colors duration-(--duration-fast) hover:bg-accent focus-visible:ring-2 focus-visible:ring-ring/50 data-[state=open]:bg-accent"
           >
+            <MessageSquareIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
             <span className="min-w-0 truncate leading-4">{title}</span>
             <RunningDot />
             <ChevronDownIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
@@ -127,7 +128,7 @@ export const SessionHeader = () => {
             if (!addDisabled) void startNewSession();
           }}
           className={cn(
-            "flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-[background-color,color,opacity,scale] duration-(--duration-fast) focus-visible:ring-2 focus-visible:ring-ring/50",
+            "flex size-7 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-[background-color,color,opacity,scale] duration-(--duration-fast) focus-visible:ring-2 focus-visible:ring-ring/50",
             addDisabled
               ? "cursor-default opacity-50"
               : "hover:bg-accent hover:text-foreground motion-safe:active:scale-[.97]",

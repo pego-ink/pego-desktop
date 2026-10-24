@@ -1,12 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024">
-<!-- macOS icon grid: 824px tile centered on a 1024px canvas. -->
-<g transform="translate(100 100) scale(12.875)">
-<rect width="64" height="64" rx="16" fill="#0b1f17"/>
-<path d="M16 24 L6 24 L16 36 Z" fill="#ffffff"/>
-<path d="M16 24 L48 24 A32 32 0 0 1 16 56 Z" fill="#ffffff"/>
-<path d="M16 24 L35 24 A19 19 0 0 1 16 43 Z" fill="#7fe0b8"/>
-<circle cx="43" cy="17" r="9" fill="#ffffff"/>
-<path d="M51 14 L58 17.5 L51 21 Z" fill="#7fe0b8"/>
-<circle cx="44" cy="15" r="2" fill="#0b1f17"/>
+<!-- macOS icon grid: 824px tile centered on a 1024px canvas. Source: brand/logo/pego-app-icon.svg -->
+<defs><linearGradient id="g" x1="0.21" y1="0.09" x2="0.79" y2="0.91"><stop offset="0" stop-color="#7A55FF"/><stop offset="1" stop-color="#4A1FF0"/></linearGradient></defs>
+<g transform="translate(100 100) scale(1.609375)">
+<rect width="512" height="512" rx="115.20" fill="url(#g)"/>
+<svg x="125.05" y="131.16" width="229.90" height="263.68" viewBox="0 0 229.9133 263.6982" preserveAspectRatio="none"><path d="M7.91862 159.95447c-15.23-11.60001-7.02-35.91 12.11999-35.91l130.74999 0c11.04477 0.0022 19.99781 8.9552 20 20l0 99.62c0 16.54998-18.95999 25.94-32.11999 15.89999l-79.88-60.85001-50.86999-38.75998z" fill="#FF6FB5"/><path d="M169.67961 102.52345c-2.05493 1.00144-4.31101 1.52161-6.59699 1.52101l-49.24299 0c-8.31799 0-15.06101-6.74299-15.06101-15.061l0-73.92099c-0.00084-5.18382 2.66441-10.00371 7.05536-12.75899 4.39093-2.75528 9.89029-3.05864 14.55763-0.80302l101.00101 48.7c11.33301 5.468 11.371 21.59801 0.05301 27.111l-51.76602 25.21199z" fill="#FFFFFF"/></svg>
 </g>
 </svg>

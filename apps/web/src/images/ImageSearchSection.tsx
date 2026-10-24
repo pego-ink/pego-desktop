@@ -52,7 +52,7 @@ const ImageResult = ({ image }: { image: StockImage }) => {
 const SearchNote = ({ note }: { note: string }) => (
   <div
     role="status"
-    className="mb-2 flex flex-col items-start gap-1 text-[11px] leading-4 text-muted-foreground"
+    className="mb-2 flex flex-col items-start gap-1 text-xs leading-4 text-muted-foreground"
   >
     <p>{note}</p>
     {/Browser panel/.test(note) ? (
@@ -122,27 +122,27 @@ export const ImageSearchSection = () => {
             placeholder="Search photos, e.g. fried chicken"
             aria-label="Search photos"
             onChange={(event) => setQuery(event.target.value)}
-            className="h-7 pl-7 text-xs"
+            className="h-7 pl-7 text-[13px]"
           />
         </div>
         {state.status === "loading" ? <Spinner className="size-3.5" /> : null}
       </form>
       <div className="min-h-0 flex-1 overflow-y-auto px-3 pb-3">
         {state.status === "idle" ? (
-          <p className="text-[11px] leading-4 text-muted-foreground">
+          <p className="text-xs leading-4 text-muted-foreground">
             {webSearch
               ? "Find pictures on Google for your design. Press Enter to search, then click one to place it or drag it onto the canvas."
               : "Find free photos for your design. Press Enter to search, then click a photo to place it or drag it onto the canvas."}
           </p>
         ) : state.status === "error" ? (
-          <p role="alert" className="text-[11px] leading-4 text-destructive">
+          <p role="alert" className="text-xs leading-4 text-destructive">
             {state.message}
           </p>
         ) : state.status === "done" ? (
           <>
             {state.note ? <SearchNote note={state.note} /> : null}
             {state.images.length === 0 ? (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 No photo found for “{state.query}”. Try other words.
               </p>
             ) : (

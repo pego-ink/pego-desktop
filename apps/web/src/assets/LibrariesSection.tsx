@@ -73,9 +73,9 @@ export const LibrariesSection = () => {
   };
 
   return (
-    <section aria-label="Libraries" className="border-t border-border px-3 py-2">
+    <section aria-label="Libraries" className="border-t border-border px-4 py-3">
       <div className="flex h-7 items-center justify-between">
-        <h3 className="text-xs font-medium text-foreground">Libraries</h3>
+        <h3 className="text-[13px] font-semibold text-foreground">Libraries</h3>
         <DropdownMenu onOpenChange={(open) => open && void refreshProjects()}>
           <DropdownMenuTrigger asChild>
             <Button
@@ -113,7 +113,7 @@ export const LibrariesSection = () => {
         </DropdownMenu>
       </div>
       {pages.length === 0 ? (
-        <p className="pb-1 text-[11px] leading-4 text-muted-foreground">
+        <p className="pb-1 text-xs leading-4 text-muted-foreground">
           Use the components of another project: add it as a library.
         </p>
       ) : (
@@ -121,10 +121,10 @@ export const LibrariesSection = () => {
           {pages.map((page) => {
             const library = page.library!;
             return (
-              <li key={page.id} className="flex h-8 items-center gap-2 text-xs">
+              <li key={page.id} className="flex h-8 items-center gap-2 text-[13px]">
                 <LibraryIcon aria-hidden className="size-3.5 shrink-0 text-violet" />
                 <span className="min-w-0 flex-1 truncate">{library.name}</span>
-                <span className="shrink-0 text-[11px] text-muted-foreground">
+                <span className="shrink-0 text-xs text-muted-foreground">
                   {formatRelativeTime(library.syncedAt)}
                 </span>
                 <Button
