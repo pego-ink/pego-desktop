@@ -510,3 +510,60 @@ describe("domSnapshotToNode", () => {
     expect(domSnapshotToNode(empty, new Set()).node).toBeNull();
   });
 });
+
+describe("browser image search", () => {
+  const found = {
+    originals: [{ url: "https://cdn.example/fire.jpg", width: 1200, height: 800 }],
+    images: [],
+  };
+
+  test("search-images opens Google Images and lists the photos as page data", async () => {
+    const { browser, calls } = fakeBrowser({
+      cdp: async () => ({ result: { value: found } }),
+    });
+    const { result, isError } = await call(
+      { action: "search-images", query: "forest fire smoke" },
+      withBrowser(browser),
+    );
+    expect(isError).toBe(false);
+    expect(calls[0]).toEqual({
+      fn: "loadPage",
+      args: ["https://www.google.com/search?udm=2&q=forest%20fire%20smoke"],
+    });
+    expect(result.content).toContain("<page_content");
+    expect(result.content).toContain('"url":"https://cdn.example/fire.jpg"');
+    expect(result.content).toContain("place_image");
+  });
+
+  test("search-images needs a query and reports Google's check page", async () => {
+    const { browser } = fakeBrowser({
+      loadPage: async () => ({ url: "https://www.google.com/sorry/index?x=1", title: "" }),
+    });
+    expect((await call({ action: "search-images" }, withBrowser(browser))).data.error.code).toBe(
+      "invalid_input",
+    );
+    const blocked = await call({ action: "search-images", query: "x" }, withBrowser(browser));
+    expect(blocked.data.error.code).toBe("blocked");
+  });
+
+  test("find-images reads the loaded page and says when it has none", async () => {
+    const { browser, calls } = fakeBrowser({
+      cdp: async (method, params) => {
+        calls.push({ fn: "cdp", args: [method, params] });
+        return { result: { value: { originals: [], images: [] } } };
+      },
+    });
+    const { data } = await call({ action: "find-images" }, withBrowser(browser));
+    expect(data.error.code).toBe("no_images");
+    expect(calls.at(-1)?.args[0]).toBe("Runtime.evaluate");
+    expect((calls.at(-1)?.args[1] as Json).returnByValue).toBe(true);
+  });
+
+  test("find-images needs a loaded page", async () => {
+    const { browser, unload } = fakeBrowser();
+    unload();
+    expect((await call({ action: "find-images" }, withBrowser(browser))).data.error.code).toBe(
+      "no_page",
+    );
+  });
+});

@@ -1,5 +1,6 @@
 import { toast } from "sonner";
 import type { StockImage } from "@pego/agent";
+import { isWebImage, WEB_IMAGES_PROVIDER } from "./web-image-search";
 import { createId, type InsertOp, type PegoNode } from "@pego/doc";
 import { screenToDoc } from "@/canvas/types";
 import { activePage, useDocumentStore } from "@/store/use-document-store";
@@ -82,9 +83,13 @@ export const readDroppedStockImage = (data: string): StockImage | null => {
     return null;
   }
   if (!isRecord(value)) return null;
-  const { src, thumb, title, creator, license, pageUrl, width, height } = value;
-  if (typeof src !== "string" || !PROXY.test(src)) return null;
-  if (typeof thumb !== "string" || !PROXY.test(thumb)) return null;
+  const { src, thumb, title, creator, license, pageUrl, width, height, provider } = value;
+  // Web pictures (built-in browser search) may come from any https site: they are downloaded
+  // through the editor's image fetch when placed, never linked.
+  const web = provider === WEB_IMAGES_PROVIDER;
+  const allowed = (url: unknown): url is string =>
+    typeof url === "string" && (web ? /^https:\/\/\S{1,2000}$/i.test(url) : PROXY.test(url));
+  if (!allowed(src) || !allowed(thumb)) return null;
   if (typeof pageUrl !== "string" || !/^https:\/\//i.test(pageUrl)) return null;
   if (typeof title !== "string" || typeof license !== "string") return null;
   const size =
@@ -98,7 +103,7 @@ export const readDroppedStockImage = (data: string): StockImage | null => {
     ...(typeof creator === "string" ? { creator: creator.slice(0, 120) } : {}),
     license: license.slice(0, 60),
     pageUrl,
-    provider: "Openverse",
+    provider: web ? WEB_IMAGES_PROVIDER : "Openverse",
     ...size,
   };
 };
@@ -128,6 +133,29 @@ export const placeImageLayer = (
   if (!state.commit([op], { label: `Place ${node.name}` })) return false;
   useDocumentStore.getState().select([node.id]);
   return true;
+};
+
+/**
+ * Put a found photo on the shown page, crediting it: Openverse photos as they are, web pictures
+ * downloaded into the file first (most sites do not let the canvas load them directly).
+ */
+export const placeFoundImage = async (
+  image: StockImage,
+  screen?: { x: number; y: number },
+): Promise<boolean> => {
+  if (!isWebImage(image)) return placeStockImage(image, screen);
+  const progress = toast.loading(`Getting the image from ${image.creator ?? "the web"}…`);
+  try {
+    const { imageUrlAsDataUrl } = await import("./image-from-url");
+    const src = await imageUrlAsDataUrl(image.src);
+    toast.dismiss(progress);
+    return placeStockImage({ ...image, src }, screen);
+  } catch (error) {
+    toast.error(error instanceof Error ? error.message : "Could not get that image.", {
+      id: progress,
+    });
+    return false;
+  }
 };
 
 /** Put a found photo on the shown page (see `placeImageLayer`), crediting it. */

@@ -22,7 +22,7 @@ import { dropComponent } from "@/assets/drop-component";
 import {
   GENERATED_IMAGE_MIME,
   placeImageLayer,
-  placeStockImage,
+  placeFoundImage,
   readDroppedGeneratedImage,
   readDroppedStockImage,
   STOCK_IMAGE_MIME,
@@ -395,7 +395,10 @@ export const Canvas = () => {
           const image = readDroppedStockImage(photo);
           const rect = event.currentTarget.getBoundingClientRect();
           if (image)
-            placeStockImage(image, { x: event.clientX - rect.left, y: event.clientY - rect.top });
+            void placeFoundImage(image, {
+              x: event.clientX - rect.left,
+              y: event.clientY - rect.top,
+            });
           return;
         }
         const generated = event.dataTransfer.getData(GENERATED_IMAGE_MIME);

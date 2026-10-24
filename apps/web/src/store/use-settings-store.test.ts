@@ -40,6 +40,9 @@ describe("mergeSettings", () => {
   test("interface style: docked or floating, anything else falls back to docked", () => {
     expect(store.mergeSettings({ interfaceStyle: "floating" }).interfaceStyle).toBe("floating");
     expect(store.mergeSettings({ interfaceStyle: "compact" }).interfaceStyle).toBe("docked");
+    expect(store.mergeSettings({}).imageSearch).toBe("browser");
+    expect(store.mergeSettings({ imageSearch: "openverse" }).imageSearch).toBe("openverse");
+    expect(store.mergeSettings({ imageSearch: "bing" }).imageSearch).toBe("browser");
   });
   test("toolbar position: a known side is kept, anything else falls back to bottom", () => {
     expect(store.mergeSettings({ toolbarPosition: "left" }).toolbarPosition).toBe("left");

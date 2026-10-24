@@ -25,7 +25,15 @@ export type EditorSettings = {
   toolbarPosition: ToolbarPosition;
   /** Docked columns, or floating cards over the canvas (layout/interface-style). */
   interfaceStyle: InterfaceStyle;
+  /**
+   * Where photo searches look (Assets > Images and the agent's search_images): Google Images in
+   * Pego's built-in browser (desktop app), or Openverse's free photos. Without the built-in
+   * browser it is always Openverse.
+   */
+  imageSearch: ImageSearchSource;
 };
+
+export type ImageSearchSource = "browser" | "openverse";
 
 export const DEFAULT_SETTINGS: EditorSettings = {
   nudgeSmall: 1,
@@ -36,6 +44,7 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   customAgentNames: [...DEFAULT_CUSTOM_AGENT_NAMES],
   toolbarPosition: "bottom",
   interfaceStyle: "docked",
+  imageSearch: "browser",
 };
 
 const KEY = "pego:settings.v1";
@@ -63,6 +72,10 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
     interfaceStyle: isInterfaceStyle(v.interfaceStyle)
       ? v.interfaceStyle
       : DEFAULT_SETTINGS.interfaceStyle,
+    imageSearch:
+      v.imageSearch === "browser" || v.imageSearch === "openverse"
+        ? v.imageSearch
+        : DEFAULT_SETTINGS.imageSearch,
   };
 };
 
