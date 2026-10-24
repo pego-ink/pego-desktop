@@ -18,7 +18,8 @@ name: Release
 # setup-bun skips the Actions cache, which code merged into dev can write.
 on:
   push:
-    tags: ["v*"]
+    # Nightly tags (made by pego-bot, so they do trigger workflows) are not releases.
+    tags: ["v*", "!v*-nightly.*"]
   workflow_dispatch:
 
 permissions:
