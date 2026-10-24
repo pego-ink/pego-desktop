@@ -1,4 +1,8 @@
 import {
+  CONNECTOR_DEFAULT_STROKE,
+  CONNECTOR_LABEL,
+  connectorGeometryIn,
+  resolveStrokeWidth,
   shaderFallbackColor,
   findNode,
   flipOf,
@@ -327,6 +331,74 @@ const pathElement = (ctx: Ctx, node: Extract<PegoNode, { type: "path" }>, box: B
   return shadow ? `<g${shadow}>${inner}</g>` : inner;
 };
 
+type Vec = { x: number; y: number };
+
+/** An arrow (open) or triangle (filled) head at `tip`, pointing along `dir`; other markers are left out. */
+const arrowHead = (marker: string, tip: Vec, dir: Vec, width: number, paint: string): string => {
+  if (marker !== "arrow" && marker !== "triangle") return "";
+  const length = Math.hypot(dir.x, dir.y) || 1;
+  const back = { x: -dir.x / length, y: -dir.y / length };
+  const size = Math.max(10, width * 5);
+  const half = ((marker === "arrow" ? 30 : 25) * Math.PI) / 180;
+  const arm = marker === "arrow" ? size : size / Math.cos(half);
+  const wing = (angle: number) => ({
+    x: tip.x + (back.x * Math.cos(angle) - back.y * Math.sin(angle)) * arm,
+    y: tip.y + (back.x * Math.sin(angle) + back.y * Math.cos(angle)) * arm,
+  });
+  const points = [wing(half), tip, wing(-half)].map((p) => `${round(p.x)},${round(p.y)}`).join(" ");
+  return marker === "arrow"
+    ? `<polyline points="${points}" fill="none" stroke="${paint}" stroke-width="${round(width)}" stroke-linecap="round" stroke-linejoin="round" />`
+    : `<polygon points="${points}" fill="${paint}" />`;
+};
+
+/** A connector: its line, arrow heads and label, moved from document coordinates into its box. */
+const connectorElement = (
+  ctx: Ctx,
+  node: Extract<PegoNode, { type: "connector" }>,
+  box: Box,
+): string => {
+  const geometry = connectorGeometryIn(ctx.layout, node);
+  if (!geometry) return "";
+  const stroke = node.stroke ?? CONNECTOR_DEFAULT_STROKE;
+  const paint = color(ctx, stroke.color) ?? CONNECTOR_DEFAULT_STROKE.color;
+  const width = Math.max(0.5, resolveStrokeWidth(stroke.width, ctx.doc.variables));
+  const { points } = geometry;
+  const first = points[0]!;
+  const second = points[1] ?? first;
+  const last = points[points.length - 1]!;
+  const beforeLast = points[points.length - 2] ?? last;
+  const parts = [
+    `<path d="${esc(geometry.d)}" fill="none" stroke="${paint}" stroke-width="${round(width)}" stroke-linecap="round" stroke-linejoin="round" />`,
+    arrowHead(
+      node.endMarker ?? "arrow",
+      last,
+      { x: last.x - beforeLast.x, y: last.y - beforeLast.y },
+      width,
+      paint,
+    ),
+    arrowHead(
+      node.startMarker ?? "none",
+      first,
+      { x: first.x - second.x, y: first.y - second.y },
+      width,
+      paint,
+    ),
+  ];
+  const label = node.label?.trim();
+  if (label) {
+    const { fontSize, padX, padY } = CONNECTOR_LABEL;
+    // No font metrics here: an estimate wide enough for the label.
+    const w = label.length * fontSize * 0.6 + padX * 2;
+    const h = fontSize * 1.4 + padY * 2;
+    const { x, y } = geometry.mid;
+    parts.push(
+      `<rect x="${round(x - w / 2)}" y="${round(y - h / 2)}" width="${round(w)}" height="${round(h)}" rx="${round(h / 2)}" fill="${CONNECTOR_LABEL.background}" stroke="${paint}" stroke-width="1" />`,
+      `<text x="${round(x)}" y="${round(y)}" text-anchor="middle" dominant-baseline="central" font-family="${esc(DEFAULT_FONT)}" font-size="${fontSize}" font-weight="${CONNECTOR_LABEL.fontWeight}" fill="${CONNECTOR_LABEL.color}">${esc(label)}</text>`,
+    );
+  }
+  return `<g transform="translate(${round(-box.x)} ${round(-box.y)})">${parts.join("")}</g>`;
+};
+
 const contentOf = (ctx: Ctx, node: PegoNode, box: Box): string => {
   switch (node.type) {
     case "frame": {
@@ -348,6 +420,8 @@ const contentOf = (ctx: Ctx, node: PegoNode, box: Box): string => {
       return iconElement(ctx, node, box);
     case "image":
       return imageElement(ctx, node, box);
+    case "connector":
+      return connectorElement(ctx, node, box);
     default:
       return "";
   }

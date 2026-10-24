@@ -9,6 +9,7 @@ import { getLayout } from "@/canvas/layout";
 import { useLayerEvents } from "@/canvas/layer-events";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
+import "@/canvas/connector-visibility";
 import {
   canReuse,
   CONTENT_PADDING_PX,

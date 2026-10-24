@@ -6,6 +6,7 @@ import {
   collectDocIds,
   findLocation,
   OpError,
+  pageOf,
   placedByLayout,
   resolveInstance,
   resolveNumber,
@@ -597,6 +598,101 @@ const goToPage = defineTool({
   },
 });
 
+// --- connect_nodes ---------------------------------------------------------------
+
+const MAX_CONNECTIONS = 50;
+const side = z.enum(["auto", "top", "right", "bottom", "left"]);
+const connectionSchema = z.strictObject({
+  from: id,
+  to: id,
+  label: z.string().max(200).optional(),
+  route: z.enum(["elbow", "straight", "curved"]).optional(),
+  fromSide: side.optional(),
+  toSide: side.optional(),
+});
+const sideJsonSchema: JsonSchema = {
+  type: "string",
+  enum: ["auto", "top", "right", "bottom", "left"],
+  description: "Default auto: the side facing the other end.",
+};
+
+const connectNodes = defineTool({
+  name: "connect_nodes",
+  description:
+    "Draw wireflow arrows: each connection is a connector from one layer to another (screen to screen, or a button inside a screen to the screen it opens). " +
+    "Connectors follow their layers when they move, are deleted with them, and sit on top of the page that holds `from`. " +
+    'Give a short label for the trigger or condition ("Tap Beli", "PIN salah", "Sukses"). Default route elbow (right angles); curved for loops back. ' +
+    "Lay screens out first (find_empty_space), then connect them; one connect_nodes call can draw a whole flow.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      connections: {
+        type: "array",
+        minItems: 1,
+        maxItems: MAX_CONNECTIONS,
+        items: {
+          type: "object",
+          properties: {
+            from: idJsonSchema("Layer the arrow starts at."),
+            to: idJsonSchema("Layer the arrow points to."),
+            label: { type: "string", description: "Short text on the line." },
+            route: { type: "string", enum: ["elbow", "straight", "curved"] },
+            fromSide: sideJsonSchema,
+            toSide: sideJsonSchema,
+          },
+          required: ["from", "to"],
+          additionalProperties: false,
+        },
+      },
+    },
+    required: ["connections"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({
+    connections: z.array(connectionSchema).min(1).max(MAX_CONNECTIONS),
+  }),
+  inputHint: "Pass {connections: [{from, to, label?, route?, fromSide?, toSide?}]}.",
+  run: (input, host) => {
+    const doc = host.getDoc();
+    const ops: Op[] = input.connections.map((connection, i): Op => {
+      for (const end of [connection.from, connection.to]) {
+        if (!findLocation(doc, end)) {
+          throw new ToolError(
+            "node_not_found",
+            `connection ${i}: node "${end}" not found`,
+            "Use ids from get_document.",
+          );
+        }
+      }
+      if (connection.from === connection.to) {
+        throw new ToolError("invalid_input", `connection ${i}: from and to are the same layer`);
+      }
+      const page = pageOf(doc, connection.from) ?? pageOf(doc, connection.to);
+      return {
+        op: "insert",
+        parentId: page?.id ?? activePageId(host),
+        node: {
+          type: "connector",
+          id: createId(),
+          x: 0,
+          y: 0,
+          from: {
+            id: connection.from,
+            ...(connection.fromSide ? { side: connection.fromSide } : {}),
+          },
+          to: { id: connection.to, ...(connection.toSide ? { side: connection.toSide } : {}) },
+          ...(connection.label?.trim() ? { label: connection.label.trim() } : {}),
+          ...(connection.route ? { route: connection.route } : {}),
+        },
+      };
+    });
+    commitOps(host, ops);
+    const created = ops.map((op) => (op.op === "insert" ? op.node.id : ""));
+    host.setFocus(created);
+    return ok({ ok: true, created });
+  },
+});
+
 export const editTools: ToolSpec[] = [
   batchDesign,
   createComponent,
@@ -606,4 +702,5 @@ export const editTools: ToolSpec[] = [
   copyNodes,
   createPage,
   goToPage,
+  connectNodes,
 ];

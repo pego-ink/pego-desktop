@@ -14,7 +14,8 @@ export type Tool =
   | "arrow"
   | "polygon"
   | "star"
-  | "image";
+  | "image"
+  | "connector";
 
 type ToolState = {
   tool: Tool;
@@ -45,6 +46,7 @@ export const TOOL_KEYS: Readonly<Record<string, Tool>> = {
   t: "text",
   p: "pen",
   l: "line",
+  c: "connector",
 };
 
 /** Shift + key (lowercase `KeyboardEvent.key`) to tool, like Figma (Shift+P pencil, Shift+L arrow). */

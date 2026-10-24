@@ -3,7 +3,7 @@ import { documentSchema, sampleDoc, type PegoDocument } from "@pego/doc";
 import { serializeDocument } from "./serialize";
 
 const doc: PegoDocument = documentSchema.parse({
-  version: 8,
+  version: 9,
   id: "d",
   name: "App",
   variables: { gap: { type: "number", value: 8 }, accent: { type: "color", value: "#0E7C5A" } },
@@ -138,7 +138,7 @@ describe("serializeDocument", () => {
 
 describe("serializeDocument image nodes", () => {
   const withImage = documentSchema.parse({
-    version: 8,
+    version: 9,
     id: "d",
     name: "Img",
     variables: {},
@@ -189,7 +189,7 @@ describe("serializeDocument image nodes", () => {
 
 describe("serializeDocument v1 props", () => {
   const v1: PegoDocument = documentSchema.parse({
-    version: 8,
+    version: 9,
     id: "d",
     name: "Effects",
     children: [
@@ -237,7 +237,7 @@ describe("serializeDocument fills", () => {
   test("gradients inline, images by size", () => {
     const text = serializeDocument(
       documentSchema.parse({
-        version: 8,
+        version: 9,
         id: "d",
         name: "Fills",
         children: [

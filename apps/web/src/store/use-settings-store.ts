@@ -34,6 +34,11 @@ export type EditorSettings = {
   imageSearch: ImageSearchSource;
   /** Desktop app: the Browser panel in the left side panel, or as its own column on the right. */
   browserSide: BrowserSide;
+  /**
+   * Wireflow connectors on the canvas and the Connector tool. Off, connectors stay in the file but
+   * are not drawn, hit or selectable, and the tool is hidden.
+   */
+  connectors: boolean;
 };
 
 export type ImageSearchSource = "browser" | "openverse";
@@ -49,6 +54,7 @@ export const DEFAULT_SETTINGS: EditorSettings = {
   interfaceStyle: "docked",
   imageSearch: "browser",
   browserSide: "left",
+  connectors: true,
 };
 
 const KEY = "pego:settings.v1";
@@ -84,6 +90,7 @@ export const mergeSettings = (raw: unknown): EditorSettings => {
       v.browserSide === "left" || v.browserSide === "right"
         ? v.browserSide
         : DEFAULT_SETTINGS.browserSide,
+    connectors: typeof v.connectors === "boolean" ? v.connectors : DEFAULT_SETTINGS.connectors,
   };
 };
 

@@ -3,7 +3,7 @@ import { applyOp, computeLayout, findNode, type PegoDocument } from "@pego/doc";
 import { flexChildren, layoutPositionOps } from "./layout-position";
 
 const doc: PegoDocument = {
-  version: 8,
+  version: 9,
   id: "d",
   name: "d",
   variables: {},

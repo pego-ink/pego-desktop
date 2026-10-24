@@ -304,6 +304,34 @@ const iconSchema = renderedNode.extend({
   fill: colorValueSchema.optional(),
   effects,
 });
+/** Which side of a layer a connector attaches to; `auto` picks the side facing the other end. */
+export const connectorSideSchema = z.enum(["auto", "top", "right", "bottom", "left"]);
+/** One end of a connector: the layer it is attached to (any rendered id) and the side. */
+export const connectorEndSchema = z.object({
+  id: z.string().min(1),
+  side: connectorSideSchema.optional(),
+});
+export const connectorRouteSchema = z.enum(["elbow", "straight", "curved"]);
+/**
+ * A line between two layers (a wireflow arrow: screen to screen, button to screen). Its path is
+ * computed from the two layers' boxes, so it follows them when they move; its own x/y/size are
+ * unused. It draws nothing while an end is missing. Belongs at the top level of a page.
+ */
+const connectorSchema = renderedNode.extend({
+  type: z.literal("connector"),
+  from: connectorEndSchema,
+  to: connectorEndSchema,
+  /** Default `elbow` (right angles). */
+  route: connectorRouteSchema.optional(),
+  /** Default a 2px slate line. */
+  stroke: strokeSchema.optional(),
+  /** Default none. */
+  startMarker: pathMarkerSchema.optional(),
+  /** Default arrow. */
+  endMarker: pathMarkerSchema.optional(),
+  /** Text on a pill at the middle of the line ("Tap Beli", "PIN salah"). */
+  label: z.string().max(200).optional(),
+});
 const refSchema = renderedNode.extend({
   type: z.literal("ref"),
   /** Id of the reusable node this instance points at. */
@@ -335,6 +363,9 @@ export type TextNode = z.infer<typeof textSchema>;
 export type IconNode = z.infer<typeof iconSchema>;
 export type RefNode = z.infer<typeof refSchema>;
 export type ImageNode = z.infer<typeof imageSchema>;
+export type ConnectorNode = z.infer<typeof connectorSchema>;
+export type ConnectorSide = z.infer<typeof connectorSideSchema>;
+export type ConnectorRoute = z.infer<typeof connectorRouteSchema>;
 export type FrameNode = z.infer<typeof frameShape> & { children: PegoNode[] };
 export type GroupNode = z.infer<typeof groupShape> & { children: PegoNode[] };
 export type PageNode = z.infer<typeof pageShape> & { children: PegoNode[] };
@@ -348,7 +379,8 @@ export type PegoNode =
   | TextNode
   | IconNode
   | RefNode
-  | ImageNode;
+  | ImageNode
+  | ConnectorNode;
 export type PegoNodeType = PegoNode["type"];
 
 // Recursive: containers reference the node union lazily.
@@ -364,6 +396,7 @@ export const contentNodeSchema: z.ZodType<PegoNode, unknown> = z.lazy(() =>
     iconSchema,
     refSchema,
     imageSchema,
+    connectorSchema,
   ]),
 );
 const children = z.array(z.lazy(() => contentNodeSchema)).default([]);
@@ -385,6 +418,7 @@ export const nodeSchema: z.ZodType<PegoNode, unknown> = z.lazy(() =>
     iconSchema,
     refSchema,
     imageSchema,
+    connectorSchema,
   ]),
 );
 
@@ -399,7 +433,7 @@ export const variableSchema = z.discriminatedUnion("type", [
 export const variablesSchema = z.record(z.string(), variableSchema);
 
 /** Current document format version; older documents go through `migrateDocument` first. */
-export const DOCUMENT_VERSION = 8;
+export const DOCUMENT_VERSION = 9;
 
 export const documentSchema = z.object({
   version: z.literal(DOCUMENT_VERSION),

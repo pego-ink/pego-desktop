@@ -3,6 +3,7 @@ import {
   applyOp,
   cloneWithFreshIds,
   collectDocIds,
+  danglingConnectors,
   findLocation,
   nodeSchema,
   OpError,
@@ -282,7 +283,10 @@ const runOperation = (state: State, operation: BatchOperation, position: number)
     case "delete": {
       const target = resolveRef(operation.target, aliases);
       const parentId = findLocation(state.doc, target)?.parentId;
+      // Connectors attached to it would point at nothing: they go too.
+      const dangling = danglingConnectors(state.doc, [target]);
       push(state, { op: "delete", id: target });
+      for (const connector of dangling) push(state, { op: "delete", id: connector });
       if (parentId) state.focus.add(parentId);
       return;
     }

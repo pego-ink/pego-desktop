@@ -61,6 +61,7 @@ describe("editTools registry", () => {
       "copy_nodes",
       "create_page",
       "go_to_page",
+      "connect_nodes",
     ]);
     for (const tool of editTools) {
       expect(tool.name).toMatch(/^[a-z]+(_[a-z]+)*$/);

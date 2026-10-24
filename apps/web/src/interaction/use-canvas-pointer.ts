@@ -27,7 +27,7 @@ import {
   sameSegment,
   type Segment,
 } from "@/interaction/drag-target";
-import { hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
+import { getNodeIndex, hitPath, HIT_TOLERANCE_PX } from "@/interaction/hit-test";
 import { pickOnCanvas } from "./pick-on-canvas";
 import { useSettingsStore } from "@/store/use-settings-store";
 import { wheelAction } from "@/interaction/wheel-behavior";
@@ -104,6 +104,8 @@ const handleAt = (
   const { doc, selection } = useDocumentStore.getState();
   const [id] = selection;
   if (selection.length !== 1 || !id) return null;
+  // Connectors have no handles: their line follows their ends.
+  if (getNodeIndex(doc).get(id)?.type === "connector") return null;
   const frame = getSelectionFrame(doc, getLayout(doc), id);
   if (!frame) return null;
   const screen = toScreenMatrix(useViewportStore.getState().camera, frame.matrix);

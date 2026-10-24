@@ -6,6 +6,7 @@ import { boundsOfPoints, placeGeneratingLabel } from "@/canvas/agent-focus-label
 import type { AgentFocusGroup } from "@/agent/focus-groups";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
 import { buildNodeOutline } from "@/canvas/node-outline";
+import { getNodeIndex } from "@/interaction/hit-test";
 import { createLruCache } from "@/canvas/render-cache";
 import { docToScreen, type Camera } from "@/canvas/types";
 import type { Segment } from "@/interaction/drag-target";
@@ -235,6 +236,31 @@ const getHoverOutline = (
 };
 
 /** Stroke the hovered node's real (transformed) outline at a fixed screen width. */
+const isConnector = (doc: PegoDocument, id: string): boolean =>
+  getNodeIndex(doc).get(id)?.type === "connector";
+
+/** A selected connector: its line traced in the selection color, wider than a hover. */
+const drawConnectorSelection = (
+  res: CanvasKitResources,
+  canvas: SkCanvas,
+  doc: PegoDocument,
+  layout: Layout,
+  camera: Camera,
+  id: string,
+) => {
+  const path = buildNodeOutline(res.ck, doc, layout, id);
+  if (!path) return;
+  const { stroke } = getKit(res);
+  stroke.setStrokeWidth((HOVER_STROKE_WIDTH * 1.5) / camera.zoom);
+  stroke.setColor(colorOf(res, SELECTION));
+  canvas.save();
+  canvas.translate(camera.panX, camera.panY);
+  canvas.scale(camera.zoom, camera.zoom);
+  canvas.drawPath(path, stroke);
+  canvas.restore();
+  path.delete();
+};
+
 const drawHover = (
   res: CanvasKitResources,
   canvas: SkCanvas,
@@ -561,13 +587,21 @@ export const renderOverlay = (
       drawHover(res, canvas, doc, layout, camera, hoveredId);
 
     for (const id of selection) {
+      // A connector shows its line highlighted: no box, no handles.
+      if (isConnector(doc, id)) {
+        drawConnectorSelection(res, canvas, doc, layout, camera, id);
+        continue;
+      }
       const frame = getSelectionFrame(doc, layout, id);
       if (frame)
         drawFrameOutline(res, canvas, frame, toScreenMatrix(camera, frame.matrix), camera.zoom);
     }
 
     const [only] = selection;
-    const single = selection.length === 1 && only ? getSelectionFrame(doc, layout, only) : null;
+    const single =
+      selection.length === 1 && only && !isConnector(doc, only)
+        ? getSelectionFrame(doc, layout, only)
+        : null;
     if (single) {
       const screen = toScreenMatrix(camera, single.matrix);
       drawHandles(res, canvas, single, screen);

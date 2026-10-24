@@ -4,3 +4,4 @@ import "./pencil";
 import "./line";
 import "./shapes";
 import "./image";
+import "./connector";

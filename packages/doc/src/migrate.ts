@@ -37,6 +37,9 @@ const MIGRATIONS: Record<number, (doc: RawDocument) => RawDocument> = {
   // v8 only adds an optional prop: `layoutPosition` (absolute children of flex frames) on every
   // rendered node. The bump makes older builds refuse these files instead of laying them out wrong.
   7: (doc) => ({ ...doc, version: 8 }),
+  // v9 only adds a node type: `connector` (lines between layers). The bump makes older builds
+  // refuse these files instead of failing validation.
+  8: (doc) => ({ ...doc, version: 9 }),
 };
 
 /** "page-1", or "page-1-2"... if a node already uses that id. */

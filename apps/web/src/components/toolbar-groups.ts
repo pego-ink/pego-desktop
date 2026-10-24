@@ -12,6 +12,7 @@ import {
   StarIcon,
   TriangleIcon,
   TypeIcon,
+  WorkflowIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { Tool } from "@/store/use-tool-store";
@@ -66,6 +67,18 @@ export const TOOL_GROUPS: readonly ToolGroup[] = [
     id: "text",
     label: "Text",
     tools: [{ tool: "text", label: "Text", shortcut: "T", Icon: TypeIcon }],
+  },
+  {
+    id: "connector",
+    label: "Connector",
+    tools: [
+      {
+        tool: "connector",
+        label: "Connector (drag from one layer to another; ⌘/Ctrl for a button inside)",
+        shortcut: "C",
+        Icon: WorkflowIcon,
+      },
+    ],
   },
 ];
 

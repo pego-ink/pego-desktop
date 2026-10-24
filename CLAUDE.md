@@ -67,7 +67,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **8**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **9**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -75,7 +75,7 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 8, "document": { ... } }
+{ "format": "pego", "version": 9, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
@@ -84,13 +84,13 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 `viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
 added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
 change: the bump makes older builds refuse these files instead of dropping the props); version 4 added `visible` (hidden layers), frame `slot` (component slots), page
-`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change; version 7 added the `shader` fill type, again with no data change; version 8 added `layoutPosition` (absolute children of flex frames), again with no data change.
+`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change; version 7 added the `shader` fill type, again with no data change; version 8 added `layoutPosition` (absolute children of flex frames), again with no data change; version 9 added the `connector` node type, again with no data change.
 
 ### Document
 
 ```json
 {
-  "version": 8,
+  "version": 9,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -137,8 +137,21 @@ drawn, not hit, no room in a flex layout, not exported).
 | `image`     | `src` (data: or https URL, required), `fit` (`fill` \| `fit` \| `crop` \| `tile`), `cornerRadius`, `stroke`, `alt`, `source`             | no       |
 | `icon`      | `iconSet` (default `"lucide"`), `iconName` (kebab-case, required), `fill`, `effects`                                                     | no       |
 | `ref`       | `ref` (id of a reusable node, required), `descendants` (overrides)                                                                       | no       |
+| `connector` | `from` / `to` (`{ id, side? }`, required), `route`, `label`, `stroke`, `startMarker`, `endMarker`                                        | no       |
 
 Value rules:
+
+- **Connectors** (wireflow arrows, `packages/doc/src/connector.ts`): a line from one layer to another (any
+  rendered id: a screen, a button inside it). The path is computed from the two layers' boxes on every layout
+  (`connectorGeometry`; `side` is `auto | top | right | bottom | left`, auto = the side facing the other end;
+  `route` is `elbow` (default, rounded right angles) | `straight` | `curved`), so it follows them when they
+  move; its own x/y/size are unused and its layout box is the line's bounds, filled in after everything else.
+  A connector with a missing or hidden end has no box (not drawn, not hit; `check_layout` warns). Defaults:
+  2px slate stroke, end arrow, label on a white pill. They belong at the top level of a page and never take
+  room in a flex frame (`isAbsolute`). Deleting a layer deletes its connectors in the same step
+  (`danglingConnectors`: the editor's Delete, `delete_nodes`, `batch_design` deletes); copies made together
+  stay attached (`cloneAllWithFreshIds`). Hit-testing uses the distance to the line (and the label), not the
+  box. SVG export draws the line, arrow/triangle heads and label; code export leaves connectors out.
 
 - **Colors**: hex `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, or a `$variable`.
 - **Fill**: a color on every painted node. Frame, rectangle, ellipse and path also take
@@ -271,6 +284,13 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   register its accelerator). "system" (Settings > General > Title bar, saved in `window-prefs.json` in userData,
   applies after a restart) keeps the native frame and menu bar. See `apps/desktop/src/window-chrome.ts` and
   `apps/web/src/desktop/title-bar.ts`.
+- Connector tool (toolbar, `C`, `apps/web/src/interaction/tools/connector.ts`): drag from one layer to another
+  to connect them; the screen under the pointer by default, the innermost frame or instance (a button) with
+  ⌘/Ctrl held (`connectEndAt`). A selected connector shows its line highlighted, no handles; it cannot be
+  moved or resized (it follows its ends); Properties shows its label, route, sides, line and markers.
+  Settings › General › Wireflow connectors (`connectors`, also in the canvas menu) hides them: `getLayout`
+  drops their boxes (`setConnectorsShown`, wired in `canvas/connector-visibility.ts`), so they are not drawn,
+  hit or selected, and the tool and its shortcut are off; the document keeps them.
 - Editor chrome: icon rail with Agent, Layers (pages + layer tree), Assets (the document's components,
   `apps/web/src/assets/`) and, in the desktop app only, Browser; resizable side panel, properties column (pin,
   hide); `Ctrl/⌘ + \` hides both sides. Settings > General > Browser panel puts the Browser in the side panel
@@ -299,6 +319,8 @@ When you add a node prop, update the canvas renderer and the exporter together, 
 ## Agent
 
 - Tools: `packages/agent/src/tools.ts` (registry), `tools-edit.ts`, `tools-inspect.ts`, `edit/`, `inspect/`.
+  `connect_nodes` draws wireflow connectors (several per call, labelled); the prompt and the `mobile-app` skill
+  tell the agent to connect a flow's screens with it.
 - Prompts: `prompts.ts`. Design guidance is the skills system (`skills/`: the always-on `core` and
   `ui-polish` skills plus one design skill and one style skill per run, `list_skills` / `get_skill`;
   `get_guidelines` maps old topic names onto skills). Style presets

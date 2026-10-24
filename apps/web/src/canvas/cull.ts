@@ -41,6 +41,8 @@ export const paintReach = (node: PegoNode, variables: Variables): number => {
   }
   // Glyphs can overhang their measured box (italics, large ascenders).
   if (node.type === "text") reach += 8;
+  // Arrow heads and the label pill.
+  if (node.type === "connector") reach += 120;
   return reach;
 };
 

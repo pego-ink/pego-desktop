@@ -7,7 +7,7 @@ describe("toolbar groups", () => {
   test("every tool except none appears in exactly one group", () => {
     const tools = TOOL_GROUPS.flatMap((g) => g.tools.map((t) => t.tool));
     expect(new Set(tools).size).toBe(tools.length);
-    expect(tools).toHaveLength(13);
+    expect(tools).toHaveLength(14);
   });
 
   test("shows the active tool of the group, else the last used", () => {

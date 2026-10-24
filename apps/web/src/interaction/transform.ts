@@ -140,7 +140,8 @@ export const moveOps = (
 ): Op[] =>
   topmostSelected(startDoc, ids).flatMap((id): Op[] => {
     const node = findNode(startDoc, id);
-    if (!node || isFlexChild(startDoc, id)) return [];
+    // A connector has no position of its own: it follows its ends.
+    if (!node || node.type === "connector" || isFlexChild(startDoc, id)) return [];
     const x = resolveNumber(node.x, startDoc.variables, 0);
     const y = resolveNumber(node.y, startDoc.variables, 0);
     return [{ op: "update", id, props: { x: roundPx(x + dx, snap), y: roundPx(y + dy, snap) } }];
@@ -160,7 +161,7 @@ export const resizeOps = (
   startLayout?: Layout,
 ): Op[] => {
   const node = findNode(startDoc, id);
-  if (!node) return [];
+  if (!node || node.type === "connector") return [];
   const isGroup = node.type === "group";
   const props: Record<string, number> = {};
   if (!isGroup || typeof node.width === "number") props.width = next.width;

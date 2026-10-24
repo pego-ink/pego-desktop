@@ -13,7 +13,7 @@ import {
 describe("file format", () => {
   test("round trips the showcase doc", () => {
     const text = serializeDocument(showcaseDoc);
-    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 8 });
+    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 9 });
     expect(parseDocumentFile(text)).toEqual(documentSchema.parse(showcaseDoc));
   });
 
@@ -23,8 +23,8 @@ describe("file format", () => {
 
   test("rejects wrong format and version", () => {
     expect(() => parseDocumentFile(JSON.stringify({ format: "x" }))).toThrow(FileFormatError);
-    const newer = JSON.stringify({ format: "pego", version: 9, document: {} });
-    expect(() => parseDocumentFile(newer)).toThrow(/newer Pego \(file version 9/);
+    const newer = JSON.stringify({ format: "pego", version: 99, document: {} });
+    expect(() => parseDocumentFile(newer)).toThrow(/newer Pego \(file version 99/);
     const bogus = JSON.stringify({ format: "pego", version: "1", document: {} });
     expect(() => parseDocumentFile(bogus)).toThrow(/Unsupported Pego file version "1"/);
   });
@@ -41,7 +41,7 @@ describe("file format", () => {
       },
     });
     const doc = parseDocumentFile(text);
-    expect(doc.version).toBe(8);
+    expect(doc.version).toBe(9);
     expect(doc.children).toHaveLength(1);
     expect(doc.children[0]).toMatchObject({ type: "page", name: "Page 1" });
     expect(doc.children[0]!.children[0]).toMatchObject({

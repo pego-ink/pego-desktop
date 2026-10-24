@@ -3,7 +3,7 @@ import { computeLayout, type PegoDocument } from "@pego/doc";
 import { boxesTouch, computePaintBounds, paintReach, visibleArea } from "./cull";
 
 const doc: PegoDocument = {
-  version: 7,
+  version: 9,
   id: "d",
   name: "d",
   variables: {},

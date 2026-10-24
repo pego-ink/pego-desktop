@@ -37,6 +37,7 @@ const TOOLS: Record<string, [title: string, kind: Kind]> = {
   create_component: ["Create component", "add"],
   create_instance: ["Create instance", "add"],
   copy_nodes: ["Copy nodes", "add"],
+  connect_nodes: ["Connect nodes", "add"],
   insert_svg: ["Insert SVG", "add"],
   place_image: ["Place image", "add"],
   generate_image: ["Generate image", "add"],

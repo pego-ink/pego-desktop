@@ -28,11 +28,11 @@ const MARKERS: readonly { value: Marker; label: string }[] = [
   { value: "bar", label: "Bar" },
 ];
 
-const FieldLabel = ({ children }: { children: string }) => (
+export const FieldLabel = ({ children }: { children: string }) => (
   <span className="text-xs text-muted-foreground">{children}</span>
 );
 
-const MarkerSelect = ({
+export const MarkerSelect = ({
   label,
   value,
   onChange,

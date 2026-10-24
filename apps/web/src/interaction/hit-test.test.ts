@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import type { Layout, PegoDocument, PegoNode } from "@pego/doc";
+import { computeLayout, type Layout, type PegoDocument, type PegoNode } from "@pego/doc";
 import { hitPath } from "./hit-test";
 import { fixtureDoc, fixtureLayout } from "./test-doc";
 
@@ -22,7 +22,7 @@ describe("hitPath", () => {
 });
 
 const makeDoc = (children: PegoNode[]): PegoDocument => ({
-  version: 8,
+  version: 9,
   id: "d",
   name: "d",
   variables: {},
@@ -176,4 +176,34 @@ describe("hitPath with flip", () => {
   });
   test("the flipped node's own box does not move", () =>
     expect(hitPath(doc, layout, 100, 90)).toEqual(["fr"]));
+});
+
+describe("hitPath on connectors", () => {
+  const doc = makeDoc([
+    { type: "frame", id: "a", x: 0, y: 0, width: 100, height: 200, layout: "none", children: [] },
+    {
+      type: "frame",
+      id: "b",
+      x: 300,
+      y: 300,
+      width: 100,
+      height: 200,
+      layout: "none",
+      children: [],
+    },
+    { type: "connector", id: "c", x: 0, y: 0, from: { id: "a" }, to: { id: "b" }, label: "Tap" },
+  ]);
+  const layout = computeLayout(doc, () => ({ width: 0, height: 0 }));
+
+  test("near the elbow line it is hit; inside its box away from the line it is not", () => {
+    // Elbow: (100,100) -> (200,100) -> (200,400) -> (300,400).
+    expect(hitPath(doc, layout, 150, 102, { tolerance: 4 })).toEqual(["c"]);
+    expect(hitPath(doc, layout, 202, 330, { tolerance: 4 })).toEqual(["c"]);
+    expect(hitPath(doc, layout, 150, 300, { tolerance: 4 })).toBeNull();
+  });
+
+  test("its label is a target too", () => {
+    // Midpoint of the line is (200, 250); the label pill reaches a little to the side.
+    expect(hitPath(doc, layout, 210, 252, { tolerance: 4 })).toEqual(["c"]);
+  });
 });

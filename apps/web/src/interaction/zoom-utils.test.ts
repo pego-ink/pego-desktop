@@ -19,7 +19,7 @@ describe("selectionBounds", () => {
   });
   test("with the document, a rotated node counts with its rotated outline", () => {
     const doc = {
-      version: 8,
+      version: 9,
       id: "d",
       name: "d",
       variables: {},

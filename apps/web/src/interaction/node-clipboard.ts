@@ -1,5 +1,5 @@
 import {
-  cloneWithFreshIds,
+  cloneAllWithFreshIds,
   collectDocIds,
   createId,
   findLocation,
@@ -202,7 +202,7 @@ const prepareCopies = (
   if (!sameDoc && missing.length > 0) {
     ops.push({ op: "setVariables", variables: Object.fromEntries(missing) });
   }
-  return { copies: source.map((node) => cloneWithFreshIds(node)), ops };
+  return { copies: cloneAllWithFreshIds(source), ops };
 };
 
 /**

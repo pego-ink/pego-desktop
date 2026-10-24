@@ -43,8 +43,17 @@ type DocPoint = { x: number; y: number };
 /** Canvas preferences and the settings modal, at the end of both canvas menus (like pen.dev). */
 const CanvasSettingsItems = () => {
   const snapToPixel = useSettingsStore((s) => s.snapToPixel);
+  const connectors = useSettingsStore((s) => s.connectors);
   return (
     <>
+      <ContextMenuCheckboxItem
+        checked={connectors}
+        onCheckedChange={(checked) =>
+          useSettingsStore.getState().update({ connectors: checked === true })
+        }
+      >
+        Show wireflow connectors
+      </ContextMenuCheckboxItem>
       <ContextMenuCheckboxItem
         checked={snapToPixel}
         onCheckedChange={(checked) =>

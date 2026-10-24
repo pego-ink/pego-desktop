@@ -74,6 +74,30 @@ describe("migrateDocument", () => {
     expect(loadDocument(v6)?.children[0]?.children[0]).toMatchObject({ fill });
   });
 
+  test("upgrades version 8 documents and accepts connectors", () => {
+    const v8 = {
+      version: 8,
+      id: "d",
+      name: "V8",
+      children: [
+        {
+          type: "page",
+          id: "p",
+          children: [
+            { type: "frame", id: "a" },
+            { type: "frame", id: "b" },
+            { type: "connector", id: "c", from: { id: "a" }, to: { id: "b", side: "top" } },
+          ],
+        },
+      ],
+    };
+    expect(migrateDocument(v8)).toMatchObject({ version: DOCUMENT_VERSION });
+    expect(loadDocument(v8)?.children[0]?.children[2]).toMatchObject({
+      type: "connector",
+      to: { id: "b", side: "top" },
+    });
+  });
+
   test("upgrades version 7 documents and keeps absolute children", () => {
     const v7 = {
       version: 7,

@@ -22,32 +22,37 @@ import { LayoutSection } from "@/panels/properties/LayoutSection";
 import { ImageSection } from "@/panels/properties/ImageSection";
 import { IconSection, RefSection, TextSection } from "@/panels/properties/ContentSections";
 import { PathSection } from "@/panels/properties/PathSection";
+import { ConnectorSection } from "@/panels/properties/ConnectorSection";
 import { InstanceSlotsSection, SlotSection } from "@/panels/properties/SlotSections";
 import { hasEffects, hasFill, hasStroke } from "@/panels/properties/node-props";
 
 const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform);
 const COPY_FOR_AI_SHORTCUT = isMac ? "⇧⌘C" : "Ctrl+Shift+C";
 
-const SingleNodeSections = ({ node }: { node: PegoNode }) => (
-  <>
-    {node.type === "ref" ? <RefSection node={node} /> : null}
-    {node.type === "ref" ? <InstanceSlotsSection node={node} /> : null}
-    <PositionSection nodes={[node]} />
-    {node.type === "frame" ? <FramePresetSection node={node} /> : null}
-    <AppearanceSection node={node} />
-    {node.type === "frame" ? <LayoutSection node={node} /> : null}
-    {node.type === "frame" ? <SlotSection node={node} /> : null}
-    {node.type === "text" ? <TextSection nodes={[node]} /> : null}
-    {node.type === "icon" ? <IconSection node={node} /> : null}
-    {node.type === "image" ? <ImageSection node={node} /> : null}
-    {hasFill(node) ? <FillSection node={node} /> : null}
-    {hasStroke(node) ? <StrokeSection node={node} /> : null}
-    {node.type === "path" ? <PathSection node={node} /> : null}
-    {hasEffects(node) ? <EffectsSection node={node} /> : null}
-    <AnimationSection node={node} />
-    <ExportSection node={node} />
-  </>
-);
+const SingleNodeSections = ({ node }: { node: PegoNode }) =>
+  // A connector has no box of its own: only its line settings apply.
+  node.type === "connector" ? (
+    <ConnectorSection node={node} />
+  ) : (
+    <>
+      {node.type === "ref" ? <RefSection node={node} /> : null}
+      {node.type === "ref" ? <InstanceSlotsSection node={node} /> : null}
+      <PositionSection nodes={[node]} />
+      {node.type === "frame" ? <FramePresetSection node={node} /> : null}
+      <AppearanceSection node={node} />
+      {node.type === "frame" ? <LayoutSection node={node} /> : null}
+      {node.type === "frame" ? <SlotSection node={node} /> : null}
+      {node.type === "text" ? <TextSection nodes={[node]} /> : null}
+      {node.type === "icon" ? <IconSection node={node} /> : null}
+      {node.type === "image" ? <ImageSection node={node} /> : null}
+      {hasFill(node) ? <FillSection node={node} /> : null}
+      {hasStroke(node) ? <StrokeSection node={node} /> : null}
+      {node.type === "path" ? <PathSection node={node} /> : null}
+      {hasEffects(node) ? <EffectsSection node={node} /> : null}
+      <AnimationSection node={node} />
+      <ExportSection node={node} />
+    </>
+  );
 
 export const PropertiesPanel = () => {
   const doc = useDocumentStore((s) => s.doc);
