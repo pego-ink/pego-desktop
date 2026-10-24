@@ -54,8 +54,11 @@ linux:
   extraResources:
     - from: resources/pego-bridge-linux-${arch}
       to: bridge/pego-bridge
+    # The window icon (X11) and the AppImage's own launcher entry (src/linux-desktop-install.ts).
+    - from: build/icon.png
+      to: icon.png
   icon: build/icon.png
-  category: Graphics;Design
+  category: Graphics;2DGraphics;VectorGraphics
   synopsis: AI-native design editor
   description: Pego is an AI-native design editor with a local-first canvas and an agent that edits it live.
   vendor: Pego
@@ -68,7 +71,7 @@ linux:
     entry:
       Name: Pego
       Comment: AI-native design editor
-      Categories: Graphics;Design;
+      Categories: Graphics;2DGraphics;VectorGraphics;
       StartupWMClass: pego
       Keywords: design;editor;canvas;ai;
   target:

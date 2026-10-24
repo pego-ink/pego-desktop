@@ -9,6 +9,7 @@ import { registerUpdateIpc } from "@/update-ipc";
 import { VERSION_ARG } from "@/update-status";
 import { TITLE_BAR_ARG, windowChromeOptions } from "@/window-chrome";
 import { readTitleBarMode } from "@/window-prefs";
+import { installAppImageEntry } from "@/linux-desktop-install";
 import { forwardFullScreen, registerWindowIpc } from "@/window-ipc";
 
 // Dev: `desktop:dev` points this at the Vite server. Anything else loads the built web app.
@@ -36,6 +37,12 @@ const openExternalIfSafe = (url: string): void => {
   }
 };
 
+/** The app icon file: in the packaged resources (Linux), else the build folder (dev). */
+const linuxIconPath = (): string =>
+  app.isPackaged
+    ? join(process.resourcesPath, "icon.png")
+    : join(app.getAppPath(), "build", "icon.png");
+
 /** Window preferences that apply when a window is created (the title bar mode). */
 const windowPrefsFile = (): string => join(app.getPath("userData"), "window-prefs.json");
 
@@ -49,6 +56,8 @@ const createWindow = (): void => {
     show: false,
     backgroundColor: "#141418",
     title: "Pego",
+    // X11 docks read the window's icon; Wayland ones use the launcher entry (pego.desktop).
+    ...(process.platform === "linux" ? { icon: linuxIconPath() } : {}),
     ...windowChromeOptions(process.platform, titleBar),
     webPreferences: {
       preload: join(app.getAppPath(), "dist", "preload.cjs"),
@@ -119,6 +128,8 @@ if (!app.requestSingleInstanceLock()) {
 
   void app.whenReady().then(async () => {
     app.setName("Pego");
+    // An AppImage installs no launcher entry, so docks showed a generic icon: add Pego's own.
+    if (process.platform === "linux") installAppImageEntry(linuxIconPath());
     hardenSession();
     installMenu(
       isDev,
