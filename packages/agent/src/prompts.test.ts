@@ -17,6 +17,8 @@ const MOTION_KEYWORDS = [
   ...shaderPresetSchema.options,
 ];
 
+const BRIDGE_READ_TOOLS = ["list_files", "read_svg"];
+
 describe("prompts", () => {
   test("prompts with the working rules name every core skill", () => {
     for (const prompt of [EXECUTOR_SYSTEM, CLAUDE_CODE_SYSTEM]) {
@@ -36,12 +38,15 @@ describe("prompts", () => {
   test("Claude Code prompt names only real tools", () => {
     // get_guidelines is a deprecated alias of the skills tools; prompts teach get_skill.
     const names = agentTools.map((t) => t.name).filter((name) => name !== "get_guidelines");
+    // Bridge-only read tools (apps/bridge/src/file-tools.ts); the Claude Code prompt teaches them.
+    for (const name of BRIDGE_READ_TOOLS) expect(CLAUDE_CODE_SYSTEM).toContain(name);
     for (const name of names) expect(CLAUDE_CODE_SYSTEM).toContain(name);
     const mentioned = [...CLAUDE_CODE_SYSTEM.matchAll(/\b([a-z]+(?:_[a-z]+)+)\b/g)].map(
       (m) => m[1],
     );
     const allowed = new Set([
       ...names,
+      ...BRIDGE_READ_TOOLS,
       "fill_container",
       "fit_content",
       "space_between",
@@ -81,9 +86,16 @@ describe("prompts teach the workflow", () => {
     }
   });
 
+  test("the browser prompts do not mention bridge-only tools", () => {
+    for (const prompt of [PLANNER_SYSTEM, EXECUTOR_SYSTEM]) {
+      for (const name of BRIDGE_READ_TOOLS) expect(prompt).not.toContain(name);
+    }
+  });
+
   test("prompts only name real tools or known keywords", () => {
     const names = new Set([
       ...agentTools.map((t) => t.name),
+      ...BRIDGE_READ_TOOLS,
       "fill_container",
       "fit_content",
       "space_between",

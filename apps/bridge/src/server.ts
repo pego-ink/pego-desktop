@@ -42,6 +42,7 @@ export type BridgeOptions = BridgeConfig & {
     emit: (runId: string, event: RunEvent) => void;
     mcpOrigin: () => string;
     adapters?: AgentAdapter[];
+    designDir?: string | null;
   }) => RunManager;
 };
 
@@ -109,6 +110,7 @@ export const startBridge = (options: BridgeOptions) => {
     callTool: hub.callTool,
     emit: sendRunEvent,
     mcpOrigin,
+    designDir: options.designDir ?? null,
     ...(options.adapters ? { adapters: options.adapters } : {}),
   });
   const detector =
@@ -242,12 +244,14 @@ export const startBridge = (options: BridgeOptions) => {
         if (length > MAX_MCP_BODY_BYTES) return text(413, "Payload too large");
         const designDir = options.designDir ?? null;
         if (pathname === "/mcp") return handleMcpRequest(request, hub.callTool, { designDir });
-        // Run-scoped endpoint: the token is the credential and dies with the run. No file tools
-        // there: a run edits the document of the editor that started it and must not swap it.
+        // Run-scoped endpoint: the token is the credential and dies with the run. No write/switch
+        // file tools there (a run edits the document of the editor that started it and must not
+        // swap it); only the read-only svg tools, confined to the design folder.
         const run = runToken ? runs.resolveRunToken(runToken) : undefined;
         if (!run) return text(404, "Not found");
         return handleMcpRequest(request, hub.callTool, {
           fixedSource: { kind: "run", runId: run.runId },
+          designDir,
         });
       }
 

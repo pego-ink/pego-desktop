@@ -54,6 +54,8 @@ export type RunManagerDeps = {
   baseEnv?: () => Record<string, string | undefined>;
   /** Parent of the per-run temp directories (default: the OS temp dir). */
   tmpRoot?: string;
+  /** The design folder the run's read-only svg tools (list_files, read_svg) read from. */
+  designDir?: string | null;
 };
 
 /** Pull the run token out of `/mcp/run/<token>`; `undefined` when the path has another shape. */
@@ -139,6 +141,7 @@ export const createRunManager = (deps: RunManagerDeps) => {
           createPegoMcpServer({
             callTool: deps.callTool,
             source: () => ({ kind: "run", runId }),
+            designDir: deps.designDir ?? null,
           }),
         onSteer: (handler) => {
           run.steerHandler = handler;

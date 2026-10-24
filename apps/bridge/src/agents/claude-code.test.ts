@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { agentTools, type RunEvent } from "@pego/agent";
+import { READ_FILE_TOOLS } from "../file-tools";
 import { createPegoMcpServer } from "../mcp";
 import {
   buildQueryOptions,
@@ -29,7 +30,12 @@ describe("buildQueryOptions", () => {
   test("restricts the run to Pego's MCP tools with no side effects", () => {
     const options = buildQueryOptions(base);
     expect(options.tools).toEqual([]);
-    expect(options.allowedTools).toEqual(agentTools.map((t) => `mcp__pego__${t.name}`));
+    expect(options.allowedTools).toEqual(
+      [...agentTools, ...READ_FILE_TOOLS].map((t) => `mcp__pego__${t.name}`),
+    );
+    expect(options.allowedTools).toContain("mcp__pego__list_files");
+    expect(options.allowedTools).toContain("mcp__pego__read_svg");
+    expect(options.allowedTools).not.toContain("mcp__pego__open_document");
     expect(options.permissionMode).toBe("dontAsk");
     expect(options.settingSources).toEqual([]);
     expect(options.persistSession).toBe(false);
@@ -145,7 +151,9 @@ describe("claude-code adapter", () => {
     const client = new Client({ name: "t", version: "0" });
     await Promise.all([mcpServer().connect(serverTransport), client.connect(clientTransport)]);
     const tools = await client.listTools();
-    expect(tools.tools.map((t) => t.name)).toEqual(agentTools.map((t) => t.name));
+    expect(tools.tools.map((t) => t.name)).toEqual(
+      [...agentTools, ...READ_FILE_TOOLS].map((t) => t.name),
+    );
     await client.close();
   });
 

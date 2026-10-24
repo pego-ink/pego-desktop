@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { EDITOR_OPS, type ProjectInfo, type ToolAnnotations } from "@pego/agent";
 import type { CallTool, ToolOutcome, ToolSource } from "./editor-hub";
+import { listDesignSvgs, readDesignSvg } from "./design-files";
 import { FileToolError, readDocumentFile, writeDocumentFile } from "./files";
 import { listDesignFiles } from "./project";
 import { createProject, findProject, listProjects } from "./projects";
@@ -162,6 +163,92 @@ FILE_TOOLS.push(
 );
 
 export const isFileTool = (name: string) => FILE_TOOLS.some((tool) => tool.name === name);
+
+/**
+ * Read-only tools on the design folder (SVG files only). Unlike FILE_TOOLS they are also served
+ * on the run-scoped endpoints and to Claude Code SDK runs: they cannot change anything, and every
+ * path is confined to the design folder (see design-files.ts).
+ */
+export const READ_FILE_TOOLS: FileTool[] = [
+  {
+    name: "list_files",
+    title: "List SVG files",
+    description:
+      "List the .svg files in the repository's design/ folder (the only place files can be read from). path is relative to design/ (a leading design/ is fine; default: design/ itself), " +
+      "recursive: true includes subfolders. Returns each file's path and size, and, when not recursive, the subfolders to look into. Then read_svg a file and pass its markup to insert_svg.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: { type: "string", description: "Folder relative to design/, e.g. logo/pigeon." },
+        recursive: { type: "boolean", description: "Include subfolders (default false)." },
+      },
+      additionalProperties: false,
+    },
+    annotations: projectAnnotations("List SVG files", true),
+  },
+  {
+    name: "read_svg",
+    title: "Read SVG file",
+    description:
+      "Read one .svg file from the repository's design/ folder and return its markup, ready for insert_svg. path is relative to design/ (from list_files). Other files and other folders cannot be read.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        path: {
+          type: "string",
+          description: "File relative to design/, e.g. logo/pigeon/bird.svg.",
+        },
+      },
+      required: ["path"],
+      additionalProperties: false,
+    },
+    annotations: projectAnnotations("Read SVG file", true),
+  },
+];
+
+export const isReadFileTool = (name: string) => READ_FILE_TOOLS.some((tool) => tool.name === name);
+
+const listInput = z.strictObject({
+  path: z.string().optional(),
+  recursive: z.boolean().optional(),
+});
+
+/** Run a read-only design-folder tool; problems come back as `isError` outcomes, never throws. */
+export const runReadFileTool = async (
+  name: string,
+  input: unknown,
+  designDir: string | null,
+): Promise<ToolOutcome> => {
+  try {
+    if (name === "list_files") {
+      const parsed = listInput.safeParse(input);
+      if (!parsed.success) return fail("Pass {path?: string, recursive?: boolean}.");
+      const listing = await listDesignSvgs(
+        designDir,
+        parsed.data.path,
+        parsed.data.recursive ?? false,
+      );
+      return {
+        content: JSON.stringify({
+          ...listing,
+          ...(listing.truncated
+            ? { note: "Truncated at 500 entries; list a subfolder to see more." }
+            : {}),
+        }),
+        isError: false,
+      };
+    }
+    const parsed = z.strictObject({ path: z.string().min(1) }).safeParse(input);
+    if (!parsed.success) return fail("Pass {path: string} (relative to design/).");
+    return {
+      content: JSON.stringify(await readDesignSvg(designDir, parsed.data.path)),
+      isError: false,
+    };
+  } catch (error) {
+    if (error instanceof FileToolError) return fail(error.message);
+    return fail("Could not read that file.");
+  }
+};
 
 const openInput = z.strictObject({
   path: z.string().min(1),
