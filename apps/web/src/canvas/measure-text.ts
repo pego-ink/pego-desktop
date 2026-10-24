@@ -9,7 +9,9 @@ import { createLruCache } from "@/canvas/render-cache";
 const FONT_WEIGHTS = [100, 200, 300, 400, 500, 600, 700, 800, 900] as const;
 const NO_WRAP_WIDTH = 100_000;
 
-const paragraphs = createLruCache<Paragraph>(512);
+// Large enough for every text of a big page on screen at once (zoomed out over dozens of
+// screens): a smaller cache would rebuild paragraphs on every frame while panning.
+const paragraphs = createLruCache<Paragraph>(4096);
 
 export const nearestWeight = (weight: number) =>
   FONT_WEIGHTS.reduce((best, w) => (Math.abs(w - weight) < Math.abs(best - weight) ? w : best));
