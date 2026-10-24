@@ -118,6 +118,23 @@ export const createMentionExtension = (hooks: () => MentionMenuHooks) =>
   });
 
 /**
+ * ↑ / ↓ walk through the chat's earlier messages (see `composer-history`); `recall` decides
+ * whether the key is the history's (true) or moves the caret as usual (false).
+ */
+export const createHistoryExtension = (hooks: () => { recall: (direction: -1 | 1) => boolean }) =>
+  Extension.create({
+    name: "promptHistory",
+    addKeyboardShortcuts() {
+      const recall = (direction: -1 | 1) =>
+        !this.editor.view.composing && hooks().recall(direction);
+      return {
+        ArrowUp: () => recall(-1),
+        ArrowDown: () => recall(1),
+      };
+    },
+  });
+
+/**
  * Enter sends (or queues while the agent works), Cmd/Ctrl+Enter sends into the running agent now,
  * Shift+Enter breaks the line (StarterKit's hard break). Enter is left to the @ menu while it is
  * open, and to the input method while composing.
