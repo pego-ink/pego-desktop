@@ -5,6 +5,7 @@ import {
   UPDATE_CHANNELS,
   type UpdateStatus,
 } from "@/update-status";
+import { isUpdateChannel } from "@/update-channel";
 import { isMenuCommand, MENU_COMMAND_CHANNEL, type MenuCommand } from "@/menu-channels";
 import { WINDOW_CHANNELS } from "@/window-chrome";
 import { BROWSER_CHANNELS } from "@/browser-channels";
@@ -34,6 +35,9 @@ const onUpdateStatus = (listener: (status: UpdateStatus) => void): (() => void) 
     ipcRenderer.removeListener(UPDATE_CHANNELS.status, handler);
   };
 };
+
+const asChannel = (value: unknown): "stable" | "nightly" | null =>
+  isUpdateChannel(value) ? value : null;
 
 const onMenuCommand = (listener: (command: MenuCommand) => void): (() => void) => {
   if (typeof listener !== "function") return () => {};
@@ -119,6 +123,19 @@ contextBridge.exposeInMainWorld("pegoDesktop", {
   version,
   checkForUpdates: (): Promise<void> => ipcRenderer.invoke(UPDATE_CHANNELS.check),
   installUpdate: (): void => ipcRenderer.send(UPDATE_CHANNELS.install),
+  getUpdateChannel: async (): Promise<"stable" | "nightly" | null> =>
+    asChannel(await ipcRenderer.invoke(UPDATE_CHANNELS.getChannel)),
+  setUpdateChannel: async (channel: unknown): Promise<"stable" | "nightly" | null> => {
+    try {
+      return asChannel(await ipcRenderer.invoke(UPDATE_CHANNELS.setChannel, channel));
+    } catch (error) {
+      // Electron prefixes main-process errors with "Error invoking remote method '...': Error: ".
+      const raw = error instanceof Error ? error.message : "";
+      throw new Error(raw.replace(/^Error invoking remote method '[^']*': (?:Error: )?/, ""), {
+        cause: error,
+      });
+    }
+  },
   onUpdateStatus,
   onMenuCommand,
   onFullScreenChange,

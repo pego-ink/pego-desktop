@@ -13,6 +13,7 @@ type SegmentedControlProps<T extends string> = {
   onChange: (value: T) => void;
   "aria-label"?: string;
   className?: string;
+  disabled?: boolean;
 };
 
 function SegmentedControl<T extends string>({
@@ -20,6 +21,7 @@ function SegmentedControl<T extends string>({
   options,
   onChange,
   className,
+  disabled = false,
   ...props
 }: SegmentedControlProps<T>) {
   const activeIndex = options.findIndex((option) => option.value === value);
@@ -28,7 +30,12 @@ function SegmentedControl<T extends string>({
       role="radiogroup"
       data-slot="segmented-control"
       aria-label={props["aria-label"]}
-      className={cn("relative flex h-7 w-full rounded-md bg-muted p-0.5", className)}
+      aria-disabled={disabled || undefined}
+      className={cn(
+        "relative flex h-7 w-full rounded-md bg-muted p-0.5",
+        disabled && "opacity-50",
+        className,
+      )}
     >
       <span
         aria-hidden
@@ -48,6 +55,7 @@ function SegmentedControl<T extends string>({
           type="button"
           role="radio"
           aria-checked={option.value === value}
+          disabled={disabled}
           title={option.title}
           onClick={() => onChange(option.value)}
           className={cn(

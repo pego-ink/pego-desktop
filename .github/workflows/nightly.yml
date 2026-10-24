@@ -1,0 +1,167 @@
+name: Nightly
+
+# A nightly desktop build of dev, published as a PRERELEASE on this (public) repo so the team can
+# test dev right away: installed apps on the "Nightly" update channel (Settings > About & Updates >
+# Update channel) pick it up and offer "Restart to update". Stable and beta builds never see it.
+#
+# - Schedule: daily 19:00 UTC (02:00 WIB) on dev, plus "Run workflow" (on dev; input "force" builds
+#   even when dev has not moved). No build when dev is still at the commit of the newest nightly.
+# - Version, computed here and never committed: <apps/desktop version without prerelease>-nightly.
+#   <YYYYMMDD>.<run number>.<run attempt>, e.g. 0.1.0-nightly.20261024.17.1. Tag v<version>, target = the built commit.
+# - Builds: the shared build.yml, channel "nightly" (feeds nightly-mac.yml, nightly.yml,
+#   nightly-linux.yml, nightly-linux-arm64.yml). macOS is signed and notarized; Windows builds x64 only.
+# - Retention: the newest 7 nightly releases (and their tags) stay, older ones are deleted. Only tags
+#   shaped like v<x.y.z>-nightly.<date>.<run>.<attempt> are ever deleted.
+#
+# Trust: only the macOS job holds secrets: the six APPLE_* secrets of the "nightly" environment, which
+# requires the owner's approval and deploys from dev only (README, Release > Nightly). That is the one
+# approval per nightly; plan, the Linux/Windows builds and publish do not use the environment. publish
+# needs the macOS job, so nothing is published unless the owner approved the signing; it only holds the
+# contents: write token. Every job runs on dev only and never for a pull request. Releases made with
+# GITHUB_TOKEN do not start other workflows, so the new tag does not trigger release.yml.
+on:
+  schedule:
+    - cron: "0 19 * * *"
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Build even if dev has not changed since the last nightly
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+# bash with pipefail: a failing script in `script | tee` / `script | while` fails the step.
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    if: github.repository == 'pego-ink/pego-desktop' && github.ref == 'refs/heads/dev'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      build: ${{ steps.plan.outputs.build }}
+      version: ${{ steps.plan.outputs.version }}
+      previous_tag: ${{ steps.plan.outputs.previous_tag }}
+      previous_sha: ${{ steps.plan.outputs.previous_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.11
+          no-cache: true
+      - name: Decide whether to build, compute the version
+        id: plan
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          SHA: ${{ github.sha }}
+          RUN_NUMBER: ${{ github.run_number }}
+          RUN_ATTEMPT: ${{ github.run_attempt }}
+          FORCE: ${{ github.event_name == 'workflow_dispatch' && inputs.force && 'true' || 'false' }}
+        run: |
+          package_version="$(node -p 'require("./apps/desktop/package.json").version')"
+          today="$(date -u +%Y%m%d)"
+          gh api --paginate --slurp "repos/${REPO}/releases?per_page=100" \
+            | bun .github/scripts/nightly.ts plan "${SHA}" "${package_version}" "${today}" "${RUN_NUMBER}" "${RUN_ATTEMPT}" "${FORCE}" \
+            | tee -a "${GITHUB_OUTPUT}"
+
+  build:
+    needs: plan
+    if: needs.plan.outputs.build == 'true'
+    uses: ./.github/workflows/build.yml
+    # Passed by name; the macOS job in build.yml receives the "nightly" environment's values.
+    secrets:
+      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+      APPLE_ID: ${{ secrets.APPLE_ID }}
+      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+    with:
+      environment: nightly
+      channel: nightly
+      version: ${{ needs.plan.outputs.version }}
+      windows_arm64: false
+
+  publish:
+    needs: [plan, build]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      SHA: ${{ github.sha }}
+      VERSION: ${{ needs.plan.outputs.version }}
+      PREVIOUS_TAG: ${{ needs.plan.outputs.previous_tag }}
+      PREVIOUS_SHA: ${{ needs.plan.outputs.previous_sha }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.11
+          no-cache: true
+      # One folder per artifact (not merged): each Windows/Linux arch carries its own feed file.
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          path: artifacts
+      - name: Assemble the release files
+        run: |
+          bun .github/scripts/assemble-release.ts artifacts dist
+          ls -l dist
+          for feed in nightly-mac.yml nightly.yml nightly-linux.yml nightly-linux-arm64.yml; do
+            [ -s "dist/${feed}" ] || { echo "::error::missing update feed ${feed}"; exit 1; }
+          done
+      - name: Write the release notes (commits since the previous nightly)
+        run: |
+          range="${SHA}"
+          heading="Latest commits on dev:"
+          if [ -n "${PREVIOUS_SHA}" ] && git cat-file -e "${PREVIOUS_SHA}^{commit}" 2>/dev/null; then
+            range="${PREVIOUS_SHA}..${SHA}"
+            heading="Changes since ${PREVIOUS_TAG}:"
+          fi
+          fence="$(printf '\x60\x60\x60')"
+          {
+            echo "Nightly build of \`dev\` at \`${SHA:0:12}\`. May be unstable."
+            echo
+            echo "To get it: Settings > About & Updates > Update channel > Nightly."
+            echo
+            echo "${heading}"
+            echo
+            echo "${fence}text"
+            # Commit subjects are plain text here: backticks become quotes so none can end the fence.
+            git log --oneline --no-merges -n 50 "${range}" | sed "s/\x60/'/g"
+            echo "${fence}"
+          } > notes.md
+          cat notes.md
+      - name: Create the prerelease
+        run: |
+          gh release create "v${VERSION}" \
+            --target "${SHA}" \
+            --prerelease \
+            --latest=false \
+            --title "Pego nightly ${VERSION}" \
+            --notes-file notes.md \
+            dist/*
+      - name: Delete nightly releases beyond the newest 7
+        run: |
+          gh api --paginate --slurp "repos/${REPO}/releases?per_page=100" \
+            | bun .github/scripts/nightly.ts expired 7 \
+            | while read -r tag; do
+                echo "deleting ${tag}"
+                gh release delete "${tag}" --cleanup-tag --yes || echo "::warning::could not delete ${tag}"
+              done

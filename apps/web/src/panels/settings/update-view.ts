@@ -53,3 +53,12 @@ export const describeUpdate = (status: UpdateStatus): UpdateView => {
       return { text: "", action: "check", busy: false, tone: "neutral" };
   }
 };
+
+/**
+ * Why the update channel cannot be switched right now, or null. On macOS a downloaded update is
+ * installed on quit whatever happens, so the channel stays put until the user restarts.
+ */
+export const channelLockHint = (status: UpdateStatus, platform: string): string | null =>
+  platform === "darwin" && status.state === "ready"
+    ? "Restart to finish the downloaded update before switching channels."
+    : null;

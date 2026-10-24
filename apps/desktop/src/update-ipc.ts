@@ -1,4 +1,5 @@
 import { BrowserWindow, ipcMain, type IpcMainEvent, type IpcMainInvokeEvent } from "electron";
+import { isUpdateChannel, type UpdateChannel } from "@/update-channel";
 import { createUpdater, type UpdateController } from "@/updater";
 import {
   isTrustedSender,
@@ -30,6 +31,20 @@ export const registerUpdateIpc = async (
     if (!trusted(event)) throw new Error("untrusted sender");
     await controller.check();
   });
+  ipcMain.handle(UPDATE_CHANNELS.getChannel, (event): UpdateChannel | null => {
+    if (!trusted(event)) throw new Error("untrusted sender");
+    return controller.getChannel();
+  });
+  ipcMain.handle(
+    UPDATE_CHANNELS.setChannel,
+    async (event, channel: unknown): Promise<UpdateChannel | null> => {
+      if (!trusted(event)) throw new Error("untrusted sender");
+      if (!isUpdateChannel(channel)) throw new Error("unknown update channel");
+      if (controller.getChannel() === null) throw new Error("this build does not update itself");
+      await controller.setChannel(channel);
+      return controller.getChannel();
+    },
+  );
   ipcMain.on(UPDATE_CHANNELS.install, (event) => {
     if (!trusted(event)) return;
     controller.install();
