@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { ScissorsIcon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@pego/ui/components/button";
+import { Spinner } from "@pego/ui/components/spinner";
 import { PropertyRow } from "@pego/ui/components/property-section";
 import {
   BACKGROUND_MODEL,
@@ -60,7 +61,7 @@ export const RemoveBackgroundButtons = ({
   /** Apply the cut-out (one undo step). */
   onRemoved: (src: string) => void;
 }) => {
-  const [busy, setBusy] = useState(false);
+  const [busy, setBusy] = useState<RemovalQuality | null>(null);
   const [highQuality, setHighQuality] = useState(false);
   useEffect(() => {
     let live = true;
@@ -73,12 +74,12 @@ export const RemoveBackgroundButtons = ({
   }, []);
 
   const run = async (quality: RemovalQuality) => {
-    setBusy(true);
+    setBusy(quality);
     try {
       const cut = await removeBackgroundWithProgress(src, quality);
       if (cut) onRemoved(cut);
     } finally {
-      setBusy(false);
+      setBusy(null);
     }
   };
 
@@ -88,11 +89,11 @@ export const RemoveBackgroundButtons = ({
         variant="secondary"
         size="xs"
         className="h-7"
-        disabled={busy}
+        disabled={busy !== null}
         title="Cut the subject out on this device (free, private; the model downloads once)"
         onClick={() => void run("standard")}
       >
-        <ScissorsIcon />
+        {busy === "standard" ? <Spinner className="size-3" /> : <ScissorsIcon />}
         Remove background
       </Button>
       {highQuality ? (
@@ -100,11 +101,15 @@ export const RemoveBackgroundButtons = ({
           variant="secondary"
           size="xs"
           className="h-7"
-          disabled={busy}
+          disabled={busy !== null}
           title="Cut the subject out with your gpt-image model (finer edges; one request on your key)"
           onClick={() => void run("high")}
         >
-          <SparklesIcon />
+          {busy === "high" ? (
+            <Spinner className="size-3" />
+          ) : (
+            <SparklesIcon className="text-violet" />
+          )}
           High quality
         </Button>
       ) : null}
