@@ -57,6 +57,8 @@ export type OverlayState = {
   pageId?: string | null;
   /** Canvas theme, for caption colors that read on its background. */
   theme?: "light" | "dark";
+  /** The canvas size in CSS px: captions outside it are not drawn. */
+  viewport?: { width: number; height: number };
 };
 
 const DASH: number[] = [5, 4];
@@ -99,7 +101,8 @@ const getKit = (res: CanvasKitResources): Kit => {
     fill: make("fill"),
     stroke: make("stroke"),
     colors: new Map(),
-    paragraphs: createLruCache<Paragraph>(64),
+    // One per frame caption on screen (a page can have a hundred screens).
+    paragraphs: createLruCache<Paragraph>(512),
     hover: null,
   };
   kits.set(res, kit);
@@ -191,9 +194,19 @@ const drawCaptions = (
   selection: readonly string[],
   hoveredId: string | null,
   theme: "light" | "dark",
+  viewport: { width: number; height: number } | undefined,
 ) => {
   const colors = CAPTION_COLORS[theme];
   for (const caption of captions) {
+    if (
+      viewport &&
+      (caption.x > viewport.width ||
+        caption.y > viewport.height ||
+        caption.x + caption.width < 0 ||
+        caption.y + CAPTION_FONT_SIZE * 2 < 0)
+    ) {
+      continue;
+    }
     const color = selection.includes(caption.id)
       ? SELECTION
       : caption.id === hoveredId
@@ -552,6 +565,7 @@ export const renderOverlay = (
     time,
     pageId = null,
     theme = "light",
+    viewport,
   }: OverlayState,
 ) => {
   drawCaptions(
@@ -561,6 +575,7 @@ export const renderOverlay = (
     selection,
     hoveredId,
     theme,
+    viewport,
   );
 
   for (const group of agentFocus ?? []) {

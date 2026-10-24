@@ -37,6 +37,7 @@ import {
   resolveString,
 } from "@pego/doc";
 import type { CanvasKitResources } from "@/canvas/load-canvaskit";
+import { boxesTouch, getPaintBounds, visibleArea } from "@/canvas/cull";
 import { getIconPath } from "@/canvas/icons";
 import { nodePlacement } from "@/canvas/node-transform";
 import { getParagraph } from "@/canvas/measure-text";
@@ -59,7 +60,12 @@ type Scene = {
   motionTime: number | undefined;
   /** Seconds on the shader clock (`iTime` of shader fills). */
   shaderTime: number;
+  /** The visible document area and each node's paint bounds: layers outside it are skipped. */
+  cull: { view: Box; bounds: Map<string, Box>; zoom: number } | null;
 };
+
+/** Layers smaller than this on screen (CSS px, both sides) are not drawn: nothing would show. */
+const MIN_VISIBLE_PX = 0.5;
 
 const BACKGROUND = "#141418";
 const ICON_VIEWBOX = 24;
@@ -583,6 +589,11 @@ const drawNodes = (scene: Scene, nodes: readonly PegoNode[], parent: Box, depth:
     if (!node || scene.hiddenIds.has(node.id)) continue;
     const box = layout.get(node.id);
     if (!box) continue;
+    if (scene.cull) {
+      const paint = scene.cull.bounds.get(node.id);
+      if (paint && !boxesTouch(paint, scene.cull.view)) continue;
+      if (paint && Math.max(paint.width, paint.height) * scene.cull.zoom < MIN_VISIBLE_PX) continue;
+    }
 
     const motion =
       scene.motionTime !== undefined && node.type !== "page" && node.animation
@@ -677,6 +688,11 @@ export const renderDocument = (
     motionTime?: number;
     /** Seconds passed to shader fills as `iTime` (default 0, their first frame). */
     shaderTime?: number;
+    /**
+     * Size of the view in CSS px: layers whose paint lies outside it are not drawn (the editor
+     * canvas). Omitted, everything is drawn (exports, previews, motion).
+     */
+    viewport?: { width: number; height: number };
   } = {},
 ) => {
   const background = options.background === undefined ? BACKGROUND : options.background;
@@ -693,6 +709,15 @@ export const renderDocument = (
     hiddenIds: options.hiddenIds ?? NO_HIDDEN_IDS,
     motionTime: options.motionTime,
     shaderTime: options.shaderTime ?? 0,
+    // Motion moves and scales layers past their boxes: no culling while it plays.
+    cull:
+      options.viewport && options.rootId === undefined && options.motionTime === undefined
+        ? {
+            view: visibleArea(camera, options.viewport.width, options.viewport.height),
+            bounds: getPaintBounds(doc, layout),
+            zoom: camera.zoom,
+          }
+        : null,
   };
   if (options.rootId === undefined) {
     drawNodes(scene, pageOrFirst(doc, options.pageId).children, ORIGIN, 0);

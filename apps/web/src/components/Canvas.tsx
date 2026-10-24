@@ -10,6 +10,16 @@ import { useLayerEvents } from "@/canvas/layer-events";
 import { renderDocument } from "@/canvas/render-document";
 import { renderOverlay } from "@/canvas/render-overlay";
 import "@/canvas/connector-visibility";
+import {
+  canReuse,
+  CONTENT_PADDING_PX,
+  layerCamera,
+  layerSize,
+  layerToScreen,
+  SETTLE_MS,
+  type RenderedView,
+} from "@/canvas/content-cache";
+import type { Camera } from "@/canvas/types";
 import { timeFrame } from "@/canvas/frame-perf";
 import { createFocusGroupsSelector, focusOnPage, type AgentFocusGroup } from "@/agent/focus-groups";
 import { useAgentStore } from "@/agent/use-agent-store";
@@ -45,13 +55,14 @@ import { useViewportStore } from "@/store/use-viewport-store";
 import { currentMotionTime, useMotionStore } from "@/motion/use-motion-store";
 import { selectionHasMovingShader } from "@/canvas/shader-activity";
 
-/** Everything the cached document layer depends on; any change forces a re-render of the layer. */
+/**
+ * Everything the cached document layer depends on besides the camera; any change forces a
+ * re-render. The camera is handled by `canReuse` (content-cache.ts): panning and zooming reuse
+ * the layer while it still covers the view.
+ */
 type LayerKey = {
   doc: PegoDocument;
   layout: Layout;
-  panX: number;
-  panY: number;
-  zoom: number;
   width: number;
   height: number;
   hiddenId: string | null;
@@ -69,9 +80,6 @@ const sameKey = (a: LayerKey | null, b: LayerKey): boolean =>
   a !== null &&
   a.doc === b.doc &&
   a.layout === b.layout &&
-  a.panX === b.panX &&
-  a.panY === b.panY &&
-  a.zoom === b.zoom &&
   a.width === b.width &&
   a.height === b.height &&
   a.hiddenId === b.hiddenId &&
@@ -145,6 +153,9 @@ export const Canvas = () => {
         let layer: Surface | null = null;
         let layerImage: SkImage | null = null;
         let layerKey: LayerKey | null = null;
+        /** Where the layer was rendered; null forces the next frame to render it again. */
+        let layerView: RenderedView | null = null;
+        let settleTimer: ReturnType<typeof setTimeout> | null = null;
         let pixelWidth = 0;
         let pixelHeight = 0;
         let cssWidth = 0;
@@ -156,6 +167,7 @@ export const Canvas = () => {
           layer?.delete();
           layer = null;
           layerKey = null;
+          layerView = null;
         };
 
         /** The document drawn into the cache (or straight to the screen when no cache exists). */
@@ -164,24 +176,20 @@ export const Canvas = () => {
           dpr: number,
           key: LayerKey,
           hiddenIds: ReadonlySet<string> | undefined,
+          camera: Camera,
+          viewport: { width: number; height: number },
         ) => {
           const canvas = target.getCanvas();
           canvas.save();
           canvas.scale(dpr, dpr);
-          renderDocument(
-            res,
-            canvas,
-            key.doc,
-            key.layout,
-            { panX: key.panX, panY: key.panY, zoom: key.zoom },
-            {
-              hiddenIds,
-              pageId: key.pageId,
-              background: key.background,
-              motionTime: key.motionTime,
-              shaderTime: key.shaderTime,
-            },
-          );
+          renderDocument(res, canvas, key.doc, key.layout, camera, {
+            hiddenIds,
+            pageId: key.pageId,
+            background: key.background,
+            motionTime: key.motionTime,
+            shaderTime: key.shaderTime,
+            viewport,
+          });
           canvas.restore();
         };
 
@@ -208,9 +216,6 @@ export const Canvas = () => {
           const key: LayerKey = {
             doc,
             layout,
-            panX: camera.panX,
-            panY: camera.panY,
-            zoom: camera.zoom,
             width: pixelWidth,
             height: pixelHeight,
             hiddenId,
@@ -222,19 +227,61 @@ export const Canvas = () => {
             shaderTime: shaderClock,
           };
 
-          if (!sameKey(layerKey, key)) {
+          const reusable =
+            sameKey(layerKey, key) &&
+            layerView !== null &&
+            canReuse(layerView, camera, cssWidth, cssHeight);
+          if (!reusable) {
             layerImage?.delete();
             layerImage = null;
-            layer ??= ck.MakeRenderTarget(context, pixelWidth, pixelHeight);
+            const padding = Math.round(CONTENT_PADDING_PX / dpr);
+            const view: RenderedView = {
+              panX: camera.panX,
+              panY: camera.panY,
+              zoom: camera.zoom,
+              padding,
+              width: cssWidth,
+              height: cssHeight,
+            };
+            layer ??= ck.MakeRenderTarget(
+              context,
+              Math.ceil(pixelWidth + padding * 2 * dpr),
+              Math.ceil(pixelHeight + padding * 2 * dpr),
+            );
             if (layer) {
-              paintDocument(layer, dpr, key, hiddenIds);
+              paintDocument(layer, dpr, key, hiddenIds, layerCamera(view), layerSize(view));
               layer.flush();
               layerImage = layer.makeImageSnapshot();
               layerKey = key;
+              layerView = view;
             }
           }
-          if (layerImage) canvas.drawImage(layerImage, 0, 0);
-          else paintDocument(surface, dpr, key, hiddenIds);
+          if (layerImage && layerView) {
+            // The cached layer, shifted (and scaled while zooming) to the current camera.
+            const place = layerToScreen(layerView, camera);
+            canvas.clear(ck.parseColorString(key.background));
+            canvas.save();
+            canvas.scale(dpr, dpr);
+            canvas.translate(place.x, place.y);
+            canvas.scale(place.scale / dpr, place.scale / dpr);
+            if (place.scale === 1) canvas.drawImage(layerImage, 0, 0);
+            else canvas.drawImageCubic(layerImage, 0, 0, 1 / 3, 1 / 3, null);
+            canvas.restore();
+            // Zoomed since the render: render again, crisp, once the camera has settled.
+            if (place.scale !== 1) {
+              if (settleTimer) clearTimeout(settleTimer);
+              settleTimer = setTimeout(() => {
+                settleTimer = null;
+                layerView = null;
+                schedule();
+              }, SETTLE_MS);
+            }
+          } else {
+            paintDocument(surface, dpr, key, hiddenIds, camera, {
+              width: cssWidth,
+              height: cssHeight,
+            });
+          }
 
           canvas.save();
           canvas.scale(dpr, dpr);
@@ -258,6 +305,7 @@ export const Canvas = () => {
             time: focusAnimated ? performance.now() : undefined,
             pageId,
             theme: useThemeStore.getState().resolved,
+            viewport: { width: cssWidth, height: cssHeight },
           });
           toolHandler?.renderOverlay?.(res, canvas, camera);
           canvas.restore();
@@ -348,6 +396,7 @@ export const Canvas = () => {
           observer.disconnect();
           for (const unsubscribe of unsubscribers) unsubscribe();
           if (frame) cancelAnimationFrame(frame);
+          if (settleTimer) clearTimeout(settleTimer);
           dropLayer();
           surface?.delete();
           surface = null;
