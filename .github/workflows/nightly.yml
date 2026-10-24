@@ -16,9 +16,11 @@ name: Nightly
 # Trust: only the macOS job holds secrets: the six APPLE_* secrets of the "nightly" environment, which
 # requires the owner's approval and deploys from dev only (README, Release > Nightly). That is the one
 # approval per nightly; plan, the Linux/Windows builds and publish do not use the environment. publish
-# needs the macOS job, so nothing is published unless the owner approved the signing; it only holds the
-# contents: write token. Every job runs on dev only and never for a pull request. Releases made with
-# GITHUB_TOKEN do not start other workflows, so the new tag does not trigger release.yml.
+# needs the macOS job, so nothing is published unless the owner approved the signing. It creates the
+# release with a pego-bot token (the "release tags" ruleset lets only pego-bot and org admins make v*
+# tags), minted from the dev-only `autopilot` environment after the steps that run repo scripts.
+# Every job runs on dev only and never for a pull request. A tag made by pego-bot does start
+# workflows: release.yml ignores v*-nightly.* tags, and Notify reports the published prerelease.
 on:
   schedule:
     - cron: "0 19 * * *"
@@ -97,10 +99,13 @@ jobs:
     needs: [plan, build]
     runs-on: ubuntu-latest
     timeout-minutes: 20
+    # The "release tags" ruleset locks every v* tag; only the pego-bot App may bypass it, so the
+    # release and its tag are made with a pego-bot token (secrets of the dev-only `autopilot`
+    # environment, no reviewer: the macOS signing job was already approved).
+    environment: autopilot
     permissions:
-      contents: write
+      contents: read
     env:
-      GH_TOKEN: ${{ github.token }}
       REPO: ${{ github.repository }}
       SHA: ${{ github.sha }}
       VERSION: ${{ needs.plan.outputs.version }}
@@ -148,7 +153,17 @@ jobs:
             echo "${fence}"
           } > notes.md
           cat notes.md
+      # Minted after the steps that run repo scripts on artifacts, so none of them can see it.
+      - name: Get a pego-bot token
+        id: bot
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          app-id: ${{ secrets.PEGO_BOT_APP_ID }}
+          private-key: ${{ secrets.PEGO_BOT_PRIVATE_KEY }}
+          permission-contents: write
       - name: Create the prerelease
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
         run: |
           gh release create "v${VERSION}" \
             --target "${SHA}" \
@@ -158,6 +173,8 @@ jobs:
             --notes-file notes.md \
             dist/*
       - name: Delete nightly releases beyond the newest 7
+        env:
+          GH_TOKEN: ${{ steps.bot.outputs.token }}
         run: |
           gh api --paginate --slurp "repos/${REPO}/releases?per_page=100" \
             | bun .github/scripts/nightly.ts expired 7 \

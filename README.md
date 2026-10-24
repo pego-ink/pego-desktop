@@ -138,8 +138,10 @@ the previous nightly.
      `APPLE_TEAM_ID`, `APPLE_ID`, `APPLE_PASSWORD`) to **both** `release` and `nightly` as environment secrets (same values).
   3. Delete the six repository-level copies. The workflows pass the six names to the reusable build, and only its
      macOS job, which declares the environment, receives the environment's values; no other job sees them.
-     The workflows need the default workflow permissions to stay read-only (the publish job asks for
-     `contents: write` itself).
+     The workflows need the default workflow permissions to stay read-only.
+  4. The `release tags` ruleset (Settings, Rules) locks every `v*` tag: add the **pego-bot** App to its bypass
+     list. The publish job creates and deletes nightly tags with a pego-bot token from the `autopilot`
+     environment; nobody else can.
 
 ## Layout
 
