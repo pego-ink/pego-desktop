@@ -6,9 +6,10 @@ const directive = (name: string) =>
   CONTENT_SECURITY_POLICY.split("; ").find((part) => part.startsWith(`${name} `)) ?? "";
 
 describe("content security policy", () => {
-  test("images: the app, data/blob URLs and the image search's proxy, nothing wider", () => {
+  test("images: the app, data/blob URLs, the image search's proxy and https web pictures", () => {
     const images = directive("img-src").split(" ").slice(1);
-    expect(images).toEqual(["'self'", "data:", "blob:", IMAGE_SEARCH_ORIGIN]);
+    expect(images).toEqual(["'self'", "data:", "blob:", IMAGE_SEARCH_ORIGIN, "https:"]);
+    expect(images).not.toContain("http:");
     expect(IMAGE_SEARCH_ORIGIN).toBe("https://api.openverse.org");
   });
 
