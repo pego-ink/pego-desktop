@@ -9,9 +9,10 @@ name: Claude review
 # Fail closed: a failed Claude step, a missing or invalid verdict, a diff too large to review or a
 # missing CLAUDE_CODE_OAUTH_TOKEN fail the check. Re-run the workflow to retry; from the 4th
 # attempt on it fails without calling Claude. Into main it only comments (no check, never blocks).
-# "Changes requested" sticks to the commit: once a review blocked a head, every later run for that
-# same head (a re-run, close and reopen, a retarget) keeps the check failing without touching the
-# comment. A new push (a new head) gets a fresh review. A PR retargeted to dev (`edited` with a base
+# "Changes requested" sticks to the content: once a review blocked a head, every later run for a
+# head with the same tree (a re-run, close and reopen, a retarget, an amend or force-push that
+# changes nothing) keeps the check failing without touching the comment. A push that changes the
+# code gets a fresh review. A PR retargeted to dev (`edited` with a base
 # change) is reviewed; title and description edits are not.
 #
 # Trust: pull_request_target runs this file and the scripts from `dev`. Claude's working directory
@@ -102,8 +103,12 @@ jobs:
             git fetch --quiet --no-tags origin "$head"
             # --text: a .gitattributes `binary` / `-diff` must not hide changes from the review.
             git diff --text --no-ext-diff --no-textconv "origin/$BASE...$head" > "$INPUT/pr.diff"
-            if [ "$(wc -c < "$INPUT/pr.diff")" -gt 400000 ]; then
-              skip="The diff is over 400 KB, too large for automatic review: @yolkmonday reviews it."
+            # Each commit on its own: the net diff hides a commit that undoes another one (a revert
+            # of someone's unmerged fix this branch started from).
+            git log -p --text --no-ext-diff --no-textconv --no-color --diff-merges=dense-combined \
+              "origin/$BASE..$head" > "$INPUT/commits.diff"
+            if [ "$(wc -c < "$INPUT/pr.diff")" -gt 400000 ] || [ "$(wc -c < "$INPUT/commits.diff")" -gt 400000 ]; then
+              skip="The diff or the per-commit diff is over 400 KB, too large for automatic review: @yolkmonday reviews it."
             fi
           fi
 
@@ -152,6 +157,7 @@ jobs:
             - pr.json: number, author, branches, head commit, title and description
             - files.tsv: status, path and old path of every changed file
             - pr.diff: the PR's diff against its base branch
+            - commits.diff: every commit of the PR on its own (message and patch)
             - open-prs.json, merged-prs.json: other open PRs and recent merges into dev
             - branches.txt: branches active in the last 30 days with their commits and changed files
 
@@ -167,9 +173,12 @@ jobs:
             2. Code check of THIS PR's diff only (read surrounding code in the working directory as
                needed): real bugs, data-loss risks, security issues, and CLAUDE.md rule breaks
                (ops-only document changes, pure packages, schema version bumps, a test next to
-               every new tool, MCP annotations, untrusted page data). Each finding: severity,
-               `path:line`, the concrete failure, the fix. At most 8 findings, most severe first.
-               No style nits, no praise.
+               every new tool, MCP annotations, untrusted page data). Also read commits.diff: a
+               commit that undoes or weakens another change (a revert of an earlier commit, of
+               someone else's unmerged work the branch started from, a fix taken back) is a
+               finding even when pr.diff no longer shows it; a security one blocks. Each finding:
+               severity, `path:line`, the concrete failure, the fix. At most 8 findings, most
+               severe first. No style nits, no praise.
 
             Return the structured output:
             - comment: the PR comment in markdown, short and in English:
@@ -254,19 +263,49 @@ jobs:
           pr_json="$(gh api "repos/$repo/pulls/$PR")"
           author="$(jq -r .user.login <<<"$pr_json")"
 
-          # Sticky per commit: a review that requested changes on this head stands, whatever this
-          # run finds (a re-run, a reopen or a retarget cannot roll it again). Push a new commit.
-          # An API error ends the run here (set -e): no check is written rather than a wrong one.
+          # Sticky per content: once a review requested changes on a head, every head with the same
+          # tree (this one again after a re-run, reopen or retarget, or an amend / force-push that
+          # changes nothing) keeps failing. Earlier heads: the PR's commits and the heads it
+          # force-pushed away. A real edit (another tree) gets a new review. An API error ends the
+          # run here (set -e): no check is written rather than a wrong one.
           requested="Changes requested by Claude"
           if [ "$HAS_APP" = true ] && [ "$BASE" = dev ]; then
-            earlier="$(GH_TOKEN="$APP_TOKEN" gh api --paginate -X GET "repos/$repo/commits/$HEAD/check-runs" \
-              -f check_name=autopilot/review -F app_id="$APP_ID" -f filter=all -F per_page=100 \
-              --jq '.check_runs[] | select(.conclusion == "failure") | .output.title')"
-            if grep -qxF "$requested" <<<"$earlier"; then
-              echo "::error::An earlier review requested changes on ${HEAD:0:7}; push a new commit for a new review."
-              ap_label "$PR" add needs-fixes
+            if [ "$(jq -r .commits <<<"$pr_json")" -gt 250 ]; then
+              check failure "Claude review unavailable" \
+                "Over 250 commits: the API cannot list the earlier heads. @$AP_OWNER merges it by hand." >/dev/null
+              exit 1
+            fi
+            tree="$(gh api "repos/$repo/commits/$HEAD" --jq .commit.tree.sha)"
+            heads="$RUNNER_TEMP/heads.txt"
+            echo "$HEAD $tree" > "$heads"
+            gh api --paginate "repos/$repo/pulls/$PR/commits?per_page=100" \
+              --jq '.[] | "\(.sha) \(.commit.tree.sha)"' >> "$heads"
+            # shellcheck disable=SC2016 # GraphQL variables, not shell ones
+            gh api graphql --paginate -f owner="${repo%/*}" -f name="${repo#*/}" -F number="$PR" -f query='
+              query($owner: String!, $name: String!, $number: Int!, $endCursor: String) {
+                repository(owner: $owner, name: $name) {
+                  pullRequest(number: $number) {
+                    timelineItems(itemTypes: [HEAD_REF_FORCE_PUSHED_EVENT], first: 100, after: $endCursor) {
+                      pageInfo { hasNextPage endCursor }
+                      nodes { ... on HeadRefForcePushedEvent { beforeCommit { oid tree { oid } } } }
+                    }
+                  }
+                }
+              }' --jq '.data.repository.pullRequest.timelineItems.nodes[] | .beforeCommit // empty |
+                "\(.oid) \(.tree.oid)"' >> "$heads"
+            sticky=""
+            while read -r sha; do
+              titles="$(GH_TOKEN="$APP_TOKEN" gh api --paginate -X GET "repos/$repo/commits/$sha/check-runs" \
+                -f check_name=autopilot/review -F app_id="$APP_ID" -f filter=all -F per_page=100 \
+                --jq '.check_runs[] | select(.conclusion == "failure") | .output.title' </dev/null)"
+              if grep -qxF "$requested" <<<"$titles"; then sticky="$sha"; break; fi
+            done < <(awk -v tree="$tree" '$2 == tree { print $1 }' "$heads" | sort -u)
+            if [ -n "$sticky" ]; then
+              echo "::error::A review requested changes on ${sticky:0:7}, which has the same content as ${HEAD:0:7}; change the code for a new review."
+              # The failing check first, then the label.
               check failure "$requested" \
-                "An earlier review of ${HEAD:0:7} requested changes (see the Claude review comment). That stands for this commit: push a fix to get a new review." >/dev/null
+                "A review of ${sticky:0:7} requested changes (see the Claude review comment), and ${HEAD:0:7} has the same content. That stands: push a fix to get a new review." >/dev/null
+              ap_label "$PR" add needs-fixes
               exit 1
             fi
           fi
@@ -309,16 +348,17 @@ jobs:
           if [ "$verdict" = block ]; then
             header="@$author please fix before this can merge:"$'\n'"$reasons"$'\n'"$fix_marker"$'\n\n'
           fi
-          ap_sticky "$PR" "$marker" "$header$review" create
-
           if [ "$verdict" = block ]; then
+            # The failing check first: if a later step fails, no earlier pass is left standing.
+            previous="$(check failure "$requested" "$reasons")"
+            ap_sticky "$PR" "$marker" "$header$review" create
             ap_label "$PR" add needs-fixes
             while IFS= read -r line; do echo "::error::${line#- }"; done <<<"$reasons"
-            previous="$(check failure "$requested" "$reasons")"
             if [ "$previous" != failure ]; then
               ap_telegram "⚠️ Blocked: #$PR $(jq -r .title <<<"$pr_json") by @$author — Claude review"$'\n\n'"$reasons"$'\n'"$(jq -r .html_url <<<"$pr_json")"
             fi
             exit 1
           fi
+          ap_sticky "$PR" "$marker" "$header$review" create
           ap_label "$PR" remove needs-fixes
           check success "No blocking findings" "See the Claude review comment on the PR." >/dev/null

@@ -66,6 +66,8 @@ describe("sensitivePaths", () => {
       "apps/desktop/electron-builder.yml",
       "apps/desktop/scripts/notarize.ts",
       "apps/desktop/scripts/sign/win.ts",
+      "apps/desktop/build/entitlements.mac.plist",
+      "apps/desktop/build/icon.png",
     ];
     expect(sensitivePaths(paths)).toEqual(paths);
   });
@@ -116,7 +118,7 @@ describe("sensitivePaths", () => {
         "packages/doc/src/schema.test.ts",
         "apps/web/src/browser/browser-actions.ts",
         "apps/bridge/README.md",
-        "apps/desktop/build/icon.png",
+        "apps/desktop/assets/icon.png",
         "apps/changelog/src/content/entries/a-faster-canvas.md",
         "apps/changelog/src/pages/index.astro",
         "README.md",
@@ -135,6 +137,12 @@ describe("printable", () => {
   test("escapes control characters so a path stays on one line", () => {
     expect(printable("a\nb\tc\u001b[31m\u0085")).toBe("a\\u000ab\\u0009c\\u001b[31m\\u0085");
     expect(printable(".github/x.yml")).toBe(".github/x.yml");
+  });
+
+  test("escapes line separators and bidi controls", () => {
+    expect(printable("a\u2028b\u2029c")).toBe("a\\u2028b\\u2029c");
+    expect(printable("x\u202egnp.ts\u2066\u200f")).toBe("x\\u202egnp.ts\\u2066\\u200f");
+    expect(printable("caf\u00e9.md")).toBe("caf\u00e9.md");
   });
 });
 

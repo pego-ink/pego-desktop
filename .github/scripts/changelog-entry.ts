@@ -3,9 +3,9 @@
  * `check`). It runs only this file (a sensitive path), never the changelog app's code: the full
  * schema and tests in apps/changelog run in CI on the commit afterwards. The text rules are the
  * same as apps/changelog/src/lib/entry-body.ts; keep them in sync. They fail closed on the raw
- * text (code included) instead of parsing Markdown, after undoing what Markdown and HTML decode
- * (backslash escapes, entities): no `<`, no entities, no script-capable scheme anywhere, and link
- * destinations only http(s), mailto or relative. Problems name a rule and a line, never the
+ * text (code included) instead of parsing Markdown: no `<`, no entities, and link, image,
+ * reference and autolink destinations only http(s), mailto or relative, read after undoing what
+ * Markdown and HTML decode (backslash escapes, entities) and what browsers skip (whitespace). Problems name a rule and a line, never the
  * offending text: they end up in a public check run.
  *
  * CLI: `bun .github/scripts/changelog-entry.ts <file>` prints the problems and exits 1, if any.
@@ -30,29 +30,39 @@ const NAMED: Readonly<Record<string, string>> = {
 const codePoint = (value: number): string =>
   value > 0 && value <= 0x10ffff ? String.fromCodePoint(value) : "\ufffd";
 /**
- * `text` as a browser would see it in a URL: entities decoded, backslashes (Markdown escapes),
- * whitespace and control characters removed, lowercase.
+ * `text` as a browser would see it in a URL: entities decoded (with or without `;`), backslashes
+ * (Markdown escapes), whitespace and control characters removed, lowercase.
  */
+const ENTITY = new RegExp(
+  `&(?:#(\\d{1,8})|#x([0-9a-f]{1,8})|(${Object.keys(NAMED).join("|")}));?`,
+  "gi",
+);
 const fold = (text: string): string =>
   text
-    .replace(/&(?:#(\d{1,8})|#x([0-9a-f]{1,8})|([a-z][a-z0-9]*));?/gi, (entity, dec, hex, name) =>
+    .replace(ENTITY, (_, dec, hex, name) =>
       dec !== undefined
         ? codePoint(Number(dec))
         : hex !== undefined
           ? codePoint(Number.parseInt(hex, 16))
-          : (NAMED[String(name).toLowerCase()] ?? entity),
+          : (NAMED[String(name).toLowerCase()] ?? ""),
     )
     .toLowerCase()
     .replace(IGNORED, "");
-const hasScriptUrl = (text: string): boolean =>
-  /javascript:|vbscript:|data:|file:/.test(fold(text));
 const SAFE_SCHEMES = new Set(["http", "https", "mailto"]);
 /**
- * True when a link or image destination (`](dest` or a `[ref]: dest` definition) has a scheme
- * other than http(s) or mailto. Relative links and #fragments have none.
+ * What follows each `](` (link or image), `]:` (reference definition) and `<` (autolink), up to
+ * a `)`, a quote (a title) or a blank line: generous, since parsers differ, and over line breaks.
+ */
+const destinations = (text: string): string[] =>
+  [...text.matchAll(/(?:\][ \t]*[(:]|<)([^)"'<>]*)/g)].map(
+    ([, rest = ""]) => rest.split(/\n[ \t]*\n/)[0] ?? "",
+  );
+/**
+ * True when a destination's scheme, read as a browser would (see `fold`), is not http(s) or
+ * mailto. Relative links and #fragments have none. Prose is not checked: "file: faster" is fine.
  */
 const hasUnsafeLink = (text: string): boolean =>
-  [...text.matchAll(/\]\s*[(:]\s*(\S*)/g)].some(([, destination = ""]) => {
+  destinations(text).some((destination) => {
     const scheme = /^([a-z][a-z0-9+.-]*):/.exec(fold(destination))?.[1];
     return scheme !== undefined && !SAFE_SCHEMES.has(scheme);
   });
@@ -60,11 +70,10 @@ const hasUnsafeLink = (text: string): boolean =>
 const RULES: readonly (readonly [name: string, test: (line: string) => boolean])[] = [
   ["raw-html", (line) => line.includes("<")],
   ["html-entity", (line) => /&#|&[a-zA-Z][a-zA-Z0-9]*;/.test(line)],
-  ["script-url", hasScriptUrl],
   ["link-scheme", hasUnsafeLink],
   ["secret-like", (line) => /sk-ant-|gh[psou]_[A-Za-z0-9]{20,}|[A-Za-z0-9+/_=-]{100,}/.test(line)],
 ];
-const WHOLE = RULES.filter(([name]) => name === "script-url" || name === "link-scheme");
+const WHOLE = RULES.filter(([name]) => name === "link-scheme");
 
 /** Rule violations in `text` as "rule (line n)", lines counted from `first`. */
 export const unsafeText = (text: string, first = 1): string[] => {
@@ -73,7 +82,7 @@ export const unsafeText = (text: string, first = 1): string[] => {
     .flatMap((line, index) =>
       RULES.filter(([, test]) => test(line)).map(([name]) => `${name} (line ${index + first})`),
     );
-  // A destination or scheme split over lines (`](\njavascript:`, `java\nscript:`).
+  // A destination split over lines (`](\njavascript:`, `](java\nscript:`).
   const split = WHOLE.filter(
     ([name, test]) => test(text) && !problems.some((problem) => problem.startsWith(`${name} `)),
   );

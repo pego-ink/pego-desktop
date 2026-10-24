@@ -14,7 +14,8 @@ name: Autopilot
 #   `no-autopilot` pass but wait for a manual merge.
 # - The changed files come from git for exactly the head commit the gate writes its check on
 #   (ap_changed_files: the head fetched as objects into the dev checkout, never checked out), not
-#   from the paginated files API. If the PR's head or base moved meanwhile, nothing is written: the
+#   from the paginated files API: the net diff plus every path any commit of the PR touches, so a
+#   revert of someone's unmerged fix that the branch started from still counts. If the PR's head or base moved meanwhile, nothing is written: the
 #   run for the new state decides.
 # - A PR that touches a sensitive path (.github/scripts/sensitive-paths.ts) fails the gate. It is
 #   labelled `needs-owner-review`, the author gets a sticky comment and the owner a Telegram
@@ -163,7 +164,8 @@ jobs:
               failed=1; continue
             fi
 
-            # Every path this exact head changes against dev; a rename counts with both paths.
+            # Every path this exact head changes against dev or any of its commits touches; a rename
+            # counts with both paths.
             if ! ap_changed_files "$head" >"$RUNNER_TEMP/files"; then
               disable_auto_merge
               ap_check autopilot/gate "$head" failure "No file list" \

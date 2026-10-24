@@ -328,9 +328,10 @@ When a same-repo PR has neither, Claude reads the PR as data (from a `dev` check
 returns an entry or "internal"; the workflow checks the entry with `.github/scripts/changelog-entry.ts` and commits
 that one file to the PR branch as the pego-bot App (never onto `dev` or `main`), or adds the `no-changelog` label.
 Edit the entry like any file before merging. Entries are rendered as HTML, so the
-text rules fail closed on the raw file, code included: no `<` anywhere, no HTML entities, no `javascript:`,
-`vbscript:`, `data:` or `file:` (even in prose, and checked after decoding entities and dropping backslash escapes),
-link and image destinations only http(s), mailto or relative, and frontmatter text has no `>` either
+text rules fail closed on the raw file, code included: no `<` anywhere, no HTML entities, link, image, reference
+and autolink destinations only http(s), mailto or relative (read after decoding entities and dropping backslash
+escapes and whitespace, so `javascript\:` or a split `java` / `script:` is refused; prose like "file: faster" is
+fine), and frontmatter text has no `>` either
 (`src/lib/entry-body.ts`, enforced by the tests; the bot uses the same rules). The site also drops raw HTML and
 non-http(s)/mailto URLs when rendering (`src/lib/safe-markdown.ts`, wired in `astro.config.ts`; `entry-rendering.test.ts`
 renders hostile bodies through the site's pipeline), and JSON-LD goes through `serializeJsonLd`.
@@ -356,23 +357,32 @@ Two people contribute to `github.com/yolkmonday/pego`, so:
   `no-autopilot` wait for a manual merge; fork PRs are merged by hand.
 - **Sensitive paths** (`.github/scripts/sensitive-paths.ts`: `.github/**`, CODEOWNERS, `.gitattributes`,
   `.gitmodules`, `.claude/**`, `CLAUDE.md`, `.mcp.json`, every `package.json`, `bun.lock`, `bunfig.toml`, `.npmrc`,
-  wrangler and astro config, `apps/desktop/electron-builder.yml` and `scripts/**`, schema/migrations, all of
+  wrangler and astro config, `apps/desktop/electron-builder.yml`, `scripts/**` and `build/**` (entitlements),
+  schema/migrations, all of
   `apps/bridge/src/**` and `apps/desktop/src/**`, the web browser page scripts, and the changelog's HTML safety
   (`apps/changelog/src/lib/**`, `src/content/schema.ts`, `src/content/entries.test.ts`); matched ignoring case)
   never auto-merge. The gate lists the changed files with git for exactly the head commit it checks (old and new
-  path of a rename), not with the files API, and writes nothing if the head or base moved meanwhile. A sensitive PR
+  path of a rename), not with the files API: the net diff against `dev` plus every path any commit of the PR
+  touches, so a commit that reverts someone's unmerged fix the branch started from still counts. It writes nothing
+  if the head or base moved meanwhile. A sensitive PR
   is labelled `needs-owner-review` and its gate fails until @yolkmonday approves its head commit, and keeps failing
   after that ("Approved; he merges it", auto-merge turned off): he merges it with an admin bypass, as he does his
   own sensitive PRs. Only with `AUTO_MERGE_APPROVED_SENSITIVE: "true"` in `autopilot.yml` does his approval make
-  the gate pass and the bot enable auto-merge for that exact commit.
+  the gate pass and the bot enable auto-merge for that exact commit. `packages/**` (`doc`, `agent`, ...) is not on
+  the list although it runs inside the bridge process (with the user's files and the MCP endpoint): such PRs
+  auto-merge with Claude's review only. **After changing `sensitive-paths.ts` or the gate, re-run the gate on every
+  open PR into `dev`** (a passing `autopilot/gate` from the old rules stays on its commit otherwise); do the same
+  once when the required checks are first switched on.
 - **Claude review** (`.github/workflows/claude-review.yml`) keeps one comment on every same-repo PR into `dev`
   (into `main` it only comments):
   overlap with other open PRs, recent merges and active branches, plus a short code check. It blocks only real
   bugs, data loss, security issues, CLAUDE.md rule breaks that matter and duplicate work (`needs-fixes` label, the
   author tagged with the reasons). No verdict (Claude failed, diff over 400 KB, no token) fails the check: re-run
   the workflow (at most 3 attempts call Claude) or the owner merges by hand. "Changes requested" sticks to the
-  commit: a re-run, a close and reopen or a retarget of the same head keeps the check failing; a new push gets a
-  fresh review. Retargeting a PR to `dev` re-runs the review and the changelog check. Claude's diffs are made
+  content: a re-run, a close and reopen, a retarget, or an amend / force-push to a head with the same tree as a
+  blocked one (the PR's commits and its force-pushed-away heads) keeps the check failing; a push that changes the
+  code gets a fresh review. Claude sees each commit on its own too (`commits.diff`), and a commit that undoes
+  another change is a finding. Retargeting a PR to `dev` re-runs the review and the changelog check. Claude's diffs are made
   with `--text` (a `.gitattributes` cannot hide a change), and a job that lets Claude read the `dev` checkout fails
   if that checkout has a symlink leading outside it.
 - **Trust model.** Workflows that hold secrets run only from `dev`'s definition (`pull_request_target`,

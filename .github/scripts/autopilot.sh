@@ -125,10 +125,13 @@ ap_urlpath() {
 }
 
 # ap_changed_files SHA: prints, NUL-separated, every path commit SHA changes against dev (from
-# each merge base, like a PR's "Files changed"). It comes from git, not the paginated files API, so
-# the list belongs to exactly that commit and has no size limit. --no-renames lists a rename as its
-# old and its new path. Fetches dev and SHA into the current checkout of dev as objects only:
-# nothing from them is checked out or run. Returns non-zero on any error, so callers fail closed.
+# each merge base, like a PR's "Files changed") and every path any commit in dev..SHA touches (merge
+# commits: what differs from all their parents). The second half catches a commit that undoes
+# another unmerged commit of the range (a revert of someone's fix that the net diff hides). It comes
+# from git, not the paginated files API, so the list belongs to exactly that commit and has no size
+# limit. --no-renames lists a rename as its old and its new path. Fetches dev and SHA into the
+# current checkout of dev as objects only: nothing from them is checked out or run. Returns
+# non-zero on any error, so callers fail closed.
 ap_changed_files() {
   local sha="$1" bases base
   [[ "$sha" =~ ^[0-9a-f]{40}$ ]] || return 1
@@ -139,6 +142,8 @@ ap_changed_files() {
   for base in $bases; do
     git diff --name-only --no-renames --no-ext-diff --no-textconv -z "$base" "$sha" -- || return 1
   done
+  git log --format= --name-only -z --no-renames --no-ext-diff --no-textconv \
+    --diff-merges=dense-combined "refs/remotes/origin/dev..$sha" -- || return 1
 }
 
 # ap_code_block TEXT: prints TEXT as a Markdown fenced code block whose fence is longer than any

@@ -6,8 +6,9 @@
  * there), Unicode normalization form and invisible format characters.
  *
  * CLI: `git diff --name-only -z ... | bun .github/scripts/sensitive-paths.ts -z` prints the
- * sensitive ones, one per line, control characters escaped as `\uXXXX`, so every line is one
- * path and safe to show. Without `-z` the input is one path per line.
+ * sensitive ones, one per line, control characters, line separators and bidi controls escaped as
+ * `\uXXXX`, so every line is one path and shows as it is. Without `-z` the input is one path per
+ * line.
  */
 export const SENSITIVE_PATTERNS = [
   // CI, bots and their scripts, code owners, git attributes and submodules.
@@ -34,6 +35,7 @@ export const SENSITIVE_PATTERNS = [
   "apps/changelog/astro.config.*",
   "apps/desktop/electron-builder.yml",
   "apps/desktop/scripts/**",
+  "apps/desktop/build/**",
   // Security-relevant source: the local bridge, the desktop shell, the changelog's HTML safety.
   "packages/doc/src/schema.ts",
   "packages/doc/src/migrate.ts",
@@ -67,10 +69,14 @@ export const sensitivePaths = (paths: readonly string[]): string[] => [
   ),
 ];
 
+/** Control characters, line and paragraph separators and bidi controls (which reorder text). */
 // eslint-disable-next-line no-control-regex -- control characters are what it escapes
-const CONTROL = /[\u0000-\u001f\u007f-\u009f]/g;
+const CONTROL = /[\u0000-\u001f\u007f-\u009f\u2028\u2029\p{Bidi_Control}]/gu;
 
-/** A path as one printable line: control characters (newlines included) become `\uXXXX`. */
+/**
+ * A path as one printable line: control characters (newlines included), line separators and
+ * bidi controls become `\uXXXX`.
+ */
 export const printable = (path: string): string =>
   path.replace(CONTROL, (char) => `\\u${char.charCodeAt(0).toString(16).padStart(4, "0")}`);
 
