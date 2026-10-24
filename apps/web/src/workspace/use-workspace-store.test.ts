@@ -11,6 +11,7 @@ import { applyAutosaveRecord, buildAutosaveRecord } from "@/persistence/use-pers
 import { useFileStore } from "@/persistence/use-file-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
+import { closeTabAndWait, saveAndCloseTab, useCloseConfirm } from "./use-close-confirm";
 import { visibleTarget } from "./document-target";
 import { captureLive, documentTitle } from "./live-document";
 import { releaseWindow, resetLiveDocument, stubConfirm, TEST_TAB_ID } from "./test-reset";
@@ -251,5 +252,50 @@ describe("persistence", () => {
       workspaces: record.workspaces!.map((workspace) => ({ ...workspace, kind: "scratch" })),
     });
     expect(tabs().workspaces.map((workspace) => workspace.kind)).toEqual(["local"]);
+  });
+});
+
+describe("saveAndCloseTab", () => {
+  const dirtyLive = () => docs().commit([{ op: "update", id: "frame-1", props: { x: 11 } }]);
+  const markSaved = () =>
+    useFileStore.setState({ fileName: "a.pego", savedDoc: useDocumentStore.getState().doc });
+
+  test("closes the tab and the dialog once the save cleaned the document", async () => {
+    const other = newDocumentTab();
+    activateWorkspace(TEST_TAB_ID);
+    dirtyLive();
+    useCloseConfirm.setState({ open: true, id: TEST_TAB_ID });
+    expect(await saveAndCloseTab(TEST_TAB_ID, async () => markSaved())).toBe(true);
+    expect(tabIds()).toEqual([other]);
+    expect(useCloseConfirm.getState().open).toBe(false);
+  });
+
+  test("keeps the tab and the dialog when the document is still dirty", async () => {
+    dirtyLive();
+    useCloseConfirm.setState({ open: true, id: TEST_TAB_ID });
+    expect(await saveAndCloseTab(TEST_TAB_ID, async () => {})).toBe(false);
+    expect(tabIds()).toContain(TEST_TAB_ID);
+    expect(useCloseConfirm.getState().open).toBe(true);
+  });
+
+  test("shows a background tab before saving it", async () => {
+    dirtyLive();
+    const other = newDocumentTab();
+    expect(tabs().liveId).toBe(other);
+    const seen: string[] = [];
+    const result = await saveAndCloseTab(TEST_TAB_ID, async () => {
+      seen.push(tabs().liveId!);
+      markSaved();
+    });
+    expect(seen).toEqual([TEST_TAB_ID]);
+    expect(result).toBe(true);
+    expect(tabIds()).toEqual([other]);
+  });
+
+  test("closeTabAndWait resolves true after Save closes the tab", async () => {
+    dirtyLive();
+    const pending = closeTabAndWait(TEST_TAB_ID);
+    await saveAndCloseTab(TEST_TAB_ID, async () => markSaved());
+    expect(await pending).toBe(true);
   });
 });
