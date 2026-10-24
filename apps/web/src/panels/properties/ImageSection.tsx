@@ -12,7 +12,6 @@ import { PropNumber } from "@/panels/properties/PropNumber";
 import { TextCommitField } from "@/panels/properties/TextCommitField";
 import { useApplyProps } from "@/panels/properties/use-apply-props";
 import { RemoveBackgroundButtons } from "@/images/remove-background/RemoveBackgroundButtons";
-import { useDocumentStore } from "@/store/use-document-store";
 
 type Fit = NonNullable<ImageNode["fit"]>;
 
@@ -57,14 +56,7 @@ export const ImageSection = ({ node }: { node: ImageNode }) => {
           Replace
         </Button>
       </PropertyRow>
-      <RemoveBackgroundButtons
-        src={node.src}
-        onRemoved={(src) =>
-          useDocumentStore
-            .getState()
-            .commit([{ op: "update", id: node.id, props: { src } }], { label: "Remove background" })
-        }
-      />
+      <RemoveBackgroundButtons nodeId={node.id} src={node.src} />
       {node.source ? (
         <div className="flex h-7 items-center gap-1 rounded-md bg-muted pr-1 pl-2 text-[13px]">
           <GlobeIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />

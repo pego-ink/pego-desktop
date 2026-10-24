@@ -14,6 +14,14 @@ const pending = new Map<
   { resolve: (mask: Float32Array) => void; reject: (e: Error) => void }
 >();
 
+const stopWorker = (error: Error): void => {
+  worker?.terminate();
+  worker = null;
+  ready = null;
+  for (const job of pending.values()) job.reject(error);
+  pending.clear();
+};
+
 const startWorker = (onProgress?: DownloadProgress): Promise<void> => {
   ready ??= (async () => {
     const model = await loadModelBytes(onProgress);
@@ -27,6 +35,13 @@ const startWorker = (onProgress?: DownloadProgress): Promise<void> => {
       if (event.data.mask) job.resolve(event.data.mask);
       else job.reject(new Error(event.data.error ?? "The background model failed."));
     };
+    // The worker or its WASM failed to load or crashed: fail every waiting job, start over next time.
+    worker.onerror = (event) => {
+      event.preventDefault();
+      stopWorker(
+        new Error(`The background model could not run (${event.message || "worker error"}).`),
+      );
+    };
     worker.postMessage({ model }, [model]);
   })().catch((error: unknown) => {
     ready = null;
@@ -38,8 +53,12 @@ const startWorker = (onProgress?: DownloadProgress): Promise<void> => {
 const runModel = (input: Float32Array): Promise<Float32Array> =>
   new Promise((resolve, reject) => {
     const id = nextId++;
+    if (!worker) {
+      reject(new Error("The background model stopped. Try again."));
+      return;
+    }
     pending.set(id, { resolve, reject });
-    worker!.postMessage({ id, input }, [input.buffer]);
+    worker.postMessage({ id, input }, [input.buffer]);
   });
 
 /** `bitmap` with its background removed, as a PNG blob at the same size. */

@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import { ScissorsIcon, SparklesIcon } from "lucide-react";
 import { toast } from "sonner";
+import { cutOutProps } from "@pego/agent";
+import { findNode } from "@pego/doc";
 import { Button } from "@pego/ui/components/button";
 import { Spinner } from "@pego/ui/components/spinner";
 import { PropertyRow } from "@pego/ui/components/property-section";
@@ -11,6 +13,7 @@ import {
   removeBackground,
   type RemovalQuality,
 } from "./index";
+import { useDocumentStore } from "@/store/use-document-store";
 
 /**
  * Remove the background of an image (an image layer or an image fill), with a toast for the
@@ -52,15 +55,22 @@ export const removeBackgroundWithProgress = async (
   }
 };
 
+/**
+ * Put the cut-out on the node as one undo step, read fresh from the document: removal takes
+ * seconds, and a node deleted or given another photo meanwhile is left alone.
+ */
+const applyCutOut = (nodeId: string, from: string, cut: string): void => {
+  const { doc, commit } = useDocumentStore.getState();
+  const props = cutOutProps(findNode(doc, nodeId), from, cut);
+  if (!props) {
+    toast.error("The image changed while its background was being removed, so it was kept.");
+    return;
+  }
+  commit([{ op: "update", id: nodeId, props }], { label: "Remove background" });
+};
+
 /** "Remove background", plus "High quality" when the user has a gpt-image model set up. */
-export const RemoveBackgroundButtons = ({
-  src,
-  onRemoved,
-}: {
-  src: string;
-  /** Apply the cut-out (one undo step). */
-  onRemoved: (src: string) => void;
-}) => {
+export const RemoveBackgroundButtons = ({ nodeId, src }: { nodeId: string; src: string }) => {
   const [busy, setBusy] = useState<RemovalQuality | null>(null);
   const [highQuality, setHighQuality] = useState(false);
   useEffect(() => {
@@ -77,7 +87,7 @@ export const RemoveBackgroundButtons = ({
     setBusy(quality);
     try {
       const cut = await removeBackgroundWithProgress(src, quality);
-      if (cut) onRemoved(cut);
+      if (cut) applyCutOut(nodeId, src, cut);
     } finally {
       setBusy(null);
     }

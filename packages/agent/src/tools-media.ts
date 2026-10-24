@@ -457,6 +457,30 @@ const searchImages = defineTool({
 /** Media tools: insert_svg, place_image, generate_image, search_images. */
 // --- remove_background ----------------------------------------------------------------
 
+/** The photo a node shows: an image layer's src, or the src of a shape's image fill. */
+export const nodeImageSrc = (node: PegoNode): string | undefined => {
+  if (node.type === "image") return node.src;
+  const fill = "fill" in node ? node.fill : undefined;
+  return typeof fill === "object" && fill?.type === "image" ? fill.src : undefined;
+};
+
+/**
+ * The update that swaps `from` for its cut-out `cut` on `node`, or null when the node is gone or
+ * no longer shows `from` (it was edited while the background was being removed).
+ */
+export const cutOutProps = (
+  node: PegoNode | null,
+  from: string,
+  cut: string,
+): Record<string, unknown> | null => {
+  if (!node || nodeImageSrc(node) !== from) return null;
+  if (node.type === "image") return { src: cut };
+  const fill = "fill" in node ? node.fill : undefined;
+  return typeof fill === "object" && fill?.type === "image"
+    ? { fill: { ...fill, src: cut } }
+    : null;
+};
+
 const removeBackground = defineTool({
   name: "remove_background",
   description:
@@ -493,11 +517,7 @@ const removeBackground = defineTool({
         "Use an id from get_document.",
       );
     }
-    const fill =
-      "fill" in node && typeof node.fill === "object" && node.fill?.type === "image"
-        ? node.fill
-        : null;
-    const src = node.type === "image" ? node.src : fill?.src;
+    const src = nodeImageSrc(node);
     if (!src) {
       throw new ToolError(
         "no_image",
@@ -517,13 +537,16 @@ const removeBackground = defineTool({
         quality === "high" ? 'Try quality "standard" (on device).' : undefined,
       );
     }
-    commitOps(host, [
-      {
-        op: "update",
-        id: node.id,
-        props: node.type === "image" ? { src: cut } : { fill: { ...fill!, src: cut } },
-      },
-    ]);
+    // Removal takes seconds: commit only onto the photo it started from.
+    const props = cutOutProps(findNode(host.getDoc(), node.id), src, cut);
+    if (!props) {
+      throw new ToolError(
+        "node_changed",
+        `${node.name ?? node.id} was deleted or got another image while its background was being removed`,
+        "Check the node with get_document and call remove_background again if it is still wanted.",
+      );
+    }
+    commitOps(host, [{ op: "update", id: node.id, props }]);
     return ok({ ok: true, updated: node.id, quality });
   },
 });

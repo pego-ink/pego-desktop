@@ -153,10 +153,7 @@ export const FillSection = ({ node }: { node: PegoNode }) => {
                   <ImageIcon />
                 </IconButton>
               </PropertyRow>
-              <RemoveBackgroundButtons
-                src={fill.src}
-                onRemoved={(src) => editFill((f) => ({ ...f, src }) as Fill, "Remove background")}
-              />
+              <RemoveBackgroundButtons nodeId={node.id} src={fill.src} />
             </>
           ) : (
             <>

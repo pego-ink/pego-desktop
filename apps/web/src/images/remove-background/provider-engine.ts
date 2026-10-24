@@ -61,7 +61,7 @@ export const removeBackgroundWithProvider = async (
   form.append("n", "1");
   let response: Response;
   try {
-    response = await (deps.fetch ?? fetch)(`${provider.baseUrl}/images/edits`, {
+    response = await (deps.fetch ?? fetch)(`${provider.baseUrl.replace(/\/+$/, "")}/images/edits`, {
       method: "POST",
       headers: key ? { Authorization: `Bearer ${key}` } : {},
       body: form,

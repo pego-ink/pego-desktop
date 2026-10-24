@@ -1,7 +1,7 @@
 import { describe, expect, test } from "bun:test";
-import { findNode } from "@pego/doc";
+import { findNode, type PegoNode } from "@pego/doc";
 import { createFakeHost } from "./test-host";
-import { mediaTools } from "./tools-media";
+import { cutOutProps, mediaTools } from "./tools-media";
 import type { ToolHost } from "./types";
 
 type Json = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any
@@ -14,6 +14,7 @@ const call = async (name: string, input: unknown, host: ToolHost = createFakeHos
 };
 
 const PNG = "data:image/png;base64,iVBORw0KGgo=";
+const PNG2 = "data:image/png;base64,iVBORw0KGgoA";
 const SVG =
   '<svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#0E7C5A"/><path d="M7 12l3 3 7-7" stroke="#fff" stroke-width="2" fill="none"/></svg>';
 
@@ -413,6 +414,38 @@ describe("remove_background", () => {
     expect(findNode(host.getDoc(), id)).toMatchObject({
       fill: { type: "image", src: CUT, fit: "contain" },
     });
+  });
+
+  test("a node edited or deleted during the removal is left alone", async () => {
+    let edit: (host: ReturnType<typeof createFakeHost>) => void = () => {};
+    const host = withRemoval(async () => {
+      edit(host);
+      return CUT;
+    });
+    const id = await placed(host);
+    edit = (h) => h.applyOps([{ op: "update", id, props: { src: PNG2 } }]);
+    const replaced = await call("remove_background", { nodeId: id }, host);
+    expect(replaced.data.error.code).toBe("node_changed");
+    expect(findNode(host.getDoc(), id)).toMatchObject({ src: PNG2 });
+
+    edit = (h) => h.applyOps([{ op: "delete", id }]);
+    expect((await call("remove_background", { nodeId: id }, host)).data.error.code).toBe(
+      "node_changed",
+    );
+  });
+
+  test("cutOutProps: only onto the photo it started from", () => {
+    const fill = { type: "image" as const, src: PNG, fit: "cover" as const };
+    const shape = { type: "rectangle", id: "r", fill } as PegoNode;
+    expect(cutOutProps(shape, PNG, CUT)).toEqual({ fill: { ...fill, src: CUT } });
+    expect(cutOutProps(shape, PNG2, CUT)).toBeNull();
+    expect(cutOutProps({ type: "image", id: "i", src: PNG } as PegoNode, PNG, CUT)).toEqual({
+      src: CUT,
+    });
+    expect(
+      cutOutProps({ type: "ellipse", id: "e", fill: "#000" } as PegoNode, PNG, CUT),
+    ).toBeNull();
+    expect(cutOutProps(null, PNG, CUT)).toBeNull();
   });
 
   test("clear errors: no image, a failed removal, no capability", async () => {

@@ -59,6 +59,17 @@ describe("removeBackgroundWithProvider", () => {
     expect(form.get("image")).toBeInstanceOf(Blob);
   });
 
+  test("a base URL with a trailing slash gets no double slash", async () => {
+    const { requests, deps: d } = deps(() =>
+      Response.json({ data: [{ b64_json: "iVBORw0KGgo=" }] }),
+    );
+    d.listProviders = async () => [
+      provider({ baseUrl: "https://api.openai.com/v1/", models: ["gpt-image-1"] }),
+    ];
+    await removeBackgroundWithProvider(png, d);
+    expect(requests[0]!.url).toBe("https://api.openai.com/v1/images/edits");
+  });
+
   test("an API error is a readable message", async () => {
     const { deps: d } = deps(() =>
       Response.json({ error: { message: "Billing limit reached" } }, { status: 429 }),

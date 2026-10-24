@@ -17,7 +17,7 @@ export * from "./skills/format";
 export { toolAnnotations, type ToolAnnotations } from "./annotations";
 export * from "./mentions";
 export * from "./app-state";
-export { svgToNode } from "./tools-media";
+export { cutOutProps, svgToNode } from "./tools-media";
 export { MAX_SVG_BYTES, SvgError } from "./media/svg";
 // The editor turns browser-extension captures into layers with the same converter.
 export { domSnapshotToNode } from "./tools-browser";
