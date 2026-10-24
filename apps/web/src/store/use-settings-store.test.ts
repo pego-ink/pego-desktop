@@ -93,3 +93,11 @@ describe("useSettingsModal", () => {
     });
   });
 });
+
+describe("connectors setting", () => {
+  test("on by default; a stored boolean is kept, anything else falls back", () => {
+    expect(store.mergeSettings({}).connectors).toBe(true);
+    expect(store.mergeSettings({ connectors: false }).connectors).toBe(false);
+    expect(store.mergeSettings({ connectors: "no" }).connectors).toBe(true);
+  });
+});

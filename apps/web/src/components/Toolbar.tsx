@@ -132,6 +132,8 @@ export const Toolbar = () => {
   const position = useSettingsStore((s) => s.toolbarPosition);
   const update = useSettingsStore((s) => s.update);
   const { vertical, menuSide } = toolbarLayout(position);
+  // The Connector tool shows only while wireflow connectors are on (Settings).
+  const connectors = useSettingsStore((s) => s.connectors);
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
@@ -144,7 +146,7 @@ export const Toolbar = () => {
             POSITION_CLASS[position],
           )}
         >
-          {TOOL_GROUPS.map((group) => (
+          {TOOL_GROUPS.filter((group) => connectors || group.id !== "connector").map((group) => (
             <Fragment key={group.id}>
               <GroupButton group={group} vertical={vertical} menuSide={menuSide} />
               {group.id === DIVIDER_AFTER ? (

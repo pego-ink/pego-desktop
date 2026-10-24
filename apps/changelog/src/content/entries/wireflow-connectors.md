@@ -16,3 +16,7 @@ Select an arrow by clicking its line. In Properties you can give it a label ("Ta
 Ask for a user flow or wireflow and the agent lays the screens out, then draws the arrows with short labels for each step, branches like errors or empty states included.
 
 Arrows show on the canvas and in SVG and PNG exports of a frame that contains them. Code export leaves them out, since they describe the flow, not the screen.
+
+## Turn them off
+
+Don't need the arrows right now? Turn off **Wireflow connectors** in Settings › General, or uncheck **Show wireflow connectors** in the canvas menu (right-click). The arrows and the Connector tool are hidden, and your connectors stay in the file for when you turn them back on.

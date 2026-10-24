@@ -288,6 +288,9 @@ represent is dropped and reported as a warning, never silently. Test fixture: `d
   to connect them; the screen under the pointer by default, the innermost frame or instance (a button) with
   ⌘/Ctrl held (`connectEndAt`). A selected connector shows its line highlighted, no handles; it cannot be
   moved or resized (it follows its ends); Properties shows its label, route, sides, line and markers.
+  Settings › General › Wireflow connectors (`connectors`, also in the canvas menu) hides them: `getLayout`
+  drops their boxes (`setConnectorsShown`, wired in `canvas/connector-visibility.ts`), so they are not drawn,
+  hit or selected, and the tool and its shortcut are off; the document keeps them.
 - Editor chrome: icon rail with Agent, Layers (pages + layer tree), Assets (the document's components,
   `apps/web/src/assets/`) and, in the desktop app only, Browser; resizable side panel, properties column (pin,
   hide); `Ctrl/⌘ + \` hides both sides. Settings > General > Browser panel puts the Browser in the side panel

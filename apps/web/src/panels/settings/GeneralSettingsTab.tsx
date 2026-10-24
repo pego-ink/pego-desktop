@@ -204,6 +204,7 @@ export const GeneralSettingsTab = () => {
   const nudgeLarge = useSettingsStore((s) => s.nudgeLarge);
   const wheelBehavior = useSettingsStore((s) => s.wheelBehavior);
   const snapToPixel = useSettingsStore((s) => s.snapToPixel);
+  const connectors = useSettingsStore((s) => s.connectors);
   const toolbarPosition = useSettingsStore((s) => s.toolbarPosition);
   const interfaceStyle = useSettingsStore((s) => s.interfaceStyle);
   const themeMode = useThemeStore((s) => s.mode);
@@ -334,6 +335,19 @@ export const GeneralSettingsTab = () => {
               aria-describedby={descriptionId}
               checked={snapToPixel}
               onCheckedChange={(checked) => update({ snapToPixel: checked })}
+            />
+          )}
+        </SettingRow>
+        <SettingRow
+          title="Wireflow connectors"
+          description="Arrows between screens and the Connector tool (C). Off, they stay in the file but are hidden."
+        >
+          {({ labelId, descriptionId }) => (
+            <Switch
+              aria-labelledby={labelId}
+              aria-describedby={descriptionId}
+              checked={connectors}
+              onCheckedChange={(checked) => update({ connectors: checked })}
             />
           )}
         </SettingRow>

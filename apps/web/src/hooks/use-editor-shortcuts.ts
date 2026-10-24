@@ -207,7 +207,8 @@ export const useEditorShortcuts = () => {
         return;
       }
       const tool = TOOL_KEYS[e.key.toLowerCase()];
-      if (tool && !e.altKey && !e.shiftKey) {
+      const toolOff = tool === "connector" && !useSettingsStore.getState().connectors;
+      if (tool && !toolOff && !e.altKey && !e.shiftKey) {
         e.preventDefault();
         useToolStore.getState().setTool(tool);
         return;
