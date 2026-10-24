@@ -83,3 +83,28 @@ describe("generated images", () => {
     });
   });
 });
+
+describe("dropped web pictures", () => {
+  const web = {
+    src: "https://cdn.antaranews.com/karhut.jpg",
+    thumb: "https://cdn.antaranews.com/karhut.jpg",
+    title: "Image from antaranews.com",
+    creator: "antaranews.com",
+    license: "Unknown, check the source",
+    pageUrl: "https://www.google.com/search?udm=2&q=asap",
+    provider: "Google Images",
+    width: 1200,
+    height: 800,
+  };
+
+  test("are accepted from any https site and keep their provider", () => {
+    expect(readDroppedStockImage(JSON.stringify(web))).toEqual(web);
+  });
+
+  test("other providers still need Openverse URLs", () => {
+    expect(readDroppedStockImage(JSON.stringify({ ...web, provider: "Openverse" }))).toBeNull();
+    expect(
+      readDroppedStockImage(JSON.stringify({ ...web, src: "javascript:alert(1)" })),
+    ).toBeNull();
+  });
+});

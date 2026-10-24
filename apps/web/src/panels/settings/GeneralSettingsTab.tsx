@@ -12,7 +12,11 @@ import { setThemeMode, useThemeStore, type ThemeMode } from "@/theme/theme";
 import { toggleAutoSave } from "@/persistence/autosave-actions";
 import { isFileAutosaveSupported } from "@/persistence/file-autosave";
 import { useAutosaveStore } from "@/persistence/use-autosave-store";
-import { useSettingsStore, type EditorSettings } from "@/store/use-settings-store";
+import {
+  useSettingsStore,
+  type EditorSettings,
+  type ImageSearchSource,
+} from "@/store/use-settings-store";
 import {
   TOOLBAR_POSITION_LABELS,
   TOOLBAR_POSITIONS,
@@ -23,6 +27,7 @@ import {
   INTERFACE_STYLES,
   type InterfaceStyle,
 } from "@/layout/interface-style";
+import { desktopApi } from "@/desktop/desktop-api";
 import { SettingRow, SettingsSection } from "./SettingRow";
 
 const WHEEL_OPTIONS = [
@@ -82,6 +87,36 @@ const NudgeField = ({
   </div>
 );
 
+const IMAGE_SEARCH_OPTIONS = [
+  { value: "browser", label: "Google", title: "Google Images in Pego's built-in browser" },
+  { value: "openverse", label: "Free photos", title: "Openly licensed photos from Openverse" },
+] satisfies { value: ImageSearchSource; label: string; title: string }[];
+
+/** Desktop app: where photo searches look (the Images panel and the agent). */
+const ImageSearchSetting = () => {
+  const imageSearch = useSettingsStore((s) => s.imageSearch);
+  const update = useSettingsStore((s) => s.update);
+  if (!desktopApi()?.browser) return null;
+  return (
+    <SettingsSection title="Images">
+      <SettingRow
+        title="Image search"
+        description="Where the Images panel and the agent look for photos. Google searches in Pego's built-in browser (pictures are usually copyrighted); free photos come from Openverse with their license."
+      >
+        {() => (
+          <SegmentedControl
+            aria-label="Image search"
+            value={imageSearch}
+            options={IMAGE_SEARCH_OPTIONS}
+            onChange={(next) => update({ imageSearch: next })}
+            className="w-56"
+          />
+        )}
+      </SettingRow>
+    </SettingsSection>
+  );
+};
+
 export const GeneralSettingsTab = () => {
   const autosaveEnabled = useAutosaveStore((s) => s.enabled);
   const supported = isFileAutosaveSupported();
@@ -138,6 +173,8 @@ export const GeneralSettingsTab = () => {
           )}
         </SettingRow>
       </SettingsSection>
+
+      <ImageSearchSetting />
 
       <SettingsSection title="Saving">
         <SettingRow

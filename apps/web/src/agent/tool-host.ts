@@ -28,7 +28,6 @@ import { resolveFont } from "@/fonts/resolve-font";
 import { findAttachmentSrc } from "./attachments";
 import { focusCamera } from "./focus-camera";
 import { generateImage } from "./generate-image";
-import { searchOpenverse } from "@/images/openverse";
 import { requestDecision } from "./decisions";
 import { runClaims } from "./run-claims";
 import { getRun } from "./run-registry";
@@ -244,7 +243,11 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     listIcons: listIconNames,
     renderImage,
     generateImage,
-    searchImages: (request) => searchOpenverse(request),
+    // The user's image search: Google in the built-in browser (shown while it works) or
+    // Openverse. Loaded on first use, like fetchImage.
+    searchImages: async (request) =>
+      (await (await import("@/images/image-search")).searchPhotos(request, { reveal: true }))
+        .images,
     // Loaded on first use: the image helpers import stores that import this module.
     fetchImage: async (url) => (await import("@/images/image-from-url")).imageUrlAsDataUrl(url),
     resolveFont,

@@ -374,9 +374,9 @@ const MAX_SEARCH_RESULTS = 20;
 const searchImages = defineTool({
   name: "search_images",
   description:
-    "Search free-to-use photos (openly licensed stock images) for a query, e.g. 'fried chicken on a plate' or 'mountain lake at dawn'. " +
+    "Search photos for a query, e.g. 'fried chicken on a plate' or 'mountain lake at dawn', with the user's image search: in the desktop app Google Images through Pego's built-in browser by default (provider \"Google Images\", license unknown: web pictures, usually copyrighted), otherwise openly licensed free photos (provider \"Openverse\"); it falls back to Openverse when Google is not available. " +
     "Returns candidates with src, size, title, creator, license and pageUrl. Then place the one you want with place_image: pass its src, a box that keeps its aspect ratio, alt, and sourceUrl = pageUrl so the credit stays on the layer. " +
-    "Use it for real photos (food, places, people, products); use generate_image only for pictures that cannot exist. Search in English with concrete nouns. Tell the user which photos you used and their credit line. When the user asks for images from Google or the web, use the browser tool's search-images action instead (desktop app).",
+    "Use it for real photos (food, places, people, products); use generate_image only for pictures that cannot exist. Search with concrete nouns (in the user's language works for Google, English is best for Openverse). Tell the user which photos you used, where they came from and, for Openverse, their credit line. Each result's provider says which source answered.",
   inputSchema: {
     type: "object",
     properties: {

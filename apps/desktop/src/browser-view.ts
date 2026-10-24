@@ -8,6 +8,7 @@ import {
 } from "@/browser-cdp";
 import { type BrowserEmulation } from "@/browser-emulation";
 import { normalizeBrowserUrl } from "@/browser-url";
+import { browserUserAgent } from "@/browser-user-agent";
 
 /** Mirrors `DesktopBrowserState` in apps/web/src/desktop/desktop-api.ts. */
 export type BrowserState = {
@@ -44,11 +45,12 @@ const CDP_VERSION = "1.3";
 
 let sessionHardened = false;
 
-/** The page's own session: no permissions, no downloads. */
+/** The page's own session: a plain Chrome user agent, no permissions, no downloads. */
 const hardenBrowserSession = (): void => {
   if (sessionHardened) return;
   sessionHardened = true;
   const ses = session.fromPartition(PARTITION);
+  ses.setUserAgent(browserUserAgent(ses.getUserAgent()));
   ses.setPermissionRequestHandler((_wc, _permission, callback) => callback(false));
   ses.setPermissionCheckHandler(() => false);
   ses.on("will-download", (event) => event.preventDefault());
