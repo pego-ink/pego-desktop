@@ -13,6 +13,7 @@ import { FramePresetsPanel } from "@/panels/frame-presets/FramePresetsPanel";
 import { useToolStore } from "@/store/use-tool-store";
 import { useDocumentStore } from "@/store/use-document-store";
 import { showProperties, useLayoutStore } from "@/store/use-layout-store";
+import { useSettingsStore } from "@/store/use-settings-store";
 import { Button } from "@pego/ui/components/button";
 import { ResizeHandle } from "@pego/ui/components/resize-handle";
 import { usePanelWidth } from "@/hooks/use-panel-width";
@@ -90,10 +91,57 @@ const RailPanel = ({ tab }: { tab: RailTab }) => {
   );
 };
 
+/** The browser has its own column on the right (Settings > General > Browser panel). */
+const useBrowserOnRight = (): boolean =>
+  useSettingsStore((s) => s.browserSide === "right") && hasDesktopBrowser();
+
+/** The right-hand Browser column, a remembered width of its own; resized from its left edge. */
+const BROWSER_COLUMN = { ...BROWSER_PANEL, storageKey: "pego:browser-column-width" } as const;
+
+const BrowserColumn = ({ floating = false }: { floating?: boolean }) => {
+  const open = useLayoutStore((s) => s.browserOpen);
+  const { attachElement, width, min, max, preview, commit, reset } = usePanelWidth(BROWSER_COLUMN);
+  if (!open) return null;
+  return (
+    <aside
+      ref={attachElement}
+      id={railPanelId("browser")}
+      role="tabpanel"
+      aria-labelledby={railTabId("browser")}
+      aria-label="Browser"
+      style={{ width }}
+      className={cn(
+        "relative flex shrink-0 flex-col",
+        floating
+          ? cn("max-w-[55vw] overflow-hidden", FLOATING_CARD)
+          : "border-l border-border bg-card",
+      )}
+    >
+      <BrowserPanel />
+      <ResizeHandle
+        edge="start"
+        className={floating ? "left-0" : undefined}
+        label="Resize browser panel"
+        value={width}
+        min={min}
+        max={max}
+        onResize={preview}
+        onResizeEnd={commit}
+        onReset={reset}
+      />
+    </aside>
+  );
+};
+
 /** Side panel: file header, then the agent, the pages and layers, or the assets. Resizable. */
 const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
   const rail = useLayoutStore((s) => s.rail);
-  const tabs = useMemo(() => railTabsFor(hasDesktopBrowser()), []);
+  const browserOnRight = useBrowserOnRight();
+  const tabs = useMemo(
+    () =>
+      railTabsFor(hasDesktopBrowser()).filter((tab) => !(browserOnRight && tab.id === "browser")),
+    [browserOnRight],
+  );
   const standard = usePanelWidth(LEFT_PANEL);
   const browser = usePanelWidth(BROWSER_PANEL);
   const { attachElement: attachStandard } = standard;
@@ -106,7 +154,9 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
     },
     [attachStandard, attachBrowser],
   );
-  const panel = rail.tab === "browser" ? browser : standard;
+  // With the browser on the right the side panel never shows its tab (the column has it).
+  const shown = browserOnRight && rail.tab === "browser" ? "agent" : rail.tab;
+  const panel = shown === "browser" ? browser : standard;
   return (
     <aside
       ref={attachElement}
@@ -125,12 +175,12 @@ const LeftColumn = ({ floating = false }: { floating?: boolean }) => {
           id={railPanelId(id)}
           role="tabpanel"
           aria-labelledby={railTabId(id)}
-          hidden={rail.tab !== id}
+          hidden={shown !== id}
           className="min-h-0 flex-1 flex-col [&:not([hidden])]:flex"
         >
           {/* Assets are derived from the whole document, and the browser owns a native view:
               mount both only while shown (the view keeps its page while hidden). */}
-          {(id !== "assets" && id !== "browser") || rail.tab === id ? <RailPanel tab={id} /> : null}
+          {(id !== "assets" && id !== "browser") || shown === id ? <RailPanel tab={id} /> : null}
         </div>
       ))}
       <ResizeHandle
@@ -221,6 +271,7 @@ const FloatingHeaderPill = () => (
  */
 const FloatingBody = ({ rail }: { rail: ReactNode }) => {
   const railOpen = useLayoutStore((s) => s.rail.open);
+  const browserOnRight = useBrowserOnRight();
   const containerRef = useRef<HTMLDivElement>(null);
   const stageRef = useRef<HTMLDivElement>(null);
 
@@ -273,7 +324,8 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
             <ZoomControl />
           </div>
         </div>
-        <div className="pointer-events-auto flex shrink-0 empty:hidden">
+        <div className="pointer-events-auto flex shrink-0 gap-2 empty:hidden">
+          {browserOnRight ? <BrowserColumn floating /> : null}
           <RightColumn floating />
         </div>
       </div>
@@ -283,6 +335,8 @@ const FloatingBody = ({ rail }: { rail: ReactNode }) => {
 
 export const EditorShell = () => {
   const rail = useLayoutStore((s) => s.rail);
+  const browserOnRight = useBrowserOnRight();
+  const browserColumnOpen = useLayoutStore((s) => s.browserOpen) && browserOnRight;
   const pressRailTab = useLayoutStore((s) => s.pressRailTab);
   const working = useAgentStore((s) => selectRunsActive(s) > 0);
   // Home shows with the Home view, and whenever no document tab is left (always, bridge or not).
@@ -316,6 +370,7 @@ export const EditorShell = () => {
               state={rail}
               agentWorking={working}
               onPress={press}
+              browserColumnOpen={browserColumnOpen}
               className={rail.open ? undefined : "border-b-0"}
             />
           }
@@ -333,6 +388,7 @@ export const EditorShell = () => {
           onPress={press}
           onHome={showDashboard}
           homeActive={dashboard}
+          browserColumnOpen={browserColumnOpen && !dashboard}
         />
         {dashboard ? null : <LeftColumn />}
         <div className="flex min-w-0 flex-1 flex-col">
@@ -362,6 +418,7 @@ export const EditorShell = () => {
                 <Canvas />
                 <ZoomControl />
               </main>
+              {browserOnRight ? <BrowserColumn /> : null}
               <RightColumn />
             </div>
           )}

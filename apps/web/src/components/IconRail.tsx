@@ -46,6 +46,8 @@ type Props = {
   className?: string;
   /** "horizontal": a row of icons on top of the floating side card (no logo; Home is a tab). */
   orientation?: "vertical" | "horizontal";
+  /** The Browser opens in its own right-hand column, which is open now: its icon shows active. */
+  browserColumnOpen?: boolean;
 };
 
 /**
@@ -60,6 +62,7 @@ export const IconRail = ({
   homeActive = false,
   className,
   orientation = "vertical",
+  browserColumnOpen = false,
 }: Props) => {
   const horizontal = orientation === "horizontal";
   const tipSide = horizontal ? "bottom" : "right";
@@ -140,7 +143,9 @@ export const IconRail = ({
       >
         {tabs.map((item, index) => {
           const Icon = TAB_ICONS[item.id];
-          const selected = !homeActive && state.open && state.tab === item.id;
+          const selected =
+            !homeActive &&
+            ((state.open && state.tab === item.id) || (item.id === "browser" && browserColumnOpen));
           const focusable = state.tab === item.id;
           const shortcut = `${ALT}${index + 1}`;
           return (
