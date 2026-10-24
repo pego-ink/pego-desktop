@@ -63,7 +63,7 @@ export const insertRaw = (
 };
 
 /**
- * SVG markup as one Pego node (a clipped frame of vector nodes) with ids that are not in `taken`.
+ * SVG markup as one Pego node (a group of vector nodes) with ids that are not in `taken`.
  * Pasting and dropping SVG on the canvas use it too; `width` scales it (height keeps the aspect).
  * Throws `SvgError` for markup it cannot convert.
  */
@@ -89,7 +89,7 @@ const withWarnings = (data: Record<string, unknown>, warnings: string[]): ToolRe
 const insertSvg = defineTool({
   name: "insert_svg",
   description:
-    "Insert SVG markup as EDITABLE vector nodes: a clipped frame (sized by the viewBox) holding rectangle, ellipse, path and text nodes. " +
+    "Insert SVG markup as EDITABLE vector nodes: a group (sized by the viewBox, content outside it is not clipped) holding rectangle, ellipse, path and text nodes; resizing the group scales everything in it. " +
     "Use it for logos, icons and vector illustrations that you write yourself as SVG, or that the user pastes. Pass the complete <svg ...>...</svg> markup with a viewBox. " +
     "Supported: rect (rx), circle, ellipse, line, polyline, polygon, path (all commands; arcs become curves), text (approximate), g, use, embedded data:image <image>, fill/stroke/stroke-width/opacity/linecap/linejoin as attributes or inline style, transform (translate, scale, rotate, skew, matrix), viewBox scaling (nested <svg> too), linear and radial gradient fills (on text and strokes the first stop color is used). " +
     "Not supported (reported in `warnings`, rendered without them): filters, masks, clip paths, markers, dashes, evenodd fill rule, <style> CSS. " +
@@ -108,7 +108,7 @@ const insertSvg = defineTool({
         description:
           "Target width in pixels (default: the SVG's own width or viewBox width). Height keeps the aspect ratio.",
       },
-      name: { type: "string", description: "Layer name for the inserted frame." },
+      name: { type: "string", description: "Layer name for the inserted group." },
     },
     required: ["svg"],
     additionalProperties: false,

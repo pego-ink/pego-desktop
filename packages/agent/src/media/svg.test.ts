@@ -85,14 +85,14 @@ describe("transform, path, style helpers", () => {
 });
 
 describe("convertSvg", () => {
-  test("wraps content in a clipped frame sized by the viewBox and scaled to width", () => {
+  test("wraps content in a group sized by the viewBox and scaled to width", () => {
     const { root, child } = first(
       wrap('<rect x="10" y="20" width="30" height="40" fill="#f00"/>'),
       {
         width: 200,
       },
     );
-    expect(root).toMatchObject({ type: "frame", width: 200, height: 200, clip: true });
+    expect(root).toMatchObject({ type: "group", width: 200, height: 200 });
     expect(child).toMatchObject({
       type: "rectangle",
       x: 20,

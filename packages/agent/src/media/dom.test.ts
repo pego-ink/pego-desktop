@@ -557,7 +557,7 @@ describe("svg", () => {
   test("fits the svg into the box", () => {
     const r = convertDomSnapshot(snap(el("div", box(0, 0, 100, 100), {}, [svg(MARK)])));
     const [node] = r.node.children as Json[];
-    expect(node).toMatchObject({ type: "frame", width: 48, height: 48 });
+    expect(node).toMatchObject({ type: "group", width: 48, height: 48 });
     expect(r.node).toMatchObject({ padding: [10, 0, 0, 10] });
     expect(r.count).toBeGreaterThan(2);
     assertValid(r.node);

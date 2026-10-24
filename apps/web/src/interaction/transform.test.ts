@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import { constrainAxis, handlePoint, hitHandle, moveOps, resizeBox, resizeOps } from "./transform";
 import { fixtureDoc } from "./test-doc";
+import { documentSchema, type Layout } from "@pego/doc";
 
 const box = { x: 100, y: 100, width: 200, height: 100 };
 
@@ -66,4 +67,75 @@ describe("move/resize ops", () => {
         { x: 0, y: 5, width: 110, height: 105 },
       ),
     ).toEqual([{ op: "update", id: "r1", props: { width: 110, height: 105, x: 0, y: 5 } }]));
+
+  describe("group resize scales contents", () => {
+    const doc = documentSchema.parse({
+      version: 7,
+      id: "d",
+      name: "d",
+      children: [
+        {
+          type: "page",
+          id: "p",
+          name: "P",
+          children: [
+            {
+              type: "group",
+              id: "hug",
+              x: 10,
+              y: 10,
+              children: [{ type: "rectangle", id: "a", x: 0, y: 0, width: 50, height: 20 }],
+            },
+            {
+              type: "group",
+              id: "sized",
+              x: 0,
+              y: 100,
+              width: 100,
+              height: 50,
+              children: [{ type: "rectangle", id: "b", x: 10, y: 10, width: 20, height: 10 }],
+            },
+            {
+              type: "frame",
+              id: "frame",
+              x: 0,
+              y: 200,
+              width: 100,
+              height: 50,
+              children: [{ type: "rectangle", id: "c", x: 10, y: 10, width: 20, height: 10 }],
+            },
+          ],
+        },
+      ],
+    });
+    const layout: Layout = new Map();
+    const start = { x: 0, y: 100, width: 100, height: 50 };
+    const next = { x: 0, y: 100, width: 200, height: 100 };
+
+    test("scales the children and the group's own size", () =>
+      expect(resizeOps(doc, "sized", start, next, false, layout)).toEqual([
+        { op: "update", id: "sized", props: { width: 200, height: 100, x: 0, y: 100 } },
+        { op: "update", id: "b", props: { x: 20, y: 20, width: 40, height: 20 } },
+      ]));
+    test("a frame is resized without touching its children", () =>
+      expect(
+        resizeOps(doc, "frame", { x: 0, y: 200, width: 100, height: 50 }, next, false, layout),
+      ).toEqual([{ op: "update", id: "frame", props: { width: 200, height: 100, x: 0, y: 100 } }]));
+    test("a hugging group gets no width or height", () => {
+      const ops = resizeOps(
+        doc,
+        "hug",
+        { x: 10, y: 10, width: 50, height: 20 },
+        { x: 10, y: 10, width: 100, height: 40 },
+        false,
+        layout,
+      );
+      expect(ops[0]).toEqual({ op: "update", id: "hug", props: { x: 10, y: 10 } });
+      expect(ops[1]).toEqual({
+        op: "update",
+        id: "a",
+        props: { width: 100, height: 40 },
+      });
+    });
+  });
 });
