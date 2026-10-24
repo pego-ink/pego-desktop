@@ -1,5 +1,13 @@
 import { create } from "zustand";
-import { closeWorkspace, useWorkspaceStore } from "./use-workspace-store";
+import { saveFile } from "@/persistence/file-actions";
+import {
+  activateWorkspace,
+  closeWorkspace,
+  findWorkspace,
+  forceCloseWorkspace,
+  useWorkspaceStore,
+  workspaceIsDirty,
+} from "./use-workspace-store";
 
 type CloseConfirmState = { open: boolean; id: string | null };
 
@@ -12,6 +20,29 @@ export const requestCloseTab = (id: string): void => {
 };
 
 export const dismissCloseConfirm = (): void => useCloseConfirm.setState({ open: false });
+
+/**
+ * Save a tab's document, then close the tab. A background tab is shown first (saving works on the
+ * live document; the switch is synchronous, so the Save As picker still counts as a user gesture).
+ * Resolves false and keeps the tab and the dialog when the document is still dirty afterwards
+ * (picker cancelled, permission denied, write error). `save` is injectable for tests.
+ */
+export const saveAndCloseTab = async (
+  id: string,
+  save: () => Promise<unknown> = saveFile,
+): Promise<boolean> => {
+  if (!findWorkspace(id)) {
+    dismissCloseConfirm();
+    return true;
+  }
+  if (!activateWorkspace(id)) return false;
+  await save();
+  const workspace = findWorkspace(id);
+  if (workspace && workspaceIsDirty(workspace)) return false;
+  forceCloseWorkspace(id);
+  dismissCloseConfirm();
+  return true;
+};
 
 /**
  * Close a tab like `requestCloseTab`, and resolve once the answer is known: true when the tab is
