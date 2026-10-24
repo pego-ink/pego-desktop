@@ -3,6 +3,7 @@ import { readdirSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { z } from "astro/zod";
 import { entrySchema } from "@/content/schema";
+import { unsafeText } from "@/lib/entry-body";
 
 const dir = join(import.meta.dir, "entries");
 const files = readdirSync(dir).filter((name) => name.endsWith(".md"));
@@ -29,7 +30,9 @@ describe("changelog entries", () => {
       const source = readFileSync(join(dir, name), "utf8");
       const result = schema.safeParse(frontmatter(source));
       expect(result.success ? [] : result.error.issues).toEqual([]);
-      expect(source.replace(/^---[\s\S]*?\n---/, "").trim().length).toBeGreaterThan(0);
+      const body = source.replace(/^---[\s\S]*?\n---/, "");
+      expect(body.trim().length).toBeGreaterThan(0);
+      expect(unsafeText(body)).toEqual([]);
     });
   }
 
@@ -37,6 +40,13 @@ describe("changelog entries", () => {
     const base = { title: "T", date: "2026-10-23", summary: "S", tags: ["new"], image: "./a.png" };
     expect(schema.safeParse(base).success).toBe(false);
     expect(schema.safeParse({ ...base, imageAlt: "A screenshot" }).success).toBe(true);
+  });
+
+  test("the schema rejects < and > in text fields", () => {
+    const base = { title: "T", date: "2026-10-23", summary: "S", tags: ["new"] };
+    expect(schema.safeParse({ ...base, title: "</script><script>x</script>" }).success).toBe(false);
+    expect(schema.safeParse({ ...base, summary: "a > b" }).success).toBe(false);
+    expect(schema.safeParse(base).success).toBe(true);
   });
 
   test("the schema rejects a summary over 160 characters", () => {

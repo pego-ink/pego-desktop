@@ -1,0 +1,162 @@
+name: Notify
+
+# Telegram messages to the owner (TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID in the `autopilot`
+# environment; without them nothing is sent):
+# - a PR merged into dev (with its changelog entry, and whether autopilot merged it) or main
+# - a published release (relayed by "Autopilot events", since a release run is not on dev)
+# Blocked PRs are reported by the workflow that blocks them (autopilot.yml, claude-review.yml,
+# changelog-check.yml).
+#
+# Trust: pull_request_target and workflow_run run this file from `dev` (GITHUB_REF is the default
+# branch for both, which the environment's dev-only branch policy allows). It never checks out
+# code. PR titles, branch names and file names are untrusted: they reach scripts only through env.
+on:
+  pull_request_target:
+    branches: [dev, main]
+    types: [closed]
+  workflow_run:
+    workflows: [Autopilot events]
+    types: [completed]
+
+permissions: {}
+
+jobs:
+  merged:
+    if: github.event_name == 'pull_request_target' && github.event.pull_request.merged
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      message: ${{ steps.compose.outputs.message }}
+    steps:
+      - name: Compose
+        id: compose
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          TITLE: ${{ github.event.pull_request.title }}
+          AUTHOR: ${{ github.event.pull_request.user.login }}
+          BASE: ${{ github.event.pull_request.base.ref }}
+          URL: ${{ github.event.pull_request.html_url }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          AUTOPILOT: ${{ contains(github.event.pull_request.labels.*.name, 'autopilot') }}
+        run: |
+          set -euo pipefail
+          entries=apps/changelog/src/content/entries/
+          # Reads one frontmatter field (unquoted) from $content.
+          field() {
+            printf '%s\n' "$content" | awk -v k="$1" -v q="'" '
+              NR == 1 { if ($0 !~ /^---[ \t]*$/) exit; next }
+              /^---[ \t]*$/ { exit }
+              index($0, k ":") == 1 {
+                v = substr($0, length(k) + 2); sub(/^[ \t]+/, "", v); sub(/[ \t]+$/, "", v)
+                f = substr(v, 1, 1)
+                if (length(v) >= 2 && f == substr(v, length(v), 1) && (f == "\"" || f == q)) v = substr(v, 2, length(v) - 2)
+                print v; exit
+              }'
+          }
+
+          if [ "$BASE" = dev ]; then
+            msg="✅ Merged into dev: #$PR $TITLE by @$AUTHOR"
+            if [ "$AUTOPILOT" = true ]; then msg+=" (auto-merged by autopilot)"; fi
+            # The entry the PR added (or else updated), read from the merge commit.
+            file="$(gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR/files?per_page=100" --jq \
+              ".[] | select(.filename | startswith(\"$entries\")) | select(.filename | endswith(\".md\")) | \"\(.status) \(.filename)\"" |
+              sort | awk '$1 == "added" || $1 == "modified" { print $2; exit }')"
+            if [ -n "$file" ] && [ -n "$MERGE_SHA" ]; then
+              encoded="$(jq -rn --arg p "$file" '$p | split("/") | map(@uri) | join("/")')"
+              content="$(gh api -H "Accept: application/vnd.github.raw+json" \
+                "repos/$GITHUB_REPOSITORY/contents/$encoded?ref=$MERGE_SHA" 2>/dev/null || true)"
+              entry_title="$(field title)"
+              entry_summary="$(field summary)"
+              if [ -n "$entry_title" ]; then
+                msg+=$'\n\n'"📝 $entry_title"
+                if [ -n "$entry_summary" ]; then msg+=$'\n'"$entry_summary"; fi
+              fi
+            fi
+          else
+            msg="🚀 Merged into $BASE: #$PR $TITLE by @$AUTHOR"
+          fi
+          msg+=$'\n\n'"$URL"
+          # A random delimiter: the message (a PR title, say) cannot end the value early.
+          delimiter="EOF_$(openssl rand -hex 16)"
+          {
+            echo "message<<$delimiter"
+            printf '%s\n' "$msg"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+  released:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.event == 'release'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+      contents: read
+    outputs:
+      message: ${{ steps.compose.outputs.message }}
+    steps:
+      - name: Compose
+        id: compose
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_WORKFLOW_ID: ${{ github.event.workflow_run.workflow_id }}
+          TAG: ${{ github.event.workflow_run.head_branch }}
+        run: |
+          set -euo pipefail
+          repo="$GITHUB_REPOSITORY"
+          # Only dev's relay counts, and the release itself comes from the API.
+          if [ "$RUN_WORKFLOW_ID" != "$(gh api "repos/$repo/actions/workflows/autopilot-events.yml" --jq .id)" ]; then
+            echo "Not dev's Autopilot events workflow; nothing to do."; exit 0
+          fi
+          encoded="$(jq -rn --arg p "$TAG" '$p | @uri')"
+          release="$(gh api "repos/$repo/releases/tags/$encoded" 2>/dev/null || echo '{}')"
+          if [ "$(jq -r '.draft == false' <<<"$release")" != true ]; then
+            echo "::notice::No published release for tag '$TAG'."; exit 0
+          fi
+          tag="$(jq -r .tag_name <<<"$release")"
+          name="$(jq -r '.name // ""' <<<"$release")"
+          kind=Released
+          if [ "$(jq -r .prerelease <<<"$release")" = true ]; then kind="Pre-release"; fi
+          msg="📦 $kind $tag"
+          if [ -n "$name" ] && [ "$name" != "$tag" ]; then msg+=": $name"; fi
+          msg+=$'\n\n'"$(jq -r .html_url <<<"$release")"
+          # A random delimiter: the message (a PR title, say) cannot end the value early.
+          delimiter="EOF_$(openssl rand -hex 16)"
+          {
+            echo "message<<$delimiter"
+            printf '%s\n' "$msg"
+            echo "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
+  telegram:
+    needs: [merged, released]
+    if: >-
+      always() &&
+      (needs.merged.outputs.message != '' || needs.released.outputs.message != '')
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment:
+      name: autopilot
+      deployment: false
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Send to Telegram
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          MESSAGE: ${{ needs.merged.outputs.message || needs.released.outputs.message }}
+        run: |
+          set -euo pipefail
+          source .github/scripts/autopilot.sh
+          ap_telegram "$MESSAGE"

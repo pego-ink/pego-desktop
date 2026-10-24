@@ -328,12 +328,20 @@ without secrets (read-only token) and upload `dist` as an artifact; `deploy-web.
 `bun install`, build or repo script in a job that holds `CLOUDFLARE_API_TOKEN`. `release.yml` signs (macOS job) and
 publishes (release job) in the `release` environment, which needs the owner's approval.
 
-**Every PR into `dev` adds or updates an entry** (same-day changes may extend that day's entry). The `Changelog` check
-(`.github/workflows/changelog-check.yml`) fails a PR into `dev` that touches no file in `src/content/entries/`;
-purely internal PRs (CI, docs, refactors, tests) take the `no-changelog` label instead.
-When a same-repo PR has neither, Claude (same workflow, `CLAUDE_CODE_OAUTH_TOKEN`) writes a new entry file and the
-workflow commits it to the PR branch after `bun test` validates it, or Claude adds the `no-changelog` label; edit
-the entry like any file before merging.
+**Every PR into `dev` adds or updates an entry** (same-day changes may extend that day's entry). The
+`autopilot/changelog` check (`.github/workflows/changelog-check.yml`) fails a PR into `dev` that touches no file in
+`src/content/entries/`; purely internal PRs (CI, docs, refactors, tests) take the `no-changelog` label instead.
+When a same-repo PR has neither, Claude reads the PR as data (from a `dev` checkout, never running PR code) and
+returns an entry or "internal"; the workflow checks the entry with `.github/scripts/changelog-entry.ts` and commits
+that one file to the PR branch as the pego-bot App (never onto `dev` or `main`), or adds the `no-changelog` label.
+Edit the entry like any file before merging. Entries are rendered as HTML, so the
+text rules fail closed on the raw file, code included: no `<` anywhere, no HTML entities, link, image, reference
+and autolink destinations only http(s), mailto or relative (read after decoding entities and dropping backslash
+escapes and whitespace, so `javascript\:` or a split `java` / `script:` is refused; prose like "file: faster" is
+fine), and frontmatter text has no `>` either
+(`src/lib/entry-body.ts`, enforced by the tests; the bot uses the same rules). The site also drops raw HTML and
+non-http(s)/mailto URLs when rendering (`src/lib/safe-markdown.ts`, wired in `astro.config.ts`; `entry-rendering.test.ts`
+renders hostile bodies through the site's pipeline), and JSON-LD goes through `serializeJsonLd`.
 
 ## Git workflow
 
@@ -345,8 +353,52 @@ Two people contribute to `github.com/yolkmonday/pego`, so:
 - Coordinate before touching shared hot spots: `packages/doc/src/schema.ts`, `packages/doc/src/ops.ts`,
   `packages/agent/src/tools.ts`, root `package.json`.
 - On a `bun.lock` conflict, take `main`'s version and rerun `bun install`; never hand-edit it.
-- A Claude review bot (`.github/workflows/claude-review.yml`) comments on every same-repo PR into `dev`/`main`:
-  overlap with other open PRs, recent merges and active branches (so nobody builds the same feature twice),
-  plus a short code check. It never blocks merging; it needs the `CLAUDE_CODE_OAUTH_TOKEN` secret.
-- Every PR into `dev` carries a changelog entry (see Changelog) or the `no-changelog` label. Approvals for `dev`
-  and `main` come from the code owner (`.github/CODEOWNERS`).
+- **Autopilot for `dev`** (`.github/workflows/autopilot.yml`): a PR into `dev` merges on its own (merge commit,
+  `autopilot` label) once four required checks pass, all check runs of the pego-bot GitHub App (the ruleset pins
+  them to the App, so a workflow a PR adds cannot fake them): `autopilot/ci` (CI's result, mirrored),
+  `autopilot/changelog`, `autopilot/review` and `autopilot/gate`. No approval needed. `autopilot/ci` passes only when every CI run
+  for the head commit succeeded on the PR's own branch, counting only runs created after the PR's latest base change
+  (CI re-runs on `edited`, so a retargeted PR is tested against `dev`); it **relies on a push ruleset** that lets
+  only the org admin change `.github/**` and every `CODEOWNERS` on every branch (otherwise a teammate branch could
+  carry a doctored `ci.yml` or workflow). Keep that ruleset when changing branch rules. Drafts and PRs labelled
+  `no-autopilot` wait for a manual merge; fork PRs are merged by hand.
+- **Sensitive paths** (`.github/scripts/sensitive-paths.ts`: `.github/**`, CODEOWNERS, `.gitattributes`,
+  `.gitmodules`, `.claude/**`, `CLAUDE.md`, `.mcp.json`, every `package.json`, `bun.lock`, `bunfig.toml`, `.npmrc`,
+  wrangler and astro config, `apps/desktop/electron-builder.yml`, `scripts/**` and `build/**` (entitlements),
+  schema/migrations, all of
+  `apps/bridge/src/**` and `apps/desktop/src/**`, the web browser page scripts, and the changelog's HTML safety
+  (`apps/changelog/src/lib/**`, `src/content/schema.ts`, `src/content/entries.test.ts`); matched ignoring case)
+  never auto-merge. The gate lists the changed files with git for exactly the head commit it checks (old and new
+  path of a rename), not with the files API: the net diff against `dev` plus every path any commit of the PR
+  touches, so a commit that reverts someone's unmerged fix the branch started from still counts. It writes nothing
+  if the head or base moved meanwhile. A sensitive PR
+  is labelled `needs-owner-review` and its gate fails until @yolkmonday approves its head commit, and keeps failing
+  after that ("Approved; he merges it", auto-merge turned off): he merges it with an admin bypass, as he does his
+  own sensitive PRs. Only with `AUTO_MERGE_APPROVED_SENSITIVE: "true"` in `autopilot.yml` does his approval make
+  the gate pass and the bot enable auto-merge for that exact commit. `packages/**` (`doc`, `agent`, ...) is not on
+  the list although it runs inside the bridge process (with the user's files and the MCP endpoint): such PRs
+  auto-merge with Claude's review only. **After changing `sensitive-paths.ts` or the gate, re-run the gate on every
+  open PR into `dev`** (a passing `autopilot/gate` from the old rules stays on its commit otherwise); do the same
+  once when the required checks are first switched on.
+- **Claude review** (`.github/workflows/claude-review.yml`) keeps one comment on every same-repo PR into `dev`
+  (into `main` it only comments):
+  overlap with other open PRs, recent merges and active branches, plus a short code check. It blocks only real
+  bugs, data loss, security issues, CLAUDE.md rule breaks that matter and duplicate work (`needs-fixes` label, the
+  author tagged with the reasons). No verdict (Claude failed, diff over 400 KB, no token) fails the check: re-run
+  the workflow (at most 3 attempts call Claude) or the owner merges by hand. "Changes requested" sticks to the
+  content: a re-run, a close and reopen, a retarget, or an amend / force-push to a head with the same tree as a
+  blocked one (the PR's commits and its force-pushed-away heads) keeps the check failing; a push that changes the
+  code gets a fresh review. Claude sees each commit on its own too (`commits.diff`), and a commit that undoes
+  another change is a finding. Retargeting a PR to `dev` re-runs the review and the changelog check. Claude's diffs are made
+  with `--text` (a `.gitattributes` cannot hide a change), and a job that lets Claude read the `dev` checkout fails
+  if that checkout has a symlink leading outside it.
+- **Trust model.** Workflows that hold secrets run only from `dev`'s definition (`pull_request_target`,
+  `workflow_run`) and never check out or run PR code: Claude works in a `dev` checkout with read tools and gets the
+  PR as data. All bot secrets (`PEGO_BOT_APP_ID`, `PEGO_BOT_PRIVATE_KEY`, `CLAUDE_CODE_OAUTH_TOKEN`,
+  `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID`) live in the `autopilot` environment, which deploys from `dev` only.
+  Reviews and releases reach them through the secret-less relay `.github/workflows/autopilot-events.yml`. Shared
+  shell helpers: `.github/scripts/autopilot.sh`. Never add a secret to a `pull_request` or `pull_request_review`
+  workflow.
+- Failed checks tag the author on the PR; blocked PRs, merges into `dev`/`main` and releases go to the owner on
+  Telegram (`.github/workflows/notify.yml` and the blocking workflow).
+- `main` stays manual: every PR into `main` needs the code owner's approval (`.github/CODEOWNERS`).

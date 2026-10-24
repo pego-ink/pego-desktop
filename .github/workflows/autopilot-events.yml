@@ -1,0 +1,24 @@
+name: Autopilot events
+
+# A relay without secrets or permissions. pull_request_review runs the workflow file of the PR's
+# merge commit and release runs the tagged commit's, so neither may hold secrets. This run only
+# finishes; its completion starts the trusted `workflow_run` workflows, which always run the
+# definition on `dev` with the `autopilot` environment:
+# - a review (approve, request changes, dismiss) re-computes `autopilot/gate` (autopilot.yml)
+# - a published release is sent to Telegram (notify.yml)
+# They read every fact from the API and use this run only as a hint, so a PR that edits this file
+# or adds another "Autopilot events" workflow can at most make them re-check.
+on:
+  pull_request_review:
+    types: [submitted, dismissed]
+  release:
+    types: [published]
+
+permissions: {}
+
+jobs:
+  relay:
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    steps:
+      - run: echo "Recorded ${{ github.event_name }}; autopilot.yml and notify.yml act on it."
