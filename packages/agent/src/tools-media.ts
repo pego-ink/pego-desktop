@@ -91,8 +91,8 @@ const insertSvg = defineTool({
   description:
     "Insert SVG markup as EDITABLE vector nodes: a clipped frame (sized by the viewBox) holding rectangle, ellipse, path and text nodes. " +
     "Use it for logos, icons and vector illustrations that you write yourself as SVG, or that the user pastes. Pass the complete <svg ...>...</svg> markup with a viewBox. " +
-    "Supported: rect (rx), circle, ellipse, line, polyline, polygon, path (all commands; arcs become curves), text (approximate), g, use, embedded data:image <image>, fill/stroke/stroke-width/opacity/linecap/linejoin as attributes or inline style, transform (translate, scale, rotate, skew, matrix), viewBox scaling. " +
-    "Not supported (reported in `warnings`, rendered without them): gradients (first stop color is used), filters, masks, clip paths, markers, dashes, evenodd fill rule, <style> CSS. " +
+    "Supported: rect (rx), circle, ellipse, line, polyline, polygon, path (all commands; arcs become curves), text (approximate), g, use, embedded data:image <image>, fill/stroke/stroke-width/opacity/linecap/linejoin as attributes or inline style, transform (translate, scale, rotate, skew, matrix), viewBox scaling (nested <svg> too), linear and radial gradient fills (on text and strokes the first stop color is used). " +
+    "Not supported (reported in `warnings`, rendered without them): filters, masks, clip paths, markers, dashes, evenodd fill rule, <style> CSS. " +
     `Rejected: scripts, foreignObject, event attributes, external references, DTDs. Max ${MAX_SVG_BYTES / 1024} KB and ${MAX_SVG_NODES} nodes. ` +
     "Use flat colors (hex or named). Do not use it to fake photos; use place_image or generate_image for photographs. " +
     "The result has the created id tree and the final width/height.",

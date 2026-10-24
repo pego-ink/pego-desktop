@@ -25,6 +25,7 @@ import {
   urlReference,
   withAlpha,
 } from "./svg-style";
+import { gradientFill, isGradient } from "./svg-gradient";
 import { parseXml, type XmlElement } from "./xml";
 
 export const MAX_SVG_BYTES = 512 * 1024;
@@ -131,8 +132,10 @@ const assertSafeTree = (el: XmlElement): void => {
 // --- inherited style -----------------------------------------------------------------
 
 type Inherited = {
-  /** Resolved hex color or null for none. */
+  /** Resolved hex color or null for none (a gradient's first stop when `fillGradient` is set). */
   fill: string | null;
+  /** Id of the gradient that paints the fill, resolved per shape against its bounding box. */
+  fillGradient: string | null;
   stroke: string | null;
   strokeWidth: number;
   fillOpacity: number;
@@ -153,10 +156,13 @@ type State = {
   count: number;
   warnings: Set<string>;
   ids: Map<string, XmlElement>;
+  /** The root viewBox size (percentages in userSpaceOnUse gradients). */
+  viewport: { width: number; height: number };
 };
 
 const INITIAL_STYLE: Inherited = {
   fill: "#000000",
+  fillGradient: null,
   stroke: null,
   strokeWidth: 1,
   fillOpacity: 1,
@@ -225,7 +231,14 @@ const inheritStyle = (el: XmlElement, parent: Inherited, state: State): Inherite
   const next: Inherited = { ...parent };
   if (p.color) next.color = parseColor(p.color) ?? parent.color;
   const label = `<${el.tag}>`;
-  if (p.fill !== undefined) next.fill = resolvePaint(p.fill, next, state, label);
+  if (p.fill !== undefined) {
+    const ref = urlReference(p.fill);
+    const gradient = ref !== null && isGradient(state.ids, ref);
+    next.fillGradient = gradient ? ref : null;
+    next.fill = gradient ? gradientColor(state, ref) : resolvePaint(p.fill, next, state, label);
+    if (gradient && !next.fill)
+      state.warnings.add(`${label}: gradient "${ref}" has no stops, left unpainted`);
+  }
   if (p.stroke !== undefined) next.stroke = resolvePaint(p.stroke, next, state, label);
   if (p["stroke-width"] !== undefined) next.strokeWidth = number(p["stroke-width"], 1);
   if (p["fill-opacity"] !== undefined) next.fillOpacity = clamp01(number(p["fill-opacity"], 1));
@@ -289,10 +302,41 @@ const withOpacity = (node: RawNode, el: XmlElement): RawNode => {
   return value < 1 ? { ...node, opacity: round(value) } : node;
 };
 
-const paintProps = (ctx: Context, scale: number, strokeless = false): RawNode => {
+type Box = { x: number; y: number; width: number; height: number };
+
+/** The fill: a gradient fitted to the shape (`local` in user space, `node` in the frame). */
+const fillProp = (ctx: Context, state: State, local: Box, node: Box): unknown => {
+  const { style } = ctx;
+  if (!style.fill) return undefined;
+  const solid = withAlpha(style.fill, style.fillOpacity);
+  if (!style.fillGradient) return solid;
+  const fill = gradientFill({
+    ids: state.ids,
+    id: style.fillGradient,
+    matrix: ctx.matrix,
+    local,
+    node,
+    opacity: style.fillOpacity,
+    viewport: state.viewport,
+    currentColor: style.color,
+    parseStyle: parseStyleAttribute,
+    warn: (message) => state.warnings.add(message),
+  });
+  return fill ?? solid;
+};
+
+const paintProps = (
+  ctx: Context,
+  scale: number,
+  state: State,
+  local: Box,
+  node: Box,
+  strokeless = false,
+): RawNode => {
   const { style } = ctx;
   const out: RawNode = {};
-  if (style.fill) out.fill = withAlpha(style.fill, style.fillOpacity);
+  const fill = fillProp(ctx, state, local, node);
+  if (fill !== undefined) out.fill = fill;
   const width = style.strokeWidth * scale;
   if (!strokeless && style.stroke && width > 0) {
     out.stroke = { color: withAlpha(style.stroke, style.strokeOpacity), width: round(width) };
@@ -311,11 +355,12 @@ const strokeStyleProps = (ctx: Context): RawNode => {
   return out;
 };
 
-const pathNode = (el: XmlElement, segments: Segment[], ctx: Context): RawNode[] => {
+const pathNode = (el: XmlElement, segments: Segment[], ctx: Context, state: State): RawNode[] => {
   const moved = transformSegments(segments, ctx.matrix);
   const bounds = segmentBounds(moved);
-  if (!bounds) return [];
-  const paint = paintProps(ctx, meanScale(ctx.matrix));
+  const local = segmentBounds(segments);
+  if (!bounds || !local) return [];
+  const paint = paintProps(ctx, meanScale(ctx.matrix), state, local, bounds);
   if (!paint.fill && !paint.stroke) return [];
   return [
     withOpacity(
@@ -350,7 +395,13 @@ const rectNode = (el: XmlElement, ctx: Context, state: State): RawNode[] => {
   if (isAxisAligned(m) && circularCorners) {
     const a = apply(m, { x, y });
     const b = apply(m, { x: x + w, y: y + h });
-    const paint = paintProps(ctx, meanScale(m));
+    const box = {
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      width: Math.abs(b.x - a.x),
+      height: Math.abs(b.y - a.y),
+    };
+    const paint = paintProps(ctx, meanScale(m), state, { x, y, width: w, height: h }, box);
     if (!paint.fill && !paint.stroke) return [];
     emit(state);
     return [
@@ -376,7 +427,7 @@ const rectNode = (el: XmlElement, ctx: Context, state: State): RawNode[] => {
     ];
   }
   emit(state);
-  return pathNode(el, rectSegments(x, y, w, h, rx, ry), ctx);
+  return pathNode(el, rectSegments(x, y, w, h, rx, ry), ctx, state);
 };
 
 const ellipseNode = (el: XmlElement, ctx: Context, state: State): RawNode[] => {
@@ -391,7 +442,14 @@ const ellipseNode = (el: XmlElement, ctx: Context, state: State): RawNode[] => {
   if (isAxisAligned(m)) {
     const a = apply(m, { x: cx - rx, y: cy - ry });
     const b = apply(m, { x: cx + rx, y: cy + ry });
-    const paint = paintProps(ctx, meanScale(m));
+    const box = {
+      x: Math.min(a.x, b.x),
+      y: Math.min(a.y, b.y),
+      width: Math.abs(b.x - a.x),
+      height: Math.abs(b.y - a.y),
+    };
+    const local = { x: cx - rx, y: cy - ry, width: rx * 2, height: ry * 2 };
+    const paint = paintProps(ctx, meanScale(m), state, local, box);
     if (!paint.fill && !paint.stroke) return [];
     return [
       withOpacity(
@@ -408,7 +466,7 @@ const ellipseNode = (el: XmlElement, ctx: Context, state: State): RawNode[] => {
       ),
     ];
   }
-  return pathNode(el, ellipseSegments(cx, cy, rx, ry), ctx);
+  return pathNode(el, ellipseSegments(cx, cy, rx, ry), ctx, state);
 };
 
 const textContent = (el: XmlElement, state: State): string => {
@@ -432,6 +490,11 @@ const textNode = (el: XmlElement, ctx: Context, state: State): RawNode[] => {
   const content = textContent(el, state);
   if (!content || !ctx.style.fill) return [];
   state.warnings.add("<text>: text position and width are approximate; check fonts after insert");
+  if (ctx.style.fillGradient) {
+    state.warnings.add(
+      "<text>: gradient fills on text are not supported, used the first stop color",
+    );
+  }
   const m = ctx.matrix;
   if (Math.abs(m[1]) > 1e-6 || Math.abs(m[2]) > 1e-6) {
     state.warnings.add("<text>: rotation/skew of text was ignored");
@@ -525,6 +588,39 @@ const elementMatrix = (el: XmlElement, parent: Matrix, state: State): Matrix => 
   return multiply(parent, matrix);
 };
 
+const ALIGN = { min: 0, mid: 0.5, max: 1 } as const;
+
+/**
+ * A nested <svg>'s viewport: moved to its x/y and, with a viewBox, the viewBox mapped onto its
+ * width/height by preserveAspectRatio (default xMidYMid meet). Missing width/height keep the
+ * viewBox size. The viewport's clip is not applied.
+ */
+const viewportMatrix = (el: XmlElement): Matrix => {
+  const x = number(el.attrs.x, 0);
+  const y = number(el.attrs.y, 0);
+  const viewBox = parseNumbers(el.attrs.viewBox ?? "");
+  const [vbX = 0, vbY = 0, vbW = 0, vbH = 0] = viewBox.length === 4 ? viewBox : [];
+  if (!(vbW > 0 && vbH > 0)) return [1, 0, 0, 1, x, y];
+  const width = number(el.attrs.width, vbW);
+  const height = number(el.attrs.height, vbH);
+  let sx = width / vbW;
+  let sy = height / vbH;
+  let alignX = 0;
+  let alignY = 0;
+  const aspect = (el.attrs.preserveAspectRatio ?? "").trim();
+  if (aspect !== "none") {
+    const match = /x(min|mid|max)y(min|mid|max)/i.exec(aspect);
+    const fx = ALIGN[(match?.[1]?.toLowerCase() ?? "mid") as keyof typeof ALIGN];
+    const fy = ALIGN[(match?.[2]?.toLowerCase() ?? "mid") as keyof typeof ALIGN];
+    const s = /slice/.test(aspect) ? Math.max(sx, sy) : Math.min(sx, sy);
+    sx = s;
+    sy = s;
+    alignX = (width - vbW * s) * fx;
+    alignY = (height - vbH * s) * fy;
+  }
+  return [sx, 0, 0, sy, x + alignX - vbX * sx, y + alignY - vbY * sy];
+};
+
 const hidden = (el: XmlElement): boolean => {
   const p = props(el);
   return p.display === "none" || p.visibility === "hidden" || p.visibility === "collapse";
@@ -554,10 +650,9 @@ const convertElement = (el: XmlElement, parent: Context, state: State): RawNode[
     case "a":
     case "svg":
     case "switch": {
-      if (tag === "svg" && (el.attrs.viewBox || el.attrs.x || el.attrs.y)) {
-        state.warnings.add("nested <svg>: x/y/viewBox were ignored");
-      }
-      const children = convertChildren(el, ctx, state);
+      const inner =
+        tag === "svg" ? { ...ctx, matrix: multiply(ctx.matrix, viewportMatrix(el)) } : ctx;
+      const children = convertChildren(el, inner, state);
       if (children.length === 0) return [];
       emit(state);
       return [withOpacity({ type: "group", name: nameOf(el), children }, el)];
@@ -594,14 +689,14 @@ const convertElement = (el: XmlElement, parent: Context, state: State): RawNode[
         { type: "L", p: { x: number(el.attrs.x2, 0), y: number(el.attrs.y2, 0) } },
       ];
       emit(state);
-      return pathNode(el, segments, { ...ctx, style: { ...ctx.style, fill: null } });
+      return pathNode(el, segments, { ...ctx, style: { ...ctx.style, fill: null } }, state);
     }
     case "polyline":
     case "polygon": {
       const segments = pointsSegments(el.attrs.points ?? "", tag === "polygon");
       if (segments.length < 2) return [];
       emit(state);
-      return pathNode(el, segments, ctx);
+      return pathNode(el, segments, ctx, state);
     }
     case "path": {
       let segments: Segment[];
@@ -614,7 +709,7 @@ const convertElement = (el: XmlElement, parent: Context, state: State): RawNode[
         return [];
       }
       emit(state);
-      return pathNode(el, segments, ctx);
+      return pathNode(el, segments, ctx, state);
     }
     case "text":
       return textNode(el, ctx, state);
@@ -656,7 +751,12 @@ export const convertSvg = (source: string, options: SvgOptions = {}): SvgConvers
   }
   assertSafeTree(root);
 
-  const state: State = { count: 0, warnings: new Set(), ids: new Map() };
+  const state: State = {
+    count: 0,
+    warnings: new Set(),
+    ids: new Map(),
+    viewport: { width: 0, height: 0 },
+  };
   collectIds(root, state.ids);
 
   const viewBox = parseNumbers(root.attrs.viewBox ?? "");
@@ -685,6 +785,7 @@ export const convertSvg = (source: string, options: SvgOptions = {}): SvgConvers
     throw new SvgError("invalid_svg", `resulting height exceeds ${MAX_SVG_SIZE}`);
   }
 
+  state.viewport = { width: vbW, height: vbH };
   const base: Matrix = multiply(IDENTITY, [scale, 0, 0, scale, -vbX * scale, -vbY * scale]);
   const style = inheritStyle(root, INITIAL_STYLE, state);
   const children = convertChildren(root, { matrix: base, style, useDepth: 0 }, state);
