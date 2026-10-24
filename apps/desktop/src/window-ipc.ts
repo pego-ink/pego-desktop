@@ -1,19 +1,53 @@
-import { BrowserWindow, ipcMain, nativeTheme } from "electron";
+import { BrowserWindow, ipcMain, Menu, nativeTheme } from "electron";
 import { isTrustedSender } from "@/update-status";
-import { isThemeSource, WINDOW_CHANNELS } from "@/window-chrome";
+import {
+  isThemeSource,
+  isTitleBarMode,
+  parseMenuPoint,
+  parseTitleBarOverlay,
+  WINDOW_CHANNELS,
+} from "@/window-chrome";
+import { writeTitleBarMode } from "@/window-prefs";
 
 /**
  * Answers the editor's full screen query and follows its theme mode, so the traffic lights,
- * dialogs and menus match the editor. Only the app's own origin may use either.
+ * dialogs and menus match the editor; on Linux and Windows also colors the window controls,
+ * opens the menu from the editor's button and saves the title bar choice. Only the app's own
+ * origin may use any of it.
  */
-export const registerWindowIpc = (appOrigin: string): void => {
+export const registerWindowIpc = (appOrigin: string, prefsFile: string): void => {
+  const trusted = (event: Electron.IpcMainEvent | Electron.IpcMainInvokeEvent): boolean =>
+    isTrustedSender(event.senderFrame?.url, appOrigin);
+
   ipcMain.handle(WINDOW_CHANNELS.getFullScreen, (event): boolean => {
-    if (!isTrustedSender(event.senderFrame?.url, appOrigin)) throw new Error("untrusted sender");
+    if (!trusted(event)) throw new Error("untrusted sender");
     return BrowserWindow.fromWebContents(event.sender)?.isFullScreen() ?? false;
   });
   ipcMain.on(WINDOW_CHANNELS.themeSource, (event, mode: unknown) => {
-    if (!isTrustedSender(event.senderFrame?.url, appOrigin) || !isThemeSource(mode)) return;
+    if (!trusted(event) || !isThemeSource(mode)) return;
     nativeTheme.themeSource = mode;
+  });
+  ipcMain.on(WINDOW_CHANNELS.titleBarOverlay, (event, value: unknown) => {
+    const overlay = parseTitleBarOverlay(value);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!trusted(event) || !overlay || !win) return;
+    try {
+      win.setTitleBarOverlay(overlay);
+    } catch {
+      // A window created with the system title bar has no overlay to color.
+    }
+  });
+  ipcMain.on(WINDOW_CHANNELS.popupMenu, (event, value: unknown) => {
+    const point = parseMenuPoint(value);
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!trusted(event) || !point || !win) return;
+    Menu.getApplicationMenu()?.popup({ window: win, ...point });
+  });
+  ipcMain.handle(WINDOW_CHANNELS.setTitleBar, (event, mode: unknown): boolean => {
+    if (!trusted(event)) throw new Error("untrusted sender");
+    if (!isTitleBarMode(mode)) return false;
+    writeTitleBarMode(prefsFile, mode);
+    return true;
   });
 };
 

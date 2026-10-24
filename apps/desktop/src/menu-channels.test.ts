@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { isMenuCommand } from "@/menu-channels";
+import { isCloseTabKey, isMenuCommand } from "@/menu-channels";
 
 describe("isMenuCommand", () => {
   test("accepts known commands only", () => {
@@ -9,4 +9,15 @@ describe("isMenuCommand", () => {
     expect(isMenuCommand(undefined)).toBe(false);
     expect(isMenuCommand({ command: "select-all" })).toBe(false);
   });
+});
+
+test("Close Tab in the built-in browser is Ctrl+W, or Cmd+W on macOS, alone", () => {
+  const key = { type: "keyDown", key: "w", control: false, meta: false, shift: false, alt: false };
+  expect(isCloseTabKey({ ...key, control: true }, "linux")).toBe(true);
+  expect(isCloseTabKey({ ...key, key: "W", control: true }, "win32")).toBe(true);
+  expect(isCloseTabKey({ ...key, meta: true }, "darwin")).toBe(true);
+  expect(isCloseTabKey({ ...key, control: true }, "darwin")).toBe(false);
+  expect(isCloseTabKey({ ...key, control: true, shift: true }, "linux")).toBe(false);
+  expect(isCloseTabKey({ ...key, control: true, type: "keyUp" }, "linux")).toBe(false);
+  expect(isCloseTabKey({ ...key, key: "q", control: true }, "linux")).toBe(false);
 });

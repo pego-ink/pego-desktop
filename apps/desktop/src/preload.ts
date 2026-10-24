@@ -7,7 +7,7 @@ import {
 } from "@/update-status";
 import { isUpdateChannel } from "@/update-channel";
 import { isMenuCommand, MENU_COMMAND_CHANNEL, type MenuCommand } from "@/menu-channels";
-import { WINDOW_CHANNELS } from "@/window-chrome";
+import { parseTitleBarArg, WINDOW_CHANNELS } from "@/window-chrome";
 import { BROWSER_CHANNELS } from "@/browser-channels";
 
 /**
@@ -15,6 +15,17 @@ import { BROWSER_CHANNELS } from "@/browser-channels";
  * over a fixed channel allowlist; incoming statuses are validated before reaching the page.
  */
 const version = parseVersionArg(process.argv);
+const titleBarMode = parseTitleBarArg(process.argv);
+
+/** Linux and Windows: the title bar the window was created with, and its controls. */
+const titleBar = {
+  mode: titleBarMode,
+  setOverlay: (overlay: unknown): void =>
+    ipcRenderer.send(WINDOW_CHANNELS.titleBarOverlay, overlay),
+  popupMenu: (point: unknown): void => ipcRenderer.send(WINDOW_CHANNELS.popupMenu, point),
+  setMode: (mode: unknown): Promise<boolean> =>
+    ipcRenderer.invoke(WINDOW_CHANNELS.setTitleBar, mode),
+};
 
 const onUpdateStatus = (listener: (status: UpdateStatus) => void): (() => void) => {
   if (typeof listener !== "function") return () => {};
@@ -140,5 +151,6 @@ contextBridge.exposeInMainWorld("pegoDesktop", {
   onMenuCommand,
   onFullScreenChange,
   setThemeSource: (mode: unknown): void => ipcRenderer.send(WINDOW_CHANNELS.themeSource, mode),
+  ...(titleBarMode ? { titleBar } : {}),
   browser,
 });

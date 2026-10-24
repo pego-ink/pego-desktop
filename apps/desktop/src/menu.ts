@@ -16,7 +16,11 @@ const sendCommand = (window: BaseWindow | undefined, command: MenuCommand): void
   }
 };
 
-export const installMenu = (isDev: boolean): void => {
+/**
+ * `pageOwnsCloseTab`: the window has no menu bar (Linux / Windows "pego" title bar), where menu
+ * accelerators are not dependable, so Close Tab only shows Ctrl+W and the page handles the key.
+ */
+export const installMenu = (isDev: boolean, pageOwnsCloseTab = false): void => {
   const template: MenuItemConstructorOptions[] = [
     // The app menu (About, Quit) is macOS only; elsewhere Quit lives in a File menu.
     process.platform === "darwin" ? { role: "appMenu" } : { role: "fileMenu" },
@@ -58,6 +62,7 @@ export const installMenu = (isDev: boolean): void => {
         {
           label: "Close Tab",
           accelerator: "CmdOrCtrl+W",
+          ...(pageOwnsCloseTab ? { registerAccelerator: false } : {}),
           click: (_item, window) => sendCommand(window, "close-tab"),
         },
         { label: "Close Window", accelerator: "CmdOrCtrl+Shift+W", role: "close" },

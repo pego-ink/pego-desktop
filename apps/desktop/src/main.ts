@@ -7,7 +7,8 @@ import { installMenu } from "@/menu";
 import { registerAppProtocol, registerAppScheme } from "@/protocol";
 import { registerUpdateIpc } from "@/update-ipc";
 import { VERSION_ARG } from "@/update-status";
-import { windowChromeOptions } from "@/window-chrome";
+import { TITLE_BAR_ARG, windowChromeOptions } from "@/window-chrome";
+import { readTitleBarMode } from "@/window-prefs";
 import { forwardFullScreen, registerWindowIpc } from "@/window-ipc";
 
 // Dev: `desktop:dev` points this at the Vite server. Anything else loads the built web app.
@@ -35,7 +36,11 @@ const openExternalIfSafe = (url: string): void => {
   }
 };
 
+/** Window preferences that apply when a window is created (the title bar mode). */
+const windowPrefsFile = (): string => join(app.getPath("userData"), "window-prefs.json");
+
 const createWindow = (): void => {
+  const titleBar = readTitleBarMode(windowPrefsFile());
   const win = new BrowserWindow({
     width: 1440,
     height: 900,
@@ -44,7 +49,7 @@ const createWindow = (): void => {
     show: false,
     backgroundColor: "#141418",
     title: "Pego",
-    ...windowChromeOptions(process.platform),
+    ...windowChromeOptions(process.platform, titleBar),
     webPreferences: {
       preload: join(app.getAppPath(), "dist", "preload.cjs"),
       contextIsolation: true,
@@ -53,7 +58,10 @@ const createWindow = (): void => {
       webSecurity: true,
       allowRunningInsecureContent: false,
       spellcheck: false,
-      additionalArguments: [`${VERSION_ARG}${app.getVersion()}`],
+      additionalArguments: [
+        `${VERSION_ARG}${app.getVersion()}`,
+        ...(process.platform === "darwin" ? [] : [`${TITLE_BAR_ARG}${titleBar}`]),
+      ],
     },
   });
   mainWindow = win;
@@ -112,11 +120,14 @@ if (!app.requestSingleInstanceLock()) {
   void app.whenReady().then(async () => {
     app.setName("Pego");
     hardenSession();
-    installMenu(isDev);
+    installMenu(
+      isDev,
+      process.platform !== "darwin" && readTitleBarMode(windowPrefsFile()) === "pego",
+    );
     if (!isDev) registerAppProtocol(webRoot());
     await startBridge();
     await registerUpdateIpc(appOrigin, () => mainWindow);
-    registerWindowIpc(appOrigin);
+    registerWindowIpc(appOrigin, windowPrefsFile());
     registerBrowserIpc(appOrigin);
     createWindow();
     app.on("activate", () => {

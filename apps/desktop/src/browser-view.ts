@@ -1,5 +1,6 @@
 import { BrowserWindow, session, WebContentsView, type WebContents } from "electron";
 import { BROWSER_CHANNELS, PAGE_MESSAGE_PREFIX } from "@/browser-channels";
+import { isCloseTabKey, MENU_COMMAND_CHANNEL } from "@/menu-channels";
 import {
   createRateLimiter,
   isAllowedCdpMethod,
@@ -140,6 +141,14 @@ export const createBrowserView = (win: BrowserWindow): BrowserView => {
     };
     wc.on("will-navigate", blockNonHttp);
     wc.on("will-redirect", blockNonHttp);
+    // Close Tab while the page has focus: the key never reaches the editor (and, without a menu
+    // bar, no accelerator catches it), so hand the editor the menu's command. preventDefault also
+    // stops the menu shortcut, so a tab never closes twice.
+    wc.on("before-input-event", (event, input) => {
+      if (!isCloseTabKey(input, process.platform)) return;
+      event.preventDefault();
+      editorSend(MENU_COMMAND_CHANNEL, "close-tab");
+    });
     wc.debugger.on("detach", () => {
       debuggerAttached = false;
     });
