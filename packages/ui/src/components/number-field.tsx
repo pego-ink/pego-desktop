@@ -92,7 +92,7 @@ function NumberField({
       <span
         {...scrub}
         title={labelTitle}
-        className="flex h-full w-6 shrink-0 cursor-ew-resize touch-none items-center justify-center text-[11px] text-muted-foreground select-none [&_svg]:size-3"
+        className="flex h-full w-6 shrink-0 cursor-ew-resize touch-none items-center justify-center font-mono text-[11px] text-subtle-foreground select-none [&_svg]:size-3"
       >
         {label}
       </span>
@@ -119,7 +119,7 @@ function NumberField({
               event.currentTarget.blur();
             }
           }}
-          className="h-full min-w-0 flex-1 bg-transparent pr-2 text-xs text-foreground outline-none placeholder:text-muted-foreground"
+          className="h-full min-w-0 flex-1 bg-transparent pr-2 font-mono text-xs text-foreground outline-none placeholder:text-muted-foreground"
         />
       )}
       {children}

@@ -17,11 +17,11 @@ const PresetRow = ({ preset }: { preset: FramePreset }) => (
     <button
       type="button"
       onClick={() => insertPresetFrame(preset)}
-      className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-xs text-foreground outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
+      className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-foreground outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
     >
       <PresetThumb width={preset.width} height={preset.height} />
       <span className="min-w-0 flex-1 truncate">{preset.name}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+      <span className="shrink-0 text-xs text-muted-foreground tabular-nums">
         {formatPresetSize(preset)}
       </span>
     </button>
@@ -59,7 +59,7 @@ export const FramePresetsPanel = () => {
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-1">
         {categories.length === 0 ? (
-          <p className="px-3 py-6 text-center text-xs text-muted-foreground">
+          <p className="px-3 py-6 text-center text-[13px] text-muted-foreground">
             No sizes match &ldquo;{query.trim()}&rdquo;
           </p>
         ) : (
@@ -71,7 +71,7 @@ export const FramePresetsPanel = () => {
                   type="button"
                   aria-expanded={expanded}
                   onClick={() => toggle(category.id)}
-                  className="flex h-7 w-full items-center gap-1 rounded-md px-1.5 text-left text-xs font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
+                  className="flex h-7 w-full items-center gap-1 rounded-md px-1.5 text-left text-[13px] font-medium text-foreground outline-none transition-colors hover:bg-muted focus-visible:bg-muted"
                 >
                   <ChevronRightIcon
                     aria-hidden

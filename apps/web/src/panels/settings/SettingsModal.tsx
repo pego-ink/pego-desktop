@@ -3,6 +3,7 @@ import { InfoIcon, KeyboardIcon, SlidersHorizontalIcon, SparklesIcon, TagIcon } 
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@pego/ui/components/dialog";
 import { cn } from "@pego/ui/lib/utils";
 import { useSettingsModal, type SettingsTab } from "@/store/use-settings-store";
+import { PegoMark } from "@/components/PegoMark";
 import { AboutTab } from "./AboutTab";
 import { AgentNamesSettingsTab } from "./AgentNamesSettingsTab";
 import { AgentSettingsTab } from "./AgentSettingsTab";
@@ -56,8 +57,12 @@ const SettingsNav = ({
       role="tablist"
       aria-label="Settings sections"
       onKeyDown={onKeyDown}
-      className="flex shrink-0 gap-1 overflow-x-auto border-b border-border p-2 pr-12 sm:w-52 sm:flex-col sm:overflow-x-visible sm:border-r sm:border-b-0 sm:p-3"
+      className="flex shrink-0 items-center gap-1 overflow-x-auto border-b border-border p-2 pr-12 sm:w-56 sm:flex-col sm:items-stretch sm:overflow-x-visible sm:border-r sm:border-b-0 sm:p-3"
     >
+      <div className="mb-2 hidden items-center gap-2 px-2.5 pt-1 text-[15px] font-semibold text-foreground sm:flex">
+        <PegoMark />
+        Settings
+      </div>
       {TABS.map(({ id, label, Icon }) => {
         const selected = tab === id;
         return (
@@ -71,8 +76,9 @@ const SettingsNav = ({
             tabIndex={selected ? 0 : -1}
             onClick={() => onSelect(id)}
             className={cn(
-              "flex h-8 shrink-0 items-center gap-2 rounded-md px-2.5 text-left text-sm whitespace-nowrap text-muted-foreground outline-none transition-[background-color,color] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4 [&_svg]:shrink-0",
-              selected && "bg-secondary text-foreground",
+              "flex h-8 shrink-0 items-center gap-2 rounded-lg px-2.5 text-left text-[13px] whitespace-nowrap text-muted-foreground outline-none transition-[background-color,color] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-4 [&_svg]:shrink-0",
+              selected &&
+                "bg-violet-soft text-violet-text hover:bg-violet-soft hover:text-violet-text",
             )}
           >
             <Icon aria-hidden />
@@ -110,7 +116,7 @@ export const SettingsModal = () => {
 
   return (
     <Dialog open={open} onOpenChange={(next) => (next ? undefined : close())}>
-      <DialogContent className="h-[560px] max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[760px] gap-0 overflow-hidden p-0">
+      <DialogContent className="h-[600px] max-h-[calc(100dvh-2rem)] w-[calc(100vw-2rem)] max-w-[780px] gap-0 overflow-hidden rounded-2xl p-0">
         <DialogTitle className="sr-only">Settings</DialogTitle>
         <DialogDescription className="sr-only">
           Editor, agent, agent name, keyboard shortcut and update settings.
@@ -122,9 +128,9 @@ export const SettingsModal = () => {
             role="tabpanel"
             id={panelId(tab)}
             aria-labelledby={tabId(tab)}
-            className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-5"
+            className="min-h-0 min-w-0 flex-1 overflow-y-auto overscroll-contain p-6"
           >
-            <h2 className="mb-4 text-base font-semibold">{current?.label}</h2>
+            <h2 className="mb-5 text-lg font-semibold">{current?.label}</h2>
             <TabContent tab={tab} section={section} />
           </div>
         </div>

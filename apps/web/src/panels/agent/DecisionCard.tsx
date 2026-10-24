@@ -52,23 +52,23 @@ const OptionRow = ({
     onFocus={onActivate}
     onMouseEnter={onActivate}
     className={cn(
-      "group/row flex w-full items-start gap-2 rounded-md px-1.5 py-1.5 text-left text-xs leading-5 text-foreground outline-none",
+      "group/row flex w-full items-start gap-2.5 rounded-lg border border-transparent px-2 py-2 text-left text-[13px] leading-5 font-semibold text-foreground outline-none",
       "transition-[background-color,opacity,scale] duration-(--duration-fast) ease-out",
-      "data-active:bg-violet/10 data-selected:bg-violet/15 data-selected:focus-visible:ring-0 focus-visible:ring-2 focus-visible:ring-ring/50",
-      "motion-safe:active:scale-[.97] active:bg-violet/15",
+      "data-active:border-violet data-active:bg-violet-soft data-selected:border-violet data-selected:bg-violet-soft data-selected:focus-visible:ring-0 focus-visible:ring-2 focus-visible:ring-ring/50",
+      "motion-safe:active:scale-[.97]",
       dimmed && "pointer-events-none opacity-40",
     )}
   >
     <span
       aria-hidden
-      className="mt-px flex size-5 shrink-0 items-center justify-center rounded border text-[11px] font-medium text-muted-foreground tabular-nums transition-colors duration-(--duration-fast) ease-out group-data-active/row:border-violet/60 group-data-active/row:text-violet group-data-selected/row:border-violet group-data-selected/row:bg-violet group-data-selected/row:text-background"
+      className="mt-px flex size-5 shrink-0 items-center justify-center rounded-md border bg-muted font-mono text-[11px] font-medium text-muted-foreground tabular-nums transition-colors duration-(--duration-fast) ease-out group-data-active/row:border-violet group-data-active/row:text-violet-text group-data-selected/row:border-violet group-data-selected/row:bg-primary group-data-selected/row:text-primary-foreground"
     >
       {selected ? <CheckIcon className="size-3" strokeWidth={2.5} /> : badge}
     </span>
     <span className="min-w-0 flex-1 break-words text-pretty">{children}</span>
     <CornerDownLeftIcon
       aria-hidden
-      className="mt-[3px] size-3.5 shrink-0 text-muted-foreground opacity-0 transition-opacity duration-(--duration-fast) ease-out group-data-active/row:opacity-100 group-data-selected/row:opacity-0"
+      className="mt-[3px] size-3.5 shrink-0 text-violet-text opacity-0 transition-opacity duration-(--duration-fast) ease-out group-data-active/row:opacity-100 group-data-selected/row:opacity-0"
     />
   </button>
 );
@@ -202,21 +202,24 @@ export const DecisionCard = ({ decision }: { decision: PendingDecision }) => {
   return (
     <section
       aria-labelledby={headingId}
-      className="origin-bottom animate-[pego-pop-in_var(--duration-base)_var(--ease-out)] rounded-lg border border-violet/25 bg-violet/[0.06] p-2"
+      className="origin-bottom animate-[pego-pop-in_var(--duration-base)_var(--ease-out)] rounded-2xl border border-warning bg-background p-3"
     >
       <h3
         id={headingId}
-        className="flex items-center gap-1.5 px-1.5 pt-0.5 pb-1 text-[11px] leading-4 font-medium text-violet"
+        className="flex items-center gap-1.5 px-1 pb-1.5 text-xs leading-4 font-semibold text-warning"
       >
         <CircleHelpIcon aria-hidden className="size-3.5 shrink-0" />
         <span className="shrink-0">Needs your decision</span>
         {stepTitle ? (
           <span className="min-w-0 truncate font-normal text-muted-foreground">· {stepTitle}</span>
         ) : null}
+        <span className="ml-auto shrink-0 font-mono text-[10px] font-normal text-subtle-foreground">
+          run paused
+        </span>
       </h3>
       <p
         id={questionId}
-        className="px-1.5 pb-1.5 text-[13px] leading-5 font-medium break-words text-pretty text-foreground"
+        className="px-1 pb-2 text-[15px] leading-5 font-semibold break-words text-pretty text-foreground"
       >
         {decision.question}
       </p>
@@ -225,7 +228,7 @@ export const DecisionCard = ({ decision }: { decision: PendingDecision }) => {
         role="radiogroup"
         aria-labelledby={questionId}
         onKeyDown={onGroupKeyDown}
-        className="flex flex-col gap-0.5"
+        className="flex flex-col gap-1"
       >
         {options.map((option, index) => (
           <OptionRow
@@ -239,10 +242,10 @@ export const DecisionCard = ({ decision }: { decision: PendingDecision }) => {
           </OptionRow>
         ))}
         {editing && !chosen ? (
-          <div className="flex items-center gap-2 rounded-md bg-violet/10 px-1.5 py-1 ring-1 ring-violet/40 transition-shadow duration-(--duration-fast) ease-out focus-within:ring-2 focus-within:ring-violet/70">
+          <div className="flex items-center gap-2.5 rounded-lg border border-border bg-muted px-2 py-1.5 transition-shadow duration-(--duration-fast) ease-out focus-within:border-violet focus-within:ring-2 focus-within:ring-violet/30">
             <span
               aria-hidden
-              className="flex size-5 shrink-0 items-center justify-center rounded border border-violet/60 text-violet"
+              className="flex size-5 shrink-0 items-center justify-center rounded-md border bg-background text-violet-text"
             >
               <PencilIcon className="size-3" />
             </span>
@@ -256,14 +259,14 @@ export const DecisionCard = ({ decision }: { decision: PendingDecision }) => {
               placeholder="Type your answer"
               autoComplete="off"
               spellCheck={false}
-              className="h-6 min-w-0 flex-1 bg-transparent text-xs leading-5 text-foreground outline-none placeholder:text-muted-foreground"
+              className="h-6 min-w-0 flex-1 bg-transparent text-[13px] leading-5 text-foreground outline-none placeholder:text-subtle-foreground"
             />
             <button
               type="button"
               aria-label="Send answer"
               disabled={normalizeCustomAnswer(draft) === null}
               onClick={submitDraft}
-              className="flex size-6 shrink-0 items-center justify-center rounded text-violet outline-none transition-[background-color,opacity] duration-(--duration-fast) ease-out hover:bg-violet/15 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
+              className="flex size-6 shrink-0 items-center justify-center rounded-md bg-primary text-primary-foreground outline-none transition-[background-color,opacity] duration-(--duration-fast) ease-out hover:bg-primary/90 focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-40"
             >
               <CornerDownLeftIcon aria-hidden className="size-3.5" />
             </button>
@@ -278,6 +281,15 @@ export const DecisionCard = ({ decision }: { decision: PendingDecision }) => {
           </OptionRow>
         )}
       </div>
+      <p
+        aria-hidden
+        className="flex items-center gap-3 px-1 pt-2 font-mono text-[10px] text-subtle-foreground"
+      >
+        <span>1-{Math.max(options.length, 1)} choose</span>
+        <span>↑↓ move</span>
+        <span>↵ confirm</span>
+        <span>esc cancel</span>
+      </p>
       <p role="status" className="sr-only">
         {chosen ? `Selected: ${chosen.answer}` : ""}
       </p>

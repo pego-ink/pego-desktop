@@ -99,9 +99,7 @@ export const ShaderFillEditor = ({
         ))}
       </NativeSelect>
       {fill.preset !== "custom" ? (
-        <p className="px-0.5 text-[11px] text-muted-foreground">
-          {SHADER_PRESETS[fill.preset].hint}
-        </p>
+        <p className="px-0.5 text-xs text-muted-foreground">{SHADER_PRESETS[fill.preset].hint}</p>
       ) : null}
       {declaredUniforms(code).map(({ name, kind }) => {
         const value = valueOf(name);
@@ -113,7 +111,7 @@ export const ShaderFillEditor = ({
               label={uniformLabel(name)}
               onChange={(color, phase) => setUniform(name, color, phase)}
             >
-              <span className="ml-auto truncate pr-1 text-[11px] text-muted-foreground">
+              <span className="ml-auto truncate pr-1 text-xs text-muted-foreground">
                 {uniformLabel(name)}
               </span>
             </PropColor>
@@ -129,7 +127,7 @@ export const ShaderFillEditor = ({
             step={0.05}
             onChange={(next, phase) => setUniform(name, next, phase)}
           >
-            <span className="truncate pr-1 text-[11px] text-muted-foreground">
+            <span className="truncate pr-1 text-xs text-muted-foreground">
               {uniformLabel(name)}
             </span>
           </NumberField>
@@ -142,7 +140,7 @@ export const ShaderFillEditor = ({
             code={fill.code ?? ""}
             onCommit={(next) => onChange((f) => ({ ...f, code: next }), "Edit shader code")}
           />
-          <p className="px-0.5 text-[11px] text-muted-foreground">
+          <p className="px-0.5 text-xs text-muted-foreground">
             vec4 main(vec2 fragCoord), with iResolution (px) and iTime (s). It moves while selected
             and during Play.
           </p>

@@ -58,14 +58,14 @@ export const PropertiesPanel = () => {
 
   return (
     <>
-      <PanelHeader>
+      <PanelHeader className="h-10 text-[13px]">
         {nodes.length === 0 || !first ? (
           <span>Properties</span>
         ) : nodes.length === 1 ? (
           <span className="flex min-w-0 items-center gap-2">
             <LayerIcon node={first} />
             <span className="truncate">{first.name ?? first.type}</span>
-            <span className="shrink-0 text-[11px] font-normal text-muted-foreground">
+            <span className="shrink-0 font-mono text-[10px] font-normal text-subtle-foreground">
               {first.type}
             </span>
           </span>
@@ -79,7 +79,7 @@ export const PropertiesPanel = () => {
               size="icon-xs"
               aria-label="Copy for AI"
               title={`Copy project, file and node ids for the AI agent (${COPY_FOR_AI_SHORTCUT})`}
-              className="text-muted-foreground"
+              className="text-violet-text"
               onClick={() => void copySelectionForAgent()}
             >
               <SparklesIcon />

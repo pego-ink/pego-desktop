@@ -77,7 +77,7 @@ import {
 import { mentionSuggestions, slashSuggestions } from "@/panels/agent/mentions/mention-sources";
 
 const ACTION_BUTTON =
-  "flex size-7 items-center justify-center rounded-full bg-foreground text-background outline-none transition-[background-color,opacity,scale] duration-120 ease-out focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]";
+  "flex size-7 items-center justify-center rounded-lg bg-primary text-primary-foreground outline-none transition-[background-color,opacity,scale] duration-120 ease-out focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]";
 
 type AgentComposerProps = {
   /** Text to place in the box (e.g. an example prompt); applied whenever `key` changes. */
@@ -465,8 +465,8 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
     <div
       {...drop.handlers}
       className={cn(
-        "pego-composer relative rounded-lg border border-border bg-muted/40 p-2 transition-[border-color,opacity] duration-(--duration-fast) ease-out focus-within:border-ring",
-        drop.dragging && "border-ring",
+        "pego-composer relative rounded-2xl border border-border bg-muted p-2.5 transition-[border-color,opacity,box-shadow] duration-(--duration-fast) ease-out focus-within:border-violet focus-within:ring-2 focus-within:ring-violet/20",
+        drop.dragging && "border-violet",
       )}
     >
       {menu ? (
@@ -486,7 +486,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         className="mb-1 flex flex-wrap gap-2 px-1 pt-2"
       />
       <EditorContent editor={editor} />
-      <div className="mt-1 flex items-center gap-1">
+      <div className="mt-2 flex items-center gap-1">
         <input
           ref={fileInputRef}
           type="file"
@@ -503,7 +503,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
               type="button"
               aria-label="Add to the prompt"
               title="Add to the prompt"
-              className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
+              className="flex size-6 shrink-0 items-center justify-center rounded-lg text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50"
             >
               <PlusIcon aria-hidden className="size-3.5" />
             </button>
@@ -526,7 +526,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
         <AgentSelector restoreFocusRef={focusRef} />
         <VariantPicker value={variants} onChange={setVariants} />
         <SkillChip prompt={plain} restoreFocusRef={focusRef} />
-        <span className="min-w-0 flex-1 truncate text-right text-[11px] text-muted-foreground">
+        <span className="min-w-0 flex-1 truncate text-right font-mono text-[10px] text-subtle-foreground">
           {active
             ? "Enter to queue · ⌘Enter to send now · ↑ history"
             : "Enter to send · ↑ history · @ mention · / skill"}
@@ -540,7 +540,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
               onClick={() => {
                 if (runId) void safely(() => cancelRun(runId));
               }}
-              className={cn(ACTION_BUTTON, "hover:bg-foreground/90")}
+              className={cn(ACTION_BUTTON, "hover:bg-primary/90")}
             >
               <SquareIcon className="size-3 fill-current" />
             </button>
@@ -551,7 +551,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
             title={active ? "Queue (Enter) · Send to the agent now (⌘Enter)" : "Send (Enter)"}
             disabled={!canSend}
             onClick={() => send()}
-            className={cn(ACTION_BUTTON, "hover:bg-foreground/90 disabled:opacity-30")}
+            className={cn(ACTION_BUTTON, "hover:bg-primary/90 disabled:opacity-30")}
           >
             <ArrowUpIcon className="size-4" />
           </button>
@@ -560,7 +560,7 @@ export const AgentComposer = ({ seed }: AgentComposerProps) => {
       <div
         aria-hidden
         className={cn(
-          "pointer-events-none absolute inset-0 flex items-center justify-center rounded-lg border-2 border-dashed border-ring bg-background/85 text-xs font-medium text-foreground transition-opacity duration-(--duration-fast) ease-out",
+          "pointer-events-none absolute inset-0 flex items-center justify-center rounded-2xl border-2 border-dashed border-violet bg-background/85 text-xs font-medium text-foreground transition-opacity duration-(--duration-fast) ease-out",
           drop.dragging ? "opacity-100" : "opacity-0",
         )}
       >

@@ -6,7 +6,7 @@ import { LayerIcon } from "@/panels/LayerIcon";
 import type { DropZone } from "@/panels/drop-position";
 
 const INDENT_PX = 16;
-const BASE_PAD_PX = 8;
+const BASE_PAD_PX = 4;
 
 export type SelectMode = "replace" | "toggle" | "range";
 
@@ -99,13 +99,21 @@ const LayerRowImpl = ({
       onDragEnd={onDragEndRow}
       style={{ paddingLeft: indent }}
       className={cn(
-        "group/row relative flex h-7 cursor-default items-center gap-1.5 pr-1.5 text-[13px] text-foreground outline-none select-none focus-visible:bg-accent/60",
-        hovered && !selected && "bg-accent/50",
-        selected && "bg-accent",
+        "group/row relative flex h-7 cursor-default items-center gap-1.5 rounded-lg pr-1.5 text-[13px] text-foreground outline-none select-none focus-visible:bg-accent",
+        hovered && !selected && "bg-accent",
+        selected && "bg-human-soft text-human-text",
         dragging && "opacity-40",
         drop === "inside" && "bg-accent ring-1 ring-inset ring-ring",
       )}
     >
+      {Array.from({ length: depth }, (_, level) => (
+        <span
+          key={level}
+          aria-hidden
+          style={{ left: BASE_PAD_PX + level * INDENT_PX + 8 }}
+          className="pointer-events-none absolute inset-y-0 w-px bg-border"
+        />
+      ))}
       {drop === "before" || drop === "after" ? (
         <span
           aria-hidden
@@ -126,7 +134,7 @@ const LayerRowImpl = ({
         }}
         onDoubleClick={(event) => event.stopPropagation()}
         className={cn(
-          "flex size-4 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:text-foreground",
+          "flex size-4 shrink-0 items-center justify-center rounded-sm text-subtle-foreground hover:text-foreground",
           !hasChildren && "invisible",
         )}
       >
@@ -160,7 +168,7 @@ const LayerRowImpl = ({
             cancelled.current = false;
             onEndRename(node.id, cancel ? null : event.currentTarget.value);
           }}
-          className="h-5 min-w-0 flex-1 rounded-sm border border-ring bg-background px-1 text-[13px] outline-none"
+          className="h-5 min-w-0 flex-1 rounded-md border border-ring bg-background px-1 text-[13px] text-foreground outline-none"
         />
       ) : (
         <span className={cn("min-w-0 flex-1 truncate", hidden && "text-muted-foreground")}>
@@ -178,9 +186,12 @@ const LayerRowImpl = ({
         }}
         onDoubleClick={(event) => event.stopPropagation()}
         className={cn(
-          "flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground hover:bg-background/60 hover:text-foreground",
-          // Shown on hover, and always for a layer that is hidden itself.
-          !ownHidden && "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
+          "flex size-5 shrink-0 items-center justify-center rounded-md text-subtle-foreground hover:bg-background/60 hover:text-foreground",
+          selected && "text-human-text hover:text-human-text",
+          // Shown on hover or when selected, and always for a layer that is hidden itself.
+          !ownHidden &&
+            !selected &&
+            "opacity-0 group-hover/row:opacity-100 focus-visible:opacity-100",
         )}
       >
         {ownHidden ? <EyeOffIcon className="size-3.5" /> : <EyeIcon className="size-3.5" />}

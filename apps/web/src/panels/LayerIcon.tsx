@@ -42,7 +42,7 @@ export const LayerIcon = ({ node, className }: { node: PegoNode; className?: str
       aria-hidden
       className={cn(
         "size-3.5 shrink-0",
-        isComponent ? "text-violet" : "text-muted-foreground",
+        isComponent ? "text-violet" : "text-subtle-foreground",
         className,
       )}
     />

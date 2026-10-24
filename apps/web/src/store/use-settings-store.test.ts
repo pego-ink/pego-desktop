@@ -44,9 +44,9 @@ describe("mergeSettings", () => {
     expect(store.mergeSettings({ imageSearch: "openverse" }).imageSearch).toBe("openverse");
     expect(store.mergeSettings({ imageSearch: "bing" }).imageSearch).toBe("browser");
   });
-  test("toolbar position: a known side is kept, anything else falls back to bottom", () => {
+  test("toolbar position: a known side is kept, anything else falls back to left", () => {
     expect(store.mergeSettings({ toolbarPosition: "left" }).toolbarPosition).toBe("left");
-    expect(store.mergeSettings({ toolbarPosition: "middle" }).toolbarPosition).toBe("bottom");
+    expect(store.mergeSettings({ toolbarPosition: "middle" }).toolbarPosition).toBe("left");
   });
   test("valid wheel behaviour and snap kept", () =>
     expect(store.mergeSettings({ wheelBehavior: "zoom", snapToPixel: false })).toMatchObject({

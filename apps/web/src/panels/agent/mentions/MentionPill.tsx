@@ -68,7 +68,9 @@ export const MentionPill = ({
       title={typeof hover === "string" ? hover : undefined}
       className={cn(
         "mx-px inline-flex max-w-[180px] items-center gap-1 rounded-md border border-border bg-accent px-1 align-baseline text-[11px] leading-[16px] text-foreground",
-        kind === "skill" || kind === "style" || kind === "component" ? "text-violet" : null,
+        kind === "skill" || kind === "style" || kind === "component"
+          ? "border-transparent bg-human/15 font-mono text-human-text"
+          : null,
         broken && "bg-muted text-muted-foreground line-through",
         className,
       )}

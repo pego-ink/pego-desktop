@@ -33,7 +33,7 @@ function CopyField({ value, className }: CopyFieldProps) {
         onClick={copy}
         aria-label={copied ? "Copied" : "Copy command"}
         title={copied ? "Copied" : "Copy"}
-        className="flex size-6 shrink-0 items-center justify-center rounded-sm text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3.5"
+        className="flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground outline-none hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3.5"
       >
         <svg
           viewBox="0 0 24 24"

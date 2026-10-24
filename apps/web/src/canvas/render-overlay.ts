@@ -20,9 +20,15 @@ import {
   type SelectionFrame,
 } from "@/interaction/selection-frame";
 import { CORNER_HANDLES } from "@/interaction/transform";
+import {
+  CAPTION_COLORS,
+  HANDLE_FILL,
+  MARQUEE_FILL,
+  SELECTION,
+  SELECTION_LABEL_TEXT,
+} from "./chrome-colors";
 import { CAPTION_FONT_SIZE, frameCaptions, type FrameCaption } from "./frame-captions";
 
-export const ACCENT = "#B79CFF";
 const LABEL_TEXT = "#141418";
 const HANDLE_SIZE = 8;
 /** Hover outline width in screen px, constant at every zoom. */
@@ -109,15 +115,20 @@ const colorOf = (res: CanvasKitResources, color: string): Float32Array => {
 };
 
 /** Laid-out label paragraph, cached by font size + text (LRU, evicted paragraphs are deleted). */
-const getLabel = (res: CanvasKitResources, text: string, fontSize: number): Paragraph => {
+const getLabel = (
+  res: CanvasKitResources,
+  text: string,
+  fontSize: number,
+  textColor: string = LABEL_TEXT,
+): Paragraph => {
   const { paragraphs } = getKit(res);
-  const key = `${fontSize}|${text}`;
+  const key = `${textColor}|${fontSize}|${text}`;
   const cached = paragraphs.get(key);
   if (cached) return cached;
   const { ck, fontMgr, fontFamily } = res;
   const style = new ck.ParagraphStyle({
     textStyle: {
-      color: colorOf(res, LABEL_TEXT),
+      color: colorOf(res, textColor),
       fontFamilies: [fontFamily],
       fontSize,
       fontStyle: { weight: { value: 600 } },
@@ -134,12 +145,6 @@ const getLabel = (res: CanvasKitResources, text: string, fontSize: number): Para
     builder.delete();
   }
 };
-
-/** Caption colors per theme: plain, hovered, components and instances. */
-const CAPTION_COLORS = {
-  light: { frame: "#6E6E7A", hover: "#18181D", component: "#8B5CF6" },
-  dark: { frame: "#9A9AA6", hover: "#E6E6EB", component: "#B79CFF" },
-} as const;
 
 /** A one-line caption cut to `width` with an ellipsis (cached like labels). */
 const getCaption = (
@@ -189,7 +194,7 @@ const drawCaptions = (
   const colors = CAPTION_COLORS[theme];
   for (const caption of captions) {
     const color = selection.includes(caption.id)
-      ? ACCENT
+      ? SELECTION
       : caption.id === hoveredId
         ? colors.hover
         : caption.kind === "frame"
@@ -231,7 +236,7 @@ const drawHover = (
   // The path lives in document space: scale the canvas and divide the width back out so the
   // line stays HOVER_STROKE_WIDTH screen px wide.
   stroke.setStrokeWidth(HOVER_STROKE_WIDTH / camera.zoom);
-  stroke.setColor(colorOf(res, ACCENT));
+  stroke.setColor(colorOf(res, SELECTION));
   canvas.save();
   canvas.translate(camera.panX, camera.panY);
   canvas.scale(camera.zoom, camera.zoom);
@@ -285,7 +290,7 @@ const drawFrameOutline = (
       res,
       canvas,
       { x: 0, y: 0, width: frame.box.width, height: frame.box.height },
-      ACCENT,
+      SELECTION,
       1.5 / zoom,
     ),
   );
@@ -307,8 +312,8 @@ const drawHandles = (
   for (const handle of CORNER_HANDLES) {
     const c = frameHandlePoint(screen, frame.box.width, frame.box.height, handle);
     withMatrix(canvas, { a: ux.x, b: ux.y, c: uy.x, d: uy.y, e: c.x, f: c.y }, () => {
-      fillRect(res, canvas, rect, "#FFFFFF");
-      strokeRect(res, canvas, rect, ACCENT, 1.5);
+      fillRect(res, canvas, rect, HANDLE_FILL);
+      strokeRect(res, canvas, rect, SELECTION, 1.5);
     });
   }
 };
@@ -321,9 +326,10 @@ const drawPill = (
   fontSize: number,
   pad: { x: number; y: number },
   place: (width: number, height: number) => { x: number; y: number },
-  color: string = ACCENT,
+  color: string = SELECTION,
+  textColor: string = SELECTION_LABEL_TEXT,
 ) => {
-  const paragraph = getLabel(res, text, fontSize);
+  const paragraph = getLabel(res, text, fontSize, textColor);
   const w = paragraph.getLongestLine() + pad.x * 2;
   const h = paragraph.getHeight() + pad.y * 2;
   const { x, y } = place(w, h);
@@ -499,7 +505,7 @@ const drawDropLine = (res: CanvasKitResources, canvas: SkCanvas, camera: Camera,
   const b = docToScreen(camera, line.x2, line.y2);
   const { stroke } = getKit(res);
   stroke.setStrokeWidth(DROP_LINE_WIDTH);
-  stroke.setColor(colorOf(res, ACCENT));
+  stroke.setColor(colorOf(res, SELECTION));
   canvas.drawLine(a.x, a.y, b.x, b.y, stroke);
 };
 
@@ -559,7 +565,7 @@ export const renderOverlay = (
 
   if (marquee) {
     const screen = toScreenBox(camera, marquee);
-    fillRect(res, canvas, screen, "#B79CFF1A");
-    strokeRect(res, canvas, screen, ACCENT, 1);
+    fillRect(res, canvas, screen, MARQUEE_FILL);
+    strokeRect(res, canvas, screen, SELECTION, 1);
   }
 };

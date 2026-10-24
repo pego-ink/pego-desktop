@@ -87,7 +87,9 @@ const MenuRow = ({
     <span className="flex shrink-0">{icon}</span>
     <span className="min-w-0 truncate">{title}</span>
     {badge ? (
-      <span className="min-w-0 shrink-[2] truncate text-[11px] text-muted-foreground">{badge}</span>
+      <span className="min-w-0 shrink-[2] truncate font-mono text-[10px] text-subtle-foreground">
+        {badge}
+      </span>
     ) : null}
     {warn ? <StatusDot tone="warn" /> : null}
     <span className="ml-auto flex shrink-0 items-center">{trailing}</span>
@@ -417,7 +419,7 @@ export const AgentSelector = ({ restoreFocusRef }: AgentSelectorProps) => {
           disabled={locked}
           aria-label={accessibleName}
           title={locked ? "Agent can't change while a run is active" : fullTitle}
-          className="flex h-7 max-w-full min-w-0 items-center gap-1.5 rounded-md px-1.5 text-[11px] text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-foreground"
+          className="flex h-6 max-w-full min-w-0 items-center gap-1.5 rounded-lg border border-border bg-background/60 px-2 text-xs text-muted-foreground outline-none transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97] disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-foreground"
         >
           {isCustom ? (
             <ServerIcon aria-hidden className="size-3.5 shrink-0" />

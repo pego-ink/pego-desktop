@@ -17,7 +17,7 @@ const NoteText = ({ note }: { note: string }) => (
         <code
           key={index}
           data-selectable
-          className="rounded-sm bg-muted px-1 font-mono text-foreground"
+          className="rounded-md bg-muted px-1 font-mono text-foreground"
         >
           {part.slice(1, -1)}
         </code>
@@ -46,7 +46,14 @@ const LocalAgentCard = ({ id }: { id: LocalAgentId }) => {
       title={info?.name ?? LOCAL_AGENT_NAMES[id]}
       titleId={`agent-settings-${id}`}
       badge={
-        <span className="flex shrink-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+        <span
+          className={cn(
+            "flex shrink-0 items-center gap-1.5 rounded-full px-2 py-0.5 font-mono text-[11px]",
+            status.tone === "ready" && "bg-success-surface text-success",
+            status.tone === "warn" && "bg-warning-surface text-warning",
+            status.tone !== "ready" && status.tone !== "warn" && "bg-muted text-muted-foreground",
+          )}
+        >
           <StatusDot tone={status.tone} />
           {status.label}
         </span>
@@ -74,7 +81,7 @@ const LocalAgentCard = ({ id }: { id: LocalAgentId }) => {
           <p
             className={cn(
               "text-[11px] leading-4",
-              installed ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground",
+              installed ? "text-warning" : "text-muted-foreground",
             )}
           >
             <NoteText note={info.note} />

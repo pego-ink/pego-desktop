@@ -29,9 +29,9 @@ export const InstallSection = ({ flashing }: { flashing: boolean }) => {
               key={id}
               role="group"
               aria-label={`Install ${LOCAL_AGENT_NAMES[id]}`}
-              className="grid gap-1.5 rounded-lg border border-border p-3"
+              className="grid gap-1.5 rounded-xl border border-border p-3"
             >
-              <div className="flex items-center gap-2 text-xs font-medium">
+              <div className="flex items-center gap-2 text-[13px] font-semibold">
                 <ProviderLogo provider={AGENT_PROVIDER[id]} />
                 {LOCAL_AGENT_NAMES[id]}
               </div>

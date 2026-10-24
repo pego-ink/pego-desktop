@@ -18,8 +18,8 @@ export const BridgeSection = ({ flashing }: { flashing: boolean }) => {
       description="The local bridge lets Pego detect and run the CLIs above."
       flashing={flashing}
     >
-      <div className="grid gap-2 rounded-lg border border-border p-3">
-        <div className="flex items-center gap-2 text-xs">
+      <div className="grid gap-2 rounded-xl border border-border p-3">
+        <div className="flex items-center gap-2 text-[13px]">
           <StatusDot tone={connected ? "ready" : "off"} />
           <span className="flex-1">{connected ? "Bridge connected" : "Bridge not running"}</span>
           <Button

@@ -114,7 +114,7 @@ export const RefSection = ({ node }: { node: RefNode }) => {
   const target = useDocumentStore((s) => findNode(s.doc, node.ref));
   return (
     <PropertySection title="Component">
-      <div className="flex h-7 items-center rounded-md bg-muted px-2 text-xs text-violet">
+      <div className="flex h-7 items-center rounded-md bg-muted px-2 text-[13px] text-violet">
         <span className="truncate">
           {target ? (target.name ?? target.type) : `Missing (${node.ref})`}
         </span>

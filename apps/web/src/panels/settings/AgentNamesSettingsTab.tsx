@@ -46,7 +46,7 @@ const NameSetPicker = ({
       role="radiogroup"
       aria-label="Name set"
       onKeyDown={onKeyDown}
-      className="inline-flex flex-wrap gap-0.5 rounded-md bg-muted p-0.5"
+      className="inline-flex flex-wrap gap-0.5 rounded-lg bg-muted p-0.5"
     >
       {SET_OPTIONS.map((option) => {
         const checked = option.value === value;
@@ -59,8 +59,8 @@ const NameSetPicker = ({
             tabIndex={checked ? 0 : -1}
             onClick={() => onChange(option.value)}
             className={cn(
-              "h-7 rounded-sm px-2.5 text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50",
-              checked && "bg-secondary text-foreground shadow-xs",
+              "h-7 rounded-md px-2.5 text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50",
+              checked && "bg-violet-soft text-violet-text hover:text-violet-text",
             )}
           >
             {option.label}
@@ -111,10 +111,10 @@ export const AgentNamesSettingsTab = () => {
                 placeholder={fallbackAgentName(index)}
                 maxLength={MAX_AGENT_NAME_LENGTH}
                 onChange={(event) => rename(index, event.target.value)}
-                className="h-7 max-w-64 text-sm"
+                className="h-7 max-w-64 text-[13px]"
               />
             ) : (
-              <span className="min-w-0 flex-1 truncate text-sm text-foreground">{name}</span>
+              <span className="min-w-0 flex-1 truncate text-[13px] text-foreground">{name}</span>
             )}
             <span className="ml-auto text-xs text-muted-foreground tabular-nums">
               {slotNumber(index)}

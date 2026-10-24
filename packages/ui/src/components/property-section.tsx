@@ -15,7 +15,7 @@ function PropertySection({ title, action, className, children }: PropertySection
     <section data-slot="property-section" className="border-b border-border px-3 py-3">
       {title ? (
         <div className="mb-2 flex h-5 items-center justify-between">
-          <h3 className="text-xs font-medium text-foreground">{title}</h3>
+          <h3 className="text-[13px] font-semibold text-foreground">{title}</h3>
           {action}
         </div>
       ) : null}

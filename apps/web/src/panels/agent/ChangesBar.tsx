@@ -32,16 +32,16 @@ export const ChangesBar = () => {
   };
 
   const undoButton = (
-    <Button size="xs" variant="ghost" disabled={!check.ok} onClick={() => void safely(undo)}>
+    <Button size="sm" variant="ghost" disabled={!check.ok} onClick={() => void safely(undo)}>
       <Undo2Icon />
       Undo all
     </Button>
   );
 
   return (
-    <div className="flex items-center gap-1 rounded-lg border border-border bg-muted/50 p-1 pl-3">
-      <GitCompareArrowsIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-xs text-foreground">
+    <div className="flex items-center gap-1 rounded-xl border border-border bg-muted p-1.5 pl-3">
+      <GitCompareArrowsIcon className="size-4 shrink-0 text-violet-text" />
+      <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-foreground">
         {transactionCount} {transactionCount === 1 ? "change" : "changes"}
       </span>
       {!check.ok && check.message ? (
@@ -57,7 +57,7 @@ export const ChangesBar = () => {
       ) : (
         undoButton
       )}
-      <Button size="xs" variant="secondary" disabled={focusCount === 0} onClick={review}>
+      <Button size="sm" variant="secondary" disabled={focusCount === 0} onClick={review}>
         Review
       </Button>
     </div>

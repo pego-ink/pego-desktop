@@ -12,17 +12,24 @@ import {
 } from "@/panels/agent/plan-pill";
 
 const TONE_CLASS: Record<PlanPillTone, string> = {
-  running: "text-foreground",
+  running: "text-violet-text",
   idle: "text-muted-foreground",
-  done: "text-foreground",
-  awaiting: "text-amber-600 dark:text-amber-400",
+  done: "text-success",
+  awaiting: "text-warning",
   failed: "text-destructive",
 };
 
 const ToneIcon = ({ tone }: { tone: PlanPillTone }) => {
   switch (tone) {
     case "running":
-      return <Spinner role="presentation" aria-label={undefined} aria-hidden className="size-3" />;
+      return (
+        <Spinner
+          role="presentation"
+          aria-label={undefined}
+          aria-hidden
+          className="size-3 text-violet"
+        />
+      );
     case "done":
       return <CheckIcon aria-hidden className="size-3.5 shrink-0" />;
     case "awaiting":
@@ -80,7 +87,7 @@ export const PlanPill = () => {
         aria-label={`Plan, ${progress} steps done. ${text}`}
         onClick={() => setOpen((value) => !value)}
         className={cn(
-          "pointer-events-auto flex h-7 max-w-[min(13rem,70%)] items-center gap-1.5 rounded-full border bg-popover pr-2 pl-2.5 text-xs shadow-sm outline-none",
+          "pointer-events-auto flex h-7 max-w-[min(13rem,70%)] items-center gap-1.5 rounded-full border bg-popover pr-2 pl-2.5 font-mono text-xs shadow-sm outline-none",
           "transition-[background-color,color,scale] duration-(--duration-fast) ease-out hover:bg-accent focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 motion-safe:active:scale-[.97]",
           TONE_CLASS[tone],
         )}
@@ -99,7 +106,7 @@ export const PlanPill = () => {
       {open ? (
         <div
           id={panelId}
-          className="pointer-events-auto max-h-72 w-72 origin-top-right animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] max-w-full overflow-y-auto overscroll-contain rounded-xl border bg-popover p-1 shadow-md"
+          className="pointer-events-auto max-h-72 w-72 origin-top-right animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)] max-w-full overflow-y-auto overscroll-contain rounded-xl shadow-md"
         >
           <PlanList steps={steps} />
         </div>

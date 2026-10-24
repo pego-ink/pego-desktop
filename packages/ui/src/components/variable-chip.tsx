@@ -13,7 +13,7 @@ function VariableChip({
       data-slot="variable-chip"
       title={`Bound to ${name}. Click to edit as a literal.`}
       className={cn(
-        "inline-flex h-5 max-w-full items-center truncate rounded-sm bg-violet/15 px-1.5 font-mono text-[11px] text-violet outline-none hover:bg-violet/25 focus-visible:ring-2 focus-visible:ring-violet/50",
+        "inline-flex h-5 max-w-full items-center truncate rounded-md bg-violet-soft px-1.5 font-mono text-[11px] text-violet-text outline-none hover:bg-violet-soft/70 focus-visible:ring-2 focus-visible:ring-violet/50",
         className,
       )}
       {...props}

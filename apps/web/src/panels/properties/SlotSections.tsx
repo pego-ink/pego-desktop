@@ -35,7 +35,7 @@ export const SlotSection = ({ node }: { node: FrameNode }) => {
   if (!node.slot) {
     return (
       <PropertySection title="Slot">
-        <p className="text-[11px] leading-4 text-muted-foreground">
+        <p className="text-xs leading-4 text-muted-foreground">
           A slot is a place each instance of {component.name ?? "the component"} can fill with its
           own content.
         </p>
@@ -84,13 +84,13 @@ export const SlotSection = ({ node }: { node: FrameNode }) => {
       }
     >
       {recommended.length === 0 ? (
-        <p className="text-[11px] text-muted-foreground">No recommended components yet.</p>
+        <p className="text-xs text-muted-foreground">No recommended components yet.</p>
       ) : (
         <ul className="flex flex-col gap-1">
           {recommended.map((id) => (
             <li
               key={id}
-              className="flex h-7 items-center gap-2 rounded-md bg-muted px-2 text-xs text-violet"
+              className="flex h-7 items-center gap-2 rounded-md bg-muted px-2 text-[13px] text-violet"
             >
               <span className="min-w-0 flex-1 truncate">{nodeLabel(doc, id)}</span>
               <button
@@ -127,7 +127,7 @@ export const InstanceSlotsSection = ({ node }: { node: RefNode }) => {
         const first = fill?.[0];
         return (
           <div key={slot.id} className="flex flex-col gap-1.5">
-            <div className="flex h-5 items-center justify-between text-[11px]">
+            <div className="flex h-5 items-center justify-between text-xs">
               <span className="truncate text-muted-foreground">{slot.name ?? "Slot"}</span>
               {fill ? (
                 <button
@@ -140,7 +140,7 @@ export const InstanceSlotsSection = ({ node }: { node: RefNode }) => {
               ) : null}
             </div>
             {fill ? (
-              <div className="flex h-7 items-center rounded-md bg-muted px-2 text-xs text-violet">
+              <div className="flex h-7 items-center rounded-md bg-muted px-2 text-[13px] text-violet">
                 <span className="truncate">
                   {first?.type === "ref" ? nodeLabel(doc, first.ref) : "Own content"}
                 </span>
@@ -161,7 +161,7 @@ export const InstanceSlotsSection = ({ node }: { node: RefNode }) => {
                 ))}
               </div>
             ) : (
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-xs text-muted-foreground">
                 The component recommends nothing for this slot.
               </p>
             )}

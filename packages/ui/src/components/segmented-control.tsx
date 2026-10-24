@@ -32,7 +32,7 @@ function SegmentedControl<T extends string>({
       aria-label={props["aria-label"]}
       aria-disabled={disabled || undefined}
       className={cn(
-        "relative flex h-7 w-full rounded-md bg-muted p-0.5",
+        "relative flex h-7 w-full rounded-lg bg-muted p-0.5",
         disabled && "opacity-50",
         className,
       )}
@@ -41,7 +41,7 @@ function SegmentedControl<T extends string>({
         aria-hidden
         data-slot="segmented-control-indicator"
         className={cn(
-          "pointer-events-none absolute inset-y-0.5 left-0.5 rounded-sm bg-secondary shadow-xs transition-[translate,opacity] duration-180 ease-in-out",
+          "pointer-events-none absolute inset-y-0.5 left-0.5 rounded-md bg-violet-soft transition-[translate,opacity] duration-180 ease-in-out",
           activeIndex < 0 && "opacity-0",
         )}
         style={{
@@ -59,8 +59,8 @@ function SegmentedControl<T extends string>({
           title={option.title}
           onClick={() => onChange(option.value)}
           className={cn(
-            "relative flex flex-1 items-center justify-center rounded-sm text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3.5",
-            option.value === value && "text-foreground",
+            "relative flex flex-1 items-center justify-center rounded-md text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:text-foreground focus-visible:transition-none focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3.5",
+            option.value === value && "text-violet-text hover:text-violet-text",
           )}
         >
           {option.label}

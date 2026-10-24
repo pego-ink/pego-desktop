@@ -46,7 +46,7 @@ export const ZoomControl = () => {
     <div
       role="group"
       aria-label="Zoom"
-      className="absolute right-3 bottom-3 flex items-center gap-0.5 rounded-lg border border-border bg-popover p-0.5 shadow-[0_8px_24px_#00000055]"
+      className="absolute right-3 bottom-3 flex items-center gap-0.5 rounded-xl border border-border bg-card p-0.5 shadow-lg"
     >
       <Tooltip content="Zoom out" shortcut="−" side="top">
         <Button variant="ghost" size="icon-sm" aria-label="Zoom out" onClick={zoomOut}>
@@ -59,7 +59,7 @@ export const ZoomControl = () => {
             variant="ghost"
             size="sm"
             aria-label={`Zoom level ${formatZoomPercent(zoom)}, open zoom menu`}
-            className="min-w-16 gap-1 px-2 tabular-nums"
+            className="min-w-16 gap-1 px-2 font-mono text-xs tabular-nums"
           >
             <span>{formatZoomPercent(zoom)}</span>
             <ChevronDownIcon className="size-3 text-muted-foreground" aria-hidden />

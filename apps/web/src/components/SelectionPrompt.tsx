@@ -45,7 +45,7 @@ const SHORTCUT = isMac ? "⌘K" : "Ctrl+K";
 const SETTLE_MS = 160;
 
 const FLOAT_SURFACE =
-  "rounded-lg border border-border bg-popover shadow-[0_8px_24px_#00000055] motion-safe:animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)]";
+  "rounded-xl border border-violet bg-popover shadow-lg motion-safe:animate-[pego-pop-in_var(--duration-fast)_var(--ease-out)]";
 
 /** Selected layers as the agent will see them: id plus a readable name. */
 const targetsOf = (ids: readonly string[]): PromptTarget[] => {
@@ -345,7 +345,7 @@ const SelectionPromptOverlay = ({
             aria-label="Pego Magic"
             onClick={() => setOpen(true)}
           >
-            <SparklesIcon />
+            <SparklesIcon className="text-violet" />
           </Button>
         </Tooltip>
       </div>

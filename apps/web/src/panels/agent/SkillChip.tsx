@@ -49,7 +49,9 @@ const Row = ({ checked, title, note, onClick }: RowProps) => (
 );
 
 const SectionLabel = ({ children }: { children: string }) => (
-  <div className="px-2 pt-1 pb-0.5 text-[11px] font-medium text-muted-foreground">{children}</div>
+  <div className="px-2 pt-1 pb-0.5 font-mono text-[10px] tracking-wider text-subtle-foreground uppercase">
+    {children}
+  </div>
 );
 
 type SkillChipProps = {
@@ -109,7 +111,7 @@ export const SkillChip = ({ prompt, restoreFocusRef }: SkillChipProps) => {
         disabled={locked}
         aria-label={`Skills: ${view.label}`}
         title={tooltip || "Pick a design skill and style"}
-        className="flex h-7 min-w-0 shrink items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-foreground"
+        className="flex h-6 min-w-0 shrink items-center gap-1 rounded-lg border border-border bg-background/60 px-2 text-xs text-muted-foreground outline-none transition-colors hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50 disabled:pointer-events-none disabled:opacity-50 data-[state=open]:bg-accent data-[state=open]:text-foreground"
       >
         <SparklesIcon aria-hidden className="size-3 shrink-0" />
         {view.parts.map((part, index) => (

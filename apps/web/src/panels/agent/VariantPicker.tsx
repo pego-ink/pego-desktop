@@ -34,8 +34,9 @@ export const VariantPicker = ({
         aria-label={`Variants: ${value.count}`}
         title="Variants: several agents, one take each"
         className={cn(
-          "flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-[11px] text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
-          value.count > 1 && "bg-accent text-foreground",
+          "flex h-6 shrink-0 items-center gap-1 rounded-lg border border-border bg-background/60 px-2 font-mono text-xs text-muted-foreground outline-none transition-colors duration-(--duration-fast) hover:bg-accent hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring/50",
+          value.count > 1 &&
+            "border-transparent bg-violet-soft text-violet-text hover:bg-violet-soft hover:text-violet-text",
         )}
       >
         <CopyIcon aria-hidden className="size-3.5" />
@@ -62,7 +63,7 @@ export const VariantPicker = ({
           />
           <span className="flex flex-col">
             <span>{mode.label}</span>
-            <span className="text-[11px] text-muted-foreground">{mode.hint}</span>
+            <span className="text-xs text-muted-foreground">{mode.hint}</span>
           </span>
         </DropdownMenuItem>
       ))}

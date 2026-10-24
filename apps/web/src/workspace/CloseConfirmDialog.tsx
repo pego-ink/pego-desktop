@@ -42,7 +42,7 @@ export const CloseConfirmDialog = () => {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Close {name || "this tab"}?</DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
+          <DialogDescription className="text-[13px] text-muted-foreground">
             {reasons || "Closing it discards its current state."}
           </DialogDescription>
         </DialogHeader>

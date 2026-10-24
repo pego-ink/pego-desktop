@@ -10,7 +10,7 @@ const Kbd = ({ chord }: { chord: Chord }) => (
     {chord.map((token, i) => (
       <kbd
         key={i}
-        className="inline-flex h-5 min-w-5 items-center justify-center rounded-sm border border-border bg-muted px-1.5 font-sans text-[11px] text-foreground"
+        className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border bg-muted px-1.5 font-mono text-[11px] text-foreground"
       >
         {formatKeyToken(token, isMac)}
       </kbd>
@@ -23,7 +23,7 @@ export const ShortcutsTab = () => {
   const groups = useMemo(() => filterShortcuts(query), [query]);
   return (
     <div>
-      <div className="sticky -top-5 z-10 -mx-5 -mt-5 mb-4 bg-card px-5 pt-5 pb-2">
+      <div className="sticky -top-6 z-10 -mx-6 -mt-6 mb-4 bg-card px-6 pt-6 pb-2">
         <div className="relative">
           <SearchIcon
             aria-hidden
@@ -49,13 +49,16 @@ export const ShortcutsTab = () => {
       ) : (
         groups.map((group) => (
           <section key={group.id} className="mb-6 last:mb-0" aria-labelledby={`sc-${group.id}`}>
-            <h3 id={`sc-${group.id}`} className="mb-1 text-xs font-medium text-muted-foreground">
+            <h3
+              id={`sc-${group.id}`}
+              className="mb-1 font-mono text-[10px] font-medium tracking-wider text-subtle-foreground uppercase"
+            >
               {group.label}
             </h3>
             <ul>
               {group.entries.map((entry) => (
                 <li key={entry.id} className="flex items-center justify-between gap-4 py-1.5">
-                  <span className="min-w-0 text-sm text-foreground">{entry.label}</span>
+                  <span className="min-w-0 text-[13px] text-foreground">{entry.label}</span>
                   <span className="flex shrink-0 flex-wrap items-center justify-end gap-x-2 gap-y-1">
                     {entry.chords.map((chord, i) => (
                       <Kbd key={i} chord={chord} />

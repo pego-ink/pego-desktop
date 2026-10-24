@@ -18,7 +18,7 @@ const ExternalLink = ({ href, children }: { href: string; children: string }) =>
     href={href}
     target="_blank"
     rel="noopener noreferrer"
-    className="inline-flex items-center gap-1.5 rounded-sm text-sm text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3.5 [&_svg]:text-muted-foreground"
+    className="inline-flex items-center gap-1.5 rounded-md text-[13px] text-foreground underline-offset-4 outline-none hover:underline focus-visible:ring-2 focus-visible:ring-ring/50 [&_svg]:size-3.5 [&_svg]:text-muted-foreground"
   >
     {children}
     <ExternalLinkIcon aria-hidden />
@@ -148,11 +148,15 @@ export const AboutTab = () => {
         </div>
       </div>
       <section>
-        <h3 className="mb-3 text-xs font-medium text-muted-foreground">Updates</h3>
+        <h3 className="mb-3 font-mono text-[10px] font-medium tracking-wider text-subtle-foreground uppercase">
+          Updates
+        </h3>
         <UpdatesSection />
       </section>
       <section>
-        <h3 className="mb-3 text-xs font-medium text-muted-foreground">Links</h3>
+        <h3 className="mb-3 font-mono text-[10px] font-medium tracking-wider text-subtle-foreground uppercase">
+          Links
+        </h3>
         <div className="flex flex-col items-start gap-2.5">
           <ExternalLink href={RELEASES_URL}>Release notes and downloads</ExternalLink>
           <ExternalLink href={ISSUES_URL}>Report an issue</ExternalLink>

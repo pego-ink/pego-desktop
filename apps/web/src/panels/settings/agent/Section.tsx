@@ -18,13 +18,13 @@ export const Section = ({ id, title, description, action, flashing, children }: 
     data-section={id}
     aria-labelledby={`agent-settings-${id}`}
     className={cn(
-      "-mx-2 grid scroll-mt-2 gap-3 rounded-lg px-2 py-2 transition-[background-color,box-shadow] duration-500 ease-out",
-      flashing && "bg-accent/50 ring-1 ring-ring/40",
+      "-mx-2 grid scroll-mt-2 gap-3 rounded-xl px-2 py-2 transition-[background-color,box-shadow] duration-500 ease-out",
+      flashing && "bg-violet-soft/40 ring-1 ring-ring/40",
     )}
   >
     <div className="flex items-start gap-3">
       <div className="grid min-w-0 flex-1 gap-0.5">
-        <h3 id={`agent-settings-${id}`} className="text-sm font-medium">
+        <h3 id={`agent-settings-${id}`} className="text-[13px] font-semibold">
           {title}
         </h3>
         {description ? (
