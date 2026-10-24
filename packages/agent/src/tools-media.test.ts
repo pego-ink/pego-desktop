@@ -24,6 +24,7 @@ describe("mediaTools", () => {
       "place_image",
       "generate_image",
       "search_images",
+      "remove_background",
     ]);
     for (const tool of mediaTools) expect(tool.inputSchema.type).toBe("object");
   });
@@ -364,5 +365,82 @@ describe("place_image embeds web images", () => {
     });
     const { isError } = await call("place_image", { src: PNG }, host);
     expect(isError).toBe(false);
+  });
+});
+
+describe("remove_background", () => {
+  const CUT =
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+  const withRemoval = (
+    removeBackground: (src: string, o: { quality: string }) => Promise<string>,
+  ) => Object.assign(createFakeHost(), { removeBackground });
+
+  const insertShape = (host: ReturnType<typeof createFakeHost>, node: Record<string, unknown>) => {
+    const page = host.getDoc().children[0]!.id;
+    host.applyOps([{ op: "insert", parentId: page, node: { x: 0, y: 0, ...node } as never }]);
+    return node.id as string;
+  };
+
+  const placed = async (host: ReturnType<typeof createFakeHost>) => {
+    const { data } = await call("place_image", { src: PNG, width: 100, height: 80 }, host);
+    return data.created.id as string;
+  };
+
+  test("an image layer gets the cut-out src, one change", async () => {
+    const seen: { src: string; quality: string }[] = [];
+    const host = withRemoval(async (src, o) => {
+      seen.push({ src, quality: o.quality });
+      return CUT;
+    });
+    const id = await placed(host);
+    const { isError, data } = await call("remove_background", { nodeId: id }, host);
+    expect(isError).toBe(false);
+    expect(data).toMatchObject({ updated: id, quality: "standard" });
+    expect(seen).toEqual([{ src: PNG, quality: "standard" }]);
+    expect(findNode(host.getDoc(), id)).toMatchObject({ type: "image", src: CUT });
+  });
+
+  test("a shape's image fill keeps its fit and gets the cut-out", async () => {
+    const host = withRemoval(async () => CUT);
+    const id = insertShape(host, {
+      type: "rectangle",
+      id: "photo",
+      width: 50,
+      height: 50,
+      fill: { type: "image", src: PNG, fit: "contain" },
+    });
+    await call("remove_background", { nodeId: id, quality: "high" }, host);
+    expect(findNode(host.getDoc(), id)).toMatchObject({
+      fill: { type: "image", src: CUT, fit: "contain" },
+    });
+  });
+
+  test("clear errors: no image, a failed removal, no capability", async () => {
+    const failing = withRemoval(async () => {
+      throw new Error("Could not download the background model.");
+    });
+    const id = await placed(failing);
+    const before = failing.getDoc();
+    const failed = await call("remove_background", { nodeId: id, quality: "high" }, failing);
+    expect(failed.data.error.code).toBe("removal_failed");
+    expect(failed.data.error.hint).toContain("standard");
+    expect(failing.getDoc()).toBe(before);
+
+    const plainId = insertShape(failing, {
+      type: "ellipse",
+      id: "dot",
+      width: 10,
+      height: 10,
+      fill: "#000",
+    });
+    expect((await call("remove_background", { nodeId: plainId }, failing)).data.error.code).toBe(
+      "no_image",
+    );
+    expect((await call("remove_background", { nodeId: "nope" }, failing)).data.error.code).toBe(
+      "node_not_found",
+    );
+    expect(
+      (await call("remove_background", { nodeId: id }, createFakeHost())).data.error.code,
+    ).toBe("unsupported");
   });
 });

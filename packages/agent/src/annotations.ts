@@ -41,6 +41,7 @@ const TOOLS: Record<string, [title: string, kind: Kind]> = {
   place_image: ["Place image", "add"],
   generate_image: ["Generate image", "add"],
   search_images: ["Search images", "read"],
+  remove_background: ["Remove background", "change"],
   browser: ["Browser", "change"],
   update_node: ["Update node", "change"],
   move_node: ["Move node", "change"],

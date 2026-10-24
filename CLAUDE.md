@@ -325,6 +325,13 @@ When you add a node prop, update the canvas renderer and the exporter together, 
   (`apps/desktop/src/browser-user-agent.ts`). CDP is an allowlist of
   methods, kept identical in `apps/desktop/src/browser-cdp.ts` (enforced in main) and
   `packages/agent/src/browser-cdp.ts`; page text reaches the model wrapped as untrusted `<page_content>`.
+- Background removal (`remove_background` tool, `ToolHost.removeBackground`, the Remove background buttons on image
+  layers and image fills; `apps/web/src/images/remove-background/`): "standard" runs on the device with Silueta (a
+  44 MB U²-Net, Apache-2.0) through onnxruntime-web WASM in a Worker. The model downloads once from a pinned
+  Hugging Face revision, is checked against its SHA-256 and is kept in the Cache API. "high" sends the image to the
+  user's gpt-image model (`/images/edits`, `background: "transparent"`); other image models cannot return
+  transparency and are not offered. Results are embedded (PNG, else WebP, within the data URL limit). Decode data
+  URLs by hand, not with `fetch`: the desktop CSP has no `data:` in connect-src.
 - Add a test next to every new tool (`*.test.ts`, use `test-host.ts`).
 
 ## Code conventions

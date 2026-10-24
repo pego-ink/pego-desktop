@@ -250,6 +250,14 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
         .images,
     // Loaded on first use: the image helpers import stores that import this module.
     fetchImage: async (url) => (await import("@/images/image-from-url")).imageUrlAsDataUrl(url),
+    // Same progress toasts as the panel's buttons; errors go back to the agent.
+    removeBackground: async (src, { quality }) => {
+      const { removeBackgroundWithProgress } =
+        await import("@/images/remove-background/RemoveBackgroundButtons");
+      const cut = await removeBackgroundWithProgress(src, quality, { rethrow: true });
+      if (!cut) throw new Error("Could not remove the background.");
+      return cut;
+    },
     resolveFont,
     getAttachment: (id) => findAttachmentSrc(options.attachments ?? [], id),
     applyOps,
