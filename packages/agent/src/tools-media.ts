@@ -177,6 +177,25 @@ const resolveSrc = (host: ToolHost, raw: string): { src: string; name?: string }
   return found;
 };
 
+/**
+ * A web image downloaded into the file when the host can (most sites do not let the canvas load
+ * their images directly, and an embedded image also works offline); other sources as they are.
+ */
+const embedded = async (host: ToolHost, src: string): Promise<string> => {
+  if (!host.fetchImage || !/^https:\/\//i.test(src)) return src;
+  let data: string;
+  try {
+    data = await host.fetchImage(src);
+  } catch (error) {
+    throw new ToolError(
+      "image_unavailable",
+      `Could not download the image from ${new URL(src).hostname}: ${error instanceof Error ? error.message : String(error)}`,
+      "Pick another image (another result, or search_images).",
+    );
+  }
+  return checkedSrc(data);
+};
+
 const imageSizeProps = (width: number | undefined, height: number | undefined) => ({
   width: width ?? height ?? 400,
   height: height ?? width ?? 300,
@@ -194,7 +213,7 @@ const placeImage = defineTool({
   description:
     "Place a bitmap image (photo, screenshot, raster artwork) from a known source as an image node. " +
     "src is an https URL, a base64 data:image URL (png, jpeg, gif, webp, avif; max 5 MB), or attachment:<id> for an image the user attached to the request (the ids are listed in the request). SVG data URLs are rejected: use insert_svg for vectors. " +
-    "Never invent URLs: only use ones the user gave you, that search_images returned, or that you know exist. For a real photo, search_images first; if you need an invented picture and generate_image is available, use that. Never fake photos with shapes. " +
+    "Never invent URLs: only use ones the user gave you, that search_images or browser search-images / find-images returned, or that you know exist. https images are downloaded and embedded in the file. For a real photo, search_images first; if you need an invented picture and generate_image is available, use that. Never fake photos with shapes. " +
     "fit: fill (cover the box, default), fit (contain), crop (no scaling), tile. Set width and height; if only one is given the box is square-ish to it. Add alt text.",
   inputSchema: {
     type: "object",
@@ -218,7 +237,7 @@ const placeImage = defineTool({
       sourceUrl: {
         type: "string",
         description:
-          "The image's page (from search_images: pageUrl), kept on the layer for credit and license.",
+          "The image's page (search_images: pageUrl; browser images: pageUrl or the results page), kept on the layer for credit and license.",
       },
     },
     required: ["src"],
@@ -242,10 +261,10 @@ const placeImage = defineTool({
   }),
   inputHint:
     "Pass {src: https URL | data:image URL | attachment:<id>, parentId?, x?, y?, width?, height?, fit?, alt?, sourceUrl?}.",
-  run: (input, host) => {
+  run: async (input, host) => {
     const parent = input.parentId ?? null;
     const resolved = resolveSrc(host, input.src);
-    const src = checkedSrc(resolved.src);
+    const src = await embedded(host, checkedSrc(resolved.src));
     const { node } = insertRaw(
       host,
       {
@@ -357,7 +376,7 @@ const searchImages = defineTool({
   description:
     "Search free-to-use photos (openly licensed stock images) for a query, e.g. 'fried chicken on a plate' or 'mountain lake at dawn'. " +
     "Returns candidates with src, size, title, creator, license and pageUrl. Then place the one you want with place_image: pass its src, a box that keeps its aspect ratio, alt, and sourceUrl = pageUrl so the credit stays on the layer. " +
-    "Use it for real photos (food, places, people, products); use generate_image only for pictures that cannot exist. Search in English with concrete nouns. Tell the user which photos you used and their credit line.",
+    "Use it for real photos (food, places, people, products); use generate_image only for pictures that cannot exist. Search in English with concrete nouns. Tell the user which photos you used and their credit line. When the user asks for images from Google or the web, use the browser tool's search-images action instead (desktop app).",
   inputSchema: {
     type: "object",
     properties: {

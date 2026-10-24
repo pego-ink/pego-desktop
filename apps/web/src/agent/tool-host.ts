@@ -245,6 +245,8 @@ export const createToolHost = (options: ToolHostOptions = {}): AgentToolHost => 
     renderImage,
     generateImage,
     searchImages: (request) => searchOpenverse(request),
+    // Loaded on first use: the image helpers import stores that import this module.
+    fetchImage: async (url) => (await import("@/images/image-from-url")).imageUrlAsDataUrl(url),
     resolveFont,
     getAttachment: (id) => findAttachmentSrc(options.attachments ?? [], id),
     applyOps,

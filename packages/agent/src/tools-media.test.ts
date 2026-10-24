@@ -322,3 +322,47 @@ describe("search_images", () => {
     expect(bad.data.error.code).toBe("invalid_input");
   });
 });
+
+describe("place_image embeds web images", () => {
+  const withFetch = (fetchImage: (url: string) => Promise<string>) =>
+    Object.assign(createFakeHost(), { fetchImage });
+
+  test("an https src is downloaded into the file, the page kept for credit", async () => {
+    const seen: string[] = [];
+    const host = withFetch(async (url) => {
+      seen.push(url);
+      return PNG;
+    });
+    const { isError, data } = await call(
+      "place_image",
+      { src: "https://cdn.example/fire.jpg", sourceUrl: "https://news.example/story" },
+      host,
+    );
+    expect(isError).toBe(false);
+    expect(seen).toEqual(["https://cdn.example/fire.jpg"]);
+    expect(findNode(host.getDoc(), data.created.id)).toMatchObject({
+      src: PNG,
+      source: { url: "https://news.example/story" },
+    });
+  });
+
+  test("a download that fails is an error the agent can act on, and changes nothing", async () => {
+    const host = withFetch(async () => {
+      throw new Error("blocked");
+    });
+    const before = host.getDoc();
+    const { isError, data } = await call("place_image", { src: "https://cdn.example/x.jpg" }, host);
+    expect(isError).toBe(true);
+    expect(data.error.code).toBe("image_unavailable");
+    expect(data.error.message).toContain("cdn.example");
+    expect(host.getDoc()).toBe(before);
+  });
+
+  test("data URLs are placed as they are", async () => {
+    const host = withFetch(async () => {
+      throw new Error("should not be called");
+    });
+    const { isError } = await call("place_image", { src: PNG }, host);
+    expect(isError).toBe(false);
+  });
+});

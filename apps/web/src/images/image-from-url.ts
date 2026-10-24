@@ -2,7 +2,7 @@ import { toast } from "sonner";
 import { bridgeHttpUrl } from "@/agent/bridge-client";
 import { useAgentStore } from "@/agent/use-agent-store";
 import { screenToDoc } from "@/canvas/types";
-import { insertImageCentered, readImageFile } from "@/interaction/image-file";
+import { insertImageCentered, isSupportedImage, readImageFile } from "@/interaction/image-file";
 import { useViewportStore, viewportCenter } from "@/store/use-viewport-store";
 
 /**
@@ -100,6 +100,34 @@ export const loadImageFromUrl = async (url: string, deps: LoadImageDeps = {}): P
       throw new Error("The Pego bridge did not answer.", { cause: error });
     }
     return asImage(response, host);
+  }
+};
+
+/**
+ * The image at `url` as a data URL ready to embed (scaled like a dropped file), for agent tools
+ * that place web images. Vector (SVG) images are refused: they go through insert_svg.
+ */
+export const imageUrlAsDataUrl = async (url: string, deps: LoadImageDeps = {}): Promise<string> => {
+  let blob = await loadImageFromUrl(url, deps);
+  if (blob.type === "image/svg+xml") throw new Error("That is an SVG; place it with insert_svg.");
+  // Sites often answer with AVIF, which the file reader does not take: the browser decodes it.
+  if (!isSupportedImage(blob)) blob = await reencodeAsWebp(blob);
+  const asset = await readImageFile(
+    new File([blob], fileNameFor(url, blob.type), { type: blob.type }),
+  );
+  if (!asset) throw new Error("That image could not be read.");
+  return asset.src;
+};
+
+/** Decode an image the browser can read (AVIF, ...) and encode it as WebP. */
+const reencodeAsWebp = async (blob: Blob): Promise<Blob> => {
+  const bitmap = await createImageBitmap(blob);
+  try {
+    const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+    canvas.getContext("2d")?.drawImage(bitmap, 0, 0);
+    return await canvas.convertToBlob({ type: "image/webp", quality: 0.9 });
+  } finally {
+    bitmap.close();
   }
 };
 
