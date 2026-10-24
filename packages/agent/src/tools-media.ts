@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { collectDocIds, pageOrFirst, type Op, type PegoNode } from "@pego/doc";
+import { collectDocIds, findNode, pageOrFirst, type Op, type PegoNode } from "@pego/doc";
 import { ImageSrcError, validateImageSrc } from "./media/image-src";
 import { convertSvg, MAX_SVG_BYTES, MAX_SVG_NODES, SvgError } from "./media/svg";
 import {
@@ -455,4 +455,83 @@ const searchImages = defineTool({
 });
 
 /** Media tools: insert_svg, place_image, generate_image, search_images. */
-export const mediaTools: ToolSpec[] = [insertSvg, placeImage, generateImage, searchImages];
+// --- remove_background ----------------------------------------------------------------
+
+const removeBackground = defineTool({
+  name: "remove_background",
+  description:
+    "Cut the subject out of a photo: removes the background of an image layer, or of the image fill of a frame, rectangle, ellipse or path, leaving transparency (one undo step). " +
+    'quality "standard" (default) runs on the user\'s device (a one-time 44 MB model download); "high" uses the user\'s gpt-image model when one is set up, and costs them a request. ' +
+    "Use it for product shots, people, animals or food that should sit on a new background; check the result with get_screenshot.",
+  inputSchema: {
+    type: "object",
+    properties: {
+      nodeId: { type: "string", description: "The image layer, or a shape with an image fill." },
+      quality: {
+        type: "string",
+        enum: ["standard", "high"],
+        description: 'Default "standard" (on device).',
+      },
+    },
+    required: ["nodeId"],
+    additionalProperties: false,
+  },
+  schema: z.strictObject({
+    nodeId: z.string().min(1),
+    quality: z.enum(["standard", "high"]).optional(),
+  }),
+  inputHint: 'Pass {nodeId, quality?: "standard" | "high"}.',
+  run: async (input, host) => {
+    if (!host.removeBackground) {
+      return fail("unsupported", "Background removal is not available in this editor.");
+    }
+    const node = findNode(host.getDoc(), input.nodeId);
+    if (!node) {
+      throw new ToolError(
+        "node_not_found",
+        `No node with id "${input.nodeId}"`,
+        "Use an id from get_document.",
+      );
+    }
+    const fill =
+      "fill" in node && typeof node.fill === "object" && node.fill?.type === "image"
+        ? node.fill
+        : null;
+    const src = node.type === "image" ? node.src : fill?.src;
+    if (!src) {
+      throw new ToolError(
+        "no_image",
+        `${node.name ?? node.id} has no image`,
+        "Pass an image layer, or a shape whose fill is an image.",
+      );
+    }
+    const quality = input.quality ?? "standard";
+    let cut: string;
+    try {
+      cut = checkedSrc(await host.removeBackground(src, { quality }));
+    } catch (error) {
+      if (error instanceof ToolError) throw error;
+      throw new ToolError(
+        "removal_failed",
+        error instanceof Error ? error.message : String(error),
+        quality === "high" ? 'Try quality "standard" (on device).' : undefined,
+      );
+    }
+    commitOps(host, [
+      {
+        op: "update",
+        id: node.id,
+        props: node.type === "image" ? { src: cut } : { fill: { ...fill!, src: cut } },
+      },
+    ]);
+    return ok({ ok: true, updated: node.id, quality });
+  },
+});
+
+export const mediaTools: ToolSpec[] = [
+  insertSvg,
+  placeImage,
+  generateImage,
+  searchImages,
+  removeBackground,
+];

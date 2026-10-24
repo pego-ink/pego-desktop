@@ -16,6 +16,7 @@ import {
 import { imageFileToDataUri, pickImageFile } from "@/panels/properties/image-file";
 import { DEFAULT_FILL, hasShapeFill, rawProp } from "@/panels/properties/node-props";
 import { useApplyProps } from "@/panels/properties/use-apply-props";
+import { RemoveBackgroundButtons } from "@/images/remove-background/RemoveBackgroundButtons";
 import { ShaderFillEditor } from "@/panels/properties/ShaderFillEditor";
 
 type Phase = "commit" | "extend";
@@ -123,34 +124,40 @@ export const FillSection = ({ node }: { node: PegoNode }) => {
               }
             />
           ) : fill.type === "image" ? (
-            <PropertyRow className="grid-cols-[1fr_auto]">
-              <NativeSelect
-                aria-label="Image fit"
-                value={fill.fit}
-                onChange={(event) =>
-                  editFill(
-                    (f) => ({ ...f, fit: event.target.value as ImageFill["fit"] }),
-                    "Change image fit",
-                  )
-                }
-              >
-                {IMAGE_FITS.map(([value, label]) => (
-                  <option key={value} value={value}>
-                    {label}
-                  </option>
-                ))}
-              </NativeSelect>
-              <IconButton
-                label="Replace image"
-                onClick={() =>
-                  void chooseImage().then((src) => {
-                    if (src) editFill((f) => ({ ...f, src }) as Fill, "Replace image");
-                  })
-                }
-              >
-                <ImageIcon />
-              </IconButton>
-            </PropertyRow>
+            <>
+              <PropertyRow className="grid-cols-[1fr_auto]">
+                <NativeSelect
+                  aria-label="Image fit"
+                  value={fill.fit}
+                  onChange={(event) =>
+                    editFill(
+                      (f) => ({ ...f, fit: event.target.value as ImageFill["fit"] }),
+                      "Change image fit",
+                    )
+                  }
+                >
+                  {IMAGE_FITS.map(([value, label]) => (
+                    <option key={value} value={value}>
+                      {label}
+                    </option>
+                  ))}
+                </NativeSelect>
+                <IconButton
+                  label="Replace image"
+                  onClick={() =>
+                    void chooseImage().then((src) => {
+                      if (src) editFill((f) => ({ ...f, src }) as Fill, "Replace image");
+                    })
+                  }
+                >
+                  <ImageIcon />
+                </IconButton>
+              </PropertyRow>
+              <RemoveBackgroundButtons
+                src={fill.src}
+                onRemoved={(src) => editFill((f) => ({ ...f, src }) as Fill, "Remove background")}
+              />
+            </>
           ) : (
             <>
               {fill.type === "linear" ? (

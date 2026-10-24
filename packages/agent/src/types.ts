@@ -85,6 +85,13 @@ export type ToolHost = {
    * Rejects with a user-readable message.
    */
   fetchImage?: (url: string) => Promise<string>;
+  /**
+   * Cut the subject out of an image (data URL or https): resolves with a data URL with
+   * transparency. "standard" runs on this device; "high" uses the user's image model (one that
+   * can return transparency). Rejects with a user-readable message; `remove_background` returns
+   * `unsupported` without it.
+   */
+  removeBackground?: (src: string, options: { quality: "standard" | "high" }) => Promise<string>;
 };
 
 /** A photo from an image search, with what crediting it needs. */

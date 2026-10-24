@@ -23,3 +23,4 @@ export { MAX_SVG_BYTES, SvgError } from "./media/svg";
 export { domSnapshotToNode } from "./tools-browser";
 export * from "./variants";
 export * from "./sanitize";
+export { MAX_DATA_URL_LENGTH } from "./media/image-src";
