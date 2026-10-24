@@ -319,7 +319,14 @@ in `apps/changelog/src/content/entries/<slug>.md` (the slug becomes `/<slug>`). 
 RSS), `tags` (`new`, `improved`, `fixed`), optional `version`, optional `image` + `imageAlt`. Write in the body with
 `##` for sections (rendered as h3 on the index). Product language and benefits first; no PR numbers or internal
 details. `bun test` in that workspace validates every entry. It deploys from `main` to changelog.pego.ink
-(`.github/workflows/deploy-changelog.yml`; `dev` and same-repo PRs get preview URLs).
+(`build-changelog.yml` builds, `deploy-changelog.yml` deploys; `dev` and same-repo PRs get preview URLs).
+
+**Deploys never run PR code next to a secret.** `build-web.yml` / `build-changelog.yml` build the push or PR
+without secrets (read-only token) and upload `dist` as an artifact; `deploy-web.yml` / `deploy-changelog.yml`
+(`workflow_run`, so always the definition on `dev`) take it as data and upload it with a pinned wrangler and the
+`wrangler.jsonc` from `dev`. main/dev deploy only commits on that branch; forks never deploy. Keep it that way: no
+`bun install`, build or repo script in a job that holds `CLOUDFLARE_API_TOKEN`. `release.yml` signs (macOS job) and
+publishes (release job) in the `release` environment, which needs the owner's approval.
 
 **Every PR into `dev` adds or updates an entry** (same-day changes may extend that day's entry). The `Changelog` check
 (`.github/workflows/changelog-check.yml`) fails a PR into `dev` that touches no file in `src/content/entries/`;

@@ -1,0 +1,52 @@
+name: Build Changelog
+
+# Builds the changelog site (apps/changelog) and uploads apps/changelog/dist as the artifact
+# "changelog-dist"; "Deploy Changelog" (deploy-changelog.yml) deploys it. This job runs the code of
+# the push or PR, so it gets no secrets and a read-only token (used only for the public release
+# data behind the download buttons, and to lift the API rate limit).
+on:
+  push:
+    branches: [main, dev]
+    paths:
+      - "apps/changelog/**"
+      - "bun.lock"
+      - ".github/workflows/build-changelog.yml"
+  pull_request:
+    paths:
+      - "apps/changelog/**"
+      - "bun.lock"
+      - ".github/workflows/build-changelog.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-changelog-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2.2.0
+        with:
+          bun-version: 1.3.11
+      # Astro 7 needs a newer Node than the runner's default.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 24
+      - run: bun install --frozen-lockfile
+      - name: Build
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: bun run --cwd apps/changelog build
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: changelog-dist
+          path: apps/changelog/dist
+          if-no-files-found: error
+          retention-days: 3
