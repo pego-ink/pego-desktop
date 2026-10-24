@@ -567,3 +567,60 @@ describe("browser image search", () => {
     );
   });
 });
+
+describe("browser view-images", () => {
+  // A 1x1 PNG: a real header, so its size can be read.
+  const PNG_1x1 =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII=";
+  const withFetch = (fetchImage: (url: string) => Promise<string>) =>
+    Object.assign(withBrowser(fakeBrowser().browser), { fetchImage });
+
+  test("shows the downloaded images to the model, with their sizes", async () => {
+    const host = withFetch(async () => `data:image/png;base64,${PNG_1x1}`);
+    const { result } = await call(
+      { action: "view-images", urls: ["https://cdn.example/a.png", "https://cdn.example/b.png"] },
+      host,
+    );
+    expect(result.isError).toBe(false);
+    expect(result.images).toHaveLength(2);
+    expect(result.images?.[0]).toMatchObject({ mediaType: "image/png", width: 1, height: 1 });
+    expect(result.content).toContain("image 2 (1x1)");
+    expect(result.content).toContain("do not copy");
+  });
+
+  test("skips what it cannot show and still shows the rest", async () => {
+    const host = withFetch(async (url) => {
+      if (url.includes("broken")) throw new Error("403");
+      if (url.includes("gif")) return "data:image/gif;base64,R0lGODlhAQABAAAAACw=";
+      return `data:image/png;base64,${PNG_1x1}`;
+    });
+    const { result } = await call(
+      {
+        action: "view-images",
+        urls: [
+          "http://insecure.example/a.png",
+          "https://x.example/broken.png",
+          "https://x.example/a.gif",
+          "https://x.example/ok.png",
+        ],
+      },
+      host,
+    );
+    expect(result.images).toHaveLength(1);
+    expect(result.content).toContain("only https");
+    expect(result.content).toContain("could not be downloaded (403)");
+    expect(result.content).toContain("not a png, jpeg or webp");
+  });
+
+  test("needs urls, at most four, and an editor that can download", async () => {
+    const host = withFetch(async () => `data:image/png;base64,${PNG_1x1}`);
+    expect((await call({ action: "view-images" }, host)).data.error.code).toBe("invalid_input");
+    const five = Array.from({ length: 5 }, (_, i) => `https://x.example/${i}.png`);
+    expect((await call({ action: "view-images", urls: five }, host)).isError).toBe(true);
+    const noFetch = withBrowser(fakeBrowser().browser);
+    expect(
+      (await call({ action: "view-images", urls: ["https://x.example/a.png"] }, noFetch)).data.error
+        .code,
+    ).toBe("unsupported");
+  });
+});

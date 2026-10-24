@@ -1,6 +1,7 @@
 import { describe, expect, test } from "bun:test";
 import {
   FIND_IMAGES_EXPRESSION,
+  siteImage,
   MAX_PAGE_IMAGES,
   googleImagesUrl,
   isGoogleInterstitial,
@@ -78,5 +79,55 @@ describe("Google Images", () => {
     expect(FIND_IMAGES_EXPRESSION.trim()).toStartWith("(() => {");
     expect(FIND_IMAGES_EXPRESSION.trim()).toEndWith("})()");
     expect(FIND_IMAGES_EXPRESSION).not.toMatch(/fetch\(|XMLHttpRequest|\.click\(|location\s*=/);
+  });
+});
+
+describe("site rules", () => {
+  test("Pinterest thumbnails become the 736px pin, its interface images are skipped", () => {
+    expect(
+      siteImage({ url: "https://i.pinimg.com/236x/3f/4d/24/a.jpg", width: 236, height: 419 }),
+    ).toEqual({
+      url: "https://i.pinimg.com/736x/3f/4d/24/a.jpg",
+      width: 736,
+      height: 1307,
+    });
+    const original = {
+      url: "https://i.pinimg.com/originals/3f/4d/24/a.jpg",
+      width: 944,
+      height: 1676,
+    };
+    expect(siteImage(original)).toBe(original);
+    expect(
+      siteImage({ url: "https://s.pinimg.com/gestalt/x.webp", width: 220, height: 220 }),
+    ).toBeNull();
+  });
+
+  test("Unsplash+ photos carry a paid-license note, SVG artwork is skipped", () => {
+    expect(
+      siteImage({
+        url: "https://plus.unsplash.com/premium_photo-1?w=2000",
+        width: 2000,
+        height: 1500,
+      })?.note,
+    ).toMatch(/paid/);
+    expect(
+      siteImage({ url: "https://images.unsplash.com/photo-1?w=2000", width: 2000, height: 1500 })
+        ?.note,
+    ).toBeUndefined();
+    expect(siteImage({ url: "https://cdn.example/logo.svg", width: 400, height: 400 })).toBeNull();
+  });
+
+  test("pictures shown as avatars or icons are left out, whatever their file size", () => {
+    const images = pageImages({
+      images: [
+        { url: "https://cdn.example/avatar.jpg", width: 400, height: 400, shown: 32 },
+        { url: "https://cdn.example/shot.jpg", width: 1600, height: 1200, shown: 355 },
+        { url: "https://cdn.example/lazy.jpg", width: 1200, height: 900, shown: 0 },
+      ],
+    });
+    expect(images.map((i) => i.url)).toEqual([
+      "https://cdn.example/shot.jpg",
+      "https://cdn.example/lazy.jpg",
+    ]);
   });
 });
