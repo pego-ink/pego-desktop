@@ -13,4 +13,6 @@ The built-in browser used to share the left side panel with the agent, so you sa
 - Drag the column's left edge to resize it. Pego remembers the width, and whether the column was open.
 - The column runs the full height of the window, mirroring the side panel on the left. Its header has buttons to move the browser back to the side panel and to close it.
 
+The page in the browser now also stays inside its panel when the panel moves, for example when the Properties column appears next to it after you select something.
+
 It works in both the docked and the floating interface. Choose **Left** to go back to the side panel.
