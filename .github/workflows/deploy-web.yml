@@ -41,6 +41,7 @@ jobs:
       RUN_BRANCH: ${{ github.event.workflow_run.head_branch }}
       RUN_REPO: ${{ github.event.workflow_run.head_repository.full_name }}
       SHA: ${{ github.event.workflow_run.head_sha }}
+      RUN_ID: ${{ github.event.workflow_run.id }}
       PR_NUMBER: ${{ github.event.workflow_run.pull_requests[0].number }}
     steps:
       - name: Choose the target
@@ -52,10 +53,21 @@ jobs:
           elif [ "$RUN_REPO" != "$GITHUB_REPOSITORY" ]; then
             echo "::notice::built from a fork: not deployed"
           elif [ "$RUN_EVENT" = push ] && { [ "$RUN_BRANCH" = main ] || [ "$RUN_BRANCH" = dev ]; }; then
-            # Only a commit that is on that branch (another ref can share the name).
+            # Only a commit that is on that branch (another ref can share the name). A build that
+            # finishes after a newer build of the branch started must not overwrite its deploy.
             status="$(gh api "repos/${GITHUB_REPOSITORY}/compare/${SHA}...${RUN_BRANCH}" --jq .status)"
             case "$status" in
-              identical | ahead) target="$RUN_BRANCH" ;;
+              identical) target="$RUN_BRANCH" ;;
+              ahead)
+                [[ "$RUN_ID" =~ ^[0-9]+$ ]] || { echo "::error::unexpected run id"; exit 1; }
+                newer="$(gh api "repos/${GITHUB_REPOSITORY}/actions/workflows/build-web.yml/runs?branch=${RUN_BRANCH}&event=push&per_page=30" \
+                  --jq "[.workflow_runs[] | select(.id > ${RUN_ID}) | select(.conclusion == null or .conclusion == \"success\")] | length")"
+                if [ "$newer" -gt 0 ]; then
+                  echo "::notice::a newer build of ${RUN_BRANCH} deploys instead"
+                else
+                  target="$RUN_BRANCH"
+                fi
+                ;;
               *)
                 echo "::error::${SHA} is not on ${RUN_BRANCH} (${status})"
                 exit 1
