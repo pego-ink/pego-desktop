@@ -1,6 +1,6 @@
 import {
   applyOp,
-  cloneWithFreshIds,
+  cloneAllWithFreshIds,
   findLocation,
   resolveNumber,
   type Op,
@@ -39,8 +39,10 @@ export const duplicateOps = (
   const insertedPerParent = new Map<string | null, number>();
   const ops: Op[] = [];
   const newIds: string[] = [];
-  for (const { id, loc } of located) {
-    const clone = cloneWithFreshIds(loc.node);
+  // Cloned together, so a connector duplicated with its ends stays attached to the copies.
+  const clones = cloneAllWithFreshIds(located.map(({ loc }) => loc.node));
+  for (const [i, { id, loc }] of located.entries()) {
+    const clone = clones[i]!;
     const shifted =
       offset === 0 || isFlexChild(doc, id)
         ? clone

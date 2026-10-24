@@ -9,6 +9,7 @@ import {
   ShapesIcon,
   SquareIcon,
   TypeIcon,
+  WorkflowIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { PegoNode, PegoNodeType } from "@pego/doc";
@@ -25,6 +26,7 @@ const ICONS: Record<PegoNodeType, LucideIcon> = {
   icon: ShapesIcon,
   ref: ComponentIcon,
   image: ImageIcon,
+  connector: WorkflowIcon,
 };
 
 /** The icon of a node type alone (no node at hand, e.g. a chip in the log). */

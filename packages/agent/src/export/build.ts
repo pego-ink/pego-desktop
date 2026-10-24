@@ -868,6 +868,8 @@ export const buildNode = (
   if (raw.type === "ref") return buildRef(raw, parent, ctx, scope, depth);
   // Pages have no box or markup of their own; exportCode rejects them as roots.
   if (raw.type === "page") return null;
+  // Connectors are wireflow notes between screens, not part of a screen's markup.
+  if (raw.type === "connector") return null;
   const box = ctx.layout?.get(raw.id);
   switch (raw.type) {
     case "frame":

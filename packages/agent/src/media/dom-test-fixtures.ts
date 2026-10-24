@@ -79,7 +79,7 @@ export const layoutByName = (snapshot: DomSnapshot, converted: Json): Map<string
   };
   const root = nodeSchema.parse(withIds(converted));
   const doc = {
-    version: 8,
+    version: 9,
     id: "d",
     name: "d",
     variables: {},

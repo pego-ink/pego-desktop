@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   collectDocIds,
+  danglingConnectors,
   findLocation,
   isContainer,
   opSchema,
@@ -253,7 +254,7 @@ const withoutNestedIds = (
 const deleteNodes = defineTool({
   name: "delete_nodes",
   description:
-    "Delete nodes and their subtrees. All ids are removed in one step or none are. " +
+    "Delete nodes and their subtrees. All ids are removed in one step or none are. Connectors attached to a deleted node are deleted with it. " +
     "Instances (ref nodes) that point at a deleted component stop rendering, so delete or update them as well.",
   inputSchema: {
     type: "object",
@@ -273,11 +274,16 @@ const deleteNodes = defineTool({
   run: ({ ids }, host) => {
     const doc = host.getDoc();
     const targets = withoutNestedIds(ids, (nodeId) => findLocation(doc, nodeId)?.parentId);
+    const dangling = danglingConnectors(doc, targets);
     commitOps(
       host,
-      targets.map((nodeId): Op => ({ op: "delete", id: nodeId })),
+      [...targets, ...dangling].map((nodeId): Op => ({ op: "delete", id: nodeId })),
     );
-    return ok({ ok: true, deleted: targets });
+    return ok({
+      ok: true,
+      deleted: targets,
+      ...(dangling.length > 0 ? { connectorsDeleted: dangling } : {}),
+    });
   },
 });
 

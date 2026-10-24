@@ -26,3 +26,4 @@ export * from "./paint";
 export * from "./file";
 export * from "./motion";
 export * from "./shaders";
+export * from "./connector";

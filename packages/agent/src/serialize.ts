@@ -152,6 +152,16 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
       tokens.push(`descendants=${JSON.stringify(n.descendants)}`);
     }
   }
+  if (n.type === "connector") {
+    // `from=login(right)`: the side only when it is not auto.
+    const end = (e: { id: string; side?: string }) =>
+      e.side && e.side !== "auto" ? `${e.id}(${e.side})` : e.id;
+    tokens.push(`from=${end(n.from as { id: string })}`, `to=${end(n.to as { id: string })}`);
+    push("route", n.route);
+    if (n.label) tokens.push(`label=${JSON.stringify(n.label)}`);
+    push("startMarker", n.startMarker);
+    push("endMarker", n.endMarker);
+  }
   return tokens;
 };
 

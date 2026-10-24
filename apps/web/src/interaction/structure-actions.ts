@@ -1,5 +1,5 @@
 import { toast } from "sonner";
-import { pageOf } from "@pego/doc";
+import { danglingConnectors, pageOf } from "@pego/doc";
 import { getLayout } from "@/canvas/layout";
 import { useDocumentStore } from "@/store/use-document-store";
 import { useViewportStore } from "@/store/use-viewport-store";
@@ -108,8 +108,10 @@ export const runDelete = (): boolean => {
   const state = useDocumentStore.getState();
   const ids = topmostSelected(state.doc, state.selection);
   if (ids.length === 0) return false;
+  // Connectors attached to what goes would point at nothing: they go in the same step.
+  const dangling = danglingConnectors(state.doc, ids);
   return state.commit(
-    ids.map((id) => ({ op: "delete", id })),
+    [...ids, ...dangling].map((id) => ({ op: "delete", id })),
     { label: "Delete" },
   );
 };

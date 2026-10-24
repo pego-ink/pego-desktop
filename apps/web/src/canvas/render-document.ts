@@ -16,7 +16,13 @@ import {
   resolveInstance,
   resolveNumber,
   resolveSides,
+  CONNECTOR_DEFAULT_STROKE,
+  CONNECTOR_LABEL,
+  connectorGeometryIn,
+  resolveStrokeWidth,
   type Box,
+  type ConnectorGeometry,
+  type ConnectorNode,
   type Effect,
   type Fill,
   type Layout,
@@ -419,6 +425,77 @@ const strokeWith = (
   draw(stroke);
 };
 
+/** A connector's line (with its markers) and label, drawn in document coordinates. */
+const drawConnector = (
+  scene: Scene,
+  node: ConnectorNode,
+  geometry: ConnectorGeometry,
+  box: Box,
+) => {
+  const { res, canvas, doc, paints } = scene;
+  const { ck } = res;
+  const stroke = node.stroke ?? CONNECTOR_DEFAULT_STROKE;
+  const color = resolveColor(stroke.color, doc.variables) ?? CONNECTOR_DEFAULT_STROKE.color;
+  const width = Math.max(0.5, resolveStrokeWidth(stroke.width, doc.variables));
+  const path = getSvgPath(ck, { geometry: geometry.d }, box);
+  if (!path) return;
+  canvas.save();
+  canvas.translate(-box.x, -box.y);
+  paints.stroke.setColor(ck.parseColorString(color));
+  paints.stroke.setStrokeWidth(width);
+  strokePathWithExtras(
+    ck,
+    canvas,
+    path,
+    paints.stroke,
+    {
+      strokeCap: "round",
+      strokeJoin: "round",
+      startMarker: node.startMarker ?? "none",
+      endMarker: node.endMarker ?? "arrow",
+    },
+    width,
+  );
+  const label = node.label?.trim();
+  if (label) {
+    const paragraph = getParagraph(
+      res,
+      {
+        type: "text",
+        id: `${node.id}#label`,
+        x: 0,
+        y: 0,
+        content: label,
+        fontSize: CONNECTOR_LABEL.fontSize,
+        fontWeight: CONNECTOR_LABEL.fontWeight,
+        fill: CONNECTOR_LABEL.color,
+      },
+      doc.variables,
+      undefined,
+    );
+    const textWidth = paragraph.getMaxIntrinsicWidth();
+    const textHeight = paragraph.getHeight();
+    const pill = ck.XYWHRect(
+      geometry.mid.x - textWidth / 2 - CONNECTOR_LABEL.padX,
+      geometry.mid.y - textHeight / 2 - CONNECTOR_LABEL.padY,
+      textWidth + CONNECTOR_LABEL.padX * 2,
+      textHeight + CONNECTOR_LABEL.padY * 2,
+    );
+    const radius = textHeight / 2 + CONNECTOR_LABEL.padY;
+    const rrect = ck.RRectXY(pill, radius, radius);
+    paints.fill.setColor(ck.parseColorString(CONNECTOR_LABEL.background));
+    canvas.drawRRect(rrect, paints.fill);
+    paints.stroke.setStrokeWidth(1);
+    canvas.drawRRect(rrect, paints.stroke);
+    canvas.drawParagraph(
+      paragraph,
+      geometry.mid.x - textWidth / 2,
+      geometry.mid.y - textHeight / 2,
+    );
+  }
+  canvas.restore();
+};
+
 /** Draw the node's own content in its local space (origin = box top-left). */
 const drawContent = (scene: Scene, node: PegoNode, box: Box) => {
   const { res, canvas, doc, paints } = scene;
@@ -481,6 +558,11 @@ const drawContent = (scene: Scene, node: PegoNode, box: Box) => {
     case "image":
       drawImageNode(res, canvas, node, box, doc.variables);
       return;
+    case "connector": {
+      const geometry = connectorGeometryIn(scene.layout, node);
+      if (geometry) drawConnector(scene, node, geometry, box);
+      return;
+    }
     default:
       return;
   }

@@ -151,6 +151,21 @@ const checkNode = (
   const suffix = node.id.includes("/") ? INSTANCE_HINT : "";
   const children = isContainer(node) ? node.children : [];
 
+  // Connectors belong at the top level and have no box rules of their own: only their ends.
+  if (node.type === "connector") {
+    const missing = [node.from.id, node.to.id].filter((end) => !layout.has(end));
+    if (missing.length > 0) {
+      report(
+        ctx,
+        "warning",
+        node,
+        `connector points at ${missing.map((end) => `"${end}"`).join(" and ")}, which is missing or hidden, so it is not drawn`,
+        "Delete the connector, or connect_nodes again between layers that exist.",
+      );
+    }
+    return;
+  }
+
   // Structure: the top level of a page holds screens, standalone pieces (each one frame) and
   // instances, never loose layers; those frames carry a name. Library pages and components
   // (reusable nodes) are exempt.

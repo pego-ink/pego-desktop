@@ -90,7 +90,7 @@ describe("countUpText", () => {
 describe("motionEnd", () => {
   const doc = (children: unknown[]): PegoDocument =>
     ({
-      version: 8,
+      version: 9,
       id: "d",
       name: "D",
       variables: {},

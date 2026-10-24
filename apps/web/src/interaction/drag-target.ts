@@ -262,6 +262,8 @@ export const planDrag = (input: DragInput): DragPlan => {
   const first = tops[0];
   if (first === undefined) return { ops: [], flexParentId: null };
   if (!parents.every((p) => p === parents[0])) return fallback;
+  // Connectors stay on the page (they follow their ends): only the other layers move.
+  if (tops.some((id) => index.get(id)?.type === "connector")) return fallback;
 
   const currentParent = parents[0] ?? null;
   const origParent = getNodeIndex(startDoc).get(first)?.parentId ?? null;

@@ -1,3 +1,4 @@
+import { connectorGeometryIn } from "./connector";
 import { resolveInstance } from "./instance";
 import { resolveNumber, resolveSides, type Sides } from "./resolve";
 import type { FrameNode, PegoDocument, PegoNode, TextNode, Variables } from "./schema";
@@ -56,9 +57,12 @@ export const findRenderedNode = (doc: PegoDocument, id: string): PegoNode | null
 export const placedByLayout = (parent: PegoNode | null | undefined, child: PegoNode): boolean =>
   parent?.type === "frame" && parent.layout !== "none" && !isAbsolute(child);
 
-/** The node opts out of a flex parent's flow (`layoutPosition: "absolute"`; pages never do). */
+/**
+ * The node opts out of a flex parent's flow: `layoutPosition: "absolute"`, and always for a
+ * connector (it is drawn between its ends). Pages never do.
+ */
 export const isAbsolute = (node: PegoNode): boolean =>
-  node.type !== "page" && node.layoutPosition === "absolute";
+  node.type === "connector" || (node.type !== "page" && node.layoutPosition === "absolute");
 
 type Size = { width: number; height: number };
 
@@ -292,7 +296,9 @@ export const computeLayout = (doc: PegoDocument, measureText: TextMeasurer): Lay
   };
 
   const layout: Layout = new Map();
+  const connectors: Extract<PegoNode, { type: "connector" }>[] = [];
   const record = (sized: Sized, x: number, y: number) => {
+    if (sized.node.type === "connector") connectors.push(sized.node);
     layout.set(sized.node.id, { x, y, width: sized.width, height: sized.height });
     for (const child of sized.children) record(child.sized, x + child.x, y + child.y);
   };
@@ -307,6 +313,13 @@ export const computeLayout = (doc: PegoDocument, measureText: TextMeasurer): Lay
         resolveNumber(node.y, doc.variables, 0),
       );
     }
+  }
+  // Connectors last: their box is the line between their ends, wherever those ended up. One
+  // with a missing (deleted, hidden) end gets no box, so it is neither drawn nor hit.
+  for (const connector of connectors) {
+    const geometry = connectorGeometryIn(layout, connector);
+    if (geometry) layout.set(connector.id, geometry.bounds);
+    else layout.delete(connector.id);
   }
   return layout;
 };

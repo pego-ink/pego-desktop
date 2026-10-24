@@ -1,5 +1,10 @@
 import {
+  CONNECTOR_DEFAULT_STROKE,
+  CONNECTOR_LABEL,
+  connectorGeometryIn,
+  distanceToPolyline,
   type Box,
+  type ConnectorNode,
   flipOf,
   type Layout,
   pageOrFirst,
@@ -66,6 +71,35 @@ const slackOf = (doc: PegoDocument, node: PegoNode, tolerance: number): number =
   return tolerance + Math.max(0, stroke) / 2;
 };
 
+/** Rough label pill size (no font metrics here): enough to click the label. */
+const labelReach = (node: ConnectorNode) => {
+  const label = node.label?.trim() ?? "";
+  if (!label) return null;
+  const width = label.length * CONNECTOR_LABEL.fontSize * 0.6 + CONNECTOR_LABEL.padX * 2;
+  const height = CONNECTOR_LABEL.fontSize * 1.4 + CONNECTOR_LABEL.padY * 2;
+  return { halfWidth: width / 2, halfHeight: height / 2 };
+};
+
+/** A connector is hit near its line or on its label, not anywhere in its (often large) box. */
+const hitsConnector = (
+  doc: PegoDocument,
+  layout: Layout,
+  node: ConnectorNode,
+  p: Point,
+  tolerance: number,
+): boolean => {
+  const geometry = connectorGeometryIn(layout, node);
+  if (!geometry) return false;
+  const width = resolveStrokeWidth((node.stroke ?? CONNECTOR_DEFAULT_STROKE).width, doc.variables);
+  if (distanceToPolyline(p, geometry.points) <= Math.max(tolerance, 2) + width / 2) return true;
+  const reach = labelReach(node);
+  return (
+    reach !== null &&
+    Math.abs(p.x - geometry.mid.x) <= reach.halfWidth &&
+    Math.abs(p.y - geometry.mid.y) <= reach.halfHeight
+  );
+};
+
 const hitNodes = (
   doc: PegoDocument,
   nodes: readonly PegoNode[],
@@ -83,6 +117,12 @@ const hitNodes = (
     const box = layout.get(node.id);
     if (!box) continue;
     const local = toLocal(p, box, parent, rotationOf(doc, node));
+    if (node.type === "connector") {
+      // Its geometry is in document coordinates (connectors sit on the page, unrotated).
+      const at = { x: local.x + box.x, y: local.y + box.y };
+      if (hitsConnector(doc, layout, node, at, tolerance)) return [...trail, node.id];
+      continue;
+    }
     const inside = inLocalBox(box, local, slackOf(doc, node, tolerance));
 
     if (node.type === "group") {

@@ -6,7 +6,7 @@ const aurora = { type: "shader", preset: "aurora" } as const;
 const still = { type: "shader", preset: "custom", code: "vec4 main(vec2 p) { return vec4(1.0); }" };
 
 const doc = {
-  version: 8,
+  version: 9,
   id: "d",
   name: "D",
   variables: {},

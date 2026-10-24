@@ -121,12 +121,41 @@ const nodePropSchemas: Record<string, JsonSchema> = {
   startMarker: {
     type: "string",
     enum: MARKERS,
-    description: "Path only. Decoration at the path start.",
+    description: "Path and connector. Decoration at the start (connector default none).",
   },
   endMarker: {
     type: "string",
     enum: MARKERS,
-    description: "Path only. Decoration at the path end.",
+    description: "Path and connector. Decoration at the end (connector default arrow).",
+  },
+  from: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "The layer the line starts at (a screen, a button)." },
+      side: { type: "string", enum: ["auto", "top", "right", "bottom", "left"] },
+    },
+    required: ["id"],
+    additionalProperties: false,
+    description: "Connector only. Start: layer id and side (default auto, facing the other end).",
+  },
+  to: {
+    type: "object",
+    properties: {
+      id: { type: "string", description: "The layer the line ends at." },
+      side: { type: "string", enum: ["auto", "top", "right", "bottom", "left"] },
+    },
+    required: ["id"],
+    additionalProperties: false,
+    description: "Connector only. End: layer id and side.",
+  },
+  route: {
+    type: "string",
+    enum: ["elbow", "straight", "curved"],
+    description: "Connector only. Default elbow (right angles).",
+  },
+  label: {
+    type: "string",
+    description: 'Connector only. Short text on the line, e.g. "Tap Beli" or "PIN salah".',
   },
   src: {
     type: "string",
@@ -170,14 +199,14 @@ const nodePropSchemas: Record<string, JsonSchema> = {
 };
 
 export const NODE_FORMAT_DESCRIPTION =
-  "A node object. `type` is required: frame | group | rectangle | ellipse | path | text | icon | image | ref. " +
+  "A node object. `type` is required: frame | group | rectangle | ellipse | path | text | icon | image | ref | connector. " +
   "`id` is optional (assigned when omitted). Only frame and group take `children` (same node format, nested). " +
   "Other fields apply per type: frame (slot, layout, gap, padding, justifyContent, alignItems, cornerRadius, clip, fill, stroke, effects), " +
   "rectangle (cornerRadius, fill, stroke, effects), ellipse (fill, stroke, effects), " +
   "path (geometry, viewBox, strokeCap, strokeJoin, startMarker, endMarker, fill, stroke, effects), " +
   "image (src, fit, cornerRadius, stroke, alt), " +
   "text (content, fontFamily, fontSize, fontWeight, fontStyle, lineHeight, letterSpacing, textAlign, fill, effects), icon (iconName, iconSet, fill, effects), " +
-  "ref (ref, descendants). Every node also takes visible (false hides it) and, in a horizontal or vertical frame, layoutPosition (absolute: placed at its own x/y over the flow). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
+  "ref (ref, descendants), connector (from, to, route, label, stroke, startMarker, endMarker; a line between two layers that follows them, at the top level of a page). Every node also takes visible (false hides it) and, in a horizontal or vertical frame, layoutPosition (absolute: placed at its own x/y over the flow). Colors are hex or $variable; numbers may be $variable; sizes are pixels, fill_container or fit_content. " +
   'Shape fill may be {"type":"linear","angle":180,"stops":[{"color","position":0..1}, ...]} (angle like CSS: 0 up, 90 right), ' +
   '{"type":"radial","center":[0.5,0.5],"radius":[0.5,0.5],"stops":[...]} or {"type":"image","src":"data:image/...;base64,...","fit":"cover"|"contain"|"stretch"}. ' +
   'stroke: {"color","width"} with width one number or [top,right,bottom,left]. ' +
@@ -189,7 +218,18 @@ export const nodeJsonSchema: JsonSchema = {
   properties: {
     type: {
       type: "string",
-      enum: ["frame", "group", "rectangle", "ellipse", "path", "text", "icon", "image", "ref"],
+      enum: [
+        "frame",
+        "group",
+        "rectangle",
+        "ellipse",
+        "path",
+        "text",
+        "icon",
+        "image",
+        "ref",
+        "connector",
+      ],
     },
     id: { type: "string", description: "Optional. Omit to get a generated id." },
     ...nodePropSchemas,

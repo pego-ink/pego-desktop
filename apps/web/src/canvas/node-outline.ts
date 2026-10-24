@@ -1,5 +1,12 @@
 import type { CanvasKit, Path, PathBuilder } from "canvaskit-wasm";
-import { resolveNumber, type Layout, type PegoDocument, type PegoNode } from "@pego/doc";
+import {
+  connectorGeometryIn,
+  resolveNumber,
+  type Box,
+  type Layout,
+  type PegoDocument,
+  type PegoNode,
+} from "@pego/doc";
 import { getSvgPath } from "@/canvas/render-document";
 import { findNodePath, nodeToDocAffine } from "@/canvas/node-transform";
 
@@ -7,10 +14,20 @@ import { findNodePath, nodeToDocAffine } from "@/canvas/node-transform";
 const localOutline = (
   ck: CanvasKit,
   doc: PegoDocument,
+  layout: Layout,
   node: PegoNode,
-  w: number,
-  h: number,
+  box: Box,
 ): PathBuilder | null => {
+  const { width: w, height: h } = box;
+  if (node.type === "connector") {
+    // Its line, moved from document coordinates into its box.
+    const geometry = connectorGeometryIn(layout, node);
+    const source = geometry && ck.Path.MakeFromSVGString(geometry.d);
+    if (!source) return null;
+    const builder = new ck.PathBuilder(source).transform([1, 0, -box.x, 0, 1, -box.y, 0, 0, 1]);
+    source.delete();
+    return builder;
+  }
   if (node.type === "path") {
     const source = getSvgPath(ck, node, { width: w, height: h });
     return source ? new ck.PathBuilder(source) : null;
@@ -49,7 +66,7 @@ export const buildNodeOutline = (
   if (!nodes || !node || !box) return null;
   const matrix = nodeToDocAffine(doc, layout, nodes);
   if (!matrix) return null;
-  const builder = localOutline(ck, doc, node, box.width, box.height);
+  const builder = localOutline(ck, doc, layout, node, box);
   if (!builder) return null;
   const { a, b, c, d, e, f } = matrix;
   builder.transform([a, c, e, b, d, f, 0, 0, 1]);

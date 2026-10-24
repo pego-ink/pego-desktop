@@ -32,6 +32,7 @@ const TOOL_LABELS: Record<Tool, string> = {
   polygon: "Polygon tool",
   star: "Star tool",
   image: "Place image",
+  connector: "Connector tool",
 };
 
 const labelKey = (key: string) => key.toUpperCase();

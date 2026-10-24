@@ -16,7 +16,7 @@ const node = (input: Record<string, unknown>): PegoNode => nodeSchema.parse(inpu
 
 const makeDoc = (): PegoDocument =>
   documentSchema.parse({
-    version: 8,
+    version: 9,
     id: "doc",
     name: "Test",
     variables: {},
