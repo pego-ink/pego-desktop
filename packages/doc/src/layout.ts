@@ -49,6 +49,17 @@ export const findRenderedNode = (doc: PegoDocument, id: string): PegoNode | null
   return found;
 };
 
+/**
+ * Whether `parent`'s flex layout places `child`: true for a child of a horizontal or vertical
+ * frame, unless the child opts out with `layoutPosition: "absolute"` (it keeps its own x/y).
+ */
+export const placedByLayout = (parent: PegoNode | null | undefined, child: PegoNode): boolean =>
+  parent?.type === "frame" && parent.layout !== "none" && !isAbsolute(child);
+
+/** The node opts out of a flex parent's flow (`layoutPosition: "absolute"`; pages never do). */
+export const isAbsolute = (node: PegoNode): boolean =>
+  node.type !== "page" && node.layoutPosition === "absolute";
+
 type Size = { width: number; height: number };
 
 /** A sized node with its children placed relative to its own top-left corner. */
@@ -71,7 +82,9 @@ const resolvePadding = (doc: PegoDocument, node: FrameNode): Sides =>
  * text measures itself); `fill_container` takes the parent's remaining main-axis space or its
  * full inner cross size. A fill child inside a hugging parent behaves as hug while the parent
  * is measured, then fills the size the parent ended up with. Children of `layout: "none"`
- * frames and groups keep their own x/y; children of flex frames are placed by the frame.
+ * frames and groups keep their own x/y; children of flex frames are placed by the frame, except
+ * `layoutPosition: "absolute"` ones: they keep their own x/y, take no room and do not count
+ * toward the frame's hug size, and `fill_container` gives them the frame's full size.
  */
 export const computeLayout = (doc: PegoDocument, measureText: TextMeasurer): Layout => {
   // Sizing the same node with the same constraints happens repeatedly in nested flex; memoize.
@@ -120,7 +133,27 @@ export const computeLayout = (doc: PegoDocument, measureText: TextMeasurer): Lay
       .filter((child): child is PegoNode => child !== null);
 
     if (node.type === "frame" && node.layout !== "none") {
-      return computeFlex(node, children, depth, { width, height });
+      const flow = children.filter((child) => placedByLayout(node, child));
+      if (flow.length === children.length) {
+        return computeFlex(node, children, depth, { width, height });
+      }
+      // Absolute children: placed once the frame's size is known, kept in drawing order.
+      const sized = computeFlex(node, flow, depth, { width, height });
+      const placedFlow = new Map(sized.children.map((placed, i) => [flow[i]!, placed]));
+      return {
+        ...sized,
+        children: children.map(
+          (child) =>
+            placedFlow.get(child) ?? {
+              sized: sizeOf(child, depth + 1, {
+                width: child.width === "fill_container" ? sized.width : undefined,
+                height: child.height === "fill_container" ? sized.height : undefined,
+              }),
+              x: resolveNumber(child.x, doc.variables, 0),
+              y: resolveNumber(child.y, doc.variables, 0),
+            },
+        ),
+      };
     }
     return computeAbsolute(node, children, depth, { width, height });
   };

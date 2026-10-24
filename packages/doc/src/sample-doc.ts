@@ -2,7 +2,7 @@ import type { PegoDocument } from "./schema";
 
 /** Small valid document used by the web shell and tests. */
 export const sampleDoc: PegoDocument = {
-  version: 7,
+  version: 8,
   id: "doc-sample",
   name: "Sample",
   variables: {},

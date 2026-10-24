@@ -27,6 +27,12 @@ export const justifyContentSchema = z.enum([
   "space_around",
 ]);
 export const alignItemsSchema = z.enum(["start", "center", "end"]);
+/**
+ * How a child of a flex frame is placed: `auto` (default) by the frame's layout, `absolute` at
+ * its own x/y from the frame's top-left corner, over the flow (overlays, sheets, badges). It takes
+ * no room in the layout and does not change the frame's hug size. No effect elsewhere.
+ */
+export const layoutPositionSchema = z.enum(["auto", "absolute"]);
 
 /** A gradient color stop; `position` runs from 0 (start) to 1 (end). */
 export const gradientStopSchema = z.object({
@@ -181,6 +187,8 @@ const renderedNode = baseNode.extend({
   flipY: z.boolean().optional(),
   /** Entrance played in preview and exports; the canvas shows the end state while editing. */
   animation: animationSchema.optional(),
+  /** `absolute`: kept out of the parent flex frame's flow, placed at its own x/y. */
+  layoutPosition: layoutPositionSchema.optional(),
 });
 
 const paintedNode = renderedNode.extend({
@@ -319,6 +327,7 @@ export type Effect = z.infer<typeof effectSchema>;
 export type Animation = z.infer<typeof animationSchema>;
 export type AnimationPreset = z.infer<typeof animationPresetSchema>;
 export type AnimationEasing = z.infer<typeof animationEasingSchema>;
+export type LayoutPosition = z.infer<typeof layoutPositionSchema>;
 export type RectangleNode = z.infer<typeof rectangleSchema>;
 export type EllipseNode = z.infer<typeof ellipseSchema>;
 export type PathNode = z.infer<typeof pathSchema>;
@@ -390,7 +399,7 @@ export const variableSchema = z.discriminatedUnion("type", [
 export const variablesSchema = z.record(z.string(), variableSchema);
 
 /** Current document format version; older documents go through `migrateDocument` first. */
-export const DOCUMENT_VERSION = 7;
+export const DOCUMENT_VERSION = 8;
 
 export const documentSchema = z.object({
   version: z.literal(DOCUMENT_VERSION),

@@ -32,7 +32,19 @@ const isObject = (value: unknown): value is Json =>
   typeof value === "object" && value !== null && !Array.isArray(value);
 
 /** Props copied as they are, per Pego node type (after renaming). */
-const BASE_KEYS = ["id", "name", "x", "y", "width", "height", "rotation", "opacity", "reusable"];
+const BASE_KEYS = [
+  "id",
+  "name",
+  "x",
+  "y",
+  "width",
+  "height",
+  "rotation",
+  "opacity",
+  "reusable",
+  // Same values in both formats: "auto" | "absolute" (kept out of a flex parent's flow).
+  "layoutPosition",
+];
 const PAINT_KEYS = ["fill"];
 const KEYS_BY_TYPE: Record<string, readonly string[]> = {
   frame: [
@@ -77,8 +89,6 @@ const CONVERTED_KEYS = new Set([
   "library",
   "descendants",
 ]);
-/** Accepted by `.pen` but not meaningful in Pego; dropped without a warning. */
-const SILENT_KEYS = new Set(["layoutPosition"]);
 
 const FONT_WEIGHTS: Record<string, number> = {
   thin: 100,
@@ -161,7 +171,7 @@ class Importer {
     // Pen hides a layer with `enabled: false`.
     if (raw.enabled === false) out.visible = false;
     for (const key of Object.keys(raw)) {
-      if (!keys.includes(key) && !CONVERTED_KEYS.has(key) && !SILENT_KEYS.has(key)) {
+      if (!keys.includes(key) && !CONVERTED_KEYS.has(key)) {
         this.warn(`Property "${key}" on ${String(type)} is not supported and was dropped`);
       }
     }

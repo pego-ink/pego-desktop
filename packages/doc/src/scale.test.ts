@@ -7,7 +7,7 @@ import type { Layout } from "./layout";
 
 const makeDoc = (children: unknown[], variables: Record<string, unknown> = {}): PegoDocument =>
   documentSchema.parse({
-    version: 7,
+    version: 8,
     id: "doc",
     name: "Test",
     variables,

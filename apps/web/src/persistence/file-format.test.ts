@@ -13,7 +13,7 @@ import {
 describe("file format", () => {
   test("round trips the showcase doc", () => {
     const text = serializeDocument(showcaseDoc);
-    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 7 });
+    expect(JSON.parse(text)).toMatchObject({ format: "pego", version: 8 });
     expect(parseDocumentFile(text)).toEqual(documentSchema.parse(showcaseDoc));
   });
 
@@ -41,7 +41,7 @@ describe("file format", () => {
       },
     });
     const doc = parseDocumentFile(text);
-    expect(doc.version).toBe(7);
+    expect(doc.version).toBe(8);
     expect(doc.children).toHaveLength(1);
     expect(doc.children[0]).toMatchObject({ type: "page", name: "Page 1" });
     expect(doc.children[0]!.children[0]).toMatchObject({

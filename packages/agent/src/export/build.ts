@@ -3,6 +3,7 @@ import {
   shaderFallbackColor,
   flipOf,
   isContainer,
+  placedByLayout,
   MAX_INSTANCE_DEPTH,
   resolveInstance,
   resolveNumber,
@@ -365,6 +366,10 @@ const ALIGN: Record<string, string> = { start: "flex-start", center: "center", e
 const frameLayoutDecls = (node: FrameNode, ctx: BuildCtx): Decl[] => {
   if (node.layout === "none") return node.children.length > 0 ? [["position", "relative"]] : [];
   const decls: Decl[] = [["display", "flex"]];
+  // Absolute children (layoutPosition) are placed from this box.
+  if (node.children.some((child) => !placedByLayout(node, flowNode(child, ctx)))) {
+    decls.push(["position", "relative"]);
+  }
   if (node.layout === "vertical") decls.push(["flex-direction", "column"]);
   const justify = JUSTIFY[node.justifyContent ?? "start"];
   if (justify) decls.push(["justify-content", justify]);
@@ -634,6 +639,10 @@ const childParent = (node: FrameNode | GroupNode): Parent =>
     ? { kind: "flex", axis: node.layout === "horizontal" ? "row" : "column" }
     : { kind: "abs" };
 
+/** The node as the layout sees it: an instance takes `layoutPosition` from its component too. */
+const flowNode = (child: PegoNode, ctx: BuildCtx): PegoNode =>
+  child.type === "ref" ? (resolveInstance(ctx.doc, child) ?? child) : child;
+
 const buildChildren = (
   node: FrameNode | GroupNode,
   ctx: BuildCtx,
@@ -641,7 +650,14 @@ const buildChildren = (
   depth: number,
 ): IrNode[] => {
   const parent = childParent(node);
-  return node.children.flatMap((child) => buildNode(child, parent, ctx, scope, depth + 1) ?? []);
+  return node.children.flatMap((child) => {
+    // An absolute child of a flex frame is positioned like a child of a `layout: "none"` frame.
+    const own =
+      parent.kind === "flex" && !placedByLayout(node, flowNode(child, ctx))
+        ? ({ kind: "abs" } as const)
+        : parent;
+    return buildNode(child, own, ctx, scope, depth + 1) ?? [];
+  });
 };
 
 const buildContainer = (

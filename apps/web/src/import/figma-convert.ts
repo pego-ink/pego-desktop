@@ -314,11 +314,12 @@ const convert = (
     ...(node.visible === false ? { visible: false } : {}),
     ...(node.opacity !== undefined && node.opacity < 1 ? { opacity: round(node.opacity) } : {}),
   };
-  if (parentFlex && node.layoutPositioning === "ABSOLUTE") {
-    ctx.warnings.add("absolutely positioned layers inside auto layout follow the layout instead");
-  }
-  const width = sizeProp(node.layoutSizingHorizontal, place.width, parentFlex);
-  const height = sizeProp(node.layoutSizingVertical, place.height, parentFlex);
+  // Absolute layers inside auto layout keep their place (Pego's layoutPosition) and fixed size.
+  const absolute = parentFlex && node.layoutPositioning === "ABSOLUTE";
+  if (absolute) base.layoutPosition = "absolute";
+  const inFlow = parentFlex && !absolute;
+  const width = sizeProp(node.layoutSizingHorizontal, place.width, inFlow);
+  const height = sizeProp(node.layoutSizingVertical, place.height, inFlow);
   const radius =
     node.cornerRadius ?? (node.rectangleCornerRadii ? node.rectangleCornerRadii[0] : undefined);
   if (node.rectangleCornerRadii && new Set(node.rectangleCornerRadii).size > 1) {

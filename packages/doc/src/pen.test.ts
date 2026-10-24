@@ -24,6 +24,37 @@ describe("importPen", () => {
     expect(pen([{ type: "rectangle", id: "r", enabled: true }]).warnings).toEqual([]);
   });
 
+  test("absolute children of a layout keep their place over the flow (a bottom sheet)", () => {
+    const { doc, warnings } = pen([
+      {
+        type: "frame",
+        id: "screen",
+        width: 390,
+        height: 844,
+        layout: "vertical",
+        children: [
+          { type: "frame", id: "content", width: "fill_container", height: "fill_container" },
+          { type: "rectangle", id: "overlay", layoutPosition: "absolute", width: 390, height: 844 },
+          {
+            type: "frame",
+            id: "sheet",
+            layoutPosition: "absolute",
+            y: 462,
+            width: 390,
+            height: 382,
+          },
+          { type: "rectangle", id: "flow", layoutPosition: "auto", width: 10, height: 10 },
+        ],
+      },
+    ]);
+    expect(warnings).toEqual([]);
+    expect(findNode(doc, "sheet")).toMatchObject({ layoutPosition: "absolute", y: 462 });
+    const layout = computeLayout(doc, () => ({ width: 0, height: 0 }));
+    expect(layout.get("content")).toMatchObject({ y: 0, height: 834 });
+    expect(layout.get("overlay")).toMatchObject({ y: 0, height: 844 });
+    expect(layout.get("sheet")).toMatchObject({ y: 462 });
+  });
+
   test("frames without layout become horizontal rows", () => {
     expect(only([{ type: "frame", id: "f", gap: 8 }])).toMatchObject({ layout: "horizontal" });
     expect(only([{ type: "frame", id: "f", layout: "none" }])).toMatchObject({ layout: "none" });

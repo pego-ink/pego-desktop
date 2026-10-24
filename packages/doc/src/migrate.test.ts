@@ -74,6 +74,32 @@ describe("migrateDocument", () => {
     expect(loadDocument(v6)?.children[0]?.children[0]).toMatchObject({ fill });
   });
 
+  test("upgrades version 7 documents and keeps absolute children", () => {
+    const v7 = {
+      version: 7,
+      id: "d",
+      name: "V7",
+      children: [
+        {
+          type: "page",
+          id: "p",
+          children: [
+            {
+              type: "frame",
+              id: "f",
+              layout: "vertical",
+              children: [{ type: "rectangle", id: "r", layoutPosition: "absolute", x: 4, y: 8 }],
+            },
+          ],
+        },
+      ],
+    };
+    expect(migrateDocument(v7)).toMatchObject({ version: DOCUMENT_VERSION });
+    expect(loadDocument(v7)?.children[0]?.children[0]).toMatchObject({
+      children: [{ id: "r", layoutPosition: "absolute", x: 4, y: 8 }],
+    });
+  });
+
   test("leaves current documents unchanged", () => {
     const current = { ...v0, version: DOCUMENT_VERSION };
     expect(migrateDocument(current)).toBe(current);

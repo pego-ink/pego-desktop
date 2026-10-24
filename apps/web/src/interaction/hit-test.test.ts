@@ -22,7 +22,7 @@ describe("hitPath", () => {
 });
 
 const makeDoc = (children: PegoNode[]): PegoDocument => ({
-  version: 7,
+  version: 8,
   id: "d",
   name: "d",
   variables: {},

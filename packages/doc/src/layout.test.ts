@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { computeLayout, type Box, type Layout, type TextMeasurer } from "./layout";
+import { computeLayout, placedByLayout, type Box, type Layout, type TextMeasurer } from "./layout";
 import { documentSchema, type PegoDocument } from "./schema";
 
 // Deterministic fake: 10px per char, 20px per line, wraps at floor(maxWidth / 10) chars.
@@ -13,7 +13,7 @@ const measureText: TextMeasurer = (node, maxWidth) => {
 
 const makeDoc = (children: unknown[], variables: Record<string, unknown> = {}): PegoDocument =>
   documentSchema.parse({
-    version: 7,
+    version: 8,
     id: "doc",
     name: "Test",
     variables,
@@ -667,5 +667,98 @@ describe("hidden layers", () => {
     expect(layout.has("inner")).toBe(false);
     expect(layout.has("top")).toBe(false);
     expect(box(layout, "b").x).toBe(30);
+  });
+});
+
+describe("absolute children of flex frames", () => {
+  // A phone screen with a bottom sheet over it, like a .pen modal screen.
+  const screen = (sheet: Record<string, unknown> = {}) =>
+    layoutOf([
+      {
+        type: "frame",
+        id: "screen",
+        width: 390,
+        height: 844,
+        layout: "vertical",
+        padding: 10,
+        gap: 10,
+        children: [
+          rect("top", { width: "fill_container", height: 100 }),
+          rect("content", { width: "fill_container", height: "fill_container" }),
+          rect("overlay", {
+            layoutPosition: "absolute",
+            width: "fill_container",
+            height: "fill_container",
+          }),
+          rect("tabs", { width: "fill_container", height: 60 }),
+          rect("sheet", {
+            layoutPosition: "absolute",
+            x: 0,
+            y: 462,
+            width: 390,
+            height: 300,
+            ...sheet,
+          }),
+        ],
+      },
+    ]);
+
+  test("they take no room: the flow children are placed as if they were not there", () => {
+    const layout = screen();
+    expect(box(layout, "top")).toEqual({ x: 10, y: 10, width: 370, height: 100 });
+    // 844 - padding 20 - top 100 - tabs 60 - 2 gaps (not 4) = 644.
+    expect(box(layout, "content")).toEqual({ x: 10, y: 120, width: 370, height: 644 });
+    expect(box(layout, "tabs")).toEqual({ x: 10, y: 774, width: 370, height: 60 });
+  });
+
+  test("they sit at their own x/y from the frame's corner; fill_container takes its full size", () => {
+    const layout = screen();
+    expect(box(layout, "sheet")).toEqual({ x: 0, y: 462, width: 390, height: 300 });
+    expect(box(layout, "overlay")).toEqual({ x: 0, y: 0, width: 390, height: 844 });
+  });
+
+  test("a hugging frame does not grow for them", () => {
+    const layout = layoutOf([
+      {
+        type: "frame",
+        id: "chip",
+        layout: "horizontal",
+        padding: 4,
+        children: [
+          rect("label", { width: 40, height: 20 }),
+          rect("badge", { layoutPosition: "absolute", x: 38, y: -6, width: 12, height: 12 }),
+        ],
+      },
+    ]);
+    expect(box(layout, "chip")).toEqual({ x: 0, y: 0, width: 48, height: 28 });
+    expect(box(layout, "badge")).toEqual({ x: 38, y: -6, width: 12, height: 12 });
+  });
+
+  test("outside a flex frame the prop changes nothing", () => {
+    const layout = layoutOf([
+      {
+        type: "frame",
+        id: "free",
+        children: [rect("r", { layoutPosition: "absolute", x: 5, y: 6, width: 10, height: 10 })],
+      },
+    ]);
+    expect(box(layout, "r")).toEqual({ x: 5, y: 6, width: 10, height: 10 });
+  });
+
+  test("placedByLayout", () => {
+    const flex = { type: "frame", id: "f", layout: "vertical", children: [] } as never;
+    const none = { type: "frame", id: "n", layout: "none", children: [] } as never;
+    const child = { type: "rectangle", id: "r", x: 0, y: 0 } as never;
+    const floating = {
+      type: "rectangle",
+      id: "a",
+      x: 0,
+      y: 0,
+      layoutPosition: "absolute",
+    } as never;
+    expect(placedByLayout(flex, child)).toBe(true);
+    expect(placedByLayout(flex, floating)).toBe(false);
+    expect(placedByLayout(none, child)).toBe(false);
+    expect(placedByLayout(null, child)).toBe(false);
   });
 });

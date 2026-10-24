@@ -33,7 +33,7 @@ describe("placementSize", () => {
 
 describe("SVG files", () => {
   const doc = {
-    version: 7,
+    version: 8,
     id: "doc",
     name: "Test",
     variables: {},

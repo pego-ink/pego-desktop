@@ -6,6 +6,7 @@ import {
   collectDocIds,
   findLocation,
   OpError,
+  placedByLayout,
   resolveInstance,
   resolveNumber,
   type Op,
@@ -411,11 +412,9 @@ const detachInstance = defineTool({
 
 // --- copy_nodes ----------------------------------------------------------------
 
-const isFlexParent = (doc: PegoDocument, id: string | null): boolean => {
-  if (id === null) return false;
-  const node = findLocation(doc, id)?.node;
-  return node?.type === "frame" && node.layout !== "none";
-};
+/** Whether the frame `id` lays `child` out itself (a copy there needs no offset). */
+const placedIn = (doc: PegoDocument, id: string | null, child: PegoNode): boolean =>
+  id !== null && placedByLayout(findLocation(doc, id)?.node, child);
 
 const shift = (node: PegoNode, dx: number, dy: number, doc: PegoDocument): PegoNode => ({
   ...node,
@@ -488,7 +487,7 @@ const copyNodes = defineTool({
           : input.index === undefined
             ? undefined
             : input.index + i;
-      const flex = isFlexParent(current, destination);
+      const flex = placedIn(current, destination, loc.node);
       const offset = input.offset ?? (flex ? { x: 0, y: 0 } : { x: 20, y: 20 });
       const copy = cloneWithFreshIds(loc.node);
       const node =

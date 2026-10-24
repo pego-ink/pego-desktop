@@ -3,6 +3,7 @@ import {
   isContainer,
   OpError,
   pageOrFirst,
+  placedByLayout,
   type Animation,
   type Effect,
   type Fill,
@@ -87,6 +88,7 @@ const propTokens = (node: PegoNode, showPosition: boolean): string[] => {
     if (value !== undefined) tokens.push(`${key}=${fmt(value)}`);
   };
 
+  if (n.layoutPosition === "absolute") push("layoutPosition", "absolute");
   if (showPosition) {
     if (n.x !== 0) push("x", n.x);
     if (n.y !== 0) push("y", n.y);
@@ -182,10 +184,9 @@ const serializeNodes = (
     nodeLine(node, depth, showPosition, collapsed ? `(${children.length} children not shown)` : ""),
   );
   if (!isContainer(node) || collapsed) return;
-  // Children of a flex frame are positioned by layout; others keep their own x/y.
-  const childShowsPosition = !(node.type === "frame" && node.layout !== "none");
+  // Children of a flex frame are positioned by layout (unless absolute); others keep their x/y.
   for (const child of children)
-    serializeNodes(child, depth + 1, maxDepth, childShowsPosition, lines);
+    serializeNodes(child, depth + 1, maxDepth, !placedByLayout(node, child), lines);
 };
 
 const countNodes = (nodes: PegoNode[]): number =>
@@ -238,8 +239,7 @@ export const serializeDocument = (doc: PegoDocument, opts: SerializeOptions = {}
     );
     lines.push("tree:");
     const parent = loc.parentId === null ? null : findLocation(doc, loc.parentId)?.node;
-    const showPosition = !(parent && parent.type === "frame" && parent.layout !== "none");
-    serializeNodes(loc.node, 0, maxDepth, showPosition, lines);
+    serializeNodes(loc.node, 0, maxDepth, !placedByLayout(parent, loc.node), lines);
   } else {
     lines.push(`tree of page ${active.id}:`);
     for (const node of active.children) serializeNodes(node, 0, maxDepth, true, lines);

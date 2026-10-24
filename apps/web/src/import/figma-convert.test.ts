@@ -70,7 +70,7 @@ const card: FigmaNode = {
 };
 
 const asDoc = (nodes: PegoNode[]): PegoDocument => ({
-  version: 7,
+  version: 8,
   id: "d",
   name: "d",
   variables: {},
@@ -118,6 +118,33 @@ describe("figma import", () => {
     });
     // Pego's own layout puts the button where Figma had it.
     const layout = computeLayout(asDoc(nodes), () => ({ width: 80, height: 28 }));
+    expect(layout.get(frame.children[1]!.id)).toEqual({ x: 24, y: 64, width: 120, height: 40 });
+  });
+
+  test("an absolute layer inside auto layout keeps its place over the flow", () => {
+    const badge: FigmaNode = {
+      id: "1:9",
+      name: "Badge",
+      type: "ELLIPSE",
+      absoluteBoundingBox: box(400, 192, 16, 16),
+      layoutPositioning: "ABSOLUTE",
+      layoutSizingHorizontal: "FILL",
+      fills: [{ type: "SOLID", color: { r: 1, g: 0, b: 0, a: 1 } }],
+    };
+    const { nodes, warnings } = convertFigmaNodes([
+      { ...card, children: [...(card.children ?? []), badge] },
+    ]);
+    expect(warnings).toEqual([]);
+    const frame = nodes[0] as FrameNode;
+    expect(frame.children[2]).toMatchObject({
+      layoutPosition: "absolute",
+      x: 300,
+      y: -8,
+      width: 16,
+    });
+    const layout = computeLayout(asDoc(nodes), () => ({ width: 80, height: 28 }));
+    expect(layout.get(frame.children[2]!.id)).toEqual({ x: 300, y: -8, width: 16, height: 16 });
+    // The flow is unchanged: the button is still under the title.
     expect(layout.get(frame.children[1]!.id)).toEqual({ x: 24, y: 64, width: 120, height: 40 });
   });
 

@@ -67,7 +67,7 @@ design/          mocks (.pen, png, html), not linted
 ## The `.pego` file format
 
 Source of truth: `packages/doc/src/schema.ts` (document), `packages/doc/src/migrate.ts` (versions) and
-`apps/web/src/persistence/file-format.ts` (envelope). Current version: **7**.
+`apps/web/src/persistence/file-format.ts` (envelope). Current version: **8**.
 If this section and the code disagree, the code wins; fix this section.
 
 ### Envelope
@@ -75,7 +75,7 @@ If this section and the code disagree, the code wins; fix this section.
 A `.pego` file is UTF-8 JSON, pretty-printed with 2 spaces:
 
 ```json
-{ "format": "pego", "version": 7, "document": { ... } }
+{ "format": "pego", "version": 8, "document": { ... } }
 ```
 
 `parseDocumentFile` rejects anything without `"format": "pego"` and versions newer than this build. Older
@@ -84,13 +84,13 @@ versions are upgraded by `migrateDocument` (also applied to the IndexedDB autosa
 `viewBox` and gradient/image fills; version 2 added pages (older top-level nodes become "Page 1"); version 3
 added `image` nodes, path `strokeCap`/`strokeJoin`/`startMarker`/`endMarker` and text `fontStyle` (no data
 change: the bump makes older builds refuse these files instead of dropping the props); version 4 added `visible` (hidden layers), frame `slot` (component slots), page
-`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change; version 7 added the `shader` fill type, again with no data change.
+`library` (library pages) and image `source` (screenshot origin), again with no data change; version 5 added `flipX`/`flipY` (mirror around the node's own center, on every node but pages), again with no data change; version 6 added `animation` (an entrance played in preview and exports, every node but pages), again with no data change; version 7 added the `shader` fill type, again with no data change; version 8 added `layoutPosition` (absolute children of flex frames), again with no data change.
 
 ### Document
 
 ```json
 {
-  "version": 7,
+  "version": 8,
   "id": "k3m9x0qa",
   "name": "Landing page",
   "variables": {
@@ -123,7 +123,7 @@ change: the bump makes older builds refuse these files instead of dropping the p
 ### Nodes
 
 Every node has `id` (unique in the whole document), `type`, and optionally `name`, `x`, `y` (default `0`),
-`width`, `height`, `rotation`, `flipX`, `flipY` (not on pages: mirror around the box center, applied before the rotation, so the box does not change; children and text mirror too), `animation` (not on pages, see Motion), `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
+`width`, `height`, `rotation`, `flipX`, `flipY` (not on pages: mirror around the box center, applied before the rotation, so the box does not change; children and text mirror too), `animation` (not on pages, see Motion), `layoutPosition` (not on pages, see Layout), `opacity`, `reusable`, `visible` (`false` hides the node and its children: not
 drawn, not hit, no room in a flex layout, not exported).
 
 | Type        | Extra props                                                                                                                              | Children |
@@ -167,7 +167,12 @@ Value rules:
 - **Layout**: `layout` is `"none"` (default; children keep their own `x`/`y`), `"horizontal"` or `"vertical"`
   (children are placed by the frame; their `x`/`y` are ignored). `padding` is one value or
   `[top, right, bottom, left]`. `justifyContent`: `start | center | end | space_between | space_around`.
-  `alignItems`: `start | center | end`.
+  `alignItems`: `start | center | end`. A child with `layoutPosition: "absolute"` (default `"auto"`) stays out
+  of the flow: drawn at its own `x`/`y` from the frame's top-left corner, in child order, taking no room and not
+  counting toward the frame's hug size; `fill_container` gives it the frame's full size (overlays, sheets,
+  badges). `placedByLayout(parent, child)` (`packages/doc/src/layout.ts`) is the one test for "the layout places
+  this child"; use it instead of checking `parent.layout`. Export writes it as `position: absolute` in a
+  `position: relative` flex box; dragging it moves it instead of reordering; Properties › Position toggles it.
 - **Motion**: `animation` is `{ "preset", "delay"?, "duration"?, "easing"?, "countUp"? }`, an entrance from a
   start state to the node as designed. Presets `none | fade | slide_up | slide_down | slide_left | slide_right |
 grow_up | grow_right | scale | pop`, `delay`/`duration` in ms (default 0 / 600), `easing`
@@ -228,7 +233,8 @@ valid in a file, but it must be unique in the document; `insert` fails with `dup
 `importPen` (`packages/doc/src/pen.ts`) converts a `.pen` document; File → Open accepts `.pen` and opens the
 result as an unsaved `.pego`. Differences it handles: `.pen` frames without `layout` are horizontal, text
 `textGrowth`, `strokeWidth` objects, `effect` shapes, `icon`/`library` props, string font weights, 2/3-value
-padding. Instances that restyle their root or replace a descendant are detached. Anything else it cannot
+padding; `layoutPosition` is the same prop in both formats. Instances that restyle their root or replace a
+descendant are detached. Anything else it cannot
 represent is dropped and reported as a warning, never silently. Test fixture: `design/pego.pen`.
 
 ## Documents, sources and workspaces
