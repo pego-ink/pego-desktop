@@ -79,7 +79,7 @@ describe("insert_svg", () => {
     expect(data).toMatchObject({ ok: true, width: 48, height: 48 });
     expect((host as ReturnType<typeof createFakeHost>).calls.applyOps).toHaveLength(1);
     const frame = findNode(host.getDoc(), data.created.id);
-    expect(frame).toMatchObject({ type: "frame", x: 5, y: 6, width: 48 });
+    expect(frame).toMatchObject({ type: "group", x: 5, y: 6, width: 48 });
     expect(data.created.children.map((c: Json) => c.type)).toEqual(["ellipse", "path"]);
   });
 
@@ -90,7 +90,7 @@ describe("insert_svg", () => {
     const { isError, data } = await call("insert_svg", { svg: SVG, parentId: parent.id }, host);
     expect(isError).toBe(false);
     const inserted = findNode(host.getDoc(), data.created.id);
-    expect(inserted?.type).toBe("frame");
+    expect(inserted?.type).toBe("group");
   });
 
   test("unsafe svg returns a coded error and leaves the document untouched", async () => {

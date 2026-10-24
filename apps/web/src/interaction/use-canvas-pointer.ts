@@ -411,7 +411,14 @@ export const useCanvasPointer = (elementRef: RefObject<HTMLCanvasElement | null>
           snap: snapEnabled(),
         });
         ok = apply(
-          resizeOps(gesture.startDoc, gesture.id, gesture.frame.box, next, snapEnabled()),
+          resizeOps(
+            gesture.startDoc,
+            gesture.id,
+            gesture.frame.box,
+            next,
+            snapEnabled(),
+            getLayout(gesture.startDoc),
+          ),
           "Resize",
         );
       }

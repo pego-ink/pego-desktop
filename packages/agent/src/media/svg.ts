@@ -733,7 +733,8 @@ export type SvgOptions = {
 };
 
 /**
- * Convert SVG markup into one frame node (clipped to the viewBox) of editable Pego nodes.
+ * Convert SVG markup into one group node (sized to the viewBox, not clipped) of editable Pego nodes.
+ * A group scales its contents when it is resized, so the import behaves like one vector object.
  * Throws SvgError for oversized, malformed or unsafe input; unsupported features become warnings.
  */
 export const convertSvg = (source: string, options: SvgOptions = {}): SvgConversion => {
@@ -791,11 +792,10 @@ export const convertSvg = (source: string, options: SvgOptions = {}): SvgConvers
   const children = convertChildren(root, { matrix: base, style, useDepth: 0 }, state);
   emit(state);
   const node: RawNode = {
-    type: "frame",
+    type: "group",
     name: options.name ?? (root.attrs.id || "SVG"),
     width: round(targetW),
     height: round(targetH),
-    clip: true,
     children,
   };
   return {

@@ -238,7 +238,7 @@ export const isSvgFile = (file: Pick<File, "name" | "type">): boolean =>
   file.type === "image/svg+xml" || file.name.toLowerCase().endsWith(".svg");
 
 /**
- * SVG markup as vector layers (a clipped frame) centered on doc point `center`, at placement size
+ * SVG markup as vector layers (a group) centered on doc point `center`, at placement size
  * (longest side <= MAX_PLACE_SIDE, scaled as vectors). Null when the markup cannot be converted.
  */
 export const buildSvgNode = (

@@ -6,6 +6,7 @@ export * from "./run-undo";
 export * from "./resolve";
 export * from "./instance";
 export * from "./layout";
+export * from "./scale";
 export * from "./id";
 export {
   collectDocIds,

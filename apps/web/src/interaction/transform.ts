@@ -1,5 +1,12 @@
-import { resolveNumber, type Box, type Op, type PegoDocument } from "@pego/doc";
-import { findNode } from "@pego/doc";
+import {
+  findNode,
+  resolveNumber,
+  scaleSubtreeOps,
+  type Box,
+  type Layout,
+  type Op,
+  type PegoDocument,
+} from "@pego/doc";
 import { getNodeIndex } from "./hit-test";
 import { roundPx } from "./snap";
 
@@ -135,22 +142,39 @@ export const moveOps = (
     return [{ op: "update", id, props: { x: roundPx(x + dx, snap), y: roundPx(y + dy, snap) } }];
   });
 
-/** Absolute `update` op that resizes one node from its start state to `next` (doc coords). */
+/**
+ * Absolute `update` ops that resize one node from its start state to `next` (doc coords).
+ * A group has no box of its own to stretch: its contents are scaled with it
+ * (`scaleSubtreeOps`, from `startLayout`), and it keeps hugging unless it had a numeric size.
+ */
 export const resizeOps = (
   startDoc: PegoDocument,
   id: string,
   startBox: Box,
   next: Box,
   snap = false,
+  startLayout?: Layout,
 ): Op[] => {
   const node = findNode(startDoc, id);
   if (!node) return [];
-  const props: Record<string, number> = { width: next.width, height: next.height };
+  const isGroup = node.type === "group";
+  const props: Record<string, number> = {};
+  if (!isGroup || typeof node.width === "number") props.width = next.width;
+  if (!isGroup || typeof node.height === "number") props.height = next.height;
   if (!isFlexChild(startDoc, id)) {
     props.x = roundPx(resolveNumber(node.x, startDoc.variables, 0) + next.x - startBox.x, snap);
     props.y = roundPx(resolveNumber(node.y, startDoc.variables, 0) + next.y - startBox.y, snap);
   }
-  return [{ op: "update", id, props }];
+  const own: Op[] = [{ op: "update", id, props }];
+  if (!isGroup || !startLayout || startBox.width <= 0 || startBox.height <= 0) return own;
+  const scale = scaleSubtreeOps(
+    startDoc,
+    startLayout,
+    id,
+    next.width / startBox.width,
+    next.height / startBox.height,
+  );
+  return [...own, ...scale];
 };
 
 /** `update` ops that shift selected nodes by (dx, dy) from the current document (nudge). */

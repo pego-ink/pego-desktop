@@ -107,7 +107,7 @@ describe("paste", () => {
       target,
     )!;
     const svgNode = findNode(apply(sampleDoc, svg), svg.select[0]!);
-    expect(svgNode?.type).toBe("frame");
+    expect(svgNode?.type).toBe("group");
     expect(pasteSvg(sampleDoc, "hello <svg>", target)).toBeNull();
 
     const text = pasteText(sampleDoc, "  Hello\r\nworld  ", target)!;

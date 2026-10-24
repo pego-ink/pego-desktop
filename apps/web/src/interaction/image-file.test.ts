@@ -56,14 +56,14 @@ describe("SVG files", () => {
       { x: 100, y: 100 },
     );
     expect(node).toMatchObject({
-      type: "frame",
+      type: "group",
       name: "icon",
       width: 10,
       height: 20,
       x: 95,
       y: 90,
     });
-    expect(node?.type === "frame" ? node.children[0]?.type : null).toBe("rectangle");
+    expect(node?.type === "group" ? node.children[0]?.type : null).toBe("rectangle");
   });
 
   test("larger ones are scaled to the placement size, still as vectors", () => {
@@ -74,7 +74,7 @@ describe("SVG files", () => {
       onPage,
       { x: 0, y: 0 },
     );
-    expect(node).toMatchObject({ type: "frame", width: 800, height: 400, x: -400, y: -200 });
+    expect(node).toMatchObject({ type: "group", width: 800, height: 400, x: -400, y: -200 });
   });
 
   test("markup that cannot be converted gives null (placed as an image instead)", () => {
