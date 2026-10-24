@@ -1,5 +1,13 @@
 import { useCallback, useLayoutEffect, useMemo, useRef, type ReactNode } from "react";
-import { PanelRightIcon, Redo2Icon, Undo2Icon } from "lucide-react";
+import {
+  GlobeIcon,
+  PanelLeftIcon,
+  PanelRightIcon,
+  Redo2Icon,
+  Undo2Icon,
+  XIcon,
+} from "lucide-react";
+import { PanelHeader } from "@pego/ui/components/panel-header";
 import { Canvas } from "@/components/Canvas";
 import { ZoomControl } from "@/components/ZoomControl";
 import { LayersPanel } from "@/panels/LayersPanel";
@@ -117,6 +125,34 @@ const BrowserColumn = ({ floating = false }: { floating?: boolean }) => {
           : "border-l border-border bg-card",
       )}
     >
+      <PanelHeader>
+        <span className="flex min-w-0 items-center gap-1.5">
+          <GlobeIcon aria-hidden className="size-3.5 shrink-0 text-muted-foreground" />
+          Browser
+        </span>
+        <span className="flex items-center gap-0.5">
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Move the browser to the side panel"
+            title="Move the browser to the side panel"
+            className="text-muted-foreground"
+            onClick={() => useLayoutStore.getState().setBrowserSide("left")}
+          >
+            <PanelLeftIcon />
+          </Button>
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label="Close the browser"
+            title="Close the browser"
+            className="text-muted-foreground"
+            onClick={() => useLayoutStore.getState().pressRailTab("browser")}
+          >
+            <XIcon />
+          </Button>
+        </span>
+      </PanelHeader>
       <BrowserPanel />
       <ResizeHandle
         edge="start"
@@ -418,11 +454,12 @@ export const EditorShell = () => {
                 <Canvas />
                 <ZoomControl />
               </main>
-              {browserOnRight ? <BrowserColumn /> : null}
               <RightColumn />
             </div>
           )}
         </div>
+        {/* Full height on the far right, mirroring the side panel on the left. */}
+        {browserOnRight && !dashboard ? <BrowserColumn /> : null}
       </div>
     </div>
   );
