@@ -8,6 +8,7 @@ import type { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { agentTools } from "@pego/agent";
 import { resolveClaudeExecutable } from "../claude-code";
 import { SDK_SERVER_NAME } from "../config";
+import { READ_FILE_TOOLS } from "../file-tools";
 import { createMapState, describeRunFailure, mapSdkMessage } from "../run-events";
 import { extractVersion, runCapture } from "./process";
 import type { AgentAttachment } from "../attachments";
@@ -35,7 +36,10 @@ export const buildQueryOptions = (input: {
   cwd: input.cwd,
   systemPrompt: input.systemPrompt,
   tools: [],
-  allowedTools: agentTools.map((tool) => `mcp__${SDK_SERVER_NAME}__${tool.name}`),
+  allowedTools: [
+    ...agentTools.map((tool) => tool.name),
+    ...READ_FILE_TOOLS.map((tool) => tool.name),
+  ].map((name) => `mcp__${SDK_SERVER_NAME}__${name}`),
   mcpServers: {
     [SDK_SERVER_NAME]: { type: "sdk", name: SDK_SERVER_NAME, instance: input.mcpServer },
   },

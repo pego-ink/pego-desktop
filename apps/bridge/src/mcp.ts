@@ -15,7 +15,15 @@ import { agentTools, CLAUDE_CODE_SYSTEM, toolAnnotations, type ProjectTarget } f
 import type { CallTool, ToolOutcome, ToolSource } from "./editor-hub";
 import { getPegoPrompt, pegoPrompts } from "./mcp-prompts";
 import { listPegoResources, readPegoResource } from "./mcp-resources";
-import { FILE_TOOLS, FILE_TOOLS_INSTRUCTIONS, isFileTool, runFileTool } from "./file-tools";
+import {
+  FILE_TOOLS,
+  FILE_TOOLS_INSTRUCTIONS,
+  isFileTool,
+  isReadFileTool,
+  READ_FILE_TOOLS,
+  runFileTool,
+  runReadFileTool,
+} from "./file-tools";
 import { findProject, listProjects } from "./projects";
 
 /** The `project` argument every agent tool takes over the terminal endpoint. */
@@ -95,7 +103,8 @@ export const createPegoMcpServer = (options: {
   /** The project's design folder for list_documents. */
   designDir?: string | null;
 }): McpServer => {
-  const fileTools = options.fileTools ? FILE_TOOLS : [];
+  // Terminal endpoint: every file tool. Run endpoints: only the read-only design-folder tools.
+  const fileTools = options.fileTools ? [...FILE_TOOLS, ...READ_FILE_TOOLS] : [...READ_FILE_TOOLS];
   const instructions = options.fileTools
     ? `${CLAUDE_CODE_SYSTEM}\n\n${FILE_TOOLS_INSTRUCTIONS}`
     : CLAUDE_CODE_SYSTEM;
@@ -128,6 +137,9 @@ export const createPegoMcpServer = (options: {
 
   server.server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: input } = request.params;
+    if (isReadFileTool(name)) {
+      return toCallToolResult(await runReadFileTool(name, input ?? {}, options.designDir ?? null));
+    }
     if (options.fileTools && isFileTool(name)) {
       return toCallToolResult(
         await runFileTool(
@@ -205,9 +217,9 @@ export const handleMcpRequest = async (
   request: Request,
   callTool: CallTool,
   options: {
-    /** Fixed attribution for run-scoped endpoints (no file tools); defaults to the MCP client. */
+    /** Fixed attribution for run-scoped endpoints (read-only file tools only); defaults to the MCP client. */
     fixedSource?: ToolSource;
-    /** The project's design folder for the file tools; they are served only without fixedSource. */
+    /** The design folder: the file tools (without fixedSource) and the read-only svg tools. */
     designDir?: string | null;
   } = {},
 ): Promise<Response> => {
